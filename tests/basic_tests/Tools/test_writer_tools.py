@@ -761,6 +761,9 @@ def test_apply_patch_to_document_moves_and_restores_writer_identity():
         )])
         first, second = fs.get_doc_blocks.return_value
         fs.get_doc_blocks.return_value = [second, {**first, 'block_id': 'moved-b1'}]
+        fs.move_block.return_value = {
+            'block_id_relations': {'b1': 'moved-b1'},
+        }
 
         with patch(
             'lazyllm.tools.fs.client.FS._parse',

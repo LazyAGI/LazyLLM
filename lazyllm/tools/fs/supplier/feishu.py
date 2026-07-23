@@ -12,6 +12,8 @@ from lazyllm import globals as lazyllm_globals
 from lazyllm.common import Credential
 from lazyllm.tools.writer.utils.feishu_docx import (
     DOCX_BLOCK_TYPE_FIELDS,
+    normalize_docx_clone_content,
+    prepare_docx_clone_descendants,
     prepare_docx_descendants,
 )
 from ..base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile
@@ -681,8 +683,18 @@ class FeishuFSBase(LinkDocumentFSBase):
         document_id: str,
         target_parent_block_id: str,
         create_index: int,
+        created_root_block_id: Optional[str],
         document_revision_id: int,
     ) -> Dict[str, Any]:
+        if created_root_block_id:
+            target_children = self._get_docx_children(document_id, target_parent_block_id)
+            create_index = next(
+                (
+                    index for index, block in enumerate(target_children)
+                    if block.get('block_id') == created_root_block_id
+                ),
+                create_index,
+            )
         return self._batch_delete_child_blocks(
             document_id,
             target_parent_block_id,
@@ -694,20 +706,56 @@ class FeishuFSBase(LinkDocumentFSBase):
     def _verify_move_copy(
         self,
         document_id: str,
-        target_parent_block_id: str,
-        create_index: int,
-        root_id: str,
         descendants: List[Dict[str, Any]],
-    ) -> None:
-        created_children = self._get_docx_children(document_id, target_parent_block_id)
-        created_root = created_children[create_index]
-        expected_root = next(
-            item for item in descendants if item.get('block_id') == root_id)
-        if created_root.get('block_type') != expected_root.get('block_type'):
-            raise RuntimeError('created move root has a different block type.')
-        expected_text = self._docx_block_plain_text(expected_root)
-        if expected_text and self._docx_block_plain_text(created_root) != expected_text:
-            raise RuntimeError('created move root has different text content.')
+        source_by_temporary_id: Dict[str, str],
+        create_data: Dict[str, Any],
+    ) -> Dict[str, str]:
+        temporary_to_created = {
+            relation.get('temporary_block_id'): relation.get('block_id')
+            for relation in (create_data.get('block_id_relations') or [])
+            if isinstance(relation, dict)
+            and isinstance(relation.get('temporary_block_id'), str)
+            and isinstance(relation.get('block_id'), str)
+        }
+        if set(temporary_to_created) != set(source_by_temporary_id):
+            raise RuntimeError('created move copy returned incomplete block ID relations.')
+
+        expected_by_temporary_id = {
+            block.get('block_id'): block for block in descendants
+        }
+        created_by_id = {
+            block.get('block_id'): block
+            for block in self._get_doc_blocks_raw(document_id, with_descendants=True)
+        }
+        for temporary_id, source_block_id in source_by_temporary_id.items():
+            expected = expected_by_temporary_id.get(temporary_id)
+            created_id = temporary_to_created[temporary_id]
+            created = created_by_id.get(created_id)
+            if not isinstance(expected, dict) or not isinstance(created, dict):
+                raise RuntimeError('created move copy is missing a block from the copied subtree.')
+            block_type = expected.get('block_type')
+            if created.get('block_type') != block_type:
+                raise RuntimeError(
+                    f'created move block {source_block_id!r} has a different block type.')
+            content_key = DOCX_BLOCK_TYPE_FIELDS.get(block_type)
+            expected_content, _ = normalize_docx_clone_content(
+                block_type, expected.get(content_key))
+            created_content, _ = normalize_docx_clone_content(
+                block_type, created.get(content_key))
+            if created_content != expected_content:
+                raise RuntimeError(
+                    f'created move block {source_block_id!r} has different content or formatting.')
+            expected_children = [
+                temporary_to_created[child_id]
+                for child_id in (expected.get('children') or [])
+            ]
+            if (created.get('children') or []) != expected_children:
+                raise RuntimeError(
+                    f'created move block {source_block_id!r} has different children.')
+        return {
+            source_by_temporary_id[temporary_id]: created_id
+            for temporary_id, created_id in temporary_to_created.items()
+        }
 
     def _create_and_verify_move_copy(
         self,
@@ -716,8 +764,9 @@ class FeishuFSBase(LinkDocumentFSBase):
         create_index: int,
         children_id: List[str],
         descendants: List[Dict[str, Any]],
+        source_by_temporary_id: Dict[str, str],
         document_revision_id: int,
-    ) -> Tuple[Dict[str, Any], int]:
+    ) -> Tuple[Dict[str, Any], int, Dict[str, str]]:
         create_data = self._create_descendant_blocks(
             document_id,
             target_parent_block_id,
@@ -729,13 +778,21 @@ class FeishuFSBase(LinkDocumentFSBase):
         created_revision = create_data.get('document_revision_id', -1)
         if not isinstance(created_revision, int) or isinstance(created_revision, bool):
             created_revision = -1
+        root_relation = next(
+            (
+                relation for relation in (create_data.get('block_id_relations') or [])
+                if isinstance(relation, dict)
+                and relation.get('temporary_block_id') == children_id[0]
+            ),
+            {},
+        )
+        created_root_block_id = root_relation.get('block_id')
         try:
-            self._verify_move_copy(
+            block_id_relations = self._verify_move_copy(
                 document_id,
-                target_parent_block_id,
-                create_index,
-                children_id[0],
                 descendants,
+                source_by_temporary_id,
+                create_data,
             )
         except Exception as verify_error:
             try:
@@ -743,6 +800,7 @@ class FeishuFSBase(LinkDocumentFSBase):
                     document_id,
                     target_parent_block_id,
                     create_index,
+                    created_root_block_id,
                     created_revision,
                 )
             except Exception as rollback_error:
@@ -753,18 +811,42 @@ class FeishuFSBase(LinkDocumentFSBase):
             raise RuntimeError(
                 'move_block aborted: target copy verification failed and was rolled back.'
             ) from verify_error
-        return create_data, created_revision
+        return create_data, created_revision, block_id_relations
 
     def _delete_move_source(
         self,
         document_id: str,
         source_parent_block_id: str,
         source_block_id: str,
-        delete_index: int,
         target_parent_block_id: str,
         create_index: int,
+        created_root_block_id: str,
         created_revision: int,
     ) -> Dict[str, Any]:
+        source_children = self._get_docx_children(document_id, source_parent_block_id)
+        delete_index = next(
+            (
+                index for index, block in enumerate(source_children)
+                if block.get('block_id') == source_block_id
+            ),
+            None,
+        )
+        if delete_index is None:
+            try:
+                self._rollback_move_copy(
+                    document_id,
+                    target_parent_block_id,
+                    create_index,
+                    created_root_block_id,
+                    created_revision,
+                )
+            except Exception as rollback_error:
+                raise RuntimeError(
+                    'move_block partially applied: source disappeared and target-copy '
+                    f'rollback failed: {rollback_error}'
+                ) from rollback_error
+            raise RuntimeError(
+                'move source block disappeared before deletion; target copy was rolled back.')
         try:
             return self._batch_delete_child_blocks(
                 document_id,
@@ -776,8 +858,9 @@ class FeishuFSBase(LinkDocumentFSBase):
         except Exception as delete_error:
             try:
                 source_still_exists = any(
-                    child.get('block_id') == source_block_id
-                    for child in self._get_docx_children(document_id, source_parent_block_id)
+                    block.get('block_id') == source_block_id
+                    for block in self._get_doc_blocks_raw(
+                        document_id, with_descendants=True)
                 )
             except Exception as reconcile_error:
                 raise RuntimeError(
@@ -791,6 +874,7 @@ class FeishuFSBase(LinkDocumentFSBase):
                     document_id,
                     target_parent_block_id,
                     create_index,
+                    created_root_block_id,
                     created_revision,
                 )
             except Exception as rollback_error:
@@ -810,37 +894,82 @@ class FeishuFSBase(LinkDocumentFSBase):
         source_index: int,
         target_parent_block_id: str,
         target_index: int,
-        children_id: List[str],
-        descendants: List[Dict[str, Any]],
+        target_anchor_block_id: str,
+        position: str,
         *,
         document_revision_id: int = -1,
     ) -> Dict[str, Any]:
+        if source_index < 0 or target_index < 0:
+            raise ValueError('move_block source and target indexes must not be negative.')
+        if position not in {'before', 'after'}:
+            raise ValueError('move_block position must be before or after.')
+        source_children = self._get_docx_children(document_id, source_parent_block_id)
+        current_source_index = next(
+            (
+                index for index, block in enumerate(source_children)
+                if block.get('block_id') == source_block_id
+            ),
+            None,
+        )
+        if current_source_index is None:
+            raise ValueError('move source block does not belong to the expected parent.')
+        target_children = (
+            source_children
+            if source_parent_block_id == target_parent_block_id
+            else self._get_docx_children(document_id, target_parent_block_id)
+        )
+        current_anchor_index = next(
+            (
+                index for index, block in enumerate(target_children)
+                if block.get('block_id') == target_anchor_block_id
+            ),
+            None,
+        )
+        if current_anchor_index is None:
+            raise ValueError('move anchor block does not belong to the expected parent.')
+        target_index = current_anchor_index + (1 if position == 'after' else 0)
+        if (
+            source_parent_block_id == target_parent_block_id
+            and current_source_index < current_anchor_index
+        ):
+            target_index -= 1
+
+        source_blocks = self._get_doc_blocks_raw(document_id, with_descendants=True)
+        children_id, descendants, source_by_temporary_id, normalized_fields = \
+            prepare_docx_clone_descendants(source_blocks, source_block_id)
         if len(children_id) != 1:
             raise ValueError('move_block requires exactly one root block.')
         create_index = target_index
-        if source_parent_block_id == target_parent_block_id and source_index < target_index:
+        if (
+            source_parent_block_id == target_parent_block_id
+            and current_source_index < target_index
+        ):
             create_index += 1
-        create_data, created_revision = self._create_and_verify_move_copy(
+        create_data, created_revision, block_id_relations = self._create_and_verify_move_copy(
             document_id,
             target_parent_block_id,
             create_index,
             children_id,
             descendants,
+            source_by_temporary_id,
             document_revision_id,
         )
-        delete_index = source_index
-        if source_parent_block_id == target_parent_block_id and create_index <= source_index:
-            delete_index += len(children_id)
+        created_root_block_id = block_id_relations[source_block_id]
         delete_data = self._delete_move_source(
             document_id,
             source_parent_block_id,
             source_block_id,
-            delete_index,
             target_parent_block_id,
             create_index,
+            created_root_block_id,
             created_revision,
         )
-        return {'create': create_data, 'delete': delete_data}
+        return {
+            'create': create_data,
+            'delete': delete_data,
+            'block_id_relations': block_id_relations,
+            'normalized_fields': normalized_fields,
+        }
 
     def write_doc_blocks(
         self,

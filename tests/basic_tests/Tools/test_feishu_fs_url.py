@@ -88,23 +88,38 @@ class TestSpaceIdDynamic(unittest.TestCase):
 
 class TestMoveBlock(unittest.TestCase):
 
-    @staticmethod
-    def _make_fs():
+    @classmethod
+    def _make_fs(cls):
         fs = object.__new__(FeishuFS)
-        fs._create_descendant_blocks = MagicMock(return_value={'document_revision_id': 11})
+        fs._create_descendant_blocks = MagicMock(return_value={
+            'document_revision_id': 11,
+            'block_id_relations': [{
+                'temporary_block_id': 'move-block-0',
+                'block_id': 'created',
+            }],
+        })
         fs._batch_delete_child_blocks = MagicMock(return_value={'document_revision_id': 12})
+        fs._get_doc_blocks_raw = MagicMock(side_effect=[
+            [cls._block('source', 'source', parent_id='doc-1')],
+            [cls._block('created', 'source', parent_id='doc-1')],
+        ])
         return fs
 
     @staticmethod
-    def _block(block_id, content):
-        return {
+    def _block(block_id, content, **extra):
+        block = {
             'block_id': block_id, 'block_type': 2,
             'text': {'elements': [{'text_run': {'content': content}}]},
         }
+        block.update(extra)
+        return block
 
     @classmethod
     def _children(cls, include_source=True):
-        children = [cls._block('anchor', 'anchor'), cls._block('created', 'source')]
+        children = [
+            cls._block('anchor', 'anchor'),
+            cls._block('created', 'source'),
+        ]
         return [cls._block('source', 'source')] + children if include_source else children
 
     @staticmethod
@@ -116,14 +131,17 @@ class TestMoveBlock(unittest.TestCase):
             source_index=0,
             target_parent_block_id='doc-1',
             target_index=1,
-            children_id=['temporary-root'],
-            descendants=[TestMoveBlock._block('temporary-root', 'source')],
+            target_anchor_block_id='anchor',
+            position='after',
             document_revision_id=10,
         )
 
     def test_move_creates_verifies_and_deletes_with_revisions(self):
         fs = self._make_fs()
-        fs._get_docx_children = MagicMock(return_value=self._children())
+        fs._get_docx_children = MagicMock(side_effect=[
+            self._children(),
+            self._children(),
+        ])
 
         result = self._move(fs)
 
@@ -138,8 +156,19 @@ class TestMoveBlock(unittest.TestCase):
 
     def test_move_rolls_back_created_copy_when_source_delete_fails(self):
         fs = self._make_fs()
+        fs._get_doc_blocks_raw.side_effect = [
+            [self._block('source', 'source', parent_id='doc-1')],
+            [self._block('created', 'source', parent_id='doc-1')],
+            [
+                self._block('source', 'source', parent_id='doc-1'),
+                self._block('created', 'source', parent_id='doc-1'),
+            ],
+        ]
         fs._get_docx_children = MagicMock(side_effect=[
-            self._children(), self._children(),
+            self._children(),
+            self._children(),
+            self._children(),
+            self._children(),
         ])
         fs._batch_delete_child_blocks.side_effect = [
             RuntimeError('source delete failed'), {'document_revision_id': 12},
@@ -156,8 +185,15 @@ class TestMoveBlock(unittest.TestCase):
 
     def test_move_accepts_delete_timeout_when_source_is_already_gone(self):
         fs = self._make_fs()
+        fs._get_doc_blocks_raw.side_effect = [
+            [self._block('source', 'source', parent_id='doc-1')],
+            [self._block('created', 'source', parent_id='doc-1')],
+            [self._block('created', 'source', parent_id='doc-1')],
+        ]
         fs._get_docx_children = MagicMock(side_effect=[
-            self._children(), self._children(include_source=False),
+            self._children(),
+            self._children(),
+            self._children(include_source=False),
         ])
         fs._batch_delete_child_blocks.side_effect = RuntimeError('timeout')
 

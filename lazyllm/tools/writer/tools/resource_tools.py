@@ -208,10 +208,15 @@ class WriterResourceTools(WriterToolBase):
         persisted_document = source
         expected_title = patch.new_title if patch.new_title is not None else source.title
         title_updated = patch.new_title is not None and patch.new_title != source.title
+        normalized_fields: Dict[str, List[str]] = {}
         for hunk in patch.hunks:
             operation = adapter.patch_to_operation(hunk, persisted_document)
-            self._execute_native_operation(
+            operation_result = self._execute_native_operation(
                 fs, document_id, operation, persisted_document.revision)
+            if isinstance(operation_result, dict) \
+                    and isinstance(operation_result.get('normalized_fields'), list):
+                normalized_fields[hunk.hunk_id or hunk.target_node_id] = \
+                    operation_result['normalized_fields']
             applied_hunks.append(hunk.hunk_id or hunk.target_node_id)
             refreshed_document = self._read_persisted_document(
                 fs=fs,
@@ -229,6 +234,7 @@ class WriterResourceTools(WriterToolBase):
                     refreshed_document,
                     patch=hunk,
                     operation=operation,
+                    operation_result=operation_result,
                 )
                 if callable(merge_refreshed) else refreshed_document
             )
@@ -276,6 +282,7 @@ class WriterResourceTools(WriterToolBase):
                 'external_document_id': document_id,
                 'operation_count': len(applied_hunks) + int(title_updated),
                 'title_updated': title_updated,
+                'normalized_fields': normalized_fields,
             },
         )
         return self._save_artifacts(

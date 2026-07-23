@@ -4,6 +4,7 @@ import pytest
 
 from lazyllm.tools.writer.adapter.feishu import FeishuWriterAdapter
 from lazyllm.tools.writer.data_models import PatchBlock, PatchHunk
+from lazyllm.tools.writer.utils.feishu_docx import prepare_docx_clone_descendants
 
 
 def _block(block_id, content, *, parent='doc-1', children=None, heading=False):
@@ -79,7 +80,10 @@ def test_move_builds_same_and_cross_parent_operations(
         'source_parent_block_id', 'source_index',
         'target_parent_block_id', 'target_index',
     )) == expected
-    assert len(operation.params['children_id']) == 1
+    assert operation.params['target_anchor_block_id'] == \
+        anchor.provider_binding['block_id']
+    assert operation.params['position'] == position
+    assert 'descendants' not in operation.params
 
 
 def test_merge_refreshed_move_restores_writer_identity():
@@ -100,7 +104,38 @@ def test_merge_refreshed_move_restores_writer_identity():
     refreshed = adapter.blocks_to_ir(refreshed_raw, external_document_id='doc-1')
 
     moved = adapter.merge_refreshed_document(
-        previous, refreshed, patch=patch, operation=operation).blocks[1]
+        previous,
+        refreshed,
+        patch=patch,
+        operation=operation,
+        operation_result={
+            'block_id_relations': {
+                'heading-1': 'moved-heading',
+                'paragraph-1': 'moved-paragraph',
+            },
+        },
+    ).blocks[1]
     assert moved.node_id == source.node_id
     assert moved.children[0].node_id == source.children[0].node_id
     assert moved.provider_binding['block_id'] == 'moved-heading'
+
+
+def test_move_clone_descendants_preserve_raw_format_and_children():
+    blocks = _move_blocks()[:2]
+    blocks[0]['heading1']['style'] = {'align': 2}
+    blocks[0]['heading1']['elements'][0]['text_run']['text_element_style'] = {
+        'bold': True,
+        'text_color': 5,
+    }
+
+    children_id, descendants, id_map, _ = \
+        prepare_docx_clone_descendants(blocks, 'heading-1')
+
+    assert children_id == ['move-block-0']
+    assert id_map == {
+        'move-block-0': 'heading-1',
+        'move-block-1': 'paragraph-1',
+    }
+    assert [block['block_type'] for block in descendants] == [3, 2]
+    assert descendants[0]['heading1'] == blocks[0]['heading1']
+    assert descendants[0]['children'] == ['move-block-1']
