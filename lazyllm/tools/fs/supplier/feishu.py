@@ -1050,7 +1050,7 @@ class FeishuFS(FeishuFSBase):
         r'https?://[^\s/]+\.(?:feishu\.(?:cn|com)|larksuite\.com)(?:[/:?#]|$)',
         r'飞书|(?<!\w)feishu(?!\w)',
     ]
-    __public_apis__ = LazyLLMFSBase.__public_apis__
+    __public_apis__ = LazyLLMFSBase.__public_apis__ + ['create_document']
 
     def __new__(cls, base_url: Optional[str] = None, app_id: Optional[str] = None, app_secret: Optional[str] = None,
                 space_id: Optional[str] = None, user_refresh_token: Optional[str] = None,
@@ -1125,6 +1125,35 @@ class FeishuFS(FeishuFSBase):
               **kwargs) -> CloudFSBufferedFile:
         return CloudFSBufferedFile(self, path, mode=mode, block_size=block_size or self.blocksize,
                                    autocommit=autocommit, cache_options=cache_options)
+
+    def _create_drive_docx(self, title: str, folder_token: str = '') -> Dict[str, Any]:
+        params = {'folder_token': folder_token} if folder_token else None
+        data = self._post(
+            f'{self._base_url}/docx/v1/documents',
+            params=params,
+            json={'title': title},
+        )
+        document = (data.get('data') or {}).get('document') or {}
+        document_id = document.get('document_id') or ''
+        if not document_id:
+            raise RuntimeError('Feishu drive docx create failed: empty document_id')
+        return {
+            'document_id': document_id,
+            'title': document.get('title') or title,
+            'path': f'/~docx/{document_id}',
+            'browser_url': f'https://feishu.cn/docx/{document_id}',
+            'container': 'drive',
+            'folder_token': folder_token,
+        }
+
+    def create_document(self, title: str, parent: str = '') -> Dict[str, Any]:
+        '''Create a Feishu Docx in the default Cloud Docs root or a selected folder.'''
+        title = (title or '').strip()
+        if not title:
+            raise ValueError('title is required')
+        parent = (parent or '').strip()
+        folder_token = self._resolve_path_to_token(parent) if parent and parent != '/' else ''
+        return self._create_drive_docx(title, folder_token=folder_token)
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
         parts = [p for p in path.strip('/').split('/') if p]
@@ -1201,17 +1230,13 @@ class FeishuFS(FeishuFSBase):
                 self._upload_file_to_drive(name, data, folder_token=parent_token)
                 return
             doc_title = name[:-3] if name.endswith('.md') else name
-            folder_token = parent_token or self._drive_root_folder_token()
-            create_resp = self._post(
-                f'{self._base_url}/docx/v1/documents',
-                params={'folder_token': folder_token},
-                json={'title': doc_title},
-            )
-            doc_id = ((create_resp.get('data') or {}).get('document') or {}).get('document_id') or ''
-            if not doc_id:
+            try:
+                created = self._create_drive_docx(doc_title, folder_token=parent_token)
+            except RuntimeError:
                 LOG.warning('Feishu drive docx create returned no document_id, falling back to file upload')
                 self._upload_file_to_drive(name, data, folder_token=parent_token)
                 return
+            doc_id = created['document_id']
             try:
                 top_blocks, block_children = self._convert_markdown_via_api(text)
                 _, block_id_map = self._append_docx_blocks(doc_id, top_blocks)
@@ -1275,14 +1300,62 @@ class FeishuWikiFS(FeishuFSBase):
     document_provider = 'feishu'
     __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search', 'find'])
 
-    def _create_docx_node(self, title: str, parent_token: str = '') -> str:
+    def _create_docx_node(self, title: str, parent_token: str = '') -> Dict[str, Any]:
         url = f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes'
         payload: Dict[str, Any] = {'obj_type': 'docx', 'node_type': 'origin', 'title': title}
         if parent_token:
             payload['parent_node_token'] = parent_token
         data = self._post(url, json=payload)
         node = data.get('data', {}).get('node') or {}
-        return node.get('obj_token') or ''
+        if not node.get('obj_token'):
+            raise RuntimeError('Feishu wiki create docx node failed: empty obj_token')
+        return node
+
+    def create_document(self, title: str, parent: str = '') -> Dict[str, Any]:
+        '''Create an empty Feishu Docx node in a Wiki space.'''
+        title = (title or '').strip()
+        if not title:
+            raise ValueError('title is required')
+        parent = (parent or '').strip()
+        parent_token = ''
+        parent_url = ''
+        if parent and parent != '/':
+            if self.is_link_path(parent):
+                parent_url = self.decode_link_path(parent)
+                ref = self.resolve_wiki_ref(parent)
+                parent_token = ref.get('node_token') or ''
+            elif _FEISHU_BARE_HOST_RE.match(parent):
+                parent_url = parent
+                ref = self.resolve_wiki_ref(parent)
+                parent_token = ref.get('node_token') or ''
+            elif parent.lstrip('/').startswith('~node/'):
+                ref = self.resolve_wiki_ref(parent)
+                parent_token = ref.get('node_token') or ''
+            else:
+                parent_token = self._resolve_path_to_token(parent)
+            if not parent_token:
+                raise ValueError('Feishu wiki parent must point to a wiki node.')
+
+        node = self._create_docx_node(title, parent_token=parent_token)
+        document_id = node.get('obj_token') or ''
+        node_token = node.get('node_token') or ''
+        space_id = node.get('space_id') or self._effective_space_id()
+        browser_origin = 'https://feishu.cn'
+        if parent_url:
+            parsed_parent = urlparse(parent_url)
+            if parsed_parent.scheme and parsed_parent.netloc:
+                browser_origin = f'{parsed_parent.scheme}://{parsed_parent.netloc}'
+        browser_path = f'/wiki/{node_token}' if node_token else f'/docx/{document_id}'
+        return {
+            'document_id': document_id,
+            'node_token': node_token,
+            'space_id': space_id,
+            'title': node.get('title') or title,
+            'path': f'/~node/{node_token}' if node_token else f'/~docx/{document_id}',
+            'browser_url': f'{browser_origin}{browser_path}',
+            'container': 'wiki',
+            'parent_node_token': parent_token,
+        }
 
     def _append_docx_text(self, document_id: str, text: str) -> None:
         if not text:
@@ -1639,9 +1712,7 @@ class FeishuWikiFS(FeishuFSBase):
         parts = [p for p in path.strip('/').split('/') if p]
         name = parts[-1] if parts else 'untitled'
         parent_token = self._resolve_path_to_token('/' + '/'.join(parts[:-1])) if len(parts) > 1 else ''
-        doc_id = self._create_docx_node(name, parent_token=parent_token)
-        if not doc_id:
-            raise RuntimeError('Feishu wiki create docx node failed: empty obj_token')
+        doc_id = self._create_docx_node(name, parent_token=parent_token)['obj_token']
         try:
             text = data.decode('utf-8')
         except UnicodeDecodeError as e:

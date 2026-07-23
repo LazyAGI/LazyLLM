@@ -213,6 +213,10 @@ class WriterDraftingTools(WriterToolBase):
         draft_block.stage = 'draft'
         draft_block.type = 'heading'
         draft_block.content = instruction.section_title
+        level = instruction.meta.get('outline_node_level', 1)
+        if not isinstance(level, int) or isinstance(level, bool) or not 1 <= level <= 9:
+            level = 1
+        draft_block.numbering['level'] = level
 
         if not draft_block.children:
             draft_block.children.append(WriterBlock(

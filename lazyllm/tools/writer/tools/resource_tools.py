@@ -21,6 +21,7 @@ class WriterResourceTools(WriterToolBase):
     __public_apis__ = [
         'profile_resources',
         'document_to_docir',
+        'create_document',
         'write_to_document',
         'apply_patch_to_document',
     ]
@@ -160,6 +161,72 @@ class WriterResourceTools(WriterToolBase):
                 'adapter': protocol,
                 'document_id': document.document_id,
                 'stage': document.stage,
+            },
+        ).model_dump()
+
+    def create_document(
+        self,
+        title: str,
+        parent_uri: str = '',
+        adapter: str = 'feishu',
+    ) -> dict:
+        '''Create an empty provider document and return its normalized target artifact.'''
+        title = (title or '').strip()
+        if not title:
+            raise ValueError('title is required')
+        adapter = (adapter or '').strip().lower()
+        if not adapter:
+            raise ValueError('adapter is required')
+
+        import lazyllm.tools.fs.client as _fs_client
+        parent_locator = (parent_uri or '').strip() or f'{adapter}:/'
+        protocol, space_id, real_path = _fs_client.FS._parse(parent_locator)
+        if protocol != adapter:
+            raise ValueError(
+                f'parent URI protocol {protocol!r} does not match adapter {adapter!r}.')
+        fs = _fs_client.FS._get_or_create_fs(protocol, space_id, real_path)
+        create_document = getattr(fs, 'create_document', None)
+        if not callable(create_document):
+            raise TypeError(f'{type(fs).__name__} does not support create_document().')
+        created = create_document(title, real_path)
+        if not isinstance(created, dict):
+            raise TypeError('Document provider create_document() must return a dict.')
+
+        document_id = str(created.get('document_id') or '').strip()
+        created_path = str(created.get('path') or '').strip()
+        if not document_id or not created_path:
+            raise ValueError('Document provider returned an incomplete created document.')
+        effective_space_id = str(created.get('space_id') or '').strip()
+        internal_uri = (
+            f'{protocol}@{effective_space_id}:{created_path}'
+            if effective_space_id else f'{protocol}:{created_path}'
+        )
+        browser_url = str(created.get('browser_url') or '').strip()
+        target = TargetDocument(
+            doc_id=document_id,
+            uri=browser_url or internal_uri,
+            adapter=protocol,
+            title=str(created.get('title') or title),
+            meta={
+                'internal_uri': internal_uri,
+                'browser_url': browser_url,
+                'container': created.get('container') or '',
+                'parent_uri': (parent_uri or '').strip(),
+                'node_token': created.get('node_token') or '',
+                'space_id': effective_space_id,
+            },
+        )
+        return self._save_artifacts(
+            {'target_document': target},
+            step_name='create_document',
+            primary_key='target_document',
+            context_key=None,
+            summary='Created an empty provider document.',
+            counts={'documents': 1},
+            extra={
+                'adapter': protocol,
+                'document_id': document_id,
+                'uri': target.uri,
             },
         ).model_dump()
 

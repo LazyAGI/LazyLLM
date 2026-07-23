@@ -83,11 +83,30 @@ class FeishuWriterAdapter(WriterAdapterBase):
             )
             for index, block_id in enumerate(source_order)
         }
+        page_ids = {
+            block_id
+            for block_id in source_order
+            if raw_by_id[block_id].get('block_type') == 1
+        }
+
+        def visible_children(block_ids: List[str]) -> List[WriterBlock]:
+            visible: List[WriterBlock] = []
+            for block_id in block_ids:
+                if block_id in page_ids:
+                    visible.extend(visible_children(child_ids.get(block_id, [])))
+                else:
+                    visible.append(writer_by_id[block_id])
+            return visible
+
         for parent_id, children in child_ids.items():
-            writer_by_id[parent_id].children = [writer_by_id[child_id] for child_id in children]
+            if parent_id not in page_ids:
+                writer_by_id[parent_id].children = visible_children(children)
 
         nested_ids = {child_id for children in child_ids.values() for child_id in children}
-        root_blocks = [writer_by_id[block_id] for block_id in source_order if block_id not in nested_ids]
+        root_ids = [block_id for block_id in source_order if block_id not in nested_ids]
+        # A Feishu Page block is the provider's document container. WriterDocument
+        # already represents that container, so expose only its content blocks in IR.
+        root_blocks = visible_children(root_ids)
         resolved_title = title
         if not resolved_title:
             document_block = next((
