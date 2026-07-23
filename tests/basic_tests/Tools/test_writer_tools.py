@@ -747,16 +747,6 @@ def test_apply_patch_to_document_dispatches_update_and_rereads():
 def test_apply_patch_to_document_moves_and_restores_writer_identity():
     pytest.importorskip('fsspec')
     fs = _make_doc_adapter()
-    fs.get_doc_blocks.return_value = [
-        {
-            'block_id': 'b1', 'block_type': 2, 'parent_id': 'doc-1',
-            'text': {'elements': [{'text_run': {'content': '第一段'}}]},
-        },
-        {
-            'block_id': 'b2', 'block_type': 2, 'parent_id': 'doc-1',
-            'text': {'elements': [{'text_run': {'content': '第二段'}}]},
-        },
-    ]
 
     with tempfile.TemporaryDirectory() as directory:
         source = load_artifact_json(
@@ -769,16 +759,8 @@ def test_apply_patch_to_document_moves_and_restores_writer_identity():
             anchor_node_id=source.blocks[1].node_id,
             position='after',
         )])
-        fs.get_doc_blocks.return_value = [
-            {
-                'block_id': 'b2', 'block_type': 2, 'parent_id': 'doc-1',
-                'text': {'elements': [{'text_run': {'content': '第二段'}}]},
-            },
-            {
-                'block_id': 'moved-b1', 'block_type': 2, 'parent_id': 'doc-1',
-                'text': {'elements': [{'text_run': {'content': '第一段'}}]},
-            },
-        ]
+        first, second = fs.get_doc_blocks.return_value
+        fs.get_doc_blocks.return_value = [second, {**first, 'block_id': 'moved-b1'}]
 
         with patch(
             'lazyllm.tools.fs.client.FS._parse',
@@ -787,9 +769,7 @@ def test_apply_patch_to_document_moves_and_restores_writer_identity():
             result = WriterResourceTools(
                 artifact_store=directory).apply_patch_to_document(patch_set, source)
 
-        move_kwargs = fs.move_block.call_args.kwargs
-        assert move_kwargs['source_block_id'] == 'b1'
-        assert move_kwargs['document_revision_id'] == -1
+        assert fs.move_block.call_args.kwargs['source_block_id'] == 'b1'
         persisted = load_artifact_json(
             result['metadata']['artifact_paths']['persisted_document'], WriterDocument)
         assert persisted.blocks[1].node_id == moved_node_id

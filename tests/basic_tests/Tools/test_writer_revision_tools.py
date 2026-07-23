@@ -41,6 +41,13 @@ def _context():
     return WritingContext(context_id='context-1', doc_id='doc-1', query='revise')
 
 
+def _move_hunk(source, anchor):
+    return PatchHunk(
+        hunk_id=f'move-{source}', target_node_id=source, modify_type='move',
+        anchor_node_id=anchor, position='after',
+    )
+
+
 def _revised_document(result):
     path = result['metadata']['artifact_paths']['revised_document']
     return load_artifact_json(path, WriterDocument)
@@ -242,20 +249,13 @@ def test_apply_patch_rejects_move_into_descendant():
 
 def test_patchset_hunks_execute_in_declared_order():
     document = WriterDocument(
-        document_id='doc-1',
-        stage='final',
+        document_id='doc-1', stage='final',
         blocks=[_block(node_id, node_id) for node_id in 'ABCD'],
     )
-    patch = PatchSet(target_doc_id='doc-1', hunks=[
-        PatchHunk(
-            hunk_id='move-B', target_node_id='B', modify_type='move',
-            anchor_node_id='A', position='after',
-        ),
-        PatchHunk(
-            hunk_id='move-C', target_node_id='C', modify_type='move',
-            anchor_node_id='A', position='after',
-        ),
-    ])
+    patch = PatchSet(
+        target_doc_id='doc-1',
+        hunks=[_move_hunk('B', 'A'), _move_hunk('C', 'A')],
+    )
 
     revised, result = apply_patch_to_ir(document, patch)
     assert [block.node_id for block in revised.blocks] == ['A', 'C', 'B', 'D']
@@ -263,20 +263,7 @@ def test_patchset_hunks_execute_in_declared_order():
 
 
 def test_patch_generation_chains_repeated_after_move_anchors():
-    hunks = [
-        PatchHunk(
-            target_node_id='B', modify_type='move',
-            anchor_node_id='A', position='after',
-        ),
-        PatchHunk(
-            target_node_id='C', modify_type='move',
-            anchor_node_id='A', position='after',
-        ),
-        PatchHunk(
-            target_node_id='D', modify_type='move',
-            anchor_node_id='A', position='after',
-        ),
-    ]
+    hunks = [_move_hunk(source, 'A') for source in 'BCD']
 
     WriterRevisionTools._chain_repeated_after_moves(hunks)
     assert [hunk.anchor_node_id for hunk in hunks] == ['A', 'B', 'C']

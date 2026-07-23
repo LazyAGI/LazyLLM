@@ -91,29 +91,21 @@ class TestMoveBlock(unittest.TestCase):
     @staticmethod
     def _make_fs():
         fs = object.__new__(FeishuFS)
-        fs._create_descendant_blocks = MagicMock(
-            return_value={'document_revision_id': 11})
-        fs._batch_delete_child_blocks = MagicMock(
-            return_value={'document_revision_id': 12})
+        fs._create_descendant_blocks = MagicMock(return_value={'document_revision_id': 11})
+        fs._batch_delete_child_blocks = MagicMock(return_value={'document_revision_id': 12})
         return fs
 
     @staticmethod
-    def _children(include_source=True):
-        children = []
-        if include_source:
-            children.append({
-                'block_id': 'source', 'block_type': 2,
-                'text': {'elements': [{'text_run': {'content': 'source'}}]},
-            })
-        children.append({
-            'block_id': 'anchor', 'block_type': 2,
-            'text': {'elements': [{'text_run': {'content': 'anchor'}}]},
-        })
-        children.append({
-            'block_id': 'created', 'block_type': 2,
-            'text': {'elements': [{'text_run': {'content': 'source'}}]},
-        })
-        return children
+    def _block(block_id, content):
+        return {
+            'block_id': block_id, 'block_type': 2,
+            'text': {'elements': [{'text_run': {'content': content}}]},
+        }
+
+    @classmethod
+    def _children(cls, include_source=True):
+        children = [cls._block('anchor', 'anchor'), cls._block('created', 'source')]
+        return [cls._block('source', 'source')] + children if include_source else children
 
     @staticmethod
     def _move(fs):
@@ -125,10 +117,7 @@ class TestMoveBlock(unittest.TestCase):
             target_parent_block_id='doc-1',
             target_index=1,
             children_id=['temporary-root'],
-            descendants=[{
-                'block_id': 'temporary-root', 'block_type': 2,
-                'text': {'elements': [{'text_run': {'content': 'source'}}]},
-            }],
+            descendants=[TestMoveBlock._block('temporary-root', 'source')],
             document_revision_id=10,
         )
 
@@ -142,8 +131,10 @@ class TestMoveBlock(unittest.TestCase):
         self.assertEqual(
             fs._create_descendant_blocks.call_args.kwargs['document_revision_id'], 10)
         delete_call = fs._batch_delete_child_blocks.call_args
-        self.assertEqual(delete_call.args[2:4], (0, 1))
-        self.assertEqual(delete_call.kwargs['document_revision_id'], 11)
+        self.assertEqual(
+            (delete_call.args[2:4], delete_call.kwargs['document_revision_id']),
+            ((0, 1), 11),
+        )
 
     def test_move_rolls_back_created_copy_when_source_delete_fails(self):
         fs = self._make_fs()
@@ -157,9 +148,11 @@ class TestMoveBlock(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'target copy was rolled back'):
             self._move(fs)
 
-        rollback_call = fs._batch_delete_child_blocks.call_args_list[1]
-        self.assertEqual(rollback_call.args[2:4], (2, 3))
-        self.assertEqual(rollback_call.kwargs['document_revision_id'], 11)
+        rollback = fs._batch_delete_child_blocks.call_args_list[1]
+        self.assertEqual(
+            (rollback.args[2:4], rollback.kwargs['document_revision_id']),
+            ((2, 3), 11),
+        )
 
     def test_move_accepts_delete_timeout_when_source_is_already_gone(self):
         fs = self._make_fs()
