@@ -1,6 +1,6 @@
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
-from lazyllm import pipeline, loop, locals, package, FileSystemQueue, once_wrapper
+from lazyllm import LOG, globals as lazyllm_globals, pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable, Optional
 from .base import LazyLLMAgentBase, _write_agent_data, _unwrap_tool_result
@@ -71,7 +71,8 @@ class FunctionCall(ModuleBase):
     def __init__(self, llm, tools: Optional[List[Union[str, Callable]]] = None, *, return_trace: bool = False,
                  stream: bool = False, _prompt: str = None, _tool_manager: Optional[ToolManager] = None,
                  skill_manager=None, sandbox: Optional[LazyLLMSandboxBase] = None,
-                 keep_full_turns: int = 0, stop_tools: Optional[List[str]] = None):
+                 keep_full_turns: int = 0, stop_tools: Optional[List[str]] = None,
+                 round_limit: Optional[int] = None):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
@@ -84,6 +85,7 @@ class FunctionCall(ModuleBase):
         self._stream = stream
         self._keep_full_turns = keep_full_turns
         self._stop_tools: set = set(stop_tools) if stop_tools else set()
+        self._round_limit = round_limit
         prompt = _prompt or FC_PROMPT
         self._prompter = ChatPrompter(
             instruction={'system': prompt, 'user': ''},
@@ -144,6 +146,17 @@ class FunctionCall(ModuleBase):
         chat_history = workspace['history'][:history_idx]
         if self._keep_full_turns > 0:
             chat_history = _compact_chat_history(chat_history, self._keep_full_turns)
+        if self._round_limit is not None:
+            current_round = int(workspace.get('_react_round_number', 0)) + 1
+            workspace['_react_round_number'] = current_round
+            round_limit = int(workspace.get('_react_round_limit', self._round_limit))
+            remaining_rounds = max(0, round_limit - current_round)
+            LOG.info(
+                f'[ReactAgent] [ROUND_BUDGET] sid={lazyllm_globals._sid} current_round={current_round} '
+                f'round_limit={round_limit} remaining_rounds={remaining_rounds}'
+            )
+            budget_message = {'role': 'system', 'content': f'Internal ReAct rounds left: {remaining_rounds}.'}
+            chat_history = [budget_message, *chat_history]
         locals['chat_history'][self._llm._module_id] = chat_history
         return input
 
@@ -188,6 +201,17 @@ class FunctionCall(ModuleBase):
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
         workspace = locals['_lazyllm_agent'].setdefault('workspace', {})
         workspace.setdefault('history', list(llm_chat_history or []))
+        if self._round_limit is not None and llm_chat_history is not None:
+            previous_round = workspace.get('_react_round_number')
+            preserved_history_messages = len(workspace.get('history') or [])
+            workspace.pop('_react_round_number', None)
+            workspace.pop('_react_round_limit', None)
+            LOG.info(
+                f'[ReactAgent] [INVOCATION_BUDGET_RESET] sid={lazyllm_globals._sid} '
+                f'resumed_workspace={previous_round is not None} '
+                f'preserved_history_messages={preserved_history_messages} '
+                f'new_round_limit={self._round_limit or 0}'
+            )
         self._tools_manager.sync_active_groups(input, llm_chat_history)
         try:
             result = self._impl(input)

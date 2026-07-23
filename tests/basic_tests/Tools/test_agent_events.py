@@ -108,6 +108,17 @@ class _SharedCursorLLM(_FakeLLM):
         return output
 
 
+class _BudgetRecordingLLM(_FakeLLM):
+    def __init__(self, outputs, *, stream=False):
+        super().__init__(outputs, stream=stream)
+        self.budget_histories = []
+
+    def __call__(self, input, **kwargs):
+        histories = lazyllm.locals.get('chat_history', {})
+        self.budget_histories.append(copy.deepcopy(histories.get(self._module_id, [])))
+        return super().__call__(input, **kwargs)
+
+
 def _read_agent_events():
     events = []
     for raw in lazyllm.FileSystemQueue().dequeue():
@@ -155,6 +166,29 @@ class TestReactAgentEvents(object):
             event.tag == 'text' and event.delta == 'Final summary after the limit.'
             for event in events
         )
+        preserved_workspace = lazyllm.locals['_lazyllm_agent'].get('workspace', {})
+        assert preserved_workspace.get('history')
+        assert preserved_workspace.get('_react_round_number') == 2
+        assert '_react_round_limit' not in preserved_workspace
+        continuation_llm = _BudgetRecordingLLM([
+            {'role': 'assistant', 'content': 'Finished after the follow-up continuation.'},
+        ])
+        continuation_agent = ReactAgent(
+            llm=continuation_llm,
+            tools=[add_one],
+            max_retries=1,
+            stream=False,
+            enable_builtin_tools=False,
+        )
+        assert continuation_agent('continue') == 'Finished after the follow-up continuation.'
+        continuation_history = continuation_llm.budget_histories[0]
+        assert any(message.get('content') == 'complete all steps' for message in continuation_history)
+        continuation_budget = next(
+            message['content']
+            for message in continuation_history
+            if message.get('content', '').startswith('Internal ReAct rounds left:')
+        )
+        assert continuation_budget == 'Internal ReAct rounds left: 1.'
 
     def test_react_agent_summarizes_when_round_limit_callback_declines_expansion(self):
         llm = _SharedCursorLLM([
@@ -229,6 +263,60 @@ class TestReactAgentEvents(object):
 
         assert agent('complete all steps') == 'Finished after explicit continuation.'
         assert limit_calls == [(2, 2)]
+
+    def test_react_agent_injects_ephemeral_dynamic_round_budget(self):
+        llm = _BudgetRecordingLLM([
+            {
+                'role': 'assistant',
+                'content': 'First step.',
+                'tool_calls': [{
+                    'id': 'call-1',
+                    'type': 'function',
+                    'function': {'name': 'add_one', 'arguments': '{"value": 1}'},
+                }],
+            },
+            {
+                'role': 'assistant',
+                'content': 'Second step.',
+                'tool_calls': [{
+                    'id': 'call-2',
+                    'type': 'function',
+                    'function': {'name': 'add_one', 'arguments': '{"value": 2}'},
+                }],
+            },
+            {'role': 'assistant', 'content': 'Finished within the expanded budget.'},
+        ])
+        agent = ReactAgent(
+            llm=llm,
+            tools=[add_one],
+            max_retries=1,
+            stream=True,
+            enable_builtin_tools=False,
+            on_max_retries=lambda output, used, current: 4,
+        )
+
+        result = agent('complete all steps')
+
+        assert result == 'Finished within the expanded budget.'
+        budget_messages = [
+            next(
+                message['content']
+                for message in history
+                if message.get('role') == 'system'
+                and message.get('content', '').startswith('Internal ReAct rounds left:')
+            )
+            for history in llm.budget_histories
+        ]
+        assert budget_messages == [
+            'Internal ReAct rounds left: 1.',
+            'Internal ReAct rounds left: 0.',
+            'Internal ReAct rounds left: 1.',
+        ]
+        persisted_history = lazyllm.locals['_lazyllm_agent']['history']
+        assert 'Internal ReAct rounds left:' not in json.dumps(persisted_history)
+        assert 'Internal ReAct rounds left:' not in result
+        events = _read_agent_events()
+        assert 'Internal ReAct rounds left:' not in json.dumps([vars(event) for event in events])
 
     def test_react_agent_stream_preserves_structured_tool_results(self):
         llm = _FakeLLM([
