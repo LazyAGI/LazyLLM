@@ -88,6 +88,26 @@ class _SlowStreamingLLM(_FakeLLM):
         return output
 
 
+class _SharedCursorLLM(_FakeLLM):
+    def __init__(self, outputs, *, stream=False):
+        super().__init__(outputs, stream=stream)
+        self._cursor_state = {'value': 0}
+
+    def __call__(self, input, **kwargs):
+        self.inputs.append(input)
+        cursor = self._cursor_state['value']
+        output = self._outputs[cursor]
+        self._cursor_state['value'] = cursor + 1
+        if self._stream:
+            if isinstance(output, dict):
+                content = output.get('content', '')
+                if content:
+                    lazyllm.FileSystemQueue().enqueue(json.dumps({'tag': 'text', 'delta': content}))
+            elif output:
+                lazyllm.FileSystemQueue().enqueue(json.dumps({'tag': 'text', 'delta': str(output)}))
+        return output
+
+
 def _read_agent_events():
     events = []
     for raw in lazyllm.FileSystemQueue().dequeue():
@@ -98,6 +118,118 @@ def _read_agent_events():
 
 
 class TestReactAgentEvents(object):
+    def test_force_summary_is_emitted_after_streamed_tool_progress(self):
+        llm = _SharedCursorLLM([
+            {
+                'role': 'assistant',
+                'content': 'First step.',
+                'tool_calls': [{
+                    'id': 'call-1',
+                    'type': 'function',
+                    'function': {'name': 'add_one', 'arguments': '{"value": 1}'},
+                }],
+            },
+            {
+                'role': 'assistant',
+                'content': 'Second step.',
+                'tool_calls': [{
+                    'id': 'call-2',
+                    'type': 'function',
+                    'function': {'name': 'add_one', 'arguments': '{"value": 2}'},
+                }],
+            },
+            'Final summary after the limit.',
+        ])
+        agent = ReactAgent(
+            llm=llm,
+            tools=[add_one],
+            max_retries=1,
+            stream=True,
+            enable_builtin_tools=False,
+            force_summarize=True,
+        )
+
+        assert agent('complete all steps') == 'Final summary after the limit.'
+        events = _read_agent_events()
+        assert any(
+            event.tag == 'text' and event.delta == 'Final summary after the limit.'
+            for event in events
+        )
+
+    def test_react_agent_summarizes_when_round_limit_callback_declines_expansion(self):
+        llm = _SharedCursorLLM([
+            {
+                'role': 'assistant',
+                'content': 'First step.',
+                'tool_calls': [{
+                    'id': 'call-1',
+                    'type': 'function',
+                    'function': {'name': 'add_one', 'arguments': '{"value": 1}'},
+                }],
+            },
+            {
+                'role': 'assistant',
+                'content': 'Second step.',
+                'tool_calls': [{
+                    'id': 'call-2',
+                    'type': 'function',
+                    'function': {'name': 'add_one', 'arguments': '{"value": 2}'},
+                }],
+            },
+            'Summary after decision timeout.',
+        ])
+        agent = ReactAgent(
+            llm=llm,
+            tools=[add_one],
+            max_retries=1,
+            stream=True,
+            enable_builtin_tools=False,
+            on_max_retries=lambda output, used, current: None,
+            force_summarize=True,
+        )
+
+        assert agent('complete all steps') == 'Summary after decision timeout.'
+
+    def test_react_agent_uses_generic_round_limit_callback(self):
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'First step.',
+                'tool_calls': [{
+                    'id': 'call-1',
+                    'type': 'function',
+                    'function': {'name': 'add_one', 'arguments': '{"value": 1}'},
+                }],
+            },
+            {
+                'role': 'assistant',
+                'content': 'Second step.',
+                'tool_calls': [{
+                    'id': 'call-2',
+                    'type': 'function',
+                    'function': {'name': 'add_one', 'arguments': '{"value": 2}'},
+                }],
+            },
+            {'role': 'assistant', 'content': 'Finished after explicit continuation.'},
+        ])
+        limit_calls = []
+
+        def expand(output, used, current):
+            limit_calls.append((used, current))
+            return 10
+
+        agent = ReactAgent(
+            llm=llm,
+            tools=[add_one],
+            max_retries=1,
+            stream=True,
+            enable_builtin_tools=False,
+            on_max_retries=expand,
+        )
+
+        assert agent('complete all steps') == 'Finished after explicit continuation.'
+        assert limit_calls == [(2, 2)]
+
     def test_react_agent_stream_preserves_structured_tool_results(self):
         llm = _FakeLLM([
             {

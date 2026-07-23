@@ -895,6 +895,7 @@ Args:
         为 True 时触发强制总结；为 False（默认）时直接抛出 ValueError。
     force_summarize_context (str): 强制总结时注入的额外上下文（如原始任务描述），默认为空字符串。
     keep_full_turns (int): 保留最近 N 轮完整工具结果不截断，其余旧结果压缩至 200 字符，默认为 0（全部压缩）。
+    on_max_retries (callable, optional): 达到当前工具调用轮次上限但仍未结束时调用。依次接收最终输出、已执行轮次和当前上限；返回更大的整数可仅为本次调用扩展上限，返回其他值则结束循环。默认为 ``None``。
 ''')
 
 add_english_doc('ReactAgent', '''\
@@ -935,6 +936,7 @@ Args:
         Useful when the task involves many tool-call steps and the LLM struggles to stop on its own.
     force_summarize_context (str): Extra context injected into the force-summarize prompt (e.g. the original task description). Defaults to empty string.
     keep_full_turns (int): Number of most-recent tool results to keep intact during history compaction. Older results are truncated to 200 chars. Defaults to 0 (all results compacted).
+    on_max_retries (callable, optional): Called when the current tool-call round limit is reached without a final answer. It receives the final output, actual round count, and current limit. Returning a larger integer expands only the current invocation; any other value ends the loop. Defaults to ``None``.
 
 ''')
 

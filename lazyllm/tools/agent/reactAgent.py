@@ -1,9 +1,11 @@
-from .base import LazyLLMAgentBase
-from lazyllm import loop, once_wrapper, LOG, locals
-from .functionCall import FunctionCall, _compact_chat_history
 from typing import List, Any, Dict, Optional, Union, Callable
+
+from lazyllm import LOG, locals, loop, once_wrapper
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
+
+from .base import LazyLLMAgentBase, _write_agent_data
+from .functionCall import FunctionCall, _compact_chat_history
 
 INSTRUCTION = f'''
 ## Role
@@ -78,7 +80,8 @@ class ReactAgent(LazyLLMAgentBase):
                  force_summarize: bool = False, force_summarize_context: str = '',
                  keep_full_turns: int = 0, fs: Optional[Any] = None, skills_dir: Optional[str] = None,
                  enable_builtin_tools: bool = True,
-                 extra_stop_condition: Optional[Callable] = None):
+                 extra_stop_condition: Optional[Callable] = None,
+                 on_max_retries: Optional[Callable] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
                          desc=desc, workspace=workspace, sandbox=sandbox, fs=fs, skills_dir=skills_dir,
@@ -93,6 +96,7 @@ class ReactAgent(LazyLLMAgentBase):
         self._force_summarize_context = force_summarize_context
         self._keep_full_turns = keep_full_turns
         self._extra_stop_condition = extra_stop_condition
+        self._on_max_retries = on_max_retries
         self._stop_tools: set = set()
         self._fc = None
 
@@ -128,7 +132,12 @@ class ReactAgent(LazyLLMAgentBase):
                           skill_manager=self._skill_manager,
                           keep_full_turns=self._keep_full_turns,
                           stop_tools=list(self._stop_tools) if self._stop_tools else None)
-        agent = loop(fc, stop_condition=self._stop, count=self._max_retries + 1)
+        agent = loop(
+            fc,
+            stop_condition=self._stop,
+            count=self._max_retries + 1,
+            on_limit=self._on_max_retries,
+        )
         self._fc = fc
         self._agent = agent
 
@@ -189,6 +198,8 @@ class ReactAgent(LazyLLMAgentBase):
                 except Exception as e:
                     LOG.warning(f'ReactAgent force-summarize call failed: {e}')
                 if summary is not None:
+                    if self._stream:
+                        _write_agent_data('text', delta=summary)
                     return summary
         raise ValueError(f'After retrying {self._max_retries} times, the react agent still failes to call '
                          f'successfully.')
