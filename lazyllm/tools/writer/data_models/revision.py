@@ -100,6 +100,40 @@ class PatchSet(ArtifactModel):
     hunks: List[PatchHunk] = Field(default_factory=list)
     meta: Dict[str, Any] = Field(default_factory=dict)
 
+    def execution_hunks(self) -> List[PatchHunk]:
+        '''Return hunks in an order that preserves repeated after-move order.
+
+        Moving several sibling blocks after the same anchor in their document
+        order would stack every later block directly behind the anchor and
+        reverse the group. Execute each consecutive group from tail to head so
+        the persisted document keeps the PatchSet's natural block order.
+        '''
+        ordered: List[PatchHunk] = []
+        index = 0
+        while index < len(self.hunks):
+            hunk = self.hunks[index]
+            if (
+                hunk.modify_type == 'move'
+                and hunk.position == 'after'
+                and hunk.anchor_node_id
+            ):
+                end = index + 1
+                while end < len(self.hunks):
+                    candidate = self.hunks[end]
+                    if not (
+                        candidate.modify_type == 'move'
+                        and candidate.position == 'after'
+                        and candidate.anchor_node_id == hunk.anchor_node_id
+                    ):
+                        break
+                    end += 1
+                ordered.extend(reversed(self.hunks[index:end]))
+                index = end
+                continue
+            ordered.append(hunk)
+            index += 1
+        return ordered
+
 
 class PatchResult(BaseModel):
     patch_id: Optional[str] = None

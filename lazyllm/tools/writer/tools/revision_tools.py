@@ -39,7 +39,7 @@ def apply_patch_to_ir(
         revised_doc.title = patch_set.new_title
 
     applied: List[str] = []
-    for hunk in patch_set.hunks:
+    for hunk in patch_set.execution_hunks():
         node_map = {block.node_id: block for block in revised_doc.iter_blocks()}
         target = node_map[hunk.target_node_id]
 
