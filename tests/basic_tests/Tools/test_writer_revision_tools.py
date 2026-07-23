@@ -9,7 +9,7 @@ from lazyllm.tools.writer.data_models.revision import (
     PatchSet,
 )
 from lazyllm.tools.writer.adapter.feishu import FeishuWriterAdapter
-from lazyllm.tools.writer.tools.revision_tools import WriterRevisionTools
+from lazyllm.tools.writer.tools.revision_tools import WriterRevisionTools, apply_patch_to_ir
 from lazyllm.tools.writer.utils import load_artifact_json
 
 
@@ -238,3 +238,45 @@ def test_apply_patch_rejects_move_into_descendant():
             WriterRevisionTools(artifact_store=directory).apply_patch(
                 document, patch_set, _context(),
             )
+
+
+def test_patchset_hunks_execute_in_declared_order():
+    document = WriterDocument(
+        document_id='doc-1',
+        stage='final',
+        blocks=[_block(node_id, node_id) for node_id in 'ABCD'],
+    )
+    patch = PatchSet(target_doc_id='doc-1', hunks=[
+        PatchHunk(
+            hunk_id='move-B', target_node_id='B', modify_type='move',
+            anchor_node_id='A', position='after',
+        ),
+        PatchHunk(
+            hunk_id='move-C', target_node_id='C', modify_type='move',
+            anchor_node_id='A', position='after',
+        ),
+    ])
+
+    revised, result = apply_patch_to_ir(document, patch)
+    assert [block.node_id for block in revised.blocks] == ['A', 'C', 'B', 'D']
+    assert result.applied_hunks == ['move-B', 'move-C']
+
+
+def test_patch_generation_chains_repeated_after_move_anchors():
+    hunks = [
+        PatchHunk(
+            target_node_id='B', modify_type='move',
+            anchor_node_id='A', position='after',
+        ),
+        PatchHunk(
+            target_node_id='C', modify_type='move',
+            anchor_node_id='A', position='after',
+        ),
+        PatchHunk(
+            target_node_id='D', modify_type='move',
+            anchor_node_id='A', position='after',
+        ),
+    ]
+
+    WriterRevisionTools._chain_repeated_after_moves(hunks)
+    assert [hunk.anchor_node_id for hunk in hunks] == ['A', 'B', 'C']

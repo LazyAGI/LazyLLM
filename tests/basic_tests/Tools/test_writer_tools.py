@@ -744,6 +744,58 @@ def test_apply_patch_to_document_dispatches_update_and_rereads():
         assert persisted.blocks[1].content == '修改后正文'
 
 
+def test_apply_patch_to_document_moves_and_restores_writer_identity():
+    pytest.importorskip('fsspec')
+    fs = _make_doc_adapter()
+    fs.get_doc_blocks.return_value = [
+        {
+            'block_id': 'b1', 'block_type': 2, 'parent_id': 'doc-1',
+            'text': {'elements': [{'text_run': {'content': '第一段'}}]},
+        },
+        {
+            'block_id': 'b2', 'block_type': 2, 'parent_id': 'doc-1',
+            'text': {'elements': [{'text_run': {'content': '第二段'}}]},
+        },
+    ]
+
+    with tempfile.TemporaryDirectory() as directory:
+        source = load_artifact_json(
+            _call_document_to_docir(fs, directory)['artifact_path'], WriterDocument)
+        moved_node_id = source.blocks[0].node_id
+        patch_set = PatchSet(target_doc_id=source.document_id, hunks=[PatchHunk(
+            hunk_id='move-b1',
+            target_node_id=moved_node_id,
+            modify_type='move',
+            anchor_node_id=source.blocks[1].node_id,
+            position='after',
+        )])
+        fs.get_doc_blocks.return_value = [
+            {
+                'block_id': 'b2', 'block_type': 2, 'parent_id': 'doc-1',
+                'text': {'elements': [{'text_run': {'content': '第二段'}}]},
+            },
+            {
+                'block_id': 'moved-b1', 'block_type': 2, 'parent_id': 'doc-1',
+                'text': {'elements': [{'text_run': {'content': '第一段'}}]},
+            },
+        ]
+
+        with patch(
+            'lazyllm.tools.fs.client.FS._parse',
+            return_value=('feishu', None, '~docx/doc-1'),
+        ), patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=fs):
+            result = WriterResourceTools(
+                artifact_store=directory).apply_patch_to_document(patch_set, source)
+
+        move_kwargs = fs.move_block.call_args.kwargs
+        assert move_kwargs['source_block_id'] == 'b1'
+        assert move_kwargs['document_revision_id'] == -1
+        persisted = load_artifact_json(
+            result['metadata']['artifact_paths']['persisted_document'], WriterDocument)
+        assert persisted.blocks[1].node_id == moved_node_id
+        assert persisted.blocks[1].provider_binding['block_id'] == 'moved-b1'
+
+
 @pytest.mark.parametrize(
     ('resource', 'expected'),
     [

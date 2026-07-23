@@ -86,6 +86,94 @@ class TestSpaceIdDynamic(unittest.TestCase):
             self.assertIs(type(instance), FeishuFS)
 
 
+class TestMoveBlock(unittest.TestCase):
+
+    @staticmethod
+    def _make_fs():
+        fs = object.__new__(FeishuFS)
+        fs._create_descendant_blocks = MagicMock(
+            return_value={'document_revision_id': 11})
+        fs._batch_delete_child_blocks = MagicMock(
+            return_value={'document_revision_id': 12})
+        return fs
+
+    @staticmethod
+    def _children(include_source=True):
+        children = []
+        if include_source:
+            children.append({
+                'block_id': 'source', 'block_type': 2,
+                'text': {'elements': [{'text_run': {'content': 'source'}}]},
+            })
+        children.append({
+            'block_id': 'anchor', 'block_type': 2,
+            'text': {'elements': [{'text_run': {'content': 'anchor'}}]},
+        })
+        children.append({
+            'block_id': 'created', 'block_type': 2,
+            'text': {'elements': [{'text_run': {'content': 'source'}}]},
+        })
+        return children
+
+    @staticmethod
+    def _move(fs):
+        return fs.move_block(
+            document_id='doc-1',
+            source_parent_block_id='doc-1',
+            source_block_id='source',
+            source_index=0,
+            target_parent_block_id='doc-1',
+            target_index=1,
+            children_id=['temporary-root'],
+            descendants=[{
+                'block_id': 'temporary-root', 'block_type': 2,
+                'text': {'elements': [{'text_run': {'content': 'source'}}]},
+            }],
+            document_revision_id=10,
+        )
+
+    def test_move_creates_verifies_and_deletes_with_revisions(self):
+        fs = self._make_fs()
+        fs._get_docx_children = MagicMock(return_value=self._children())
+
+        result = self._move(fs)
+
+        self.assertEqual(result['delete']['document_revision_id'], 12)
+        self.assertEqual(
+            fs._create_descendant_blocks.call_args.kwargs['document_revision_id'], 10)
+        delete_call = fs._batch_delete_child_blocks.call_args
+        self.assertEqual(delete_call.args[2:4], (0, 1))
+        self.assertEqual(delete_call.kwargs['document_revision_id'], 11)
+
+    def test_move_rolls_back_created_copy_when_source_delete_fails(self):
+        fs = self._make_fs()
+        fs._get_docx_children = MagicMock(side_effect=[
+            self._children(), self._children(),
+        ])
+        fs._batch_delete_child_blocks.side_effect = [
+            RuntimeError('source delete failed'), {'document_revision_id': 12},
+        ]
+
+        with self.assertRaisesRegex(RuntimeError, 'target copy was rolled back'):
+            self._move(fs)
+
+        rollback_call = fs._batch_delete_child_blocks.call_args_list[1]
+        self.assertEqual(rollback_call.args[2:4], (2, 3))
+        self.assertEqual(rollback_call.kwargs['document_revision_id'], 11)
+
+    def test_move_accepts_delete_timeout_when_source_is_already_gone(self):
+        fs = self._make_fs()
+        fs._get_docx_children = MagicMock(side_effect=[
+            self._children(), self._children(include_source=False),
+        ])
+        fs._batch_delete_child_blocks.side_effect = RuntimeError('timeout')
+
+        result = self._move(fs)
+
+        self.assertEqual(result['delete']['status'], 'confirmed_after_error')
+        self.assertEqual(fs._batch_delete_child_blocks.call_count, 1)
+
+
 class TestEffectiveSpaceId(unittest.TestCase):
 
     def _make_wiki_fs(self, space_id: str = '') -> FeishuWikiFS:

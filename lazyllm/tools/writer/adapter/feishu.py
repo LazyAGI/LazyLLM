@@ -3,13 +3,13 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from ...fs.supplier.feishu import FeishuFSBase
+from ..utils.feishu_docx import DOCX_BLOCK_TYPE_FIELDS, prepare_docx_descendants
 from ..data_models.revision import PatchBlock, PatchHunk
 from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterSpan, WriterStage
 from .base import NativeBlock, NativePatchOperation, WriterAdapterBase
 
 
-_BLOCK_TYPE_FIELDS = FeishuFSBase._DOCX_BLOCK_TYPE_KEY
+_BLOCK_TYPE_FIELDS = DOCX_BLOCK_TYPE_FIELDS
 
 _BLOCK_TYPE_NAMES: Dict[int, str] = {
     1: 'document', 2: 'paragraph',
@@ -166,7 +166,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
         }
         return handlers[patch.modify_type](patch, document)
 
-    def merge_refreshed_document(
+    def merge_refreshed_document(  # noqa: C901
         self,
         previous_document: WriterDocument,
         refreshed_document: WriterDocument,
@@ -325,7 +325,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 'document_id': document.provider_binding.get('document_id', ''),
             },
         )
-        children_id, descendants = FeishuFSBase._prepare_docx_descendants(
+        children_id, descendants = prepare_docx_descendants(
             self.ir_to_blocks(inserted_document))
         return NativePatchOperation(
             operation='create',
@@ -368,7 +368,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
             document, patch.target_node_id)
         anchor, target_parent, anchor_index = self._block_location(
             document, patch.anchor_node_id or '')
-        self._require_feishu_binding(source, 'move source')
+        source_block_id = self._require_feishu_binding(source, 'move source')
         self._require_feishu_binding(anchor, 'move anchor')
         if source.type == 'document':
             raise ValueError('move patch cannot move the Feishu document block.')
@@ -397,7 +397,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 'document_id': document.provider_binding.get('document_id', ''),
             },
         )
-        children_id, descendants = FeishuFSBase._prepare_docx_descendants(
+        children_id, descendants = prepare_docx_descendants(
             self.ir_to_blocks(moved_document))
         if len(children_id) != 1:
             raise ValueError('move patch must produce exactly one root Feishu block.')
@@ -405,6 +405,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
             operation='move',
             params={
                 'source_parent_block_id': source_parent_block_id,
+                'source_block_id': source_block_id,
                 'source_index': source_index,
                 'target_parent_block_id': target_parent_block_id,
                 'target_index': target_index,
@@ -492,6 +493,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
             FeishuWriterAdapter._subtree_contains(child, node_id)
             for child in root.children
         )
+
     def _raw_block_to_ir(
         self,
         raw: NativeBlock,

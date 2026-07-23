@@ -10,6 +10,10 @@ import requests
 from lazyllm import LOG, config
 from lazyllm import globals as lazyllm_globals
 from lazyllm.common import Credential
+from lazyllm.tools.writer.utils.feishu_docx import (
+    DOCX_BLOCK_TYPE_FIELDS,
+    prepare_docx_descendants,
+)
 from ..base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile
 
 config.add('feishu_app_id', str, None, 'FEISHU_APP_ID', description='Feishu App ID for tenant_access_token.')
@@ -290,13 +294,7 @@ class FeishuFSBase(LinkDocumentFSBase):
                             json={'upload_id': upload_id, 'block_num': num_blocks})
         return result.get('data', {}).get('file_token', '')
 
-    _DOCX_BLOCK_TYPE_KEY: Dict[int, str] = {
-        1: 'page', 2: 'text', 3: 'heading1', 4: 'heading2', 5: 'heading3', 6: 'heading4',
-        7: 'heading5', 8: 'heading6', 9: 'heading7', 10: 'heading8', 11: 'heading9',
-        12: 'bullet', 13: 'ordered', 14: 'code', 15: 'quote', 17: 'todo',
-        19: 'callout', 22: 'divider', 24: 'grid', 25: 'grid_column',
-        31: 'table', 32: 'table_cell', 34: 'quote_container',
-    }
+    _DOCX_BLOCK_TYPE_KEY = DOCX_BLOCK_TYPE_FIELDS
 
     @staticmethod
     def _docx_element_plain_text(element: Dict[str, Any]) -> str:
@@ -411,45 +409,7 @@ class FeishuFSBase(LinkDocumentFSBase):
     def _prepare_docx_descendants(
         cls, blocks: List[Dict[str, Any]],
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
-        content_blocks = [block for block in blocks if block.get('block_type') != 1]
-        raw_by_id = {block['block_id']: block for block in content_blocks}
-        children_by_parent: Dict[str, List[str]] = {}
-        for block in content_blocks:
-            parent_id = block.get('parent_id')
-            if parent_id in raw_by_id:
-                children_by_parent.setdefault(parent_id, []).append(block['block_id'])
-
-        root_block_ids: List[str] = []
-        descendants: List[Dict[str, Any]] = []
-        for block in content_blocks:
-            block_id = block['block_id']
-            block_type = block.get('block_type')
-            content_key = cls._DOCX_BLOCK_TYPE_KEY.get(block_type)
-            if content_key is None:
-                raise ValueError(f'Feishu block type {block_type!r} is not supported for structured writing.')
-            content = block.get(content_key)
-            if block_type == 22 and content is None:
-                content = {}
-            content = dict(content)
-            if block_type == 31:
-                content.pop('cells', None)
-                content.pop('merge_info', None)
-                prop = dict(content.get('property') or {})
-                prop.pop('merge_info', None)
-                content['property'] = prop
-
-            descendant = {
-                'block_id': block_id,
-                'block_type': block_type,
-                content_key: content,
-            }
-            children = children_by_parent.get(block_id)
-            if children:
-                descendant['children'] = children
-            descendants.append(descendant)
-            if block.get('parent_id') not in raw_by_id:
-                root_block_ids.append(block_id)
-        return root_block_ids, descendants
+        return prepare_docx_descendants(blocks)
 
     def _resolve_and_insert_children(
         self,
@@ -600,10 +560,13 @@ class FeishuFSBase(LinkDocumentFSBase):
         index: int,
         children_id: List[str],
         descendants: List[Dict[str, Any]],
+        *,
+        document_revision_id: int = -1,
     ) -> Dict[str, Any]:
         url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{parent_block_id}/descendant'
         response = self._post(
             url,
+            params={'document_revision_id': document_revision_id},
             json={
                 'index': index,
                 'children_id': children_id,
@@ -654,9 +617,17 @@ class FeishuFSBase(LinkDocumentFSBase):
         index: int,
         children_id: List[str],
         descendants: List[Dict[str, Any]],
+        *,
+        document_revision_id: int = -1,
     ) -> Dict[str, Any]:
         return self._create_descendant_blocks(
-            document_id, parent_block_id, index, children_id, descendants)
+            document_id,
+            parent_block_id,
+            index,
+            children_id,
+            descendants,
+            document_revision_id=document_revision_id,
+        )
 
     def update_block(
         self,
@@ -705,37 +676,169 @@ class FeishuFSBase(LinkDocumentFSBase):
             document_revision_id=document_revision_id,
         )
 
-    def move_block(
+    def _rollback_move_copy(
         self,
         document_id: str,
-        source_parent_block_id: str,
-        source_index: int,
         target_parent_block_id: str,
-        target_index: int,
+        create_index: int,
+        document_revision_id: int,
+    ) -> Dict[str, Any]:
+        return self._batch_delete_child_blocks(
+            document_id,
+            target_parent_block_id,
+            create_index,
+            create_index + 1,
+            document_revision_id=document_revision_id,
+        )
+
+    def _verify_move_copy(
+        self,
+        document_id: str,
+        target_parent_block_id: str,
+        create_index: int,
+        root_id: str,
+        descendants: List[Dict[str, Any]],
+    ) -> None:
+        created_children = self._get_docx_children(document_id, target_parent_block_id)
+        created_root = created_children[create_index]
+        expected_root = next(
+            item for item in descendants if item.get('block_id') == root_id)
+        if created_root.get('block_type') != expected_root.get('block_type'):
+            raise RuntimeError('created move root has a different block type.')
+        expected_text = self._docx_block_plain_text(expected_root)
+        if expected_text and self._docx_block_plain_text(created_root) != expected_text:
+            raise RuntimeError('created move root has different text content.')
+
+    def _create_and_verify_move_copy(
+        self,
+        document_id: str,
+        target_parent_block_id: str,
+        create_index: int,
         children_id: List[str],
         descendants: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        if len(children_id) != 1:
-            raise ValueError('move_block requires exactly one root block.')
-        create_index = target_index
-        if source_parent_block_id == target_parent_block_id and source_index < target_index:
-            create_index += 1
+        document_revision_id: int,
+    ) -> Tuple[Dict[str, Any], int]:
         create_data = self._create_descendant_blocks(
             document_id,
             target_parent_block_id,
             create_index,
             children_id,
             descendants,
+            document_revision_id=document_revision_id,
+        )
+        created_revision = create_data.get('document_revision_id', -1)
+        if not isinstance(created_revision, int) or isinstance(created_revision, bool):
+            created_revision = -1
+        try:
+            self._verify_move_copy(
+                document_id,
+                target_parent_block_id,
+                create_index,
+                children_id[0],
+                descendants,
+            )
+        except Exception as verify_error:
+            try:
+                self._rollback_move_copy(
+                    document_id,
+                    target_parent_block_id,
+                    create_index,
+                    created_revision,
+                )
+            except Exception as rollback_error:
+                raise RuntimeError(
+                    'move_block partially applied: target copy verification failed and '
+                    f'rollback failed: {rollback_error}'
+                ) from verify_error
+            raise RuntimeError(
+                'move_block aborted: target copy verification failed and was rolled back.'
+            ) from verify_error
+        return create_data, created_revision
+
+    def _delete_move_source(
+        self,
+        document_id: str,
+        source_parent_block_id: str,
+        source_block_id: str,
+        delete_index: int,
+        target_parent_block_id: str,
+        create_index: int,
+        created_revision: int,
+    ) -> Dict[str, Any]:
+        try:
+            return self._batch_delete_child_blocks(
+                document_id,
+                source_parent_block_id,
+                delete_index,
+                delete_index + 1,
+                document_revision_id=created_revision,
+            )
+        except Exception as delete_error:
+            try:
+                source_still_exists = any(
+                    child.get('block_id') == source_block_id
+                    for child in self._get_docx_children(document_id, source_parent_block_id)
+                )
+            except Exception as reconcile_error:
+                raise RuntimeError(
+                    'move_block outcome is uncertain: source delete failed and source '
+                    f'presence could not be checked: {reconcile_error}'
+                ) from delete_error
+            if not source_still_exists:
+                return {'status': 'confirmed_after_error'}
+            try:
+                self._rollback_move_copy(
+                    document_id,
+                    target_parent_block_id,
+                    create_index,
+                    created_revision,
+                )
+            except Exception as rollback_error:
+                raise RuntimeError(
+                    'move_block partially applied: source delete failed and target-copy '
+                    f'rollback failed: {rollback_error}'
+                ) from delete_error
+            raise RuntimeError(
+                'move_block aborted: source delete failed and target copy was rolled back.'
+            ) from delete_error
+
+    def move_block(
+        self,
+        document_id: str,
+        source_parent_block_id: str,
+        source_block_id: str,
+        source_index: int,
+        target_parent_block_id: str,
+        target_index: int,
+        children_id: List[str],
+        descendants: List[Dict[str, Any]],
+        *,
+        document_revision_id: int = -1,
+    ) -> Dict[str, Any]:
+        if len(children_id) != 1:
+            raise ValueError('move_block requires exactly one root block.')
+        create_index = target_index
+        if source_parent_block_id == target_parent_block_id and source_index < target_index:
+            create_index += 1
+        create_data, created_revision = self._create_and_verify_move_copy(
+            document_id,
+            target_parent_block_id,
+            create_index,
+            children_id,
+            descendants,
+            document_revision_id,
         )
         delete_index = source_index
         if source_parent_block_id == target_parent_block_id and create_index <= source_index:
             delete_index += len(children_id)
-        delete_data = self._batch_delete_child_blocks(
+        delete_data = self._delete_move_source(
             document_id,
             source_parent_block_id,
+            source_block_id,
             delete_index,
-            delete_index + 1,
-            document_revision_id=create_data.get('document_revision_id', -1),
+            target_parent_block_id,
+            create_index,
+            created_revision,
         )
         return {'create': create_data, 'delete': delete_data}
 

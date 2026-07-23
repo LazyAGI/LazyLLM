@@ -208,7 +208,7 @@ class WriterResourceTools(WriterToolBase):
         persisted_document = source
         expected_title = patch.new_title if patch.new_title is not None else source.title
         title_updated = patch.new_title is not None and patch.new_title != source.title
-        for hunk in patch.execution_hunks():
+        for hunk in patch.hunks:
             operation = adapter.patch_to_operation(hunk, persisted_document)
             self._execute_native_operation(
                 fs, document_id, operation, persisted_document.revision)
@@ -418,7 +418,8 @@ class WriterResourceTools(WriterToolBase):
 
         params = dict(operation.params)
         params.setdefault('document_id', document_id)
-        if operation.operation in {'update', 'delete'} and 'document_revision_id' not in params:
+        if operation.operation in {'create', 'update', 'delete', 'move'} \
+                and 'document_revision_id' not in params:
             try:
                 params['document_revision_id'] = int(revision) if revision is not None else -1
             except (TypeError, ValueError):

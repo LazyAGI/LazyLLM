@@ -39,7 +39,7 @@ def apply_patch_to_ir(
         revised_doc.title = patch_set.new_title
 
     applied: List[str] = []
-    for hunk in patch_set.execution_hunks():
+    for hunk in patch_set.hunks:
         node_map = {block.node_id: block for block in revised_doc.iter_blocks()}
         target = node_map[hunk.target_node_id]
 
@@ -318,6 +318,7 @@ class WriterRevisionTools(WriterToolBase):
                     meta={**proposed.meta, 'instruction': instr.instruction},
                 ))
 
+        self._chain_repeated_after_moves(hunks)
         patch_set = PatchSet(
             patch_id=f'patch-{source_doc.document_id or "document"}',
             target_doc_id=source_doc.document_id or '',
@@ -342,6 +343,26 @@ class WriterRevisionTools(WriterToolBase):
             },
         )
         return result.model_dump()
+
+    @staticmethod
+    def _chain_repeated_after_moves(hunks: List[PatchHunk]) -> None:
+        '''Keep move hunk order by advancing anchors within consecutive groups.'''
+        previous_anchor: Optional[str] = None
+        previous_target: Optional[str] = None
+        for hunk in hunks:
+            if (
+                hunk.modify_type == 'move'
+                and hunk.position == 'after'
+                and hunk.anchor_node_id
+            ):
+                if hunk.anchor_node_id == previous_anchor and previous_target is not None:
+                    hunk.anchor_node_id = previous_target
+                else:
+                    previous_anchor = hunk.anchor_node_id
+                previous_target = hunk.target_node_id
+            else:
+                previous_anchor = None
+                previous_target = None
 
     def apply_patch(
         self,
