@@ -5,7 +5,13 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..utils.feishu_docx import DOCX_BLOCK_TYPE_FIELDS, prepare_docx_descendants
 from ..data_models.revision import PatchHunk
-from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterSpan, WriterStage
+from ..data_models.writer_ir import (
+    WRITER_BLOCK_MUTABLE_FIELDS,
+    WriterBlock,
+    WriterDocument,
+    WriterSpan,
+    WriterStage,
+)
 from .base import NativeBlock, NativePatchOperation, WriterAdapterBase
 
 
@@ -291,9 +297,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 f'Feishu block type {original_type!r} does not support updates.')
 
         desired = block.model_copy(deep=True)
-        for field in (
-            'type', 'content', 'spans', 'stage', 'authoring', 'numbering', 'references',
-        ):
+        for field in WRITER_BLOCK_MUTABLE_FIELDS:
             setattr(desired, field, deepcopy(getattr(patch.block, field)))
         desired_raw = self._ir_block_to_raw(desired)
         desired_type = desired_raw.get('block_type')

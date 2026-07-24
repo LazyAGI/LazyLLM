@@ -296,6 +296,18 @@ class WriterResourceTools(WriterToolBase):
         protocol, real_path, fs, adapter, locator, document_id = \
             self._resolve_document_target(target, source_document=source)
 
+        def refresh(previous: WriterDocument, result: Any = None, **merge_kwargs) -> WriterDocument:
+            revision = result.get('document_revision_id') if isinstance(result, dict) else None
+            if revision is not None and not isinstance(revision, bool):
+                previous = previous.model_copy(update={'revision': str(revision)})
+            refreshed = self._read_persisted_document(
+                fs=fs, adapter=adapter, real_path=real_path, locator=locator,
+                document_id=document_id, source_document=previous,
+            )
+            merge = getattr(adapter, 'merge_refreshed_document', None)
+            return merge(previous, refreshed, operation_result=result, **merge_kwargs) \
+                if callable(merge) else refreshed
+
         applied_hunks: List[str] = []
         persisted_document = source
         expected_title = patch.new_title if patch.new_title is not None else source.title
@@ -310,58 +322,20 @@ class WriterResourceTools(WriterToolBase):
                 normalized_fields[hunk.hunk_id or hunk.target_node_id] = \
                     operation_result['normalized_fields']
             applied_hunks.append(hunk.hunk_id or hunk.target_node_id)
-            refreshed_document = self._read_persisted_document(
-                fs=fs,
-                adapter=adapter,
-                real_path=real_path,
-                locator=locator,
-                document_id=document_id,
-                source_document=persisted_document.model_copy(
-                    update={'title': expected_title}),
-            )
-            merge_refreshed = getattr(adapter, 'merge_refreshed_document', None)
-            persisted_document = (
-                merge_refreshed(
-                    persisted_document,
-                    refreshed_document,
-                    patch=hunk,
-                    operation=operation,
-                    operation_result=operation_result,
-                )
-                if callable(merge_refreshed) else refreshed_document
+            persisted_document = refresh(
+                persisted_document.model_copy(update={'title': expected_title}),
+                operation_result, patch=hunk, operation=operation,
             )
 
         if title_updated:
-            self._update_document_title(
+            title_result = self._update_document_title(
                 fs, document_id, expected_title, persisted_document.revision)
-            refreshed_document = self._read_persisted_document(
-                fs=fs,
-                adapter=adapter,
-                real_path=real_path,
-                locator=locator,
-                document_id=document_id,
-                source_document=persisted_document.model_copy(
-                    update={'title': expected_title}),
-            )
-            merge_refreshed = getattr(adapter, 'merge_refreshed_document', None)
-            persisted_document = (
-                merge_refreshed(persisted_document, refreshed_document)
-                if callable(merge_refreshed) else refreshed_document
+            persisted_document = refresh(
+                persisted_document.model_copy(update={'title': expected_title}),
+                title_result,
             )
         elif not patch.hunks:
-            refreshed_document = self._read_persisted_document(
-                fs=fs,
-                adapter=adapter,
-                real_path=real_path,
-                locator=locator,
-                document_id=document_id,
-                source_document=persisted_document,
-            )
-            merge_refreshed = getattr(adapter, 'merge_refreshed_document', None)
-            persisted_document = (
-                merge_refreshed(persisted_document, refreshed_document)
-                if callable(merge_refreshed) else refreshed_document
-            )
+            persisted_document = refresh(persisted_document)
 
         patch_result = PatchResult(
             patch_id=patch.patch_id,
@@ -398,7 +372,7 @@ class WriterResourceTools(WriterToolBase):
         document_id: str,
         title: str,
         revision: Optional[str],
-    ) -> None:
+    ) -> Any:
         update_title = getattr(fs, 'update_document_title', None)
         if not callable(update_title):
             raise TypeError(f'{type(fs).__name__} does not support document title updates.')
@@ -406,7 +380,7 @@ class WriterResourceTools(WriterToolBase):
             revision_id = int(revision) if revision is not None else -1
         except (TypeError, ValueError):
             revision_id = -1
-        update_title(document_id, title, document_revision_id=revision_id)
+        return update_title(document_id, title, document_revision_id=revision_id)
 
     def _resolve_document_target(
         self,
@@ -459,7 +433,7 @@ class WriterResourceTools(WriterToolBase):
             stage=source_document.stage,
             title=source_document.title,
             uri=locator,
-            revision=None,
+            revision=source_document.revision,
         )
         document.metadata = {
             **deepcopy(source_document.metadata),

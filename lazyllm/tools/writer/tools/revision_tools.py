@@ -14,6 +14,8 @@ from ..data_models.revision import (
 )
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import (
+    WRITER_BLOCK_MUTABLE_FIELDS,
+    WRITER_BLOCK_PROVIDER_MANAGED_FIELDS,
     WriterBlock,
     WriterDocument,
 )
@@ -465,19 +467,18 @@ class WriterRevisionTools(WriterToolBase):
 
     @staticmethod
     def _same_mutable_block_fields(source: WriterBlock, revised: WriterBlock) -> bool:
-        fields = (
-            'type', 'content', 'spans', 'stage', 'authoring', 'numbering', 'references',
+        return all(
+            getattr(source, field) == getattr(revised, field)
+            for field in WRITER_BLOCK_MUTABLE_FIELDS
         )
-        return all(getattr(source, field) == getattr(revised, field) for field in fields)
 
     @staticmethod
     def _validate_preserved_block_fields(
         source: WriterBlock,
         revised: WriterBlock,
     ) -> None:
-        fields = ('provider_binding', 'provider_payload', 'editable')
         changed = [
-            field for field in fields
+            field for field in WRITER_BLOCK_PROVIDER_MANAGED_FIELDS
             if getattr(source, field) != getattr(revised, field)
         ]
         if changed:
@@ -536,17 +537,10 @@ class WriterRevisionTools(WriterToolBase):
 
     @classmethod
     def _visible_block(cls, block: WriterBlock) -> Dict[str, Any]:
-        return {
-            'node_id': block.node_id,
-            'type': block.type,
-            'content': block.content,
-            'spans': [span.model_dump() for span in block.spans],
-            'stage': block.stage,
-            'authoring': block.authoring.model_dump() if block.authoring else None,
-            'numbering': block.numbering,
-            'references': block.references,
-            'children': [cls._visible_block(child) for child in block.children],
-        }
+        visible = block.model_dump(include=set(WRITER_BLOCK_MUTABLE_FIELDS))
+        visible['node_id'] = block.node_id
+        visible['children'] = [cls._visible_block(child) for child in block.children]
+        return visible
 
     def _normalize_modify_plan(
         self,
@@ -640,9 +634,7 @@ class WriterRevisionTools(WriterToolBase):
         if target.node_id != revised.node_id:
             raise ValueError('update cannot change block node_id.')
         WriterRevisionTools._validate_preserved_block_fields(target, revised)
-        for field in (
-            'type', 'content', 'spans', 'stage', 'authoring', 'numbering', 'references',
-        ):
+        for field in WRITER_BLOCK_MUTABLE_FIELDS:
             setattr(target, field, deepcopy(getattr(revised, field)))
 
     @staticmethod

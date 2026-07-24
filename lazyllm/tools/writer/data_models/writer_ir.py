@@ -7,6 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 WriterStage = Literal['outline', 'draft', 'final']
 
+WRITER_BLOCK_MUTABLE_FIELDS = ('type', 'content', 'spans', 'stage', 'authoring', 'numbering', 'references')
+WRITER_BLOCK_PROVIDER_MANAGED_FIELDS = ('provider_binding', 'provider_payload', 'editable')
+
 
 class WriterConstraints(BaseModel):
     '''Authoring requirements attached to a document block across all stages.'''
@@ -139,4 +142,5 @@ WriterDocument.model_rebuild()
 __all__ = [
     'WriterDocument', 'WriterBlock', 'WriterSpan', 'WriterStage',
     'WriterConstraints', 'WriterAuthoring',
+    'WRITER_BLOCK_MUTABLE_FIELDS', 'WRITER_BLOCK_PROVIDER_MANAGED_FIELDS',
 ]
