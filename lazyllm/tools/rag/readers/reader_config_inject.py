@@ -22,6 +22,10 @@ def inject_reader_config(
     *,
     ocr_config: Optional[Dict[str, Any]] = None,
 ) -> None:
+    # Always reset first so a task without OCR does not reuse the previous task's config.
+    globals.config['dynamic_ocr_configs'] = None
+    globals.config['dynamic_ocr_auth'] = None
+
     if not ocr_config or not isinstance(ocr_config, dict):
         return
 
