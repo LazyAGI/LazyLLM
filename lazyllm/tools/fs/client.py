@@ -42,7 +42,7 @@ def _feishu_needs_wiki(space_id: Optional[str], real_path: str) -> bool:
     norm = real_path.lstrip('/')
     if any(norm.startswith(p) for p in _FEISHU_WIKI_PATH_PREFIXES):
         return True
-    return bool((globals.config.get('feishu_wiki_space_id') or '').strip())
+    return bool((globals.config['feishu_wiki_space_id'] or '').strip())
 
 
 def _match_bare_document_url(path: str) -> Optional[str]:

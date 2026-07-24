@@ -12,7 +12,7 @@ from ..data_models.writer_ir import (
 )
 from ..data_models.planning import SectionInstruction, SectionInstructionList
 from ..prompts import GENERATE_DRAFT_SECTION_PROMPT
-from ..utils import to_prompt_json
+from ..utils import render_document_markdown, to_prompt_json
 
 
 class WriterDraftingTools(WriterToolBase):
@@ -133,7 +133,7 @@ class WriterDraftingTools(WriterToolBase):
 
         writing_context = self._unified_model(context, WritingContext)
         draft_document = self._unified_draft_document(draft, writing_context)
-        content = self._render_document_markdown(draft_document)
+        content = render_document_markdown(draft_document)
         final_document = WriterDocument(
             document_id=self._default_final_document_id(draft_document, writing_context),
             stage='final',
@@ -370,28 +370,6 @@ class WriterDraftingTools(WriterToolBase):
             total += len(block.children)
             total += self._count_draft_blocks(block.children)
         return total
-
-    def _render_document_markdown(self, document: WriterDocument) -> str:
-        parts: List[str] = []
-        if document.title:
-            parts.append(f'# {document.title.strip()}')
-        for block in document.blocks:
-            parts.extend(self._render_block_markdown(block, level=2))
-        return '\n\n'.join(part for part in parts if part).strip() + '\n'
-
-    def _render_block_markdown(self, block: WriterBlock, level: int) -> List[str]:
-        parts: List[str] = []
-        heading_level = min(max(level, 1), 6)
-        if block.type == 'heading':
-            if block.content.strip():
-                parts.append(f'{"#" * heading_level} {block.content.strip()}')
-        else:
-            content = block.content.strip()
-            if content:
-                parts.append(content)
-        for child in block.children:
-            parts.extend(self._render_block_markdown(child, heading_level + 1))
-        return parts
 
     def _first_block_authoring_meta(self, blocks: List[WriterBlock], key: str) -> Any:
         for block in blocks:
