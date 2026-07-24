@@ -130,7 +130,7 @@ def normalize_docx_clone_content(
     return normalized, sorted(normalized_fields)
 
 
-def prepare_docx_clone_descendants(
+def prepare_docx_clone_descendants(  # noqa: C901
     blocks: List[Dict[str, Any]],
     root_block_id: str,
 ) -> Tuple[List[str], List[Dict[str, Any]], Dict[str, str], List[str]]:

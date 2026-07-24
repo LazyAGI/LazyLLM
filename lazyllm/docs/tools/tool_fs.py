@@ -1292,6 +1292,14 @@ Returns:
 Raises:
     ValueError: children_id does not contain exactly one subtree root.
 ''')
+_add_feishu_chinese('FeishuFSBase.replace_block', '''
+替换飞书内容块并保留其后代。
+''')
+
+_add_feishu_english('FeishuFSBase.replace_block', '''
+Replace a Feishu block while preserving its descendants.
+''')
+
 _add_feishu_chinese('FeishuFSBase.write_doc_blocks', '''\
 向已有飞书 Docx 文档末尾追加原生块，并返回写入后重新读取的完整块列表。
 
