@@ -218,6 +218,23 @@ class TestFlow(object):
 
         assert lp(1) == 11
 
+    def test_loop_can_expand_only_current_invocation(self):
+        limit_calls = []
+
+        def expand(output, used, current_limit):
+            limit_calls.append((output, used, current_limit))
+            return 4
+
+        lp = loop(add_one, count=2, on_limit=expand)
+
+        assert lp(0) == 4
+        assert lp(10) == 14
+        assert limit_calls == [(2, 2, 2), (4, 4, 4), (12, 2, 2), (14, 4, 4)]
+
+    def test_loop_rejects_non_increasing_runtime_limit(self):
+        lp = loop(add_one, count=2, on_limit=lambda output, used, limit: limit)
+        assert lp(0) == 2
+
     @pytest.mark.skipif(lazyllm.config['parallel_multiprocessing'], reason='barrier is not allowed in multiprocessing')
     def test_barrier(self):
         res = []

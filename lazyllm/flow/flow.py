@@ -398,7 +398,9 @@ class Pipeline(LazyLLMFlowsBase):
             lazyllm.LOG.debug(f'add {self.id()} to bind_args')
             locals['bind_args'][self.id()] = bind_args_source
         _iteration_idx = -1
-        for _iteration_idx in range(self._loop_count):
+        runtime_loop_count = self._loop_count
+        while _iteration_idx + 1 < runtime_loop_count:
+            _iteration_idx += 1
             for it in self._items:
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
                 kw.clear()
@@ -409,6 +411,13 @@ class Pipeline(LazyLLMFlowsBase):
                 exp = output[0]
                 output = output[1:]
             if callable(self._stop_condition) and self.invoke(self._stop_condition, exp): break
+            if (_iteration_idx + 1 == runtime_loop_count and isinstance(self, Loop)
+                    and callable(self._on_limit)):
+                expanded_count = self.invoke(
+                    self._on_limit, package(output, _iteration_idx + 1, runtime_loop_count),
+                )
+                if isinstance(expanded_count, int) and expanded_count > runtime_loop_count:
+                    runtime_loop_count = expanded_count
         if isinstance(self, Loop) and isinstance(tr := globals.get('trace'), dict):
             tr.setdefault('actual_iterations', {})[self.id()] = _iteration_idx + 1
         if bind_flag:
@@ -706,11 +715,13 @@ class IFS(LazyLLMFlowsBase):
 #      ⬆----------------------------------------|
 class Loop(Pipeline):
     def __init__(self, *item, stop_condition=None, count=sys.maxsize, post_action=None,
-                 auto_capture=False, judge_on_full_input=True, **kw):
+                 auto_capture=False, judge_on_full_input=True, on_limit=None, **kw):
         super().__init__(*item, post_action=post_action, auto_capture=auto_capture, **kw)
         assert callable(stop_condition) or stop_condition is None
+        assert callable(on_limit) or on_limit is None
         self._judge_on_full_input = judge_on_full_input
         self._stop_condition = stop_condition
+        self._on_limit = on_limit
         self._loop_count = count
 
 

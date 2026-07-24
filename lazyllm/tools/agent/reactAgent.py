@@ -1,9 +1,11 @@
-from .base import LazyLLMAgentBase
-from lazyllm import loop, once_wrapper, LOG, locals
-from .functionCall import FunctionCall, _compact_chat_history
 from typing import List, Any, Dict, Optional, Union, Callable
+
+from lazyllm import LOG, globals as lazyllm_globals, locals, loop, once_wrapper
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
+
+from .base import LazyLLMAgentBase, _write_agent_data
+from .functionCall import FunctionCall, _compact_chat_history
 
 INSTRUCTION = f'''
 ## Role
@@ -78,7 +80,8 @@ class ReactAgent(LazyLLMAgentBase):
                  force_summarize: bool = False, force_summarize_context: str = '',
                  keep_full_turns: int = 0, fs: Optional[Any] = None, skills_dir: Optional[str] = None,
                  enable_builtin_tools: bool = True,
-                 extra_stop_condition: Optional[Callable] = None):
+                 extra_stop_condition: Optional[Callable] = None,
+                 on_max_retries: Optional[Callable] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
                          desc=desc, workspace=workspace, sandbox=sandbox, fs=fs, skills_dir=skills_dir,
@@ -93,6 +96,7 @@ class ReactAgent(LazyLLMAgentBase):
         self._force_summarize_context = force_summarize_context
         self._keep_full_turns = keep_full_turns
         self._extra_stop_condition = extra_stop_condition
+        self._on_max_retries = on_max_retries
         self._stop_tools: set = set()
         self._fc = None
 
@@ -127,10 +131,32 @@ class ReactAgent(LazyLLMAgentBase):
                           stream=self._stream, _tool_manager=self._tools_manager,
                           skill_manager=self._skill_manager,
                           keep_full_turns=self._keep_full_turns,
-                          stop_tools=list(self._stop_tools) if self._stop_tools else None)
-        agent = loop(fc, stop_condition=self._stop, count=self._max_retries + 1)
+                          stop_tools=list(self._stop_tools) if self._stop_tools else None,
+                          round_limit=self._max_retries + 1)
+        agent = loop(
+            fc,
+            stop_condition=self._stop,
+            count=self._max_retries + 1,
+            on_limit=self._sync_expanded_round_limit if callable(self._on_max_retries) else None,
+        )
         self._fc = fc
         self._agent = agent
+
+    def _sync_expanded_round_limit(self, output: Any, used_rounds: int, current_limit: int) -> Optional[int]:
+        expanded_limit = self._on_max_retries(output, used_rounds, current_limit)
+        if isinstance(expanded_limit, int) and expanded_limit > current_limit:
+            workspace = locals.get('_lazyllm_agent', {}).get('workspace')
+            if isinstance(workspace, dict): workspace['_react_round_limit'] = expanded_limit
+            LOG.info(
+                f'[ReactAgent] [ROUND_LIMIT_EXPANDED] sid={lazyllm_globals._sid} '
+                f'used_rounds={used_rounds} previous_limit={current_limit} expanded_limit={expanded_limit}'
+            )
+        else:
+            LOG.info(
+                f'[ReactAgent] [ROUND_LIMIT_NOT_EXPANDED] sid={lazyllm_globals._sid} '
+                f'used_rounds={used_rounds} current_limit={current_limit}'
+            )
+        return expanded_limit
 
     def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
         self._prepare_tool_context(query, llm_chat_history)
@@ -189,6 +215,15 @@ class ReactAgent(LazyLLMAgentBase):
                 except Exception as e:
                     LOG.warning(f'ReactAgent force-summarize call failed: {e}')
                 if summary is not None:
+                    if self._stream:
+                        _write_agent_data('text', delta=summary)
+                    workspace = agent_ctx.get('workspace', {}) if isinstance(agent_ctx, dict) else {}
+                    LOG.info(
+                        f'[ReactAgent] [FORCE_SUMMARY_COMPLETED] sid={lazyllm_globals._sid} workspace_retained=True '
+                        f'history_messages={len(workspace.get("history") or [])}'
+                    )
+                    if self._fc is not None: locals['chat_history'][self._fc._llm._module_id] = []
                     return summary
+        if self._fc is not None: locals['chat_history'][self._fc._llm._module_id] = []
         raise ValueError(f'After retrying {self._max_retries} times, the react agent still failes to call '
                          f'successfully.')

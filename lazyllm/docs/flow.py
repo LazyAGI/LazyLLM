@@ -644,6 +644,7 @@ Args:
     post_action (callable, optional): 循环结束后调用的函数。默认为 ``None``。
     auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
     judge_on_full_input (bool): 如果设置为 ``True`` ，则通过 ``stop_condition`` 的输入进行条件判断；否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
+    on_limit (callable, optional): 达到当前迭代上限且停止条件未满足时调用。依次接收最终输出、已执行次数和当前上限；返回更大的整数可仅为本次调用扩展上限，返回其他值则结束循环。
 
 Raises:
     AssertionError: 如果提供的 ``stop_condition`` 既不是 ``callable`` 也不是 ``None``。
@@ -661,6 +662,7 @@ Args:
     post_action (callable, optional): A function to be called with the final output after the loop ends. Defaults to ``None``.
     auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
     judge_on_full_input (bool): If set to ``True``, the conditional judgment will be performed through the input of ``stop_condition``; otherwise, the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
+    on_limit (callable, optional): Called when the current iteration limit is reached without satisfying the stop condition. It receives the final output, actual iteration count, and current limit. Returning a larger integer expands only the current invocation; any other value ends the loop.
 
 Raises:
     AssertionError: If the provided ``stop_condition`` is neither callable nor ``None``.
