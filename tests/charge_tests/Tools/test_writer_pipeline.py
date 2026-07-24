@@ -311,7 +311,7 @@ def test_revise_workflow_e2e():
     plan = _load_stage(stages, 'modify_plan', ModifyPlan)
     assert {i.target_node_id for i in plan.instructions} == set(locate.target_node_ids)
     for instr in plan.instructions:
-        assert instr.modify_type in {'insert', 'replace', 'delete'}
+        assert instr.modify_type in {'create', 'update', 'delete', 'move'}
         assert instr.instruction.strip()
 
     # --- patch_set ---
@@ -321,13 +321,13 @@ def test_revise_workflow_e2e():
     for block in document.iter_blocks():
         original_text_by_id[block.node_id] = block.content
     for hunk in patch.hunks:
-        assert hunk.anchor is not None and hunk.anchor.node_id == hunk.target_node_id
-        assert hunk.old_text == original_text_by_id[hunk.target_node_id]
-        assert hunk.new_text and hunk.new_text != hunk.old_text, f'new_text is a no-op for {hunk.target_node_id}.'
+        assert hunk.modify_type == 'update'
+        assert hunk.block is not None
+        assert hunk.block.content != original_text_by_id[hunk.target_node_id]
     assert {h.target_node_id for h in patch.hunks} <= {'blk-lang-list', 'blk-deploy'}
-    assert any('rust' in (h.new_text or '').lower() for h in patch.hunks
+    assert any('rust' in (h.block.content if h.block else '').lower() for h in patch.hunks
                if h.target_node_id == 'blk-lang-list'), 'Rust must appear in blk-lang-list patch.'
-    assert any('financial' in (h.new_text or '').lower() for h in patch.hunks
+    assert any('financial' in (h.block.content if h.block else '').lower() for h in patch.hunks
                if h.target_node_id == 'blk-deploy'), 'financial must appear in blk-deploy patch.'
 
     # --- patch_review ---

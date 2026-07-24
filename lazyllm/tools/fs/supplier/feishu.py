@@ -1,7 +1,8 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+from copy import deepcopy
 import re
 import time
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlencode, urlparse
 
 import requests
@@ -10,6 +11,12 @@ import requests
 from lazyllm import LOG, config
 from lazyllm import globals as lazyllm_globals
 from lazyllm.common import Credential
+from lazyllm.tools.writer.utils.feishu_docx import (
+    DOCX_BLOCK_TYPE_FIELDS,
+    normalize_docx_clone_content,
+    prepare_docx_clone_descendants,
+    prepare_docx_descendants,
+)
 from ..base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile
 
 config.add('feishu_app_id', str, None, 'FEISHU_APP_ID', description='Feishu App ID for tenant_access_token.')
@@ -290,13 +297,7 @@ class FeishuFSBase(LinkDocumentFSBase):
                             json={'upload_id': upload_id, 'block_num': num_blocks})
         return result.get('data', {}).get('file_token', '')
 
-    _DOCX_BLOCK_TYPE_KEY: Dict[int, str] = {
-        1: 'page', 2: 'text', 3: 'heading1', 4: 'heading2', 5: 'heading3', 6: 'heading4',
-        7: 'heading5', 8: 'heading6', 9: 'heading7', 10: 'heading8', 11: 'heading9',
-        12: 'bullet', 13: 'ordered', 14: 'code', 15: 'quote', 17: 'todo',
-        19: 'callout', 22: 'divider', 24: 'grid', 25: 'grid_column',
-        31: 'table', 32: 'table_cell', 34: 'quote_container',
-    }
+    _DOCX_BLOCK_TYPE_KEY = DOCX_BLOCK_TYPE_FIELDS
 
     @staticmethod
     def _docx_element_plain_text(element: Dict[str, Any]) -> str:
@@ -411,45 +412,7 @@ class FeishuFSBase(LinkDocumentFSBase):
     def _prepare_docx_descendants(
         cls, blocks: List[Dict[str, Any]],
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
-        content_blocks = [block for block in blocks if block.get('block_type') != 1]
-        raw_by_id = {block['block_id']: block for block in content_blocks}
-        children_by_parent: Dict[str, List[str]] = {}
-        for block in content_blocks:
-            parent_id = block.get('parent_id')
-            if parent_id in raw_by_id:
-                children_by_parent.setdefault(parent_id, []).append(block['block_id'])
-
-        root_block_ids: List[str] = []
-        descendants: List[Dict[str, Any]] = []
-        for block in content_blocks:
-            block_id = block['block_id']
-            block_type = block.get('block_type')
-            content_key = cls._DOCX_BLOCK_TYPE_KEY.get(block_type)
-            if content_key is None:
-                raise ValueError(f'Feishu block type {block_type!r} is not supported for structured writing.')
-            content = block.get(content_key)
-            if block_type == 22 and content is None:
-                content = {}
-            content = dict(content)
-            if block_type == 31:
-                content.pop('cells', None)
-                content.pop('merge_info', None)
-                prop = dict(content.get('property') or {})
-                prop.pop('merge_info', None)
-                content['property'] = prop
-
-            descendant = {
-                'block_id': block_id,
-                'block_type': block_type,
-                content_key: content,
-            }
-            children = children_by_parent.get(block_id)
-            if children:
-                descendant['children'] = children
-            descendants.append(descendant)
-            if block.get('parent_id') not in raw_by_id:
-                root_block_ids.append(block_id)
-        return root_block_ids, descendants
+        return prepare_docx_descendants(blocks)
 
     def _resolve_and_insert_children(
         self,
@@ -600,10 +563,13 @@ class FeishuFSBase(LinkDocumentFSBase):
         index: int,
         children_id: List[str],
         descendants: List[Dict[str, Any]],
+        *,
+        document_revision_id: int = -1,
     ) -> Dict[str, Any]:
         url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{parent_block_id}/descendant'
         response = self._post(
             url,
+            params={'document_revision_id': document_revision_id},
             json={
                 'index': index,
                 'children_id': children_id,
@@ -654,9 +620,17 @@ class FeishuFSBase(LinkDocumentFSBase):
         index: int,
         children_id: List[str],
         descendants: List[Dict[str, Any]],
+        *,
+        document_revision_id: int = -1,
     ) -> Dict[str, Any]:
         return self._create_descendant_blocks(
-            document_id, parent_block_id, index, children_id, descendants)
+            document_id,
+            parent_block_id,
+            index,
+            children_id,
+            descendants,
+            document_revision_id=document_revision_id,
+        )
 
     def update_block(
         self,
@@ -705,39 +679,350 @@ class FeishuFSBase(LinkDocumentFSBase):
             document_revision_id=document_revision_id,
         )
 
-    def move_block(
+    def _rollback_subtree_copy(
         self,
         document_id: str,
-        source_parent_block_id: str,
-        source_index: int,
         target_parent_block_id: str,
-        target_index: int,
+        create_index: int,
+        created_root_block_id: Optional[str],
+        document_revision_id: int,
+    ) -> Dict[str, Any]:
+        if created_root_block_id:
+            target_children = self._get_docx_children(document_id, target_parent_block_id)
+            create_index = self._block_index(
+                target_children,
+                created_root_block_id,
+                default=create_index,
+            )
+        return self._batch_delete_child_blocks(
+            document_id,
+            target_parent_block_id,
+            create_index,
+            create_index + 1,
+            document_revision_id=document_revision_id,
+        )
+
+    @staticmethod
+    def _block_index(
+        blocks: List[Dict[str, Any]],
+        block_id: str,
+        *,
+        default: Optional[int] = None,
+    ) -> Optional[int]:
+        return next(
+            (
+                index for index, block in enumerate(blocks)
+                if block.get('block_id') == block_id
+            ),
+            default,
+        )
+
+    def _verify_subtree_copy(
+        self,
+        document_id: str,
+        descendants: List[Dict[str, Any]],
+        source_by_temporary_id: Dict[str, str],
+        create_data: Dict[str, Any],
+    ) -> Dict[str, str]:
+        temporary_to_created = {
+            relation.get('temporary_block_id'): relation.get('block_id')
+            for relation in (create_data.get('block_id_relations') or [])
+            if isinstance(relation, dict)
+            and isinstance(relation.get('temporary_block_id'), str)
+            and isinstance(relation.get('block_id'), str)
+        }
+        if set(temporary_to_created) != set(source_by_temporary_id):
+            raise RuntimeError('created subtree copy returned incomplete block ID relations.')
+
+        expected_by_temporary_id = {
+            block.get('block_id'): block for block in descendants
+        }
+        created_by_id = {
+            block.get('block_id'): block
+            for block in self._get_doc_blocks_raw(document_id, with_descendants=True)
+        }
+        for temporary_id, source_block_id in source_by_temporary_id.items():
+            expected = expected_by_temporary_id.get(temporary_id)
+            created_id = temporary_to_created[temporary_id]
+            created = created_by_id.get(created_id)
+            if not isinstance(expected, dict) or not isinstance(created, dict):
+                raise RuntimeError('created subtree copy is missing a block from the copied subtree.')
+            block_type = expected.get('block_type')
+            if created.get('block_type') != block_type:
+                raise RuntimeError(
+                    f'created subtree block {source_block_id!r} has a different block type.')
+            content_key = DOCX_BLOCK_TYPE_FIELDS.get(block_type)
+            expected_content, _ = normalize_docx_clone_content(
+                block_type, expected.get(content_key))
+            created_content, _ = normalize_docx_clone_content(
+                block_type, created.get(content_key))
+            if created_content != expected_content:
+                raise RuntimeError(
+                    f'created subtree block {source_block_id!r} has different content or formatting.')
+            expected_children = [
+                temporary_to_created[child_id]
+                for child_id in (expected.get('children') or [])
+            ]
+            if (created.get('children') or []) != expected_children:
+                raise RuntimeError(
+                    f'created subtree block {source_block_id!r} has different children.')
+        return {
+            source_by_temporary_id[temporary_id]: created_id
+            for temporary_id, created_id in temporary_to_created.items()
+        }
+
+    def _create_and_verify_subtree_copy(
+        self,
+        document_id: str,
+        target_parent_block_id: str,
+        create_index: int,
         children_id: List[str],
         descendants: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        if len(children_id) != 1:
-            raise ValueError('move_block requires exactly one root block.')
-        create_index = target_index
-        if source_parent_block_id == target_parent_block_id and source_index < target_index:
-            create_index += 1
+        source_by_temporary_id: Dict[str, str],
+        document_revision_id: int,
+        operation_name: str,
+    ) -> Tuple[Dict[str, Any], int, Dict[str, str]]:
         create_data = self._create_descendant_blocks(
             document_id,
             target_parent_block_id,
             create_index,
             children_id,
             descendants,
+            document_revision_id=document_revision_id,
         )
-        delete_index = source_index
-        if source_parent_block_id == target_parent_block_id and create_index <= source_index:
-            delete_index += len(children_id)
-        delete_data = self._batch_delete_child_blocks(
-            document_id,
-            source_parent_block_id,
-            delete_index,
-            delete_index + 1,
-            document_revision_id=create_data.get('document_revision_id', -1),
+        created_revision = create_data.get('document_revision_id', -1)
+        if not isinstance(created_revision, int) or isinstance(created_revision, bool):
+            created_revision = -1
+        root_relation = next(
+            (
+                relation for relation in (create_data.get('block_id_relations') or [])
+                if isinstance(relation, dict)
+                and relation.get('temporary_block_id') == children_id[0]
+            ),
+            {},
         )
-        return {'create': create_data, 'delete': delete_data}
+        created_root_block_id = root_relation.get('block_id')
+        try:
+            block_id_relations = self._verify_subtree_copy(
+                document_id,
+                descendants,
+                source_by_temporary_id,
+                create_data,
+            )
+        except Exception as verify_error:
+            try:
+                self._rollback_subtree_copy(
+                    document_id,
+                    target_parent_block_id,
+                    create_index,
+                    created_root_block_id,
+                    created_revision,
+                )
+            except Exception as rollback_error:
+                raise RuntimeError(
+                    f'{operation_name} partially applied: target copy verification failed and '
+                    f'rollback failed: {rollback_error}'
+                ) from verify_error
+            raise RuntimeError(
+                f'{operation_name} aborted: target copy verification failed and was rolled back.'
+            ) from verify_error
+        return create_data, created_revision, block_id_relations
+
+    def _delete_subtree_source(
+        self,
+        document_id: str,
+        source_parent_block_id: str,
+        source_block_id: str,
+        target_parent_block_id: str,
+        create_index: int,
+        created_root_block_id: str,
+        created_revision: int,
+        operation_name: str,
+    ) -> Dict[str, Any]:
+        source_children = self._get_docx_children(document_id, source_parent_block_id)
+        delete_index = self._block_index(source_children, source_block_id)
+        if delete_index is None:
+            try:
+                self._rollback_subtree_copy(
+                    document_id,
+                    target_parent_block_id,
+                    create_index,
+                    created_root_block_id,
+                    created_revision,
+                )
+            except Exception as rollback_error:
+                raise RuntimeError(
+                    f'{operation_name} partially applied: source disappeared and target-copy '
+                    f'rollback failed: {rollback_error}'
+                ) from rollback_error
+            raise RuntimeError(
+                f'{operation_name} source block disappeared before deletion; '
+                'target copy was rolled back.')
+        try:
+            return self._batch_delete_child_blocks(
+                document_id,
+                source_parent_block_id,
+                delete_index,
+                delete_index + 1,
+                document_revision_id=created_revision,
+            )
+        except Exception as delete_error:
+            try:
+                source_still_exists = any(
+                    block.get('block_id') == source_block_id
+                    for block in self._get_doc_blocks_raw(
+                        document_id, with_descendants=True)
+                )
+            except Exception as reconcile_error:
+                raise RuntimeError(
+                    f'{operation_name} outcome is uncertain: source delete failed and source '
+                    f'presence could not be checked: {reconcile_error}'
+                ) from delete_error
+            if not source_still_exists:
+                return {'status': 'confirmed_after_error'}
+            try:
+                self._rollback_subtree_copy(
+                    document_id,
+                    target_parent_block_id,
+                    create_index,
+                    created_root_block_id,
+                    created_revision,
+                )
+            except Exception as rollback_error:
+                raise RuntimeError(
+                    f'{operation_name} partially applied: source delete failed and target-copy '
+                    f'rollback failed: {rollback_error}'
+                ) from delete_error
+            raise RuntimeError(
+                f'{operation_name} aborted: source delete failed and target copy was rolled back.'
+            ) from delete_error
+
+    def _clone_subtree_transaction(
+        self,
+        document_id: str,
+        source_parent_block_id: str,
+        source_block_id: str,
+        target_parent_block_id: str,
+        create_index: int,
+        document_revision_id: int,
+        operation_name: str,
+        transform_root: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ) -> Dict[str, Any]:
+        source_blocks = self._get_doc_blocks_raw(document_id, with_descendants=True)
+        children_id, descendants, source_by_temporary_id, normalized_fields = \
+            prepare_docx_clone_descendants(source_blocks, source_block_id)
+        if len(children_id) != 1:
+            raise ValueError(f'{operation_name} requires exactly one root block.')
+
+        if transform_root is not None:
+            root_id = children_id[0]
+            root = next(
+                (block for block in descendants if block.get('block_id') == root_id),
+                None,
+            )
+            if root is None:
+                raise RuntimeError(
+                    f'{operation_name} source root is missing from its cloned subtree.')
+            transform_root(root)
+
+        create_data, created_revision, block_id_relations = self._create_and_verify_subtree_copy(
+            document_id, target_parent_block_id, create_index, children_id,
+            descendants, source_by_temporary_id, document_revision_id, operation_name,
+        )
+        created_root_block_id = block_id_relations[source_block_id]
+        delete_data = self._delete_subtree_source(
+            document_id, source_parent_block_id, source_block_id, target_parent_block_id,
+            create_index, created_root_block_id, created_revision, operation_name,
+        )
+        final_revision = delete_data.get('document_revision_id', created_revision)
+        if delete_data.get('status') == 'confirmed_after_error':
+            final_revision = -1
+        return {
+            'create': create_data,
+            'delete': delete_data,
+            'block_id_relations': block_id_relations,
+            'normalized_fields': normalized_fields,
+            'document_revision_id': (
+                final_revision if final_revision is not None else created_revision
+            ),
+        }
+
+    def move_block(
+        self,
+        document_id: str,
+        source_parent_block_id: str,
+        source_block_id: str,
+        source_index: int,
+        target_parent_block_id: str,
+        target_index: int,
+        *,
+        document_revision_id: int = -1,
+    ) -> Dict[str, Any]:
+        if source_index < 0 or target_index < 0:
+            raise ValueError('move_block source and target indexes must not be negative.')
+        source_children = self._get_docx_children(document_id, source_parent_block_id)
+        current_source_index = self._block_index(source_children, source_block_id)
+        if current_source_index is None:
+            raise ValueError('move source block does not belong to the expected parent.')
+        if source_index != current_source_index:
+            raise ValueError(
+                'move source index does not match the current provider layout.')
+        target_children = (
+            source_children
+            if source_parent_block_id == target_parent_block_id
+            else self._get_docx_children(document_id, target_parent_block_id)
+        )
+        max_target_index = len(target_children) - (
+            1 if source_parent_block_id == target_parent_block_id else 0)
+        if target_index > max_target_index:
+            raise ValueError('move target index is outside the target parent.')
+
+        create_index = target_index
+        if (
+            source_parent_block_id == target_parent_block_id
+            and current_source_index < target_index
+        ):
+            create_index += 1
+        return self._clone_subtree_transaction(
+            document_id, source_parent_block_id, source_block_id, target_parent_block_id,
+            create_index, document_revision_id, 'move_block',
+        )
+
+    def replace_block(
+        self,
+        document_id: str,
+        parent_block_id: str,
+        source_block_id: str,
+        source_index: int,
+        replacement_block: Dict[str, Any],
+        *,
+        document_revision_id: int = -1,
+    ) -> Dict[str, Any]:
+        if source_index < 0:
+            raise ValueError('replace_block source index must not be negative.')
+        siblings = self._get_docx_children(document_id, parent_block_id)
+        current_source_index = self._block_index(siblings, source_block_id)
+        if current_source_index is None:
+            raise ValueError('replace source block does not belong to the expected parent.')
+        if source_index != current_source_index:
+            raise ValueError(
+                'replace source index does not match the current provider layout.')
+        if not isinstance(replacement_block, dict):
+            raise TypeError('replacement_block must be a dict.')
+
+        def replace_root(root: Dict[str, Any]) -> None:
+            root_id = root['block_id']
+            children = root.get('children')
+            root.clear()
+            root.update(deepcopy(replacement_block))
+            root['block_id'] = root_id
+            if children:
+                root['children'] = children
+
+        return self._clone_subtree_transaction(
+            document_id, parent_block_id, source_block_id, parent_block_id,
+            current_source_index, document_revision_id, 'replace_block', replace_root,
+        )
 
     def write_doc_blocks(
         self,
@@ -757,6 +1042,45 @@ class FeishuFSBase(LinkDocumentFSBase):
                 'children_id': children_id,
                 'descendants': descendants,
             })
+        return self._get_doc_blocks_raw(document_id, with_descendants=True)
+
+    def replace_doc_blocks(
+        self,
+        document_id: str,
+        blocks: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        '''Replace all root content blocks in an existing Feishu document.'''
+        if not isinstance(blocks, list):
+            raise TypeError(f'blocks must be a list, got {type(blocks).__name__}.')
+        if not blocks:
+            raise ValueError('blocks must not be empty.')
+
+        existing_blocks = self._get_docx_children(document_id, document_id)
+        existing_count = len(existing_blocks)
+        children_id, descendants = self._prepare_docx_descendants(blocks)
+        document_revision_id = -1
+        if descendants:
+            created = self._create_descendant_blocks(
+                document_id,
+                document_id,
+                -1,
+                children_id,
+                descendants,
+            )
+            try:
+                document_revision_id = int(created.get('document_revision_id', -1))
+            except (TypeError, ValueError):
+                document_revision_id = -1
+
+        # Insert first so a failed write never destroys the existing document.
+        if existing_count:
+            self._batch_delete_child_blocks(
+                document_id,
+                document_id,
+                0,
+                existing_count,
+                document_revision_id=document_revision_id,
+            )
         return self._get_doc_blocks_raw(document_id, with_descendants=True)
 
     def _get_table_cells(self, document_id: str, table_block_id: str) -> List[Dict[str, Any]]:
@@ -818,7 +1142,7 @@ class FeishuFS(FeishuFSBase):
         r'https?://[^\s/]+\.(?:feishu\.(?:cn|com)|larksuite\.com)(?:[/:?#]|$)',
         r'飞书|(?<!\w)feishu(?!\w)',
     ]
-    __public_apis__ = LazyLLMFSBase.__public_apis__
+    __public_apis__ = LazyLLMFSBase.__public_apis__ + ['create_document']
 
     def __new__(cls, base_url: Optional[str] = None, app_id: Optional[str] = None, app_secret: Optional[str] = None,
                 space_id: Optional[str] = None, user_refresh_token: Optional[str] = None,
@@ -893,6 +1217,35 @@ class FeishuFS(FeishuFSBase):
               **kwargs) -> CloudFSBufferedFile:
         return CloudFSBufferedFile(self, path, mode=mode, block_size=block_size or self.blocksize,
                                    autocommit=autocommit, cache_options=cache_options)
+
+    def _create_drive_docx(self, title: str, folder_token: str = '') -> Dict[str, Any]:
+        params = {'folder_token': folder_token} if folder_token else None
+        data = self._post(
+            f'{self._base_url}/docx/v1/documents',
+            params=params,
+            json={'title': title},
+        )
+        document = (data.get('data') or {}).get('document') or {}
+        document_id = document.get('document_id') or ''
+        if not document_id:
+            raise RuntimeError('Feishu drive docx create failed: empty document_id')
+        return {
+            'document_id': document_id,
+            'title': document.get('title') or title,
+            'path': f'/~docx/{document_id}',
+            'browser_url': f'https://feishu.cn/docx/{document_id}',
+            'container': 'drive',
+            'folder_token': folder_token,
+        }
+
+    def create_document(self, title: str, parent: str = '') -> Dict[str, Any]:
+        '''Create a Feishu Docx in the default Cloud Docs root or a selected folder.'''
+        title = (title or '').strip()
+        if not title:
+            raise ValueError('title is required')
+        parent = (parent or '').strip()
+        folder_token = self._resolve_path_to_token(parent) if parent and parent != '/' else ''
+        return self._create_drive_docx(title, folder_token=folder_token)
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
         parts = [p for p in path.strip('/').split('/') if p]
@@ -969,17 +1322,13 @@ class FeishuFS(FeishuFSBase):
                 self._upload_file_to_drive(name, data, folder_token=parent_token)
                 return
             doc_title = name[:-3] if name.endswith('.md') else name
-            folder_token = parent_token or self._drive_root_folder_token()
-            create_resp = self._post(
-                f'{self._base_url}/docx/v1/documents',
-                params={'folder_token': folder_token},
-                json={'title': doc_title},
-            )
-            doc_id = ((create_resp.get('data') or {}).get('document') or {}).get('document_id') or ''
-            if not doc_id:
+            try:
+                created = self._create_drive_docx(doc_title, folder_token=parent_token)
+            except RuntimeError:
                 LOG.warning('Feishu drive docx create returned no document_id, falling back to file upload')
                 self._upload_file_to_drive(name, data, folder_token=parent_token)
                 return
+            doc_id = created['document_id']
             try:
                 top_blocks, block_children = self._convert_markdown_via_api(text)
                 _, block_id_map = self._append_docx_blocks(doc_id, top_blocks)
@@ -1043,14 +1392,62 @@ class FeishuWikiFS(FeishuFSBase):
     document_provider = 'feishu'
     __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search', 'find'])
 
-    def _create_docx_node(self, title: str, parent_token: str = '') -> str:
+    def _create_docx_node(self, title: str, parent_token: str = '') -> Dict[str, Any]:
         url = f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes'
         payload: Dict[str, Any] = {'obj_type': 'docx', 'node_type': 'origin', 'title': title}
         if parent_token:
             payload['parent_node_token'] = parent_token
         data = self._post(url, json=payload)
         node = data.get('data', {}).get('node') or {}
-        return node.get('obj_token') or ''
+        if not node.get('obj_token'):
+            raise RuntimeError('Feishu wiki create docx node failed: empty obj_token')
+        return node
+
+    def create_document(self, title: str, parent: str = '') -> Dict[str, Any]:
+        '''Create an empty Feishu Docx node in a Wiki space.'''
+        title = (title or '').strip()
+        if not title:
+            raise ValueError('title is required')
+        parent = (parent or '').strip()
+        parent_token = ''
+        parent_url = ''
+        if parent and parent != '/':
+            if self.is_link_path(parent):
+                parent_url = self.decode_link_path(parent)
+                ref = self.resolve_wiki_ref(parent)
+                parent_token = ref.get('node_token') or ''
+            elif _FEISHU_BARE_HOST_RE.match(parent):
+                parent_url = parent
+                ref = self.resolve_wiki_ref(parent)
+                parent_token = ref.get('node_token') or ''
+            elif parent.lstrip('/').startswith('~node/'):
+                ref = self.resolve_wiki_ref(parent)
+                parent_token = ref.get('node_token') or ''
+            else:
+                parent_token = self._resolve_path_to_token(parent)
+            if not parent_token:
+                raise ValueError('Feishu wiki parent must point to a wiki node.')
+
+        node = self._create_docx_node(title, parent_token=parent_token)
+        document_id = node.get('obj_token') or ''
+        node_token = node.get('node_token') or ''
+        space_id = node.get('space_id') or self._effective_space_id()
+        browser_origin = 'https://feishu.cn'
+        if parent_url:
+            parsed_parent = urlparse(parent_url)
+            if parsed_parent.scheme and parsed_parent.netloc:
+                browser_origin = f'{parsed_parent.scheme}://{parsed_parent.netloc}'
+        browser_path = f'/wiki/{node_token}' if node_token else f'/docx/{document_id}'
+        return {
+            'document_id': document_id,
+            'node_token': node_token,
+            'space_id': space_id,
+            'title': node.get('title') or title,
+            'path': f'/~node/{node_token}' if node_token else f'/~docx/{document_id}',
+            'browser_url': f'{browser_origin}{browser_path}',
+            'container': 'wiki',
+            'parent_node_token': parent_token,
+        }
 
     def _append_docx_text(self, document_id: str, text: str) -> None:
         if not text:
@@ -1407,9 +1804,7 @@ class FeishuWikiFS(FeishuFSBase):
         parts = [p for p in path.strip('/').split('/') if p]
         name = parts[-1] if parts else 'untitled'
         parent_token = self._resolve_path_to_token('/' + '/'.join(parts[:-1])) if len(parts) > 1 else ''
-        doc_id = self._create_docx_node(name, parent_token=parent_token)
-        if not doc_id:
-            raise RuntimeError('Feishu wiki create docx node failed: empty obj_token')
+        doc_id = self._create_docx_node(name, parent_token=parent_token)['obj_token']
         try:
             text = data.decode('utf-8')
         except UnicodeDecodeError as e:

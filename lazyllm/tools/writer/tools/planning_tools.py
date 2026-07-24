@@ -274,7 +274,6 @@ class WriterPlanningTools(WriterToolBase):
         instruction.meta.update(
             {
                 'outline_node_level': block.numbering.get('level'),
-                'outline_node_instruction': block.authoring.instruction if block.authoring else None,
                 'outline_id': outline.document_id,
                 'outline_title': outline.title,
             }

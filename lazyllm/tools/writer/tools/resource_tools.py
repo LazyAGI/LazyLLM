@@ -1,4 +1,5 @@
 from __future__ import annotations
+from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
 
 from lazyllm import LOG
@@ -20,7 +21,10 @@ class WriterResourceTools(WriterToolBase):
     __public_apis__ = [
         'profile_resources',
         'document_to_docir',
+        'create_document',
         'write_to_document',
+        'append_to_document',
+        'replace_document',
         'apply_patch_to_document',
     ]
 
@@ -162,8 +166,91 @@ class WriterResourceTools(WriterToolBase):
             },
         ).model_dump()
 
+    def create_document(
+        self,
+        title: str,
+        parent_uri: str = '',
+        adapter: str = 'feishu',
+    ) -> dict:
+        '''Create an empty provider document and return its normalized target artifact.'''
+        title = (title or '').strip()
+        if not title:
+            raise ValueError('title is required')
+        adapter = (adapter or '').strip().lower()
+        if not adapter:
+            raise ValueError('adapter is required')
+
+        import lazyllm.tools.fs.client as _fs_client
+        parent_locator = (parent_uri or '').strip() or f'{adapter}:/'
+        protocol, space_id, real_path = _fs_client.FS._parse(parent_locator)
+        if protocol != adapter:
+            raise ValueError(
+                f'parent URI protocol {protocol!r} does not match adapter {adapter!r}.')
+        fs = _fs_client.FS._get_or_create_fs(protocol, space_id, real_path)
+        create_document = getattr(fs, 'create_document', None)
+        if not callable(create_document):
+            raise TypeError(f'{type(fs).__name__} does not support create_document().')
+        created = create_document(title, real_path)
+        if not isinstance(created, dict):
+            raise TypeError('Document provider create_document() must return a dict.')
+
+        document_id = str(created.get('document_id') or '').strip()
+        created_path = str(created.get('path') or '').strip()
+        if not document_id or not created_path:
+            raise ValueError('Document provider returned an incomplete created document.')
+        effective_space_id = str(created.get('space_id') or '').strip()
+        internal_uri = (
+            f'{protocol}@{effective_space_id}:{created_path}'
+            if effective_space_id else f'{protocol}:{created_path}'
+        )
+        browser_url = str(created.get('browser_url') or '').strip()
+        target = TargetDocument(
+            doc_id=document_id,
+            uri=browser_url or internal_uri,
+            adapter=protocol,
+            title=str(created.get('title') or title),
+            meta={
+                'internal_uri': internal_uri,
+                'browser_url': browser_url,
+                'container': created.get('container') or '',
+                'parent_uri': (parent_uri or '').strip(),
+                'node_token': created.get('node_token') or '',
+                'space_id': effective_space_id,
+            },
+        )
+        return self._save_artifacts(
+            {'target_document': target},
+            step_name='create_document',
+            primary_key='target_document',
+            context_key=None,
+            summary='Created an empty provider document.',
+            counts={'documents': 1},
+            extra={
+                'adapter': protocol,
+                'document_id': document_id,
+                'uri': target.uri,
+            },
+        ).model_dump()
+
     def write_to_document(self, content: Any, target_document: Any) -> dict:
-        '''Convert a final WriterDocument into native blocks and write them.'''
+        '''Backward-compatible alias for append_to_document().'''
+        return self.append_to_document(content, target_document)
+
+    def append_to_document(self, content: Any, target_document: Any) -> dict:
+        '''Append a final WriterDocument to an existing provider document.'''
+        return self._write_document(content, target_document, mode='append')
+
+    def replace_document(self, content: Any, target_document: Any) -> dict:
+        '''Replace an existing provider document with a final WriterDocument.'''
+        return self._write_document(content, target_document, mode='replace')
+
+    def _write_document(
+        self,
+        content: Any,
+        target_document: Any,
+        *,
+        mode: str,
+    ) -> dict:
         document = self._unified_model(content, WriterDocument)
         if document.stage != 'final':
             raise ValueError(f'content must have stage="final", got {document.stage!r}')
@@ -171,17 +258,23 @@ class WriterResourceTools(WriterToolBase):
         locator = self._target_locator(target, document)
 
         if not locator:
-            LOG.warning('write_to_document: no target document URI or doc_id, content not written to any platform')
+            LOG.warning(
+                '%s_to_document: no target document URI or doc_id, '
+                'content not written to any platform',
+                mode,
+            )
             return self._save_write_result('', '', '', 0)
 
         protocol, real_path, fs, adapter, locator, document_id = \
             self._resolve_document_target(target, source_document=document)
-        if not hasattr(fs, 'write_doc_blocks'):
-            raise TypeError(f'{type(fs).__name__} does not support structured document writes.')
+        method_name = 'replace_doc_blocks' if mode == 'replace' else 'write_doc_blocks'
+        write_blocks = getattr(fs, method_name, None)
+        if not callable(write_blocks):
+            raise TypeError(f'{type(fs).__name__} does not support {method_name}().')
         if document.title:
             self._update_document_title(fs, document_id, document.title, document.revision)
         native_blocks = adapter.ir_to_blocks(document)
-        fs.write_doc_blocks(document_id, native_blocks)
+        write_blocks(document_id, native_blocks)
         return self._save_write_result(document_id, protocol, locator, len(native_blocks))
 
     def apply_patch_to_document(
@@ -203,44 +296,46 @@ class WriterResourceTools(WriterToolBase):
         protocol, real_path, fs, adapter, locator, document_id = \
             self._resolve_document_target(target, source_document=source)
 
+        def refresh(previous: WriterDocument, result: Any = None, **merge_kwargs) -> WriterDocument:
+            revision = result.get('document_revision_id') if isinstance(result, dict) else None
+            if revision is not None and not isinstance(revision, bool):
+                previous = previous.model_copy(update={'revision': str(revision)})
+            refreshed = self._read_persisted_document(
+                fs=fs, adapter=adapter, real_path=real_path, locator=locator,
+                document_id=document_id, source_document=previous,
+            )
+            merge = getattr(adapter, 'merge_refreshed_document', None)
+            return merge(previous, refreshed, operation_result=result, **merge_kwargs) \
+                if callable(merge) else refreshed
+
         applied_hunks: List[str] = []
         persisted_document = source
         expected_title = patch.new_title if patch.new_title is not None else source.title
         title_updated = patch.new_title is not None and patch.new_title != source.title
+        normalized_fields: Dict[str, List[str]] = {}
         for hunk in patch.hunks:
             operation = adapter.patch_to_operation(hunk, persisted_document)
-            self._execute_native_operation(
+            operation_result = self._execute_native_operation(
                 fs, document_id, operation, persisted_document.revision)
+            if isinstance(operation_result, dict) \
+                    and isinstance(operation_result.get('normalized_fields'), list):
+                normalized_fields[hunk.hunk_id or hunk.target_node_id] = \
+                    operation_result['normalized_fields']
             applied_hunks.append(hunk.hunk_id or hunk.target_node_id)
-            persisted_document = self._read_persisted_document(
-                fs=fs,
-                adapter=adapter,
-                real_path=real_path,
-                locator=locator,
-                document_id=document_id,
-                source_document=source.model_copy(update={'title': expected_title}),
+            persisted_document = refresh(
+                persisted_document.model_copy(update={'title': expected_title}),
+                operation_result, patch=hunk, operation=operation,
             )
 
         if title_updated:
-            self._update_document_title(
+            title_result = self._update_document_title(
                 fs, document_id, expected_title, persisted_document.revision)
-            persisted_document = self._read_persisted_document(
-                fs=fs,
-                adapter=adapter,
-                real_path=real_path,
-                locator=locator,
-                document_id=document_id,
-                source_document=source.model_copy(update={'title': expected_title}),
+            persisted_document = refresh(
+                persisted_document.model_copy(update={'title': expected_title}),
+                title_result,
             )
         elif not patch.hunks:
-            persisted_document = self._read_persisted_document(
-                fs=fs,
-                adapter=adapter,
-                real_path=real_path,
-                locator=locator,
-                document_id=document_id,
-                source_document=source.model_copy(update={'title': expected_title}),
-            )
+            persisted_document = refresh(persisted_document)
 
         patch_result = PatchResult(
             patch_id=patch.patch_id,
@@ -253,6 +348,7 @@ class WriterResourceTools(WriterToolBase):
                 'external_document_id': document_id,
                 'operation_count': len(applied_hunks) + int(title_updated),
                 'title_updated': title_updated,
+                'normalized_fields': normalized_fields,
             },
         )
         return self._save_artifacts(
@@ -276,7 +372,7 @@ class WriterResourceTools(WriterToolBase):
         document_id: str,
         title: str,
         revision: Optional[str],
-    ) -> None:
+    ) -> Any:
         update_title = getattr(fs, 'update_document_title', None)
         if not callable(update_title):
             raise TypeError(f'{type(fs).__name__} does not support document title updates.')
@@ -284,7 +380,7 @@ class WriterResourceTools(WriterToolBase):
             revision_id = int(revision) if revision is not None else -1
         except (TypeError, ValueError):
             revision_id = -1
-        update_title(document_id, title, document_revision_id=revision_id)
+        return update_title(document_id, title, document_revision_id=revision_id)
 
     def _resolve_document_target(
         self,
@@ -337,12 +433,13 @@ class WriterResourceTools(WriterToolBase):
             stage=source_document.stage,
             title=source_document.title,
             uri=locator,
-            revision=None,
+            revision=source_document.revision,
         )
-        document.metadata.update({
+        document.metadata = {
+            **deepcopy(source_document.metadata),
             'block_count': len(latest_blocks),
             'source': source_document.metadata.get('source', {}),
-        })
+        }
         return document
 
     def _writer_adapter(self, protocol: str) -> WriterAdapterBase:
@@ -394,7 +491,8 @@ class WriterResourceTools(WriterToolBase):
 
         params = dict(operation.params)
         params.setdefault('document_id', document_id)
-        if operation.operation in {'update', 'delete'} and 'document_revision_id' not in params:
+        if operation.operation in {'create', 'update', 'replace', 'delete', 'move'} \
+                and 'document_revision_id' not in params:
             try:
                 params['document_revision_id'] = int(revision) if revision is not None else -1
             except (TypeError, ValueError):

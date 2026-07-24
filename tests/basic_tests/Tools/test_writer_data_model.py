@@ -24,7 +24,7 @@ def _make_writer_document():
         node_id='block-1',
         type='paragraph',
         content='正文内容',
-        spans=[WriterSpan(text='正文内容', style=['strong'])],
+        spans=[WriterSpan(text='正文内容', style={'bold': True})],
         stage='draft',
         provider_binding={'provider': 'feishu', 'block_id': 'external-1'},
         provider_payload={'raw_type': 'paragraph'},
@@ -58,7 +58,7 @@ def test_writer_document_roundtrip_preserves_nested_ir_fields():
 
     assert restored.document_id == document.document_id
     assert restored.provider_binding['document_id'] == 'external-doc-1'
-    assert restored.blocks[0].children[0].spans[0].style == ['strong']
+    assert restored.blocks[0].children[0].spans[0].style == {'bold': True}
     assert restored.blocks[0].children[0].provider_payload == {'raw_type': 'paragraph'}
 
 

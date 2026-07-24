@@ -7,6 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 WriterStage = Literal['outline', 'draft', 'final']
 
+WRITER_BLOCK_MUTABLE_FIELDS = ('type', 'content', 'spans', 'stage', 'authoring', 'numbering', 'references')
+WRITER_BLOCK_PROVIDER_MANAGED_FIELDS = ('provider_binding', 'provider_payload', 'editable')
+
 
 class WriterConstraints(BaseModel):
     '''Authoring requirements attached to a document block across all stages.'''
@@ -45,22 +48,15 @@ class WriterAuthoring(BaseModel):
     # Provider/plugin extensions may add namespaced fields while the common contract
     # above remains validated.
     model_config = ConfigDict(extra='allow')
-
-    instruction: Optional[str] = None
     instruction_id: Optional[str] = None
     origin_node_id: Optional[str] = None
     constraints: WriterConstraints = Field(default_factory=WriterConstraints)
-    expected_blocks: List[str] = Field(default_factory=list)
-    pending_subtasks: List[str] = Field(default_factory=list)
-    revision_notes: List[str] = Field(default_factory=list)
-    visual_needs: List[Dict[str, Any]] = Field(default_factory=list)
-    source: Optional[str] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
 class WriterSpan(BaseModel):
     text: str = ''
-    style: List[str] = Field(default_factory=list)
+    style: Dict[str, Any] = Field(default_factory=dict)
 
 
 class WriterBlock(BaseModel):
@@ -74,7 +70,6 @@ class WriterBlock(BaseModel):
     spans: List[WriterSpan] = Field(default_factory=list)
     children: List['WriterBlock'] = Field(default_factory=list)
     stage: WriterStage
-    status: str = ''
     authoring: Optional[WriterAuthoring] = None
     numbering: Dict[str, Any] = Field(default_factory=dict)
     references: List[Dict[str, Any]] = Field(default_factory=list)
@@ -95,6 +90,11 @@ class WriterBlock(BaseModel):
         if self.spans and ''.join(span.text for span in self.spans) != self.content:
             raise ValueError('content must equal the concatenated span text when spans are present')
         return self
+
+    def iter_blocks(self) -> Iterable['WriterBlock']:
+        yield self
+        for child in self.children:
+            yield from child.iter_blocks()
 
 
 WriterBlock.model_rebuild()
@@ -142,4 +142,5 @@ WriterDocument.model_rebuild()
 __all__ = [
     'WriterDocument', 'WriterBlock', 'WriterSpan', 'WriterStage',
     'WriterConstraints', 'WriterAuthoring',
+    'WRITER_BLOCK_MUTABLE_FIELDS', 'WRITER_BLOCK_PROVIDER_MANAGED_FIELDS',
 ]

@@ -372,6 +372,7 @@ class LinkDocumentFSBase(LazyLLMFSBase):
     __document_public_apis__ = [
         'resolve_link',
         'read_with_references',
+        'create_document',
         'get_document_id',
         'get_doc_blocks',
         'update_doc_block_text',
@@ -432,6 +433,10 @@ class LinkDocumentFSBase(LazyLLMFSBase):
 
     def _format_document_references_footer(self, refs: List[Dict[str, Any]]) -> str:
         return self.format_document_references_footer(refs, self._document_provider_name)
+
+    def create_document(self, title: str, parent: str = '') -> Dict[str, Any]:
+        '''Create an empty document under an optional provider parent location.'''
+        raise NotImplementedError(f'{self.__class__.__name__}.create_document is not implemented')
 
     def _list_document_references(self, path: str) -> List[Dict[str, Any]]:
         return []

@@ -4,8 +4,12 @@ LOCATE_REVISION_TARGET_PROMPT = '''You are a revision target locator. Given a wr
 Rules:
 - Read task.query carefully — it contains the user's revision request.
 - Examine every document block and select the ones the revision acts on.
-- For replace/delete, select the blocks whose content or existence changes.
-- For insert, select the existing block used as the insertion anchor.
+- If the request changes the document title, set target_title to true. The document
+  title is WriterDocument.title, not a content block; do not select a document/root
+  block merely to change the title.
+- If the request does not change the document title, set target_title to false.
+- For update/delete, select the blocks whose content, formatting, type, or existence changes.
+- For create, select the existing block used as the insertion anchor.
 - For move, select the block being moved. Do not select the destination block merely because it is the destination.
 - Select node_ids ONLY from the candidate list below. Never invent node_ids.
 - Be precise: do not select blocks that are unrelated to the request.
@@ -30,10 +34,14 @@ Candidate node_ids (select from these only):
 GENERATE_MODIFY_PLAN_PROMPT = '''You are a modify plan generator. Given a writing task, the located target blocks, and the writing context, produce a ModifyPlan.
 
 Rules:
+- If locate_result.target_title is true, set title_instruction to a clear instruction
+  describing the requested document-title change. Otherwise leave title_instruction null.
+- A document-title change is separate from block instructions and does not need a
+  synthetic document/root block instruction.
 - For each target block, decide the modify_type and write a clear, specific instruction.
 - modify_type must be one of:
-  - insert: insert one or more brand-new blocks before or after the target block. The target block is the insertion anchor; set position to before or after.
-  - replace: replace the target block's content with a new version.
+  - create: insert one or more brand-new blocks before or after the target block. The target block is the insertion anchor; set position to before or after.
+  - update: update any user-visible field of the target block, including content, type, numbering, and spans.
   - delete: remove the target block.
   - move: move the target block before or after another existing block. Set anchor_node_id to the destination block and position to before or after.
 - instruction: a concise description of what change to make to that block, derived from task.query.
@@ -58,18 +66,26 @@ Writing context:
 '''
 
 
-GENERATE_PATCH_SET_PROMPT = '''You are a patch generator. Given a document, a modify plan, and the writing context, produce a PatchSet with concrete text changes.
+GENERATE_PATCH_SET_PROMPT = '''You are a document patch generator. Given a WriterDocument, a ModifyPlan, and the writing context, return a PatchSet that applies the requested changes to the original document.
 
 Rules:
-- For each ModifyInstruction, produce exactly one PatchHunk.
-- Each PatchHunk must have:
-  - target_node_id: copied from the corresponding ModifyInstruction.
-  - modify_type: copied from the corresponding ModifyInstruction.
-  - replace: set new_text to the FULL new content of the target block. Leave new_blocks empty.
-  - insert: set position from the instruction and put every complete new block in new_blocks. Leave new_text null. Use paragraph unless the requested structure clearly requires heading, list_item, code, or quote.
-  - delete: leave new_text null and new_blocks empty.
-  - move: copy anchor_node_id and position from the instruction. Leave new_text null and new_blocks empty.
-- Leave anchor and old_text null. The system fills conflict-checking fields from the source document.
+- Return only a PatchSet, never a complete WriterDocument.
+- target_doc_id must equal the supplied document_id.
+- Produce exactly one hunk for each ModifyInstruction, in the same order and with the
+  same modify_type.
+- update: target_node_id must be the existing target. Include a complete WriterBlock
+  with the same node_id, provider_binding, provider_payload, and editable values.
+  Change only requested user-visible fields. Heading levels belong in type="heading"
+  and numbering.level. Inline formatting belongs in spans.
+- create: target_node_id and block.node_id must be a new unique ID beginning with
+  "writer-new-". Include the complete new WriterBlock, parent_node_id, and index.
+  Leave provider_binding and provider_payload empty.
+- delete: target_node_id must be the existing target. Do not include block,
+  parent_node_id, or index.
+- move: target_node_id must be the existing target. Do not include block. Resolve the
+  requested destination to parent_node_id and index in the original document.
+- Set new_title only when title_instruction requests a title change; otherwise null.
+- Give every hunk a stable hunk_id. Do not copy or rewrite unrelated blocks.
 - Generated text must be complete and self-contained. Never produce placeholders or ellipsis-only output.
 - Respect the writing context: keep facts consistent (never alter locked facts), preserve terminology and style.
 - Do not invent facts that conflict with the writing context.

@@ -6,11 +6,13 @@ Requirements:
 - Set document_id to the value given in document_id_hint below.
 - Generate at least 3 top-level blocks unless the task explicitly asks for fewer.
 - Each top-level block is a section. Use type="heading" for section blocks.
-- Put the section title in block.content, and place a concrete writing instruction in
-  block.authoring.instruction.
+- All user-visible outline text MUST use the same document tree contract as draft and final content:
+  put section titles in heading block.content, and put section descriptions and key points in
+  paragraph or list_item blocks under block.children.
+- block.authoring is only for non-visible planning and execution metadata.
 - Fill node_id for every block. Use stable ids such as section-1, section-2, section-1-1.
 - Use block.numbering.level for the heading level: 1 for top-level sections, incrementing for children.
-  Put child sections under block.children.
+  Put child sections under block.children as heading blocks alongside any visible description blocks.
 - Constraints live in block.authoring.constraints and may only use the fields defined by WriterConstraints:
   section_goal, required_points, fact_constraints, style_constraints, relation_constraints,
   min_words, max_words, pov, tone, must_include, must_avoid.
@@ -26,7 +28,7 @@ Requirements:
   applies to a section, leave fact_constraints empty.
 - Prefer the target document title or task intent as document.title.
 - Use the writing context and resource profiles as constraints, not as content to copy blindly.
-- Leave spans, status, provider_binding and provider_payload empty; the system manages them.
+- Leave spans, provider_binding and provider_payload empty; the system manages them.
 
 Writing task:
 {task_json}

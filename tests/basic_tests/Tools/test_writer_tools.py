@@ -1,5 +1,6 @@
 import os
 import tempfile
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,6 +13,7 @@ from lazyllm.tools.writer.data_models import (
     WriterBlock,
     WriterConstraints,
     WriterDocument,
+    WriterSpan,
     WritingContext,
     WritingTask,
 )
@@ -66,6 +68,15 @@ def _make_doc_adapter():
     return adapter
 
 
+@contextmanager
+def _route_doc_fs(fs, real_path='~docx/doc-1'):
+    with patch(
+        'lazyllm.tools.fs.client.FS._parse',
+        return_value=('feishu', None, real_path),
+    ), patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=fs):
+        yield
+
+
 def _call_document_to_docir(adapter, artifact_store):
     target_document = {
         'uri': 'feishu://~docx/doc-1',
@@ -74,13 +85,9 @@ def _call_document_to_docir(adapter, artifact_store):
         'doc_id': 'doc-1',
     }
 
-    with patch(
-        'lazyllm.tools.fs.client.FS._parse',
-        return_value=('feishu', None, '~docx/doc-1'),
-    ):
-        with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=adapter):
-            tool = WriterResourceTools(artifact_store=artifact_store)
-            return tool.document_to_docir(target_document=target_document)
+    with _route_doc_fs(adapter):
+        tool = WriterResourceTools(artifact_store=artifact_store)
+        return tool.document_to_docir(target_document=target_document)
 
 
 def _make_final_writer_document(content='# Local output', title=''):
@@ -96,6 +103,16 @@ def _make_final_writer_document(content='# Local output', title=''):
                 stage='final',
             ),
         ],
+    )
+
+
+def _patch_block(node_id, content):
+    return WriterBlock(
+        node_id=node_id,
+        type='paragraph',
+        content=content,
+        spans=[WriterSpan(text=content)],
+        stage='final',
     )
 
 
@@ -671,23 +688,27 @@ def test_document_to_docir():
         assert [block.content for block in document.blocks] == ['标题', '正文']
 
 
-def test_write_to_document():
+@pytest.mark.parametrize(
+    ('public_method', 'provider_method'),
+    [
+        ('write_to_document', 'write_doc_blocks'),
+        ('replace_document', 'replace_doc_blocks'),
+    ],
+)
+def test_document_write_modes(public_method, provider_method):
     pytest.importorskip('fsspec')
-    adapter = _make_doc_adapter()
+    fs = _make_doc_adapter()
 
     with tempfile.TemporaryDirectory() as d:
-        with patch(
-            'lazyllm.tools.fs.client.FS._parse',
-            return_value=('feishu', None, '/write-test.md'),
-        ):
-            with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=adapter):
-                WriterResourceTools(artifact_store=d).write_to_document(
-                    content=_make_final_writer_document(content='world', title='Hello'),
-                    target_document={'uri': 'feishu:///write-test.md', 'adapter': 'feishu'},
-                )
+        with _route_doc_fs(fs, '/write-test.md'):
+            getattr(WriterResourceTools(artifact_store=d), public_method)(
+                content=_make_final_writer_document(content='world', title='Hello'),
+                target_document={'uri': 'feishu:///write-test.md', 'adapter': 'feishu'},
+            )
 
-        adapter.write_doc_blocks.assert_called_once()
-        document_id, blocks = adapter.write_doc_blocks.call_args[0]
+        write_blocks = getattr(fs, provider_method)
+        write_blocks.assert_called_once()
+        document_id, blocks = write_blocks.call_args[0]
         assert document_id == 'doc-1'
         assert blocks[0]['text']['elements'][0]['text_run']['content'] == 'world'
 
@@ -699,49 +720,76 @@ def test_apply_patch_to_document_dispatches_update_and_rereads():
     with tempfile.TemporaryDirectory() as d:
         load_result = _call_document_to_docir(fs, d)
         source = load_artifact_json(load_result['artifact_path'], WriterDocument)
+        source.revision = '12'
         target = source.blocks[1]
+        revisions = []
+        for content in ('第一次修改', '第二次修改'):
+            block = target.model_copy(deep=True)
+            block.content, block.spans = content, [WriterSpan(text=content)]
+            revisions.append(block)
         patch_set = PatchSet(
             patch_id='patch-1',
             target_doc_id=source.document_id,
-            hunks=[PatchHunk(
-                hunk_id='replace-b2',
-                target_node_id=target.node_id,
-                modify_type='replace',
-                old_text='正文',
-                new_text='修改后正文',
-            )],
+            hunks=[
+                PatchHunk(hunk_id=f'update-{index}', target_node_id=target.node_id,
+                          modify_type='update', block=block)
+                for index, block in enumerate(revisions, 1)
+            ],
         )
-        fs.get_doc_blocks.return_value = [
-            fs.get_doc_blocks.return_value[0],
-            {
-                'block_id': 'b2',
-                'block_type': 2,
-                'parent_id': 'doc-1',
-                'text': {'elements': [{'text_run': {'content': '修改后正文'}}]},
-                'plain_text': '修改后正文',
-            },
+        first, second = fs.get_doc_blocks.return_value
+        fs.get_doc_blocks.side_effect = [
+            [first, {**second, 'text': {'elements': [{'text_run': {'content': content}}]}}]
+            for content in ('第一次修改', '第二次修改')
+        ]
+        fs.update_block.side_effect = [
+            {'document_revision_id': 13}, {'document_revision_id': 14},
         ]
 
-        with patch(
-            'lazyllm.tools.fs.client.FS._parse',
-            return_value=('feishu', None, '~docx/doc-1'),
-        ):
-            with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=fs):
-                result = WriterResourceTools(artifact_store=d).apply_patch_to_document(
-                    patch_set=patch_set,
-                    source_document=source,
-                )
-
-        fs.update_block.assert_called_once()
-        update_kwargs = fs.update_block.call_args.kwargs
-        assert update_kwargs['document_id'] == 'doc-1'
-        assert update_kwargs['requests'][0]['block_id'] == 'b2'
+        with _route_doc_fs(fs):
+            result = WriterResourceTools(artifact_store=d).apply_patch_to_document(
+                patch_set=patch_set,
+                source_document=source,
+            )
 
         patch_result = load_artifact_json(result['artifact_path'], PatchResult)
         persisted_path = result['metadata']['artifact_paths']['persisted_document']
         persisted = load_artifact_json(persisted_path, WriterDocument)
-        assert patch_result.applied_hunks == ['replace-b2']
-        assert persisted.blocks[1].content == '修改后正文'
+        assert patch_result.applied_hunks == ['update-1', 'update-2']
+        assert [call.kwargs['document_revision_id']
+                for call in fs.update_block.call_args_list] == [12, 13]
+        assert (persisted.blocks[1].content, persisted.revision) == ('第二次修改', '14')
+
+
+def test_apply_patch_to_document_moves_and_restores_writer_identity():
+    pytest.importorskip('fsspec')
+    fs = _make_doc_adapter()
+
+    with tempfile.TemporaryDirectory() as directory:
+        source = load_artifact_json(
+            _call_document_to_docir(fs, directory)['artifact_path'], WriterDocument)
+        moved_node_id = source.blocks[0].node_id
+        patch_set = PatchSet(target_doc_id=source.document_id, hunks=[PatchHunk(
+            hunk_id='move-b1',
+            target_node_id=moved_node_id,
+            modify_type='move',
+            parent_node_id=None,
+            index=1,
+        )])
+        first, second = fs.get_doc_blocks.return_value
+        fs.get_doc_blocks.return_value = [second, {**first, 'block_id': 'moved-b1'}]
+        fs.move_block.return_value = {
+            'block_id_relations': {'b1': 'moved-b1'},
+        }
+
+        with _route_doc_fs(fs):
+            result = WriterResourceTools(
+                artifact_store=directory).apply_patch_to_document(patch_set, source)
+
+        assert fs.move_block.call_args.kwargs['source_block_id'] == 'b1'
+        persisted = load_artifact_json(
+            result['metadata']['artifact_paths']['persisted_document'], WriterDocument)
+        assert persisted.blocks[1].node_id == moved_node_id
+        assert persisted.blocks[1].provider_binding['block_id'] == 'moved-b1'
 
 
 @pytest.mark.parametrize(
@@ -904,8 +952,8 @@ def test_validate_patch_set_single_hunk():
             result = tool.validate_patch_set(
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_node_id='blk-pro-01',
-                              old_text='万古之前...', new_text='太古之初...',
-                              modify_type='replace'),
+                              block=_patch_block('blk-pro-01', '太古之初...'),
+                              modify_type='update'),
                 ]),
                 context=_make_context(),
                 task=_make_task(),
@@ -929,11 +977,11 @@ def test_validate_patch_set_multi_hunk():
             result = tool.validate_patch_set(
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_node_id='blk-pro-01',
-                              old_text='万古之前...', new_text='太古之初...',
-                              modify_type='replace'),
+                              block=_patch_block('blk-pro-01', '太古之初...'),
+                              modify_type='update'),
                     PatchHunk(hunk_id='h2', target_node_id='blk-pro-02',
-                              old_text='second...', new_text='rewrite...',
-                              modify_type='replace'),
+                              block=_patch_block('blk-pro-02', 'rewrite...'),
+                              modify_type='update'),
                 ]),
                 context=_make_context(),
                 task=_make_task(),
@@ -954,8 +1002,9 @@ def test_validate_patch_set_failing():
             result = tool.validate_patch_set(
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_node_id='blk-pro-01',
-                              old_text='万古之前...', new_text='星辰大帝是九州最强者。',
-                              modify_type='replace'),
+                              block=_patch_block(
+                                  'blk-pro-01', '星辰大帝是九州最强者。'),
+                              modify_type='update'),
                 ]),
                 context=_make_context(),
                 task=_make_task(),

@@ -10,7 +10,7 @@ from ..data_models.writer_ir import WriterDocument, WriterStage
 
 
 NativeBlock = Dict[str, Any]
-NativePatchOperationType = Literal['create', 'update', 'delete', 'move']
+NativePatchOperationType = Literal['create', 'update', 'replace', 'delete', 'move']
 
 
 @dataclass(frozen=True)
