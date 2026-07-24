@@ -521,15 +521,13 @@ class TestFeishuNeedsWiki(unittest.TestCase):
             self.assertTrue(_feishu_needs_wiki(None, f'/{prefix}token'))
 
     def test_plain_path_no_space_no_config(self):
-        mock_config = MagicMock()
-        mock_config.get = MagicMock(return_value=None)
         with patch('lazyllm.tools.fs.client.globals') as mock_globals:
-            mock_globals.config = mock_config
+            mock_globals.config = {'feishu_wiki_space_id': None}
             self.assertFalse(_feishu_needs_wiki(None, '/folder/file'))
 
     def test_plain_path_with_globals_config(self):
         with patch('lazyllm.tools.fs.client.globals') as mock_globals:
-            mock_globals.config.get = MagicMock(return_value='wikcnFromGlobals')
+            mock_globals.config = {'feishu_wiki_space_id': 'wikcnFromGlobals'}
             self.assertTrue(_feishu_needs_wiki(None, '/folder/file'))
 
 
