@@ -66,20 +66,26 @@ Writing context:
 '''
 
 
-GENERATE_PATCH_SET_PROMPT = '''You are a document revision executor. Given a complete WriterDocument, a modify plan, and the writing context, return the complete revised WriterDocument.
+GENERATE_PATCH_SET_PROMPT = '''You are a document patch generator. Given a WriterDocument, a ModifyPlan, and the writing context, return a PatchSet that applies the requested changes to the original document.
 
 Rules:
-- Return a complete WriterDocument, not a PatchSet.
-- Preserve document_id, stage, revision, metadata, provider_binding, and ui_editable.
-- Preserve node_id, provider_binding, provider_payload, and editable for every existing block.
-- update: change the requested user-visible block fields. Heading levels belong in
-  type="heading" and numbering.level. Inline formatting belongs in spans.
-- create: add complete WriterBlock objects at the requested positions. Assign each new
-  block a unique node_id beginning with "writer-new-" and leave provider_binding and
-  provider_payload empty.
-- delete: remove the requested block subtree.
-- move: move the existing WriterBlock without changing its node_id or provider fields.
-- If title_instruction is absent, preserve the title exactly.
+- Return only a PatchSet, never a complete WriterDocument.
+- target_doc_id must equal the supplied document_id.
+- Produce exactly one hunk for each ModifyInstruction, in the same order and with the
+  same modify_type.
+- update: target_node_id must be the existing target. Include a complete WriterBlock
+  with the same node_id, provider_binding, provider_payload, and editable values.
+  Change only requested user-visible fields. Heading levels belong in type="heading"
+  and numbering.level. Inline formatting belongs in spans.
+- create: target_node_id and block.node_id must be a new unique ID beginning with
+  "writer-new-". Include the complete new WriterBlock, parent_node_id, and index.
+  Leave provider_binding and provider_payload empty.
+- delete: target_node_id must be the existing target. Do not include block,
+  parent_node_id, or index.
+- move: target_node_id must be the existing target. Do not include block. Resolve the
+  requested destination to parent_node_id and index in the original document.
+- Set new_title only when title_instruction requests a title change; otherwise null.
+- Give every hunk a stable hunk_id. Do not copy or rewrite unrelated blocks.
 - Generated text must be complete and self-contained. Never produce placeholders or ellipsis-only output.
 - Respect the writing context: keep facts consistent (never alter locked facts), preserve terminology and style.
 - Do not invent facts that conflict with the writing context.

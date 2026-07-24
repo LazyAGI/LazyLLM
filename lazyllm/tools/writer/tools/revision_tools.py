@@ -293,9 +293,9 @@ class WriterRevisionTools(WriterToolBase):
                 modify_plan_json=to_prompt_json(plan),
                 context_json=to_prompt_json(writing_context),
             )
-            revised = self._call_llm_structured(prompt, WriterDocument)
-            self._validate_model_revision(source_doc, revised, plan)
-            patch_set = self._diff_documents(source_doc, revised)
+            patch_set = self._call_llm_structured(prompt, PatchSet)
+            self._normalize_generated_patch(source_doc, plan, patch_set)
+            apply_patch_to_ir(source_doc, patch_set)
             patch_set.meta['source'] = 'generate_patch_set'
 
         result = self._save_artifacts(
@@ -314,6 +314,42 @@ class WriterRevisionTools(WriterToolBase):
             },
         )
         return result.model_dump()
+
+    def _normalize_generated_patch(
+        self,
+        document: WriterDocument,
+        plan: ModifyPlan,
+        patch: PatchSet,
+    ) -> None:
+        if patch.target_doc_id != document.document_id:
+            raise ValueError('generated patch targets a different document.')
+        if plan.title_instruction is None and patch.new_title is not None:
+            raise ValueError('generated patch changes title without a title instruction.')
+        if plan.title_instruction is not None and not (patch.new_title or '').strip():
+            raise ValueError('generated patch omits the requested title change.')
+        if len(patch.hunks) != len(plan.instructions):
+            raise ValueError('generated patch must contain one hunk per modify instruction.')
+
+        for instruction, hunk in zip(plan.instructions, patch.hunks):
+            if hunk.modify_type != instruction.modify_type:
+                raise ValueError(
+                    f'generated hunk type {hunk.modify_type!r} does not match '
+                    f'instruction type {instruction.modify_type!r}.'
+                )
+            if (
+                instruction.modify_type != 'create'
+                and hunk.target_node_id != instruction.target_node_id
+            ):
+                raise ValueError(
+                    f'generated hunk targets {hunk.target_node_id!r}, expected '
+                    f'{instruction.target_node_id!r}.'
+                )
+            hunk.hunk_id = hunk.hunk_id or (
+                f'{hunk.modify_type}-{hunk.target_node_id}'
+            )
+            hunk.meta['instruction_id'] = instruction.instruction_id
+
+        self._validate_patch(document, patch)
 
     def apply_patch(
         self,
