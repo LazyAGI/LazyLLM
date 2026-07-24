@@ -36,6 +36,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}  # Push event: Roll back to checkout target's HEAD.
           fetch-depth: 2
 
@@ -74,6 +75,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Run DocCheck
@@ -116,6 +118,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 2
 
@@ -177,6 +180,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup Python venv
@@ -232,6 +236,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup Python venv
@@ -282,6 +287,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup Python venv
@@ -329,6 +335,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4 # For run_tests afterwards.
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup Python venv
@@ -408,6 +415,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup Python venv
@@ -461,6 +469,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
           submodules: false
           fetch-depth: 0
@@ -499,6 +508,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
           submodules: false
           fetch-depth: 0
@@ -548,6 +558,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
           submodules: false
 
@@ -593,6 +604,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
           submodules: false
 
@@ -673,6 +685,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
           submodules: false
 
@@ -722,6 +735,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
           submodules: false
 
@@ -803,6 +817,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup CI directory
@@ -870,6 +885,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}  # Push event: Roll back to checkout target's HEAD.
           submodules: false
 
