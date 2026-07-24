@@ -14,6 +14,8 @@ class SQLiteStore(LazyLLMStoreBase):
     capability = StoreCapability.SEGMENT
     need_embedding = False
     supports_index_registration = False
+    supports_counters = True
+    supported_query_fields = frozenset({'content'})
 
     _COLS = [('uid', 'TEXT PRIMARY KEY'),
              ('doc_id', 'TEXT NOT NULL'),
@@ -28,7 +30,8 @@ class SQLiteStore(LazyLLMStoreBase):
              ('excluded_llm_metadata_keys', 'TEXT'),
              ('parent', 'TEXT'),
              ('answer', 'TEXT'),
-             ('image_keys', 'TEXT')]
+             ('image_keys', 'TEXT'),
+             ('counters', "TEXT NOT NULL DEFAULT '{}'")]
     _COL_NAMES = [c[0] for c in _COLS]
     _COL_NAMES_SQL = ', '.join(_COL_NAMES)
     _COL_NAMES_FTS = ', '.join(f'm.{c}' for c in _COL_NAMES)
@@ -72,9 +75,84 @@ class SQLiteStore(LazyLLMStoreBase):
         self._ddl_lock = threading.Lock()
         self._open_conn()
 
+    def _collection_exists(self, collection_name):
+        row = self._open_conn().execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (collection_name,)
+        ).fetchone()
+        return bool(row)
+
+    def create(self, collection_name, data):
+        if not data:
+            return True
+        conn = None
+        try:
+            with self._ddl_lock:
+                conn = self._open_conn()
+                cur = conn.cursor()
+                self._ensure_table(cur, collection_name)
+                self._ensure_fts(cur, collection_name)
+                sql = (f'INSERT INTO "{collection_name}" ({self._COL_NAMES_SQL}) '
+                       f'VALUES ({self._COL_PLACEHOLDERS})')
+                cur.executemany(sql, [self._serialize_row(item) for item in data])
+                cur.executemany(f'INSERT INTO "{collection_name}_fts"(uid, content) VALUES (?, ?)',
+                                [(item['uid'], self._fts_content(item)) for item in data])
+                conn.commit()
+            return True
+        except sqlite3.IntegrityError as exc:
+            if conn is not None:
+                conn.rollback()
+            conflict_codes = {
+                getattr(sqlite3, 'SQLITE_CONSTRAINT_PRIMARYKEY', 1555),
+                getattr(sqlite3, 'SQLITE_CONSTRAINT_UNIQUE', 2067),
+            }
+            error_code = getattr(exc, 'sqlite_errorcode', None)
+            message = str(exc).casefold()
+            legacy_uid_conflict = (
+                error_code is None
+                and 'unique constraint failed' in message
+                and '.uid' in message
+            )
+            if error_code in conflict_codes or legacy_uid_conflict:
+                raise FileExistsError('segment primary key already exists') from exc
+            raise
+        except Exception:
+            if conn is not None:
+                conn.rollback()
+            raise
+
+    def increment_counters(self, collection_name, criteria, increments):
+        increments = self._validate_counters(increments, allow_empty=False)
+        if not self._collection_exists(collection_name):
+            return 0
+        paths_and_values = []
+        expressions = []
+        for name, value in increments.items():
+            path = f'$.{name}'
+            expressions.append(
+                "?, COALESCE(json_extract(COALESCE(counters, '{}'), ?), 0) + ?"
+            )
+            paths_and_values.extend((path, path, value))
+        with self._ddl_lock:
+            conn = self._open_conn()
+            cur = conn.cursor()
+            self._ensure_table(cur, collection_name)
+            where, args = self._build_where(criteria, preserve_falsey=True)
+            cur.execute(
+                f'''UPDATE "{collection_name}"
+                    SET counters = json_set(COALESCE(counters, '{{}}'), {", ".join(expressions)}){where}''',
+                tuple(paths_and_values) + args,
+            )
+            conn.commit()
+            return cur.rowcount
+
     def _ensure_table(self, cursor, table):
         col_defs = ', '.join(f'{name} {typ}' for name, typ in self._COLS)
         cursor.execute(f'CREATE TABLE IF NOT EXISTS "{table}" ({col_defs})')
+        columns = {row[1] for row in cursor.execute(f'PRAGMA table_info("{table}")')}
+        if 'counters' not in columns:
+            cursor.execute(
+                f'''ALTER TABLE "{table}" ADD COLUMN counters TEXT NOT NULL DEFAULT '{{}}' ''',
+            )
         for idx_col in self._INDEX_COLS:
             col_name = idx_col.strip('"')
             cursor.execute(f'CREATE INDEX IF NOT EXISTS idx_{table}_{col_name} ON "{table}"({idx_col})')
@@ -145,6 +223,9 @@ class SQLiteStore(LazyLLMStoreBase):
             cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (collection_name,))
             if not cur.fetchone():
                 return ([], 0) if kwargs.get('return_total') else []
+            with self._ddl_lock:
+                self._ensure_table(cur, collection_name)
+                conn.commit()
 
             limit = kwargs.get('limit')
             offset = max(kwargs.get('offset', 0) or 0, 0)
@@ -166,6 +247,8 @@ class SQLiteStore(LazyLLMStoreBase):
                     else [self._deserialize_row(r) for r in cur.fetchall()])
         except Exception as e:
             LOG.error(f'[SQLiteStore - get] Error: {e}')
+            if kwargs.get('raise_on_error'):
+                raise
             return ([], 0) if kwargs.get('return_total') else []
 
     @override
@@ -204,15 +287,34 @@ class SQLiteStore(LazyLLMStoreBase):
 
     @override
     def search(self, collection_name, query=None, topk=10, filters=None, **kwargs):
+        self._validate_search_options(
+            kwargs.get('query_fields'), kwargs.get('match_mode'),
+            supported_fields=self.supported_query_fields,
+        )
         if not query: return []
         try:
             conn = self._open_conn()
             if not conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?",
                                 (collection_name,)).fetchone():
                 return []
+            with self._ddl_lock:
+                self._ensure_table(conn.cursor(), collection_name)
+                conn.commit()
 
             cmatch = f'"{collection_name}_fts" MATCH ?'
-            q = [query if query.endswith('*') else query + '*']
+            match_mode = kwargs.get('match_mode')
+            if match_mode in ('any', 'all'):
+                terms = query.split()
+                if not terms:
+                    return []
+                escaped_terms = []
+                for term in terms:
+                    escaped = term.replace('"', '""')
+                    escaped_terms.append(f'"{escaped}"*')
+                fts_query = (' OR ' if match_mode == 'any' else ' AND ').join(escaped_terms)
+            else:
+                fts_query = query if query.endswith('*') else query + '*'
+            q = [fts_query]
             if filters:
                 fw, fa = self._build_fts_filter_where(filters)
                 where = f'{cmatch} AND {fw}'
@@ -226,6 +328,8 @@ class SQLiteStore(LazyLLMStoreBase):
                     for r in conn.execute(sql, q + [topk]).fetchall()]
         except Exception as e:
             LOG.error(f'[SQLiteStore - search] Error: {e}')
+            if kwargs.get('raise_on_error'):
+                raise
             return []
 
     def _serialize_row(self, item):
@@ -240,7 +344,10 @@ class SQLiteStore(LazyLLMStoreBase):
                 json.dumps(item.get('excluded_embed_metadata_keys') or []),
                 json.dumps(item.get('excluded_llm_metadata_keys') or []),
                 item.get('parent'), item.get('answer', ''),
-                json.dumps(item.get('image_keys') or []))
+                json.dumps(item.get('image_keys') or []),
+                json.dumps(self._validate_counters(
+                    {} if item.get('counters') is None else item.get('counters'),
+                )))
 
     def _deserialize_row(self, row):
         gm = json.loads(row[5]) if row[5] else {}
@@ -250,7 +357,8 @@ class SQLiteStore(LazyLLMStoreBase):
                   'excluded_embed_metadata_keys': json.loads(row[9]) if row[9] else [],
                   'excluded_llm_metadata_keys': json.loads(row[10]) if row[10] else [],
                   'parent': row[11], 'answer': row[12],
-                  'image_keys': json.loads(row[13]) if row[13] else []}
+                  'image_keys': json.loads(row[13]) if row[13] else [],
+                  'counters': json.loads(row[14]) if len(row) > 14 and row[14] else {}}
         for k in self._global_metadata_desc:
             if k not in self._STD_KEYS and k in gm:
                 result[k] = gm[k]
@@ -264,12 +372,20 @@ class SQLiteStore(LazyLLMStoreBase):
     _STD_WHERE = {RAG_DOC_ID: 'doc_id', RAG_KB_ID: 'kb_id', 'parent': 'parent',
                   'number': 'number', 'uid': 'uid', 'doc_id': 'doc_id', 'kb_id': 'kb_id'}
 
-    def _build_where(self, criteria):
+    def _build_where(self, criteria, *, preserve_falsey=False):
         if not criteria: return '', ()
         clauses, args = [], []
         for field, vals in criteria.items():
-            if not vals: continue
-            if not isinstance(vals, (list, set, tuple)): vals = [vals]
+            if isinstance(vals, (list, set, tuple)):
+                vals = list(vals)
+                if not vals:
+                    if preserve_falsey:
+                        clauses.append('0')
+                    continue
+            else:
+                if not vals and not preserve_falsey:
+                    continue
+                vals = [vals]
             if lookup := self._STD_WHERE.get(field):
                 clauses.append(f'"{lookup}" IN ({",".join("?" * len(vals))})')
                 args.extend(vals)

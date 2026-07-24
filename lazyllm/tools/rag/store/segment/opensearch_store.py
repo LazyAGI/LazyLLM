@@ -65,6 +65,7 @@ DEFAULT_MAPPING_BODY = {
             'excluded_llm_metadata_keys': {'type': 'keyword', 'store': True},
             'parent': {'type': 'keyword', 'store': True},
             'image_keys': {'type': 'keyword', 'store': True},
+            'counters': {'type': 'object', 'dynamic': True},
         }
     }
 }
@@ -73,6 +74,7 @@ DEFAULT_MAPPING_BODY = {
 class OpenSearchStore(LazyLLMStoreBase):
     capability = StoreCapability.SEGMENT
     need_embedding = False
+    supports_counters = True
     supports_index_registration = False
 
     def __init__(self, uris: List[str], client_kwargs: Optional[Dict] = None,
@@ -96,6 +98,7 @@ class OpenSearchStore(LazyLLMStoreBase):
         self._client = opensearchpy.OpenSearch(hosts=self._uris, **self._client_kwargs)
         self._global_metadata_desc = global_metadata_desc or {}
         self._index_kwargs = self._adapt_mapping_for_global_metadata()
+        self._counter_mapping_indices = set()
 
     def _ensure_index(self, name: str):
         if self._client.indices.exists(index=name):
@@ -112,11 +115,75 @@ class OpenSearchStore(LazyLLMStoreBase):
                 LOG.error(f'[OpenSearchStore - _ensure_index] Error creating index {name}: {e}')
                 raise e
 
+    def create(self, collection_name, data):
+        if not data:
+            return True
+        self._ensure_counter_mapping(collection_name)
+        bulk_data = []
+        for segment in data:
+            segment = self._serialize_node(segment)
+            bulk_data.append({'create': {'_index': collection_name, '_id': segment[self._primary_key]}})
+            bulk_data.append(segment)
+        response = self._client.bulk(index=collection_name, body=bulk_data, refresh='wait_for')
+        if response.get('errors'):
+            failures = [
+                item.get('create') or {}
+                for item in response.get('items', [])
+                if (item.get('create') or {}).get('status', 200) >= 300
+            ]
+            conflicts = [item for item in failures if item.get('status') == 409]
+            other_failures = [item for item in failures if item.get('status') != 409]
+            if other_failures:
+                raise RuntimeError(f'OpenSearch create failed: {other_failures[:3]}')
+            if conflicts:
+                raise FileExistsError('segment primary key already exists')
+            raise RuntimeError(f'OpenSearch create failed: {response.get("items", [])[:3]}')
+        return True
+
+    def increment_counters(self, collection_name, criteria, increments):
+        increments = self._validate_counters(increments, allow_empty=False)
+        self._ensure_counter_mapping(collection_name)
+        body = self._construct_criteria(criteria) or {'query': {'match_all': {}}}
+        body['script'] = {
+            'lang': 'painless',
+            'source': (
+                'if (ctx._source.counters == null) { ctx._source.counters = new HashMap(); } '
+                'for (entry in params.increments.entrySet()) { def k = entry.getKey(); '
+                'ctx._source.counters[k] = '
+                '(ctx._source.counters.containsKey(k) ? ctx._source.counters[k] : 0) '
+                '+ entry.getValue(); }'
+            ),
+            'params': {'increments': increments},
+        }
+        response = self._client.update_by_query(
+            index=collection_name, body=body, refresh=True, conflicts='abort',
+        )
+        if response.get('failures'):
+            raise RuntimeError(f'OpenSearch counter increment failed: {response["failures"]}')
+        return int(response.get('updated', 0))
+
+    def _ensure_counter_mapping(self, collection_name):
+        self._ensure_index(collection_name)
+        ready = getattr(self, '_counter_mapping_indices', None)
+        if ready is None:
+            ready = self._counter_mapping_indices = set()
+        if collection_name in ready:
+            return
+        with self._ddl_lock:
+            mapping = self._client.indices.get_mapping(index=collection_name)
+            properties = mapping.get(collection_name, {}).get('mappings', {}).get('properties', {})
+            if 'counters' not in properties:
+                self._client.indices.put_mapping(
+                    index=collection_name,
+                    body={'properties': {'counters': {'type': 'object', 'dynamic': True}}},
+                )
+            ready.add(collection_name)
+
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
         if not data: return
         try:
-            self._ensure_index(collection_name)
+            self._ensure_counter_mapping(collection_name)
             for i in range(0, len(data), INSERT_BATCH_SIZE):
                 bulk_data = []
                 batch_data = data[i:i + INSERT_BATCH_SIZE]
@@ -175,7 +242,7 @@ class OpenSearchStore(LazyLLMStoreBase):
             offset = max(kwargs.get('offset', 0) or 0, 0)
             return_total = kwargs.get('return_total', False)
             sort_by_number = kwargs.get('sort_by_number', False)
-            if criteria and self._primary_key in criteria:
+            if criteria and self._primary_key in criteria and len(criteria) == 1:
                 vals = criteria.pop(self._primary_key)
                 if not isinstance(vals, list):
                     vals = [vals]
@@ -225,27 +292,36 @@ class OpenSearchStore(LazyLLMStoreBase):
             return results
         except Exception as e:
             LOG.error(f'[OpenSearchStore - get] Error getting data from OpenSearch: {e}')
+            if kwargs.get('raise_on_error'):
+                raise
             return []
 
     @override
     def search(self, collection_name: str, query: Optional[str] = None,
                topk: Optional[int] = 10, filters: Optional[dict] = None, **kwargs) -> List[dict]:  # noqa: C901
-        query_fields = ['*']
+        query_fields, match_mode = self._validate_search_options(
+            kwargs.get('query_fields'), kwargs.get('match_mode'),
+        )
+        query_fields = query_fields or ['*']
         try:
             self._ensure_index(collection_name)
             must_clauses = []
             os_query = {}
-            text_query = {
-                'multi_match': {
-                    'query': query,
-                    'fields': query_fields,
-                }
-            }
+            multi_match = {'query': query, 'fields': query_fields}
+            if operator := {'any': 'or', 'all': 'and'}.get(match_mode):
+                multi_match['operator'] = operator
+            text_query = {'multi_match': multi_match}
             must_clauses.append(text_query)
 
             filter_query = self._construct_criteria(filters) if filters else {}
 
-            if must_clauses and filter_query:
+            explicit_search_contract = (
+                kwargs.get('query_fields') is not None or kwargs.get('match_mode') is not None
+            )
+            if must_clauses and filter_query and explicit_search_contract:
+                filter_clauses = filter_query['query']['bool']['must']
+                os_query = {'query': {'bool': {'must': must_clauses, 'filter': filter_clauses}}}
+            elif must_clauses and filter_query:
                 filter_must = filter_query['query']['bool']['must']
                 os_query = {'query': {'bool': {'must': must_clauses + filter_must}}}
             elif must_clauses:
@@ -268,6 +344,8 @@ class OpenSearchStore(LazyLLMStoreBase):
 
         except Exception as e:
             LOG.error(f'[OpenSearchStore - search] Error searching data from OpenSearch: {e}')
+            if kwargs.get('raise_on_error'):
+                raise
             return []
 
     @override
@@ -313,6 +391,8 @@ class OpenSearchStore(LazyLLMStoreBase):
     def _serialize_node(self, segment: dict):
         seg = dict(segment)
         seg.pop('embedding', None)
+        counters = seg.get('counters')
+        seg['counters'] = self._validate_counters({} if counters is None else counters)
         if self._global_metadata_desc and self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
             seg['global_meta'] = json.dumps(seg.get('global_meta', {}), ensure_ascii=False)
             seg['meta'] = json.dumps(seg.get('meta', {}), ensure_ascii=False)
@@ -321,6 +401,7 @@ class OpenSearchStore(LazyLLMStoreBase):
 
     def _deserialize_node(self, segment: dict) -> dict:
         seg = dict(segment)
+        seg.setdefault('counters', {})
         if self._global_metadata_desc and self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
             meta = seg.get('meta', '{}')
             global_meta = seg.get('global_meta', '{}')
@@ -341,7 +422,9 @@ class OpenSearchStore(LazyLLMStoreBase):
             vals = criteria.pop(self._primary_key)
             if not isinstance(vals, list):
                 vals = [vals]
-            return {'query': {'ids': {'values': vals}}}
+            must_clauses = [{'ids': {'values': vals}}]
+        else:
+            must_clauses = []
 
         exact_match_fields = {'doc_id', 'kb_id', 'group', 'parent'}
 
@@ -360,7 +443,6 @@ class OpenSearchStore(LazyLLMStoreBase):
                 must_clauses.append({'terms': {key: val}})
             else:
                 must_clauses.append({'term': {key: val}})
-        must_clauses = []
         if RAG_DOC_ID in criteria:
             val = criteria.pop(RAG_DOC_ID)
             _add_clause('doc_id', val)
@@ -432,7 +514,10 @@ class OpenSearchStore(LazyLLMStoreBase):
 
         mapping = copy.deepcopy(DEFAULT_MAPPING_BODY)
         mapping['mappings']['dynamic'] = 'true'
-        props = {'uid': {'type': 'keyword'}}
+        props = {
+            'uid': {'type': 'keyword'},
+            'counters': {'type': 'object', 'dynamic': True},
+        }
         self._type2os = {
             DataType.VARCHAR: 'text',
             DataType.ARRAY: 'array',

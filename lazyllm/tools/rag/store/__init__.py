@@ -7,6 +7,7 @@ from .store_base import (
 )
 from .hybrid import HybridStore, MapStore, SenseCoreStore, OceanBaseStore
 from .segment import OpenSearchStore, ElasticSearchStore, SQLiteStore
+from .factory import create_segment_store
 from .vector import ChromaStore, MilvusStore
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     'OpenSearchStore',
     'ElasticSearchStore',
     'SQLiteStore',
+    'create_segment_store',
     'ChromaStore',
     'MilvusStore',
     'SenseCoreStore',
@@ -23,5 +25,5 @@ __all__ = [
     'LAZY_IMAGE_GROUP',
     'LAZY_ROOT_NAME',
     'EMBED_DEFAULT_KEY',
-    'BUILDIN_GLOBAL_META_DESC'
+    'BUILDIN_GLOBAL_META_DESC',
 ]
