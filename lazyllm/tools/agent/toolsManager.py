@@ -844,47 +844,37 @@ class ToolManager(ModuleBase):
             return None, f'Tool [{name}] parameters error.'
         return tool, arguments
 
-    def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False):
-        if not tools: return []
-        tool_calls = [tools] if isinstance(tools, dict) else tools
+    @staticmethod
+    def _call_tool(tool, arguments):
+        try:
+            return {'ok': True, 'value': tool(arguments)}
+        except Exception as e:
+            lazyllm.LOG.warning(f'[ToolCall] tool={tool.name!r} raised: {type(e).__name__}: {e}')
+            return {'ok': False, 'value': None, 'msg': f'[Tool Error] {type(e).__name__}: {e}'}
 
-        callables = []
-        call_arguments = []
-        serial_groups = []
-        for tc in tool_calls:
-            tool, args_or_err = self._parse_tool_call(tc)
-            if tool is None:
-                callables.append(lambda *_, _e=args_or_err: {'ok': False, 'value': None, 'msg': _e})
-                call_arguments.append({})
-                serial_groups.append(None)
-            elif self._sandbox and tool.execute_in_sandbox:
-                callables.append(self._sandbox)
-                call_arguments.append(self._build_sandbox_args(tool, args_or_err))
-                serial_groups.append(tool.serial_group)
-            else:
-                def _safe_call(args, _tool=tool):
-                    tool_name = _tool.name
-                    try:
-                        return {'ok': True, 'value': _tool(args)}
-                    except Exception as e:
-                        lazyllm.LOG.warning(f'[ToolCall] tool={tool_name!r} raised: {type(e).__name__}: {e}')
-                        return {'ok': False, 'value': None, 'msg': f'[Tool Error] {type(e).__name__}: {e}'}
-                callables.append(_safe_call)
-                call_arguments.append(args_or_err)
-                serial_groups.append(tool.serial_group)
+    def _build_tool_invocation(self, tool_call):
+        tool, arguments = self._parse_tool_call(tool_call)
+        if tool is None:
+            return lambda *_, _e=arguments: {'ok': False, 'value': None, 'msg': _e}, {}, None
+        if self._sandbox and tool.execute_in_sandbox:
+            return self._sandbox, self._build_sandbox_args(tool, arguments), tool.serial_group
 
-        if not any(serial_groups):
-            tool_diverter = lazyllm.diverter(tuple(callables))
-            return tool_diverter(tuple(call_arguments))
+        def _safe_call(args):
+            return self._call_tool(tool, args)
 
+        return _safe_call, arguments, tool.serial_group
+
+    @staticmethod
+    def _invoke_tool_callable(callable_, arguments):
+        if isinstance(arguments, kwargs):
+            return callable_(**arguments)
+        return callable_(arguments)
+
+    @classmethod
+    def _build_execution_branches(cls, callables, call_arguments, serial_groups):
         grouped_calls = {}
         branch_callables = []
         branch_arguments = []
-
-        def _invoke(callable_, arguments):
-            if isinstance(arguments, kwargs):
-                return callable_(**arguments)
-            return callable_(arguments)
 
         for index, (callable_, arguments, group) in enumerate(
                 zip(callables, call_arguments, serial_groups)):
@@ -893,7 +883,7 @@ class ToolManager(ModuleBase):
                 continue
 
             def _indexed_call(_, _index=index, _callable=callable_, _arguments=arguments):
-                return _index, _invoke(_callable, _arguments)
+                return _index, cls._invoke_tool_callable(_callable, _arguments)
 
             branch_callables.append(_indexed_call)
             branch_arguments.append({})
@@ -901,13 +891,23 @@ class ToolManager(ModuleBase):
         for calls in grouped_calls.values():
             def _serial_lane(_, _calls=calls):
                 return [
-                    (index, _invoke(callable_, arguments))
+                    (index, cls._invoke_tool_callable(callable_, arguments))
                     for index, callable_, arguments in _calls
                 ]
 
             branch_callables.append(_serial_lane)
             branch_arguments.append({})
 
+        return branch_callables, branch_arguments
+
+    @classmethod
+    def _execute_tool_calls(cls, tool_calls, callables, call_arguments, serial_groups):
+        if not any(serial_groups):
+            tool_diverter = lazyllm.diverter(tuple(callables))
+            return tool_diverter(tuple(call_arguments))
+
+        branch_callables, branch_arguments = cls._build_execution_branches(
+            callables, call_arguments, serial_groups)
         tool_diverter = lazyllm.diverter(tuple(branch_callables))
         branch_results = tool_diverter(tuple(branch_arguments))
         ordered_results = [None] * len(tool_calls)
@@ -916,3 +916,10 @@ class ToolManager(ModuleBase):
             for index, result in indexed_results:
                 ordered_results[index] = result
         return ordered_results
+
+    def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False):
+        if not tools: return []
+        tool_calls = [tools] if isinstance(tools, dict) else tools
+        invocations = [self._build_tool_invocation(tool_call) for tool_call in tool_calls]
+        callables, call_arguments, serial_groups = map(list, zip(*invocations))
+        return self._execute_tool_calls(tool_calls, callables, call_arguments, serial_groups)

@@ -35,11 +35,11 @@ def test_method_serial_group_is_preserved_without_exposing_schema_metadata():
 
         @serial_tool(group='state')
         def mutate(self, value: str):
-            """Mutate state.
+            '''Mutate state.
 
             Args:
                 value: New value.
-            """
+            '''
             return value
 
     manager = ToolManager([Toolkit()])
@@ -72,18 +72,18 @@ def test_same_group_runs_in_order_and_failure_does_not_stop_lane():
 
         @serial_tool(group='state')
         def first(self):
-            """Run first."""
+            '''Run first.'''
             return self._run('first')
 
         @serial_tool(group='state')
         def fail(self):
-            """Fail."""
+            '''Fail.'''
             self.events.append('fail')
             raise RuntimeError('expected failure')
 
         @serial_tool(group='state')
         def last(self):
-            """Run last."""
+            '''Run last.'''
             return self._run('last')
 
     toolkit = Toolkit()
@@ -119,16 +119,16 @@ def test_different_groups_and_plain_tools_run_in_parallel():
 
         @serial_tool(group='alpha')
         def alpha(self):
-            """Run alpha."""
+            '''Run alpha.'''
             return self._run('alpha')
 
         @serial_tool(group='beta')
         def beta(self):
-            """Run beta."""
+            '''Run beta.'''
             return self._run('beta')
 
         def plain(self):
-            """Run plain."""
+            '''Run plain.'''
             return self._run('plain')
 
     results = ToolManager([Toolkit()])([
@@ -143,20 +143,20 @@ def test_different_groups_and_plain_tools_run_in_parallel():
 def test_serial_sandbox_calls_preserve_results():
     @serial_tool(group='sandbox-state')
     def sandbox_first(value: str):
-        """Return a value.
+        '''Return a value.
 
         Args:
             value: Input value.
-        """
+        '''
         return value
 
     @serial_tool(group='sandbox-state')
     def sandbox_second(value: str):
-        """Return a value.
+        '''Return a value.
 
         Args:
             value: Input value.
-        """
+        '''
         return value
 
     class RecordingSandbox:
@@ -184,19 +184,19 @@ def test_serial_sandbox_calls_preserve_results():
 
 def test_registered_functions_preserve_group_in_both_decorator_orders():
     def inner_first(value: str):
-        """Return a value.
+        '''Return a value.
 
         Args:
             value: Input value.
-        """
+        '''
         return value
 
     def outer_first(value: str):
-        """Return a value.
+        '''Return a value.
 
         Args:
             value: Input value.
-        """
+        '''
         return value
 
     inner_first.__name__ = 'serial_inner_first_test_tool'
