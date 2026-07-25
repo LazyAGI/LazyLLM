@@ -280,6 +280,37 @@ Args:
     output_files (List[str]): additional output file paths for the sandbox to download, for cases where output filenames are hardcoded in the tool rather than passed as parameters.
 ''')
 
+add_chinese_doc('serial_tool', '''\
+为工具函数添加串行执行标签。同一个 ``group`` 中的工具调用会在一次
+``ToolManager.forward`` 中按照调用顺序执行；未标记工具和不同分组仍可并行。
+该标签不会出现在暴露给模型的工具 schema 中。
+
+Args:
+    group (str): 非空串行分组名称，默认 ``"default"``。
+''')
+
+add_english_doc('serial_tool', '''\
+Marks a tool function for serial execution. Calls in the same ``group`` run in
+tool-call order within one ``ToolManager.forward`` invocation, while unmarked
+tools and different groups may still run concurrently. The marker is not
+included in the model-facing tool schema.
+
+Args:
+    group (str): Non-empty serial group name. Defaults to ``"default"``.
+''')
+
+add_example('serial_tool', '''\
+>>> from lazyllm.tools import serial_tool
+>>> @serial_tool(group='current_memory')
+... def update_profile(value: str) -> str:
+...     \"\"\"Update profile.
+...
+...     Args:
+...         value (str): New value.
+...     \"\"\"
+...     return value
+''')
+
 add_agent_example('register', """\
 >>> from lazyllm.tools import fc_register
 >>> @fc_register("tool")

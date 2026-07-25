@@ -16,9 +16,55 @@ from typing import *  # noqa F403, to import all types for compile_func(), do no
 
 # ---------------------------------------------------------------------------- #
 
+_SERIAL_TOOL_GROUP_ATTR = '__lazyllm_serial_tool_group__'
+_DEFAULT_SERIAL_TOOL_GROUP = 'default'
+
+
+def serial_tool(group: str = _DEFAULT_SERIAL_TOOL_GROUP):
+    '''Mark a tool function for serial execution within one ToolManager call.
+
+    Tool functions with the same group execute in tool-call order. This
+    execution metadata is local to ToolManager and is not exposed in the
+    model-facing tool schema.
+    '''
+    if not isinstance(group, str):
+        raise TypeError('serial tool group must be a non-empty string')
+    normalized_group = group.strip()
+    if not normalized_group:
+        raise ValueError('serial tool group must be a non-empty string')
+
+    def decorator(func: Callable) -> Callable:
+        if not (inspect.isfunction(func) or inspect.ismethod(func)):
+            raise TypeError('serial_tool can only decorate functions or methods')
+        target = getattr(func, '__func__', func)
+        setattr(target, _SERIAL_TOOL_GROUP_ATTR, normalized_group)
+        return func
+
+    return decorator
+
+
+def _get_serial_tool_group(func: Optional[Callable]) -> Optional[str]:
+    if func is None:
+        return None
+
+    candidates = [func, getattr(func, '__func__', None)]
+    try:
+        unwrapped = inspect.unwrap(func)
+    except (TypeError, ValueError):
+        unwrapped = None
+    candidates.extend([unwrapped, getattr(unwrapped, '__func__', None)])
+
+    for candidate in candidates:
+        group = getattr(candidate, _SERIAL_TOOL_GROUP_ATTR, None)
+        if group:
+            return str(group)
+    return None
+
+
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, verbose: bool = False, return_trace: bool = False, execute_in_sandbox: bool = True,
-                 apply_func: Optional[Callable] = None, schema_func: Optional[Callable] = None):
+                 apply_func: Optional[Callable] = None, schema_func: Optional[Callable] = None,
+                 metadata_func: Optional[Callable] = None):
         super().__init__(return_trace=return_trace)
         if apply_func is not None:
             self.apply = apply_func
@@ -37,6 +83,8 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self._input_files_parm = None
         self._output_files_parm = None
         self._output_files = []
+        self._serial_group = _get_serial_tool_group(
+            metadata_func or schema_func or apply_func or self.__class__.apply)
 
         self._params_schema = self._load_function_schema(schema_func or self.__class__.apply)
 
@@ -116,6 +164,10 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     @execute_in_sandbox.setter
     def execute_in_sandbox(self, value: bool):
         self._execute_in_sandbox = value
+
+    @property
+    def serial_group(self) -> Optional[str]:
+        return self._serial_group
 
     @property
     def input_files_parm(self) -> str:
@@ -274,7 +326,12 @@ class MethodModuleTool(ModuleTool):
         _apply.__doc__ = bound.__doc__ or self._find_inherited_docstring(instance, method_name)
         _apply.__name__ = method_name
 
-        super().__init__(execute_in_sandbox=False, apply_func=_apply, schema_func=schema_func or bound)
+        super().__init__(
+            execute_in_sandbox=False,
+            apply_func=_apply,
+            schema_func=schema_func or bound,
+            metadata_func=bound,
+        )
         self._name = instance.__class__.__name__ if method_name == '__call__' \
             else f'{instance.__class__.__name__}_{method_name}'
 
@@ -793,14 +850,17 @@ class ToolManager(ModuleBase):
 
         callables = []
         call_arguments = []
+        serial_groups = []
         for tc in tool_calls:
             tool, args_or_err = self._parse_tool_call(tc)
             if tool is None:
                 callables.append(lambda *_, _e=args_or_err: {'ok': False, 'value': None, 'msg': _e})
                 call_arguments.append({})
+                serial_groups.append(None)
             elif self._sandbox and tool.execute_in_sandbox:
                 callables.append(self._sandbox)
                 call_arguments.append(self._build_sandbox_args(tool, args_or_err))
+                serial_groups.append(tool.serial_group)
             else:
                 def _safe_call(args, _tool=tool):
                     tool_name = _tool.name
@@ -811,6 +871,48 @@ class ToolManager(ModuleBase):
                         return {'ok': False, 'value': None, 'msg': f'[Tool Error] {type(e).__name__}: {e}'}
                 callables.append(_safe_call)
                 call_arguments.append(args_or_err)
+                serial_groups.append(tool.serial_group)
 
-        tool_diverter = lazyllm.diverter(tuple(callables))
-        return tool_diverter(tuple(call_arguments))
+        if not any(serial_groups):
+            tool_diverter = lazyllm.diverter(tuple(callables))
+            return tool_diverter(tuple(call_arguments))
+
+        grouped_calls = {}
+        branch_callables = []
+        branch_arguments = []
+
+        def _invoke(callable_, arguments):
+            if isinstance(arguments, kwargs):
+                return callable_(**arguments)
+            return callable_(arguments)
+
+        for index, (callable_, arguments, group) in enumerate(
+                zip(callables, call_arguments, serial_groups)):
+            if group:
+                grouped_calls.setdefault(group, []).append((index, callable_, arguments))
+                continue
+
+            def _indexed_call(_, _index=index, _callable=callable_, _arguments=arguments):
+                return _index, _invoke(_callable, _arguments)
+
+            branch_callables.append(_indexed_call)
+            branch_arguments.append({})
+
+        for calls in grouped_calls.values():
+            def _serial_lane(_, _calls=calls):
+                return [
+                    (index, _invoke(callable_, arguments))
+                    for index, callable_, arguments in _calls
+                ]
+
+            branch_callables.append(_serial_lane)
+            branch_arguments.append({})
+
+        tool_diverter = lazyllm.diverter(tuple(branch_callables))
+        branch_results = tool_diverter(tuple(branch_arguments))
+        ordered_results = [None] * len(tool_calls)
+        for branch_result in branch_results:
+            indexed_results = branch_result if isinstance(branch_result, list) else [branch_result]
+            for index, result in indexed_results:
+                ordered_results[index] = result
+        return ordered_results
