@@ -9,26 +9,15 @@ Requirements:
 - All user-visible outline text MUST use the same document tree contract as draft and final content:
   put section titles in heading block.content, and put section descriptions and key points in
   paragraph or list_item blocks under block.children.
-- block.authoring is only for non-visible planning and execution metadata.
 - Fill node_id for every block. Use stable ids such as section-1, section-2, section-1-1.
 - Use block.numbering.level for the heading level: 1 for top-level sections, incrementing for children.
   Put child sections under block.children as heading blocks alongside any visible description blocks.
-- Constraints live in block.authoring.constraints and may only use the fields defined by WriterConstraints:
-  section_goal, required_points, fact_constraints, style_constraints, relation_constraints,
-  min_words, max_words, pov, tone, must_include, must_avoid.
-- Do not invent other constraints fields. Fill only the fields useful for the section.
 - block.references holds identifiers for facts or resources the section depends on.
 - Each element of block.references is an object with at least an "id" field. The id must match a
-  DocumentFact.fact_id or ResourceProfile.resource_id present in the input. Additional fields are allowed.
-- references is a WriterBlock field only. Never put references inside block.authoring or
-  block.authoring.constraints.
-- fact_constraints contains the literal factual statements that the section must preserve. Do not put
-  fact IDs or resource IDs in fact_constraints; identifiers belong only in references.
-- Every fact_constraints statement must be grounded in the writing context. If no factual statement
-  applies to a section, leave fact_constraints empty.
+  DocumentFact.fact_id or ResourceProfile.resource_id present in the input.
 - Prefer the target document title or task intent as document.title.
 - Use the writing context and resource profiles as constraints, not as content to copy blindly.
-- Leave spans, provider_binding and provider_payload empty; the system manages them.
+- Omit spans, provider_binding and provider_payload; the system manages them.
 
 Writing task:
 {task_json}
@@ -59,7 +48,7 @@ Requirements:
 - fact_constraints should preserve the literal text of locked facts and important context facts
   relevant to this section. It must not contain fact IDs or resource IDs.
 - fact_constraints MUST only contain factual statements actually present in the writing context.
-- references are owned by the authoritative outline. Leave references empty; the system copies them from
+- references are owned by the authoritative outline. Omit references; the system copies them from
   the matching outline block.
 - style_constraints should include tone, pov, audience, and style requirements when applicable.
 - relation_constraints should describe dependencies on previous or later sections when useful.

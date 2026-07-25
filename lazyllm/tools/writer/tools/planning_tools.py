@@ -5,12 +5,7 @@ from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
-from ..data_models.writer_ir import (
-    WriterAuthoring,
-    WriterBlock,
-    WriterConstraints,
-    WriterDocument,
-)
+from ..data_models.writer_ir import WriterBlock, WriterDocument
 from ..data_models.planning import SectionInstruction, SectionInstructionList
 from ..prompts import GENERATE_OUTLINE_PROMPT, GENERATE_SECTION_INSTRUCTIONS_PROMPT
 from ..utils import to_prompt_json
@@ -125,14 +120,12 @@ class WriterPlanningTools(WriterToolBase):
         outline.title = outline.title or self._default_outline_title(task)
         outline.ui_editable = False
         valid_reference_ids = self._valid_reference_ids(context, profiles)
-        has_available_facts = self._has_available_facts(context, profiles)
         for index, block in enumerate(outline.blocks, start=1):
             self._normalize_outline_block(
                 block,
                 level=1,
                 fallback_id=f'section-{index}',
                 valid_reference_ids=valid_reference_ids,
-                has_available_facts=has_available_facts,
             )
 
         outline.metadata.setdefault('source', 'llm')
@@ -145,19 +138,13 @@ class WriterPlanningTools(WriterToolBase):
         level: int,
         fallback_id: str,
         valid_reference_ids: set[str],
-        has_available_facts: bool,
     ) -> None:
         block.stage = 'outline'
         if not block.type.strip():
             block.type = 'heading'
         block.node_id = block.node_id or fallback_id
         block.numbering['level'] = level
-        if block.authoring is None:
-            block.authoring = WriterAuthoring()
-
         block.references = self._filter_references(block.references, valid_reference_ids)
-        if not has_available_facts:
-            block.authoring.constraints.fact_constraints = []
 
         for index, child in enumerate(block.children, start=1):
             self._normalize_outline_block(
@@ -165,7 +152,6 @@ class WriterPlanningTools(WriterToolBase):
                 level=level + 1,
                 fallback_id=f'{block.node_id}-{index}',
                 valid_reference_ids=valid_reference_ids,
-                has_available_facts=has_available_facts,
             )
 
     def _default_outline_id(self, task: WritingTask, context: WritingContext) -> str:
@@ -245,8 +231,6 @@ class WriterPlanningTools(WriterToolBase):
         outline: WriterDocument,
         has_available_facts: bool,
     ) -> SectionInstruction:
-        block_constraints = block.authoring.constraints if block.authoring else WriterConstraints()
-
         if not instruction.instruction_id.strip():
             raise ValueError(f'Section instruction for {block.node_id!r} has an empty instruction_id.')
         if not instruction.section_goal.strip():
@@ -255,21 +239,13 @@ class WriterPlanningTools(WriterToolBase):
         instruction.section_title = block.content
         instruction.references = [dict(reference) for reference in block.references]
         if not instruction.required_points:
-            instruction.required_points = list(block_constraints.required_points)
-        if not instruction.fact_constraints:
-            instruction.fact_constraints = list(block_constraints.fact_constraints)
+            instruction.required_points = [
+                child.content for child in block.children if child.content
+            ]
         if not has_available_facts:
             instruction.fact_constraints = []
-        if not instruction.style_constraints:
-            instruction.style_constraints = list(block_constraints.style_constraints)
-            if block_constraints.pov:
-                instruction.style_constraints.append(f'POV: {block_constraints.pov}')
-            if block_constraints.tone:
-                instruction.style_constraints.append(f'Tone: {block_constraints.tone}')
-        if not instruction.relation_constraints:
-            instruction.relation_constraints = list(block_constraints.relation_constraints)
         if not instruction.expected_blocks:
-            instruction.expected_blocks = self._default_expected_blocks(block, block_constraints)
+            instruction.expected_blocks = self._default_expected_blocks(block)
 
         instruction.meta.update(
             {
@@ -283,11 +259,11 @@ class WriterPlanningTools(WriterToolBase):
     def _default_expected_blocks(
         self,
         block: WriterBlock,
-        constraints: WriterConstraints,
     ) -> List[str]:
         blocks = [block.content] if block.content else []
-        if constraints.required_points:
-            blocks.extend(constraints.required_points[:3])
+        blocks.extend(
+            child.content for child in block.children[:3] if child.content
+        )
         return blocks
 
     def _valid_reference_ids(

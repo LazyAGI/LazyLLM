@@ -44,7 +44,7 @@ def _infer_schema_name(obj: Any) -> str:
 
 def _to_json_data(obj: Any) -> Any:
     if isinstance(obj, BaseModel):
-        return obj.model_dump()
+        return obj.model_dump(exclude_defaults=True)
     return obj
 
 
