@@ -10,4 +10,5 @@ Schema:
 {schema_json}
 
 If the input is incomplete, infer reasonable values from the available context. Do not omit required fields.
+Omit fields whose values equal their schema defaults.
 '''

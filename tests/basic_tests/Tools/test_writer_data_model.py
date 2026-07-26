@@ -4,9 +4,7 @@ import tempfile
 
 from lazyllm.tools.writer.data_models import (
     ResourceProfile,
-    WriterAuthoring,
     WriterBlock,
-    WriterConstraints,
     WriterDocument,
     WriterSpan,
     WritingContext,
@@ -35,10 +33,6 @@ def _make_writer_document():
         content='第一章',
         stage='draft',
         numbering={'level': 1},
-        authoring=WriterAuthoring(
-            instruction_id='instruction-1',
-            constraints=WriterConstraints(section_goal='介绍背景'),
-        ),
         children=[paragraph],
     )
     return WriterDocument(

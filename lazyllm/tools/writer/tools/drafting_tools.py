@@ -5,11 +5,7 @@ from typing import Any, List, Optional
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.task import WritingTask
-from ..data_models.writer_ir import (
-    WriterAuthoring,
-    WriterBlock,
-    WriterDocument,
-)
+from ..data_models.writer_ir import WriterBlock, WriterDocument
 from ..data_models.planning import SectionInstruction, SectionInstructionList
 from ..prompts import GENERATE_DRAFT_SECTION_PROMPT
 from ..utils import render_document_markdown, to_prompt_json
@@ -232,22 +228,11 @@ class WriterDraftingTools(WriterToolBase):
             if not child.type.strip():
                 child.type = 'paragraph'
 
-        authoring_meta = {}
-        for key in ('outline_id', 'outline_title'):
-            value = instruction.meta.get(key)
-            if value is not None:
-                authoring_meta[key] = value
-        draft_block.authoring = WriterAuthoring(
-            instruction_id=instruction.instruction_id,
-            origin_node_id=instruction.outline_node_id,
-            meta=authoring_meta,
-        )
-
         draft_block.references = [dict(reference) for reference in instruction.references]
         return draft_block
 
     def _default_section_node_id(self, instruction: SectionInstruction) -> str:
-        return f'draft-{instruction.outline_node_id}'
+        return instruction.outline_node_id
 
     def _unified_draft_blocks(self, value: Any) -> List[WriterBlock]:
         if value is None:
@@ -353,8 +338,6 @@ class WriterDraftingTools(WriterToolBase):
             context.meta.get('title') if context.meta else None,
             context.meta.get('document_title') if context.meta else None,
             context.meta.get('outline_title') if context.meta else None,
-            self._first_block_authoring_meta(blocks, 'document_title'),
-            self._first_block_authoring_meta(blocks, 'outline_title'),
         )
         if title:
             return str(title)
@@ -370,17 +353,6 @@ class WriterDraftingTools(WriterToolBase):
             total += len(block.children)
             total += self._count_draft_blocks(block.children)
         return total
-
-    def _first_block_authoring_meta(self, blocks: List[WriterBlock], key: str) -> Any:
-        for block in blocks:
-            if block.authoring and block.authoring.meta:
-                value = block.authoring.meta.get(key)
-                if value:
-                    return value
-            child_value = self._first_block_authoring_meta(block.children, key)
-            if child_value:
-                return child_value
-        return None
 
     def _first_non_empty(self, *values: Any) -> Any:
         for value in values:

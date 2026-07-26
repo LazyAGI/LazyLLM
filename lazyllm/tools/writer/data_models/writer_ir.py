@@ -2,56 +2,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 WriterStage = Literal['outline', 'draft', 'final']
 
-WRITER_BLOCK_MUTABLE_FIELDS = ('type', 'content', 'spans', 'stage', 'authoring', 'numbering', 'references')
+WRITER_BLOCK_MUTABLE_FIELDS = ('type', 'content', 'spans', 'stage', 'numbering', 'references')
 WRITER_BLOCK_PROVIDER_MANAGED_FIELDS = ('provider_binding', 'provider_payload', 'editable')
-
-
-class WriterConstraints(BaseModel):
-    '''Authoring requirements attached to a document block across all stages.'''
-
-    model_config = ConfigDict(extra='forbid')
-
-    section_goal: Optional[str] = None
-    required_points: List[str] = Field(default_factory=list)
-    fact_constraints: List[str] = Field(default_factory=list)
-    style_constraints: List[str] = Field(default_factory=list)
-    relation_constraints: List[str] = Field(default_factory=list)
-    min_words: Optional[int] = None
-    max_words: Optional[int] = None
-    pov: Optional[str] = None
-    tone: Optional[str] = None
-    must_include: List[str] = Field(default_factory=list)
-    must_avoid: List[str] = Field(default_factory=list)
-
-    @model_validator(mode='after')
-    def validate_word_range(self) -> 'WriterConstraints':
-        if self.min_words is not None and self.min_words < 0:
-            raise ValueError('min_words must be non-negative')
-        if self.max_words is not None and self.max_words < 0:
-            raise ValueError('max_words must be non-negative')
-        if (
-            self.min_words is not None and self.max_words is not None
-            and self.min_words > self.max_words
-        ):
-            raise ValueError('min_words cannot exceed max_words')
-        return self
-
-
-class WriterAuthoring(BaseModel):
-    '''Planning and execution metadata that does not belong to visible content.'''
-
-    # Provider/plugin extensions may add namespaced fields while the common contract
-    # above remains validated.
-    model_config = ConfigDict(extra='allow')
-    instruction_id: Optional[str] = None
-    origin_node_id: Optional[str] = None
-    constraints: WriterConstraints = Field(default_factory=WriterConstraints)
-    meta: Dict[str, Any] = Field(default_factory=dict)
 
 
 class WriterSpan(BaseModel):
@@ -70,7 +27,6 @@ class WriterBlock(BaseModel):
     spans: List[WriterSpan] = Field(default_factory=list)
     children: List['WriterBlock'] = Field(default_factory=list)
     stage: WriterStage
-    authoring: Optional[WriterAuthoring] = None
     numbering: Dict[str, Any] = Field(default_factory=dict)
     references: List[Dict[str, Any]] = Field(default_factory=list)
     # Provider-neutral binding contract. Common keys are provider, uri, document_id,
@@ -141,6 +97,5 @@ WriterDocument.model_rebuild()
 
 __all__ = [
     'WriterDocument', 'WriterBlock', 'WriterSpan', 'WriterStage',
-    'WriterConstraints', 'WriterAuthoring',
     'WRITER_BLOCK_MUTABLE_FIELDS', 'WRITER_BLOCK_PROVIDER_MANAGED_FIELDS',
 ]

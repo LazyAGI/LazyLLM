@@ -189,21 +189,13 @@ class WriterQualityTools(WriterToolBase):
         draft_block: WriterBlock,
         instruction_list: SectionInstructionList,
     ) -> Optional[SectionInstruction]:
-        draft_authoring = draft_block.authoring
-        instruction_id = draft_authoring.instruction_id if draft_authoring else None
-        origin_node_id = draft_authoring.origin_node_id if draft_authoring else None
-
-        if instruction_id:
-            for instruction in instruction_list.instructions:
-                if instruction.instruction_id == instruction_id:
-                    return instruction
-
-        if origin_node_id:
-            for instruction in instruction_list.instructions:
-                if instruction.outline_node_id == origin_node_id:
-                    return instruction
-
-        return None
+        return next(
+            (
+                instruction for instruction in instruction_list.instructions
+                if instruction.outline_node_id == draft_block.node_id
+            ),
+            None,
+        )
 
     def _issue_counts(self, audit_result: AuditResult) -> dict:
         return {

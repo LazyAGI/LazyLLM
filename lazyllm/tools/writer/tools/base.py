@@ -70,7 +70,7 @@ class WriterToolBase(ModuleBase):
         if isinstance(value, str):
             return self._load_artifact(value, validate_schema=False)
         if isinstance(value, BaseModel):
-            return value.model_dump()
+            return value.model_dump(exclude_defaults=True)
         return value
 
     def _write_single_artifact(

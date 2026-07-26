@@ -274,7 +274,6 @@ class FeishuWriterAdapter(WriterAdapterBase):
             previous = previous_blocks.get(block.node_id)
             if previous is None:
                 continue
-            block.authoring = deepcopy(previous.authoring)
             block.references = deepcopy(previous.references)
         return WriterDocument.model_validate(refreshed_document.model_dump())
 

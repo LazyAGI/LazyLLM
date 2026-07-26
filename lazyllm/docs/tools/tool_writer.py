@@ -154,14 +154,6 @@ add_writer_models_english_doc('PatchHunk.validate_operation', '''
 Validate the fields required by each patch operation.
 ''')
 
-add_writer_models_chinese_doc('WriterConstraints.validate_word_range', '''
-校验最小和最大字数限制。
-''')
-
-add_writer_models_english_doc('WriterConstraints.validate_word_range', '''
-Validate the minimum and maximum word count constraints.
-''')
-
 add_writer_adapter_chinese_doc('FeishuWriterAdapter.merge_refreshed_document', '''
 将刷新的飞书绑定信息合并到修订后的文档。
 ''')

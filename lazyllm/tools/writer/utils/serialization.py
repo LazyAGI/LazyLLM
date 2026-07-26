@@ -8,7 +8,7 @@ from ..data_models.writer_ir import WriterBlock, WriterDocument
 def to_prompt_json(value: Any) -> str:
     def default(obj: Any) -> Any:
         if hasattr(obj, 'model_dump'):
-            return obj.model_dump()
+            return obj.model_dump(exclude_defaults=True)
         return str(obj)
 
     return json.dumps(value, ensure_ascii=False, indent=2, default=default)

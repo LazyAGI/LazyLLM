@@ -9,9 +9,7 @@ from lazyllm.tools.writer.data_models import (
     DocumentSummary,
     MaterialStyle,
     ResourceProfile,
-    WriterAuthoring,
     WriterBlock,
-    WriterConstraints,
     WriterDocument,
     WriterSpan,
     WritingContext,
@@ -147,14 +145,10 @@ def _make_section_instruction_list():
 
 def _make_quality_draft_block():
     return WriterBlock(
-        node_id='sec-prologue',
+        node_id='prologue',
         type='heading',
         content='楔子 · 星辰陨落',
         stage='draft',
-        authoring=WriterAuthoring(
-            instruction_id='si-prologue',
-            origin_node_id='prologue',
-        ),
         children=[
             WriterBlock(
                 node_id='blk-pro-01',
@@ -595,11 +589,6 @@ def test_generate_section_instructions_preserves_outline_references():
                 content='第一节',
                 stage='outline',
                 references=references,
-                authoring=WriterAuthoring(
-                    constraints=WriterConstraints(
-                        fact_constraints=['未在上下文中出现的事实'],
-                    ),
-                ),
             )
         ],
     )
@@ -871,7 +860,7 @@ def test_validate_section_happy_path():
         report = load_artifact_json(result['artifact_path'], ReviewReport)
         assert result['metadata']['step_name'] == 'validate_section'
         assert report.result.is_passed is True
-        assert report.target == 'sec-prologue'
+        assert report.target == 'prologue'
         assert report.meta['instruction_id'] == 'si-prologue'
         assert report.meta['outline_node_id'] == 'prologue'
 
