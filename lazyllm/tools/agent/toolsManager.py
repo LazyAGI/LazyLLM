@@ -845,19 +845,40 @@ class ToolManager(ModuleBase):
         return tool, arguments
 
     @staticmethod
-    def _call_tool(tool, arguments):
+    def _tool_error(tool, error):
+        lazyllm.LOG.warning(
+            f'[ToolCall] tool={tool.name!r} raised: {type(error).__name__}: {error}')
+        return {
+            'ok': False,
+            'value': None,
+            'msg': f'[Tool Error] {type(error).__name__}: {error}',
+        }
+
+    @classmethod
+    def _call_tool(cls, tool, arguments):
         try:
             return {'ok': True, 'value': tool(arguments)}
         except Exception as e:
-            lazyllm.LOG.warning(f'[ToolCall] tool={tool.name!r} raised: {type(e).__name__}: {e}')
-            return {'ok': False, 'value': None, 'msg': f'[Tool Error] {type(e).__name__}: {e}'}
+            return cls._tool_error(tool, e)
+
+    def _call_sandbox(self, tool, arguments):
+        try:
+            return self._sandbox(**arguments)
+        except Exception as e:
+            return self._tool_error(tool, e)
 
     def _build_tool_invocation(self, tool_call):
         tool, arguments = self._parse_tool_call(tool_call)
         if tool is None:
             return lambda *_, _e=arguments: {'ok': False, 'value': None, 'msg': _e}, {}, None
         if self._sandbox and tool.execute_in_sandbox:
-            return self._sandbox, self._build_sandbox_args(tool, arguments), tool.serial_group
+            sandbox_arguments = self._build_sandbox_args(tool, arguments)
+            if tool.serial_group:
+                def _safe_sandbox_call(**kwargs):
+                    return self._call_sandbox(tool, kwargs)
+
+                return _safe_sandbox_call, sandbox_arguments, tool.serial_group
+            return self._sandbox, sandbox_arguments, None
 
         def _safe_call(args):
             return self._call_tool(tool, args)
@@ -915,7 +936,7 @@ class ToolManager(ModuleBase):
             indexed_results = branch_result if isinstance(branch_result, list) else [branch_result]
             for index, result in indexed_results:
                 ordered_results[index] = result
-        return ordered_results
+        return lazyllm.package(ordered_results)
 
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False):
         if not tools: return []

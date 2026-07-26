@@ -5,6 +5,7 @@ import time
 import lazyllm
 import pytest
 
+from lazyllm.flow.flow import FlowException
 from lazyllm.tools import ToolManager, fc_register, serial_tool
 
 
@@ -51,7 +52,7 @@ def test_method_serial_group_is_preserved_without_exposing_schema_metadata():
 
 def test_same_group_runs_in_order_and_failure_does_not_stop_lane():
     class Toolkit:
-        __public_apis__ = ['first', 'fail', 'last']
+        __public_apis__ = ['first', 'fail', 'last', 'plain']
 
         def __init__(self):
             self.active = 0
@@ -86,13 +87,22 @@ def test_same_group_runs_in_order_and_failure_does_not_stop_lane():
             '''Run last.'''
             return self._run('last')
 
+        def plain(self):
+            '''Run plain.'''
+            return 'plain'
+
     toolkit = Toolkit()
-    results = ToolManager([toolkit])([
+    manager = ToolManager([toolkit])
+    results = manager([
         _tool_call('Toolkit_first'),
         _tool_call('Toolkit_fail'),
         _tool_call('Toolkit_last'),
     ])
+    plain_results = manager([_tool_call('Toolkit_plain')])
 
+    assert isinstance(results, lazyllm.package)
+    assert isinstance(plain_results, lazyllm.package)
+    assert _value(plain_results[0]) == 'plain'
     assert _value(results[0]) == 'first'
     assert results[1]['ok'] is False
     assert _value(results[2]) == 'last'
@@ -165,6 +175,8 @@ def test_serial_sandbox_calls_preserve_results():
 
         def __call__(self, **kwargs):
             self.calls += 1
+            if self.calls == 2:
+                raise RuntimeError('expected sandbox failure')
             return {'sandbox_call': self.calls, 'has_code': bool(kwargs.get('code'))}
 
     sandbox = RecordingSandbox()
@@ -174,12 +186,34 @@ def test_serial_sandbox_calls_preserve_results():
     )([
         _tool_call('sandbox_first', {'value': 'first'}),
         _tool_call('sandbox_second', {'value': 'second'}),
+        _tool_call('sandbox_first', {'value': 'third'}),
     ])
 
-    assert results == [
-        {'sandbox_call': 1, 'has_code': True},
-        {'sandbox_call': 2, 'has_code': True},
-    ]
+    assert isinstance(results, lazyllm.package)
+    assert results[0] == {'sandbox_call': 1, 'has_code': True}
+    assert results[1] == {
+        'ok': False,
+        'value': None,
+        'msg': '[Tool Error] RuntimeError: expected sandbox failure',
+    }
+    assert results[2] == {'sandbox_call': 3, 'has_code': True}
+
+
+def test_plain_sandbox_failure_still_raises():
+    def plain_sandbox_tool(value: str):
+        '''Return a value.
+
+        Args:
+            value: Input value.
+        '''
+        return value
+
+    def failing_sandbox(**kwargs):
+        raise RuntimeError('expected plain sandbox failure')
+
+    manager = ToolManager([plain_sandbox_tool], sandbox=failing_sandbox)
+    with pytest.raises(FlowException, match='expected plain sandbox failure'):
+        manager([_tool_call('plain_sandbox_tool', {'value': 'plain'})])
 
 
 def test_registered_functions_preserve_group_in_both_decorator_orders():
