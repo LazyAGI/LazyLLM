@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from lazyllm import init_session, locals as lazyllm_locals
-from lazyllm.tools.agent.toolsManager import ToolManager
+from lazyllm.tools.agent.toolsManager import ToolManager, _build_tool_desc
 from lazyllm.tools.fs.supplier.googledrive import GoogleDriveFS
 from tests.basic_tests.Tools.fs_test_utils import load_fs_docs_only
 
@@ -185,9 +185,32 @@ class TestGoogleDriveSearch(unittest.TestCase):
         self.assertNotIn('GoogleDriveFS_rm', names)
 
         search_tool = next(tool for tool in manager.all_tools if tool.name == 'GoogleDriveFS_search')
+        find_tool = next(tool for tool in manager.all_tools if tool.name == 'GoogleDriveFS_find')
         keywords_schema = search_tool.params_schema.model_json_schema()['properties']['keywords']
         self.assertEqual(keywords_schema['type'], 'array')
         self.assertNotIn('anyOf', keywords_schema)
+        search_desc = _build_tool_desc(search_tool)
+        find_desc = _build_tool_desc(find_tool)
+        self.assertEqual(
+            search_desc['function']['description'].strip(),
+            'Search the live source Google Drive with the official files.list API, '
+            'not a local LazyLLM knowledge base. Accepts one or more keywords combined '
+            'with AND, with optional exact file-name, shared-drive, and direct parent-folder scopes.'
+        )
+        self.assertEqual(
+            search_desc['function']['parameters']['properties']['keywords']['description'],
+            'One keyword/phrase or multiple keywords/phrases.'
+        )
+        self.assertEqual(
+            find_desc['function']['description'].strip(),
+            'Find Google Drive files by applying a Python regular expression to file names only. '
+            'The Drive API lists candidates within optional shared-drive or parent-folder scopes; '
+            'file content is not searched.'
+        )
+        self.assertEqual(
+            find_desc['function']['parameters']['properties']['pattern']['description'],
+            'Python regular expression applied to the full file name.'
+        )
         self.assertEqual(search_tool._validate_input({'keywords': 'release'}), {'keywords': ['release']})
         self.assertEqual(search_tool._validate_input({'query': 'release'}), {'keywords': ['release']})
 
