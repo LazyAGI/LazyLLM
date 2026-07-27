@@ -208,14 +208,11 @@ class WriterContextTools(WriterToolBase):
             return 'WriterBlock'
 
         if isinstance(artifact, str):
-            try:
-                import json as _json
-                with open(artifact, 'r', encoding='utf-8') as file:
-                    schema = _json.load(file).get('schema', '')
-                kind = schema.rsplit('.', 1)[-1] if '.' in schema else schema
-                return kind if kind in ('WriterDocument', 'WriterBlock') else None
-            except Exception:
-                return None
+            import json as _json
+            with open(artifact, 'r', encoding='utf-8') as file:
+                schema = _json.load(file).get('schema', '')
+            kind = schema.rsplit('.', 1)[-1] if '.' in schema else schema
+            return kind if kind in ('WriterDocument', 'WriterBlock') else None
 
         candidate = raw if raw is not None else artifact
         if isinstance(candidate, dict):

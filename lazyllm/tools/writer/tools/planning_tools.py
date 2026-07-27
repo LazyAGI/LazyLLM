@@ -27,7 +27,7 @@ class WriterPlanningTools(WriterToolBase):
         writing_task = self._unified_model(task, WritingTask)
         writing_context = self._unified_model(context, WritingContext)
         profiles = self._unified_models(resource_profiles, ResourceProfile)
-        execution_data = self._normalize_execution_results(execution_results)
+        execution_data = self._unified_raw_data(execution_results)
         document_id_hint = self._default_outline_id(writing_task, writing_context)
 
         prompt = GENERATE_OUTLINE_PROMPT.format(
@@ -67,7 +67,7 @@ class WriterPlanningTools(WriterToolBase):
     ) -> dict:
         writing_outline = self._unified_model(outline, WriterDocument)
         writing_context = self._unified_model(context, WritingContext)
-        execution_data = self._normalize_execution_results(execution_results)
+        execution_data = self._unified_raw_data(execution_results)
         target_blocks = writing_outline.blocks
 
         prompt = GENERATE_SECTION_INSTRUCTIONS_PROMPT.format(
@@ -100,9 +100,6 @@ class WriterPlanningTools(WriterToolBase):
             },
         )
         return result.model_dump()
-
-    def _normalize_execution_results(self, execution_results: Any) -> Any:
-        return self._unified_raw_data(execution_results)
 
     def _normalize_outline(
         self,
@@ -238,14 +235,8 @@ class WriterPlanningTools(WriterToolBase):
 
         instruction.section_title = block.content
         instruction.references = [dict(reference) for reference in block.references]
-        if not instruction.required_points:
-            instruction.required_points = [
-                child.content for child in block.children if child.content
-            ]
         if not has_available_facts:
             instruction.fact_constraints = []
-        if not instruction.expected_blocks:
-            instruction.expected_blocks = self._default_expected_blocks(block)
 
         instruction.meta.update(
             {
@@ -255,16 +246,6 @@ class WriterPlanningTools(WriterToolBase):
             }
         )
         return instruction
-
-    def _default_expected_blocks(
-        self,
-        block: WriterBlock,
-    ) -> List[str]:
-        blocks = [block.content] if block.content else []
-        blocks.extend(
-            child.content for child in block.children[:3] if child.content
-        )
-        return blocks
 
     def _valid_reference_ids(
         self,

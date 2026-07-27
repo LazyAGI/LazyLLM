@@ -204,7 +204,7 @@ class WriterDraftingTools(WriterToolBase):
         draft_block: WriterBlock,
         instruction: SectionInstruction,
     ) -> WriterBlock:
-        section_id = self._default_section_node_id(instruction)
+        section_id = instruction.outline_node_id
         draft_block.node_id = section_id
         draft_block.stage = 'draft'
         draft_block.type = 'heading'
@@ -214,14 +214,6 @@ class WriterDraftingTools(WriterToolBase):
             level = 1
         draft_block.numbering['level'] = level
 
-        if not draft_block.children:
-            draft_block.children.append(WriterBlock(
-                node_id=f'{section_id}-block-1',
-                type='paragraph',
-                content='',
-                stage='draft',
-            ))
-
         for index, child in enumerate(draft_block.children, start=1):
             child.node_id = child.node_id or f'{section_id}-block-{index}'
             child.stage = 'draft'
@@ -230,9 +222,6 @@ class WriterDraftingTools(WriterToolBase):
 
         draft_block.references = [dict(reference) for reference in instruction.references]
         return draft_block
-
-    def _default_section_node_id(self, instruction: SectionInstruction) -> str:
-        return instruction.outline_node_id
 
     def _unified_draft_blocks(self, value: Any) -> List[WriterBlock]:
         if value is None:
@@ -245,8 +234,6 @@ class WriterDraftingTools(WriterToolBase):
             value = self._load_artifact(value, validate_schema=False)
             return self._unified_draft_blocks(value)
         if isinstance(value, dict):
-            if 'draft' in value:
-                return self._unified_draft_blocks(value['draft'])
             if 'blocks' in value:
                 return [WriterBlock.model_validate(b) for b in value['blocks']]
             return [WriterBlock.model_validate(value)]
@@ -267,10 +254,6 @@ class WriterDraftingTools(WriterToolBase):
             value = self._load_artifact(value, validate_schema=False)
             return self._unified_draft_document(value, context)
         if isinstance(value, dict):
-            if 'data' in value:
-                return self._unified_draft_document(value['data'], context)
-            if 'draft' in value:
-                return self._unified_draft_document(value['draft'], context)
             if 'blocks' in value:
                 return WriterDocument.model_validate(value)
 
@@ -284,7 +267,7 @@ class WriterDraftingTools(WriterToolBase):
         return WriterDocument(
             document_id=self._default_draft_document_id(context),
             stage='draft',
-            title=self._default_draft_document_title(context, normalized_blocks),
+            title=self._resolve_draft_document_title(None, None, context, normalized_blocks),
             blocks=normalized_blocks,
             ui_editable=False,
             metadata={
@@ -318,13 +301,6 @@ class WriterDraftingTools(WriterToolBase):
         source_id = draft_document.document_id or context.context_id or context.doc_id or 'document'
         return f'output-{source_id}'
 
-    def _default_draft_document_title(
-        self,
-        context: WritingContext,
-        blocks: List[WriterBlock],
-    ) -> str:
-        return self._resolve_draft_document_title(None, None, context, blocks)
-
     def _resolve_draft_document_title(
         self,
         title: Any,
@@ -332,20 +308,11 @@ class WriterDraftingTools(WriterToolBase):
         context: WritingContext,
         blocks: List[WriterBlock],
     ) -> str:
-        title = self._first_non_empty(
-            title,
-            outline.title if outline else None,
-            context.meta.get('title') if context.meta else None,
-            context.meta.get('document_title') if context.meta else None,
-            context.meta.get('outline_title') if context.meta else None,
-        )
         if title:
             return str(title)
-        if context.doc_id:
-            return context.doc_id
-        if blocks and blocks[0].content:
-            return blocks[0].content
-        return 'Draft Document'
+        if outline:
+            return outline.title
+        return ''
 
     def _count_draft_blocks(self, blocks: List[WriterBlock]) -> int:
         total = 0
@@ -353,12 +320,6 @@ class WriterDraftingTools(WriterToolBase):
             total += len(block.children)
             total += self._count_draft_blocks(block.children)
         return total
-
-    def _first_non_empty(self, *values: Any) -> Any:
-        for value in values:
-            if value:
-                return value
-        return None
 
     def _write_output_file(self, document: WriterDocument, content: str) -> str:
         if not self.artifact_store:

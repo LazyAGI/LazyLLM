@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 
 WriterStage = Literal['outline', 'draft', 'final']
@@ -26,7 +26,7 @@ class WriterBlock(BaseModel):
     content: str = ''
     spans: List[WriterSpan] = Field(default_factory=list)
     children: List['WriterBlock'] = Field(default_factory=list)
-    stage: WriterStage
+    stage: WriterStage = 'draft'
     numbering: Dict[str, Any] = Field(default_factory=dict)
     references: List[Dict[str, Any]] = Field(default_factory=list)
     # Provider-neutral binding contract. Common keys are provider, uri, document_id,
@@ -36,16 +36,6 @@ class WriterBlock(BaseModel):
     # the normalized Writer fields. It is never part of the visible document body.
     provider_payload: Dict[str, Any] = Field(default_factory=dict)
     editable: bool = True
-
-    @model_validator(mode='after')
-    def validate_block(self) -> 'WriterBlock':
-        if not self.node_id.strip():
-            raise ValueError('node_id must be a non-empty internal Writer IR identifier')
-        if not self.type.strip():
-            raise ValueError('type must be non-empty')
-        if self.spans and ''.join(span.text for span in self.spans) != self.content:
-            raise ValueError('content must equal the concatenated span text when spans are present')
-        return self
 
     def iter_blocks(self) -> Iterable['WriterBlock']:
         yield self
@@ -62,7 +52,7 @@ class WriterDocument(BaseModel):
     # document_id is always the internal Writer IR document identifier. External
     # document IDs belong in provider_binding.document_id.
     document_id: str
-    stage: WriterStage
+    stage: WriterStage = 'draft'
     title: str = ''
     blocks: List[WriterBlock] = Field(default_factory=list)
     revision: Optional[str] = None
@@ -70,15 +60,6 @@ class WriterDocument(BaseModel):
     provider_binding: Dict[str, Any] = Field(default_factory=dict)
     # UI capability hint only. Backend patch/write permissions are enforced separately.
     ui_editable: bool = False
-
-    @model_validator(mode='after')
-    def validate_document(self) -> 'WriterDocument':
-        if not self.document_id.strip():
-            raise ValueError('document_id must be a non-empty internal Writer IR identifier')
-        node_ids = [block.node_id for block in self.iter_blocks()]
-        if len(node_ids) != len(set(node_ids)):
-            raise ValueError('WriterDocument node_id values must be unique')
-        return self
 
     def iter_blocks(self) -> Iterable[WriterBlock]:
         def walk(blocks: List[WriterBlock]) -> Iterable[WriterBlock]:
