@@ -156,7 +156,10 @@ class FunctionCall(ModuleBase):
                 f'round_limit={round_limit} remaining_rounds={remaining_rounds}'
             )
             budget_message = {'role': 'system', 'content': f'Internal ReAct rounds left: {remaining_rounds}.'}
-            chat_history = [budget_message, *chat_history]
+            if isinstance(input, dict) and isinstance(input.get('input'), list):
+                input = {**input, 'input': [*input['input'], budget_message]}
+            else:
+                chat_history = [*chat_history, budget_message]
         locals['chat_history'][self._llm._module_id] = chat_history
         return input
 
