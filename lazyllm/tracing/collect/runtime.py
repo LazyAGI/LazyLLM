@@ -16,6 +16,7 @@ from lazyllm.thirdparty import opentelemetry
 from lazyllm.tracing.backends import get_tracing_backend
 from lazyllm.tracing.semantics import SemanticType, is_valid_trace_id
 from .context import LazyTraceContext
+from .configs import _trace_target_name, resolve_runtime_module_trace_disabled
 from .span import LazySpan, LazyTrace
 from .trace_config import collect_trace_config, resolve_semantic_type_for_target
 
@@ -624,7 +625,10 @@ def _run_with_trace(func, args, kwargs, trace_config):
 
     span = None
     if not is_lazyllm_component:
-        span = start_span(span_kind='callable', target=func, args=args, kwargs=kwargs)
+        if not resolve_runtime_module_trace_disabled(
+            module_trace, module_name=_trace_target_name(func), module_class=func.__class__
+        ):
+            span = start_span(span_kind='callable', target=func, args=args, kwargs=kwargs)
 
     try:
         result = func(*args, **kwargs)

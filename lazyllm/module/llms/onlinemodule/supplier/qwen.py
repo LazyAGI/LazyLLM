@@ -87,6 +87,9 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
         data = dict(data)
         if data.get('stream'):
             data['incremental_output'] = True
+            stream_options = dict(data.get('stream_options') or {})
+            stream_options.setdefault('include_usage', True)
+            data['stream_options'] = stream_options
         else:
             data.pop('incremental_output', None)
         return data

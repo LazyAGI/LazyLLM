@@ -54,6 +54,15 @@ def get_default_module_trace_config() -> dict:
 _MISSING = object()
 
 
+def _trace_target_name(target):
+    return (
+        getattr(target, 'name', None)
+        or getattr(target, '_module_name', None)
+        or getattr(target, '__name__', None)
+        or target.__class__.__name__
+    )
+
+
 def _module_class_names(module_class):
     if module_class is None:
         return ()

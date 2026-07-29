@@ -3,7 +3,11 @@ from typing import Any
 from lazyllm.common import LOG, globals
 from lazyllm.configs import config
 from lazyllm.hook import LazyLLMHook, register_builtin_hook_provider
-from .configs import resolve_default_module_trace, resolve_runtime_module_trace_disabled
+from .configs import (
+    _trace_target_name,
+    resolve_default_module_trace,
+    resolve_runtime_module_trace_disabled,
+)
 from .output_attrs import (
     collect_trace_output_attrs,
     enter_switch_ifs_matched_scope,
@@ -70,10 +74,9 @@ class LazyTracingHook(LazyLLMHook):
             return
 
         t = self._trace_target()
-        if hasattr(t, '_module_id') and resolve_runtime_module_trace_disabled(
-            trace_cfg.get('module_trace'),
-            module_name=getattr(t, 'name', None) or getattr(t, '_module_name', None),
-            module_class=t.__class__,
+        target_name = _trace_target_name(t)
+        if resolve_runtime_module_trace_disabled(
+            trace_cfg.get('module_trace'), module_name=target_name, module_class=t.__class__
         ):
             return
 
@@ -128,12 +131,10 @@ def resolve_tracing_hooks(obj):
     if not config['trace_enabled']:
         return []
     subject = _unwrap_trace_subject(obj)
-    if hasattr(subject, '_module_id'):
-        if not resolve_default_module_trace(
-            module_name=getattr(subject, 'name', None) or getattr(subject, '_module_name', None),
-            module_class=subject.__class__,
-        ):
-            return []
+    if not resolve_default_module_trace(
+        module_name=_trace_target_name(subject), module_class=subject.__class__,
+    ):
+        return []
     return [LazyTracingHook]
 
 
