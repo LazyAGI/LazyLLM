@@ -314,6 +314,7 @@ class TracingRuntime:
                 session_id=ctx.session_id,
                 user_id=ctx.user_id,
                 request_tags=list(ctx.request_tags) if ctx.request_tags else [],
+                metadata=dict(ctx.trace_metadata),
                 is_reconstructed=is_reconstructed,
             )
             _current_trace.set(new_trace)
