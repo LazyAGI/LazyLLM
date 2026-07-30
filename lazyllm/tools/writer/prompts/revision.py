@@ -1,56 +1,43 @@
 # flake8: noqa
-LOCATE_REVISION_TARGET_PROMPT = '''You are a revision target locator. Given a writing task (the user's revision request), a document (WriterDocument), and the writing context, identify which document blocks need to be modified.
+LOCATE_REVISION_TARGET_PROMPT = '''You are a revision target locator. Identify the existing document blocks that participate in the requested revision.
 
-Rules:
-- Read task.query carefully — it contains the user's revision request.
-- Examine every document block and select the ones the revision acts on.
-- If the request changes the document title, set target_title to true. The document
-  title is WriterDocument.title, not a content block; do not select a document/root
-  block merely to change the title.
-- If the request does not change the document title, set target_title to false.
-- For update/delete, select the blocks whose content, formatting, type, or existence changes.
-- For create, select the existing block used as the insertion anchor.
-- For move, select the block being moved. Do not select the destination block merely because it is the destination.
-- Select node_ids ONLY from the candidate list below. Never invent node_ids.
-- Be precise: do not select blocks that are unrelated to the request.
-- target_reasons: for each selected node_id, give a one-sentence reason why it is involved.
-- summary: one concise sentence describing what was located (which blocks and why). Never leave it null.
-- If no blocks are involved, return an empty target_node_ids list.
+Output semantics:
+- task.query is the revision request.
+- target_title indicates whether the document title participates in the revision.
+- Updates and deletions target the blocks being changed.
+- Insertions target the existing section or block being extended.
+- Reordering targets every existing block whose relative order participates in the change.
+- target_node_ids contains the relevant node_id values copied from the document blocks.
+- target_reasons briefly states each selected block's role.
+- summary describes the revision scope in one sentence.
+- A body revision has one or more target_node_ids.
 
 Writing task:
 {task_json}
 
-Document (WriterDocument):
+Document blocks in source order:
 {document_json}
-
-Writing context:
-{context_json}
-
-Candidate node_ids (select from these only):
-{candidate_node_ids}
 '''
 
 
-GENERATE_MODIFY_PLAN_PROMPT = '''You are a modify plan generator. Given a writing task, the located target blocks, and the writing context, produce a ModifyPlan.
+GENERATE_MODIFY_PLAN_PROMPT = '''You are a revision planner. Translate the requested end state into a ModifyPlan over the located source blocks.
 
-Rules:
-- If locate_result.target_title is true, set title_instruction to a clear instruction
-  describing the requested document-title change. Otherwise leave title_instruction null.
-- A document-title change is separate from block instructions and does not need a
-  synthetic document/root block instruction.
-- For each target block, decide the modify_type and write a clear, specific instruction.
-- modify_type must be one of:
-  - create: insert one or more brand-new blocks before or after the target block. The target block is the insertion anchor; set position to before or after.
-  - update: update any user-visible field of the target block, including content, type, numbering, and spans.
-  - delete: remove the target block.
-  - move: move the target block before or after another existing block. Set anchor_node_id to the destination block and position to before or after.
-- instruction: a concise description of what change to make to that block, derived from task.query.
-- Every ModifyInstruction.target_node_id must come from the locate_result's target_node_ids. Produce exactly one instruction per target block.
-- For move, anchor_node_id may reference any node_id in the supplied document, including a block outside the located target set.
-- scope: one of document / section / block / span — pick the most fitting one for this revision.
-- summary: one concise sentence describing the overall revision plan. Never leave it null.
-- Respect the writing context: keep facts consistent (never alter locked facts), preserve terminology and the style profile.
-- Do not invent facts that conflict with the writing context.
+Plan semantics:
+- title_instruction describes the requested title result when target_title is true.
+- Each ModifyInstruction represents one content or structural operation:
+  - create inserts a contiguous sequence of new sibling blocks;
+  - update changes the visible fields of an existing block;
+  - delete removes an existing block;
+  - move relocates an existing block.
+- A contiguous insertion uses one create instruction so its blocks share one destination
+  and retain their final document order.
+- target_node_id identifies the located source block involved in the operation.
+- create and move use anchor_node_id and position to identify their destination; the
+  anchor may be any existing block in the document.
+- instruction describes the complete visible result of the operation.
+- instruction_id is unique, and instructions follow execution order.
+- scope and summary describe the plan as a whole.
+- The result preserves the facts, terminology, and style established by the writing context.
 
 Writing task:
 {task_json}
@@ -66,31 +53,21 @@ Writing context:
 '''
 
 
-GENERATE_PATCH_SET_PROMPT = '''You are a document patch generator. Given a WriterDocument, a ModifyPlan, and the writing context, return a PatchSet that applies the requested changes to the original document.
+GENERATE_PATCH_SET_PROMPT = '''You are a revision content writer. Produce the visible document content requested by a ModifyPlan.
 
-Rules:
-- Return only a PatchSet, never a complete WriterDocument.
-- target_doc_id must equal the supplied document_id.
-- Produce exactly one hunk for each ModifyInstruction, in the same order and with the
-  same modify_type.
-- update: target_node_id must be the existing target. Include a complete WriterBlock
-  with the same node_id, provider_binding, provider_payload, and editable values.
-  Change only requested user-visible fields. Heading levels belong in type="heading"
-  and numbering.level. Inline formatting belongs in spans.
-- create: target_node_id and block.node_id must be a new unique ID beginning with
-  "writer-new-". Include the complete new WriterBlock, parent_node_id, and index.
-  Leave provider_binding and provider_payload empty.
-- delete: target_node_id must be the existing target. Do not include block,
-  parent_node_id, or index.
-- move: target_node_id must be the existing target. Do not include block. Resolve the
-  requested destination to parent_node_id and index in the original document.
-- Set new_title only when title_instruction requests a title change; otherwise null.
-- Give every hunk a stable hunk_id. Do not copy or rewrite unrelated blocks.
-- Generated text must be complete and self-contained. Never produce placeholders or ellipsis-only output.
-- Respect the writing context: keep facts consistent (never alter locked facts), preserve terminology and style.
-- Do not invent facts that conflict with the writing context.
+Output semantics:
+- changes maps each instruction_id to its authored content.
+- An update contains one RevisionBlockContent describing the resulting visible fields.
+  Omitted type, numbering, and references retain their source values. Spans represent
+  retained inline formatting and concatenate to the block content.
+- A create contains all new sibling blocks in final document order. Children represent
+  genuine document hierarchy.
+- Delete and move instructions have empty content lists because their result is structural.
+- new_title represents title_instruction when the plan includes a title revision.
+- Headings use type="heading" with numbering.level; inline formatting uses spans.
+- All authored content is complete, self-contained, and consistent with the writing context.
 
-Document (WriterDocument):
+Visible document:
 {document_json}
 
 Modify plan:

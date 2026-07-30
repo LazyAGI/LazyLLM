@@ -145,7 +145,7 @@ class WriterPlanningTools(WriterToolBase):
         context: WritingContext,
         execution_results: Any,
     ) -> SectionInstructionList:
-        target_blocks = outline.blocks
+        target_blocks = [block for block in outline.blocks if block.type == 'heading']
         target_by_id = {block.node_id: block for block in target_blocks}
         instruction_by_node_id: Dict[str, SectionInstruction] = {}
 

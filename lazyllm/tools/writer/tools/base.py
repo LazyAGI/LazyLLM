@@ -209,8 +209,8 @@ class WriterToolBase(ModuleBase):
                     f'Failed to parse LLM output as JSON for {schema.__name__}. '
                     f'Response: {response!r}'
                 ) from exc
-        if isinstance(parsed, list) and len(parsed) == 1:
-            parsed = parsed[0]
+        if isinstance(parsed, list):
+            parsed = next((item for item in reversed(parsed) if isinstance(item, dict)), parsed)
         if isinstance(parsed, dict):
             try:
                 return schema.model_validate(parsed)

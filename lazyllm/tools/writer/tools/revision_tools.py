@@ -1,16 +1,19 @@
 from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Set, Tuple
+from uuid import uuid4
 
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.revision import (
+    GeneratedRevision,
     LocateResult,
     ModifyInstruction,
     ModifyPlan,
     PatchHunk,
     PatchResult,
     PatchSet,
+    RevisionBlockContent,
 )
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import (
@@ -18,6 +21,7 @@ from ..data_models.writer_ir import (
     WRITER_BLOCK_PROVIDER_MANAGED_FIELDS,
     WriterBlock,
     WriterDocument,
+    WriterStage,
 )
 from ..prompts import (
     GENERATE_MODIFY_PLAN_PROMPT,
@@ -34,6 +38,9 @@ def apply_patch_to_ir(
     '''Apply a provider-neutral patch without artifact or context dependencies.'''
     tools = WriterRevisionTools()
     tools._validate_patch(document, patch_set)
+    if not patch_set.hunks \
+            and (patch_set.new_title is None or patch_set.new_title == document.title):
+        raise ValueError('patch contains no document operations.')
     revised_doc = document.model_copy(deep=True)
     revised_doc.ui_editable = False
     if patch_set.new_title is not None:
@@ -158,7 +165,6 @@ class WriterRevisionTools(WriterToolBase):
                 f'task.task_type must be \'revise\', got {writing_task.task_type!r}.'
             )
         source_doc = self._unified_model(document, WriterDocument)
-        writing_context = self._unified_model(context, WritingContext)
         user_selection = writing_task.selection
 
         valid_node_ids = {
@@ -174,9 +180,15 @@ class WriterRevisionTools(WriterToolBase):
 
         prompt = LOCATE_REVISION_TARGET_PROMPT.format(
             task_json=to_prompt_json(writing_task),
-            document_json=to_prompt_json(source_doc),
-            context_json=to_prompt_json(writing_context),
-            candidate_node_ids=to_prompt_json(sorted(candidate_node_ids)),
+            document_json=to_prompt_json([
+                {
+                    'node_id': block.node_id,
+                    'type': block.type,
+                    'content': block.content,
+                }
+                for block in source_doc.iter_blocks()
+                if block.node_id in candidate_node_ids
+            ]),
         )
         locate_result = self._call_llm_structured(prompt, LocateResult)
 
@@ -187,6 +199,8 @@ class WriterRevisionTools(WriterToolBase):
                 f'locate_result contains node_ids not in candidates: {invalid}.'
             )
         locate_result.target_node_ids = list(dict.fromkeys(located))
+        if not locate_result.target_node_ids and not locate_result.target_title:
+            raise ValueError('locate_result contains no revision targets.')
         locate_result.target_reasons = {
             nid: locate_result.target_reasons.get(nid, '')
             for nid in locate_result.target_node_ids
@@ -199,11 +213,7 @@ class WriterRevisionTools(WriterToolBase):
             step_name='locate_revision_target',
             primary_key='locate_result',
             context_key=None,
-            summary=(
-                'No revision targets located.'
-                if not locate_result.target_node_ids and not locate_result.target_title
-                else 'Located revision targets.'
-            ),
+            summary='Located revision targets.',
             counts={
                 'target_node_count': len(locate_result.target_node_ids),
                 'target_title': int(locate_result.target_title),
@@ -231,6 +241,11 @@ class WriterRevisionTools(WriterToolBase):
         located = self._unified_model(locate_result, LocateResult)
         writing_context = self._unified_model(context, WritingContext)
 
+        if located.doc_id != source_doc.document_id:
+            raise ValueError('locate_result does not belong to the current document.')
+        if writing_task.task_id is not None and located.task_id != writing_task.task_id:
+            raise ValueError('locate_result does not belong to the current task.')
+
         if located.target_node_ids or located.target_title:
             block_map = {b.node_id: b for b in source_doc.iter_blocks()}
             missing = [nid for nid in located.target_node_ids if nid not in block_map]
@@ -239,7 +254,7 @@ class WriterRevisionTools(WriterToolBase):
 
             prompt = GENERATE_MODIFY_PLAN_PROMPT.format(
                 task_json=to_prompt_json(writing_task),
-                document_json=to_prompt_json(source_doc),
+                document_json=to_prompt_json(self._visible_document(source_doc)),
                 locate_result_json=to_prompt_json(located),
                 context_json=to_prompt_json(writing_context),
             )
@@ -289,14 +304,13 @@ class WriterRevisionTools(WriterToolBase):
         )
         if plan.instructions or plan.title_instruction:
             prompt = GENERATE_PATCH_SET_PROMPT.format(
-                document_json=to_prompt_json(source_doc),
+                document_json=to_prompt_json(self._visible_document(source_doc)),
                 modify_plan_json=to_prompt_json(plan),
                 context_json=to_prompt_json(writing_context),
             )
-            patch_set = self._call_llm_structured(prompt, PatchSet)
-            self._normalize_generated_patch(source_doc, plan, patch_set)
+            generated = self._call_llm_structured(prompt, GeneratedRevision)
+            patch_set = self._compile_generated_revision(source_doc, plan, generated)
             apply_patch_to_ir(source_doc, patch_set)
-            patch_set.meta['source'] = 'generate_patch_set'
 
         result = self._save_artifacts(
             {'patch_set': patch_set},
@@ -315,41 +329,107 @@ class WriterRevisionTools(WriterToolBase):
         )
         return result.model_dump()
 
-    def _normalize_generated_patch(
+    def _compile_generated_revision(
         self,
         document: WriterDocument,
         plan: ModifyPlan,
-        patch: PatchSet,
-    ) -> None:
-        if patch.target_doc_id != document.document_id:
-            raise ValueError('generated patch targets a different document.')
-        if plan.title_instruction is None and patch.new_title is not None:
-            raise ValueError('generated patch changes title without a title instruction.')
-        if plan.title_instruction is not None and not (patch.new_title or '').strip():
-            raise ValueError('generated patch omits the requested title change.')
-        if len(patch.hunks) != len(plan.instructions):
-            raise ValueError('generated patch must contain one hunk per modify instruction.')
+        generated: GeneratedRevision,
+    ) -> PatchSet:
+        if plan.title_instruction is not None and not (generated.new_title or '').strip():
+            raise ValueError('generated revision omits the requested title change.')
 
-        for instruction, hunk in zip(plan.instructions, patch.hunks):
-            if hunk.modify_type != instruction.modify_type:
-                raise ValueError(
-                    f'generated hunk type {hunk.modify_type!r} does not match '
-                    f'instruction type {instruction.modify_type!r}.'
-                )
-            if (
-                instruction.modify_type != 'create'
-                and hunk.target_node_id != instruction.target_node_id
-            ):
-                raise ValueError(
-                    f'generated hunk targets {hunk.target_node_id!r}, expected '
-                    f'{instruction.target_node_id!r}.'
-                )
-            hunk.hunk_id = hunk.hunk_id or (
-                f'{hunk.modify_type}-{hunk.target_node_id}'
+        revised = document.model_copy(deep=True)
+        if plan.title_instruction is not None:
+            revised.title = generated.new_title
+        for instruction in plan.instructions:
+            self._apply_generated_instruction(
+                revised, instruction, generated.changes[instruction.instruction_id],
             )
-            hunk.meta['instruction_id'] = instruction.instruction_id
+        patch = self._diff_documents(document, revised)
+        patch.patch_id = f'patch-{document.document_id or "document"}'
+        patch.meta['source'] = 'generate_patch_set'
+        return patch
 
-        self._validate_patch(document, patch)
+    def _apply_generated_instruction(
+        self,
+        revised: WriterDocument,
+        instruction: ModifyInstruction,
+        blocks: List[RevisionBlockContent],
+    ) -> None:
+        if instruction.modify_type == 'update':
+            content, = blocks
+            target = revised.block_by_id(instruction.target_node_id)
+            self._apply_block_content(target, content)
+            return
+
+        if instruction.modify_type == 'create':
+            if not blocks:
+                raise ValueError(
+                    f'create instruction {instruction.instruction_id!r} requires new content blocks.')
+            parent_id, index = self._insertion_point(
+                revised, instruction.anchor_node_id, instruction.position)
+            siblings = self._children_for_parent(revised, parent_id)
+            for offset, content in enumerate(blocks):
+                siblings.insert(
+                    index + offset,
+                    self._new_block(revised.stage, content),
+                )
+            return
+
+        target = revised.block_by_id(instruction.target_node_id)
+        self._remove_block(revised, target)
+        if instruction.modify_type == 'move':
+            parent_id, index = self._insertion_point(
+                revised, instruction.anchor_node_id, instruction.position)
+            self._children_for_parent(revised, parent_id).insert(index, target)
+
+    def _apply_block_content(
+        self,
+        target: WriterBlock,
+        content: RevisionBlockContent,
+    ) -> None:
+        if content.children:
+            raise ValueError('update content cannot replace a block subtree.')
+        if content.type is not None:
+            target.type = content.type
+        if content.content is not None:
+            target.content = content.content
+            if content.spans is None:
+                target.spans = []
+        if content.spans is not None:
+            target.spans = deepcopy(content.spans)
+        if content.numbering is not None:
+            target.numbering = deepcopy(content.numbering)
+        if content.references is not None:
+            target.references = deepcopy(content.references)
+        WriterBlock.model_validate(target.model_dump())
+
+    def _new_block(
+        self,
+        stage: WriterStage,
+        content: RevisionBlockContent,
+    ) -> WriterBlock:
+        return WriterBlock(
+            node_id=f'writer-new-{uuid4()}',
+            type=content.type,
+            content=content.content,
+            spans=deepcopy(content.spans or []),
+            children=[
+                self._new_block(stage, child) for child in content.children
+            ],
+            stage=stage,
+            numbering=deepcopy(content.numbering or {}),
+            references=deepcopy(content.references or []),
+        )
+
+    def _insertion_point(
+        self,
+        document: WriterDocument,
+        anchor_node_id: str,
+        position: str,
+    ) -> Tuple[Optional[str], int]:
+        parent_id, index = self._block_parent_index(document, anchor_node_id)
+        return parent_id, index + int(position == 'after')
 
     def apply_patch(
         self,
@@ -558,18 +638,17 @@ class WriterRevisionTools(WriterToolBase):
         applied: WriterDocument,
         revised: WriterDocument,
     ) -> None:
-        def visible(document: WriterDocument) -> Dict[str, Any]:
-            return {
-                'document_id': document.document_id,
-                'stage': document.stage,
-                'title': document.title,
-                'blocks': [
-                    cls._visible_block(block) for block in document.blocks
-                ],
-            }
-
-        if visible(applied) != visible(revised):
+        if cls._visible_document(applied) != cls._visible_document(revised):
             raise ValueError('generated patch does not reproduce the revised WriterDocument.')
+
+    @classmethod
+    def _visible_document(cls, document: WriterDocument) -> Dict[str, Any]:
+        return {
+            'document_id': document.document_id,
+            'stage': document.stage,
+            'title': document.title,
+            'blocks': [cls._visible_block(block) for block in document.blocks],
+        }
 
     @classmethod
     def _visible_block(cls, block: WriterBlock) -> Dict[str, Any]:
@@ -595,24 +674,31 @@ class WriterRevisionTools(WriterToolBase):
                 raise ValueError('modify_plan requires title_instruction for a title target.')
             plan.title_instruction = plan.title_instruction.strip()
         elif plan.title_instruction is not None:
-            raise ValueError('modify_plan has title_instruction without a title target.')
+            plan.title_instruction = None
 
         located_set = set(located_node_ids)
-        seen: set = set()
+        instruction_ids: set = set()
         normalized: List[ModifyInstruction] = []
-        for instr in plan.instructions:
+        for index, instr in enumerate(plan.instructions, start=1):
             target_id = instr.target_node_id
             if target_id not in located_set:
                 raise ValueError(
                     f'modify_plan instruction targets block {target_id!r} '
                     f'not in locate_result.target_node_ids.'
                 )
-            if target_id in seen:
-                raise ValueError(f'modify_plan has duplicate instruction for block {target_id!r}.')
-            seen.add(target_id)
-            instr.instruction_id = instr.instruction_id or f'instr-{target_id}'
-            if instr.modify_type == 'create':
-                instr.position = instr.position or 'after'
+            instr.instruction_id = (
+                instr.instruction_id or f'instr-{index}-{target_id}'
+            ).strip()
+            if instr.instruction_id in instruction_ids:
+                raise ValueError(
+                    f'modify_plan has duplicate instruction_id {instr.instruction_id!r}.')
+            instruction_ids.add(instr.instruction_id)
+            if instr.modify_type == 'create' and normalized \
+                    and normalized[-1].modify_type == 'create' \
+                    and normalized[-1].anchor_node_id == instr.anchor_node_id \
+                    and normalized[-1].position == instr.position:
+                normalized[-1].instruction += f'\n{instr.instruction}'
+                continue
             if instr.modify_type == 'move':
                 if instr.anchor_node_id not in valid_node_ids:
                     raise ValueError(
@@ -622,11 +708,8 @@ class WriterRevisionTools(WriterToolBase):
                     raise ValueError('move instruction cannot use the target block as its own anchor.')
             normalized.append(instr)
 
-        missing_instructions = located_set - seen
-        if missing_instructions:
-            raise ValueError(
-                f'modify_plan missing instructions for blocks: {sorted(missing_instructions)}.'
-            )
+        if located_set and not normalized and not target_title:
+            raise ValueError('modify_plan contains no operations for the located revision scope.')
         plan.instructions = normalized
         return plan
 
