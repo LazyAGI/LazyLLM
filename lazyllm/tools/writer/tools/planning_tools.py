@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
