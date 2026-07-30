@@ -4,7 +4,7 @@ import tiktoken
 from lazyllm.tools.rag.transform import SentenceSplitter
 from unittest.mock import patch
 from lazyllm.tools.rag.readers import ReaderBase
-from lazyllm.tools.rag.readers.readerBase import TxtReader
+from lazyllm.tools.rag.readers.readerBase import TxtReader, _callable_cache_signature
 from lazyllm.tools.rag.readers.docxReader import DocxReader
 from lazyllm.tools.rag import SimpleDirectoryReader, DocNode, Document
 from lazyllm.tools.rag.doc_node import RichDocNode
@@ -35,6 +35,17 @@ def processYmlWithMetadata(file):
         return [node]
 
 class TestRagReader(object):
+    def test_post_action_cache_signature(self):
+        def make_action(suffix):
+            return lambda node: DocNode(text=node.text + suffix)
+
+        assert _callable_cache_signature(make_action('a')) == _callable_cache_signature(make_action('a'))
+        assert _callable_cache_signature(make_action('a')) != _callable_cache_signature(make_action('b'))
+        assert _callable_cache_signature(SentenceSplitter(128, 16)) == \
+            _callable_cache_signature(SentenceSplitter(128, 16))
+        assert _callable_cache_signature(SentenceSplitter(128, 16)) != \
+            _callable_cache_signature(SentenceSplitter(256, 16))
+
     def setup_method(self):
         self.doc1 = Document(dataset_path='ci_data/rag_reader_full', manager=False)
         self.doc2 = Document(dataset_path='ci_data/rag_reader_full', manager=False)
