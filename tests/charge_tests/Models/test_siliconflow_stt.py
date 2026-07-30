@@ -6,6 +6,7 @@ import pytest
 import lazyllm
 from lazyllm import AutoModel
 from lazyllm.module.llms.onlinemodule.supplier.siliconflow import SiliconFlowSTT
+from lazyllm.module.module import ModuleExecutionError
 
 from ...utils import get_api_key
 
@@ -56,7 +57,7 @@ class TestSiliconFlowSTT:
     def test_forward_rejects_multiple_files(self):
         module = SiliconFlowSTT(api_key='test-key')
         files = [AUDIO_PATH, AUDIO_PATH]
-        with pytest.raises(ValueError, match='only supports one audio file'):
+        with pytest.raises(ModuleExecutionError, match='only supports one audio file'):
             module(files=files)
 
 
