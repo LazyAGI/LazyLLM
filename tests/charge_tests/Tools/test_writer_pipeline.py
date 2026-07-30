@@ -80,7 +80,6 @@ def test_write_workflow_e2e():
         api_key=get_api_key('qwen'), stream=False,
     )
     store = str(REPO_ROOT / 'tests' / 'charge_tests' / 'artifacts' / 'write_workflow_e2e')
-    target_path = str(Path(store) / 'target_document.md')
     wf = NaiveWriterWorkflow(llm=llm, artifact_store=store)
 
     task = WritingTask(
@@ -91,9 +90,6 @@ def test_write_workflow_e2e():
         ),
         task_type='write',
         target_document=TargetDocument(
-            doc_id='wf-e2e-output',
-            uri=target_path,
-            adapter='file',
             title='Technical Overview of AI-Powered Coding Assistant',
         ),
     )
@@ -125,7 +121,8 @@ def test_write_workflow_e2e():
         ),
     ]
 
-    result = wf.write(
+    result = lazyllm.enable_trace(
+        wf.write,
         task=task.model_dump(),
         input_resources=[r.model_dump() for r in inputs],
     )
@@ -280,7 +277,8 @@ def test_revise_workflow_e2e():
         document_summary=DocumentSummary(summary='LazyCoder Product Overview', key_points=[]),
     )
 
-    result = wf.revise(
+    result = lazyllm.enable_trace(
+        wf.revise,
         task=WritingTask(
             task_id='revise-ut',
             query=(

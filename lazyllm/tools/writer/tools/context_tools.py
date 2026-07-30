@@ -38,7 +38,7 @@ class WriterContextTools(WriterToolBase):
 
         context = WritingContext(
             context_id=writing_task.task_id or 'writer-context',
-            doc_id=self._resolve_doc_id(writing_task, source_doc),
+            doc_id=source_doc.document_id if source_doc else None,
             document_summary=self._build_document_summary(writing_task, profiles, source_doc),
             block_summaries=self._build_block_summaries(source_doc),
             facts=self._build_facts(profiles),
@@ -137,7 +137,6 @@ class WriterContextTools(WriterToolBase):
                     document=writer_document,
                 )
 
-            writing_context.doc_id = writing_context.doc_id or writer_document.document_id
             content_kind = stage_kind
 
         writing_context.meta.update({
@@ -171,7 +170,11 @@ class WriterContextTools(WriterToolBase):
             text = self._document_text(content)
             structure_summary = self._build_structure_summary(content)
         else:
-            text = self._block_text(content)
+            text = '\n'.join(
+                item.content.strip()
+                for item in content.iter_blocks()
+                if item.content.strip()
+            )
             structure_summary = None
         content_summary = self._summarize_content_data(text)
         if writing_context.document_summary is None:
@@ -207,33 +210,12 @@ class WriterContextTools(WriterToolBase):
         if isinstance(artifact, WriterBlock):
             return 'WriterBlock'
 
-        if isinstance(artifact, str):
-            try:
-                import json as _json
-                with open(artifact, 'r', encoding='utf-8') as file:
-                    schema = _json.load(file).get('schema', '')
-                kind = schema.rsplit('.', 1)[-1] if '.' in schema else schema
-                return kind if kind in ('WriterDocument', 'WriterBlock') else None
-            except Exception:
-                return None
-
         candidate = raw if raw is not None else artifact
         if isinstance(candidate, dict):
-            if 'document_id' in candidate and 'stage' in candidate:
+            if 'document_id' in candidate:
                 return 'WriterDocument'
-            if 'node_id' in candidate and 'type' in candidate and 'stage' in candidate:
+            if 'node_id' in candidate and 'type' in candidate:
                 return 'WriterBlock'
-        return None
-
-    def _resolve_doc_id(
-        self,
-        task: WritingTask,
-        writer_document: Optional[WriterDocument],
-    ) -> Optional[str]:
-        if task.target_document and task.target_document.doc_id:
-            return task.target_document.doc_id
-        if writer_document:
-            return writer_document.document_id
         return None
 
     def _build_document_summary(
@@ -331,18 +313,6 @@ class WriterContextTools(WriterToolBase):
             for block in document.iter_blocks()
             if block.content.strip()
         )
-        return '\n'.join(parts)
-
-    def _block_text(self, block: WriterBlock) -> str:
-        parts: List[str] = []
-
-        def walk(current: WriterBlock) -> None:
-            if current.content.strip():
-                parts.append(current.content.strip())
-            for child in current.children:
-                walk(child)
-
-        walk(block)
         return '\n'.join(parts)
 
     def _summarize_content_data(self, text: str) -> str:

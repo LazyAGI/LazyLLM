@@ -3,7 +3,7 @@ GENERATE_OUTLINE_PROMPT = '''Generate a writing outline from the given writing t
 
 Requirements:
 - Return a WriterDocument object with stage="outline".
-- Set document_id to the value given in document_id_hint below.
+- Set document_id to the exact document_id below.
 - Generate at least 3 top-level blocks unless the task explicitly asks for fewer.
 - Each top-level block is a section. Use type="heading" for section blocks.
 - All user-visible outline text MUST use the same document tree contract as draft and final content:
@@ -22,7 +22,7 @@ Requirements:
 Writing task:
 {task_json}
 
-document_id_hint: {document_id_hint}
+document_id: {document_id}
 
 Writing context:
 {context_json}
