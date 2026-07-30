@@ -205,6 +205,7 @@ class TestDynamicPDFReader:
         pdf_path.write_bytes(b'%PDF-1.4 demo')
 
         old_cache_mode = lazyllm.config['cache_mode']
+        old_reader_use_cache = lazyllm.config['reader_use_cache']
         lazyllm.config['cache_mode'] = 'RW'
         module_cache.close()
         try:
@@ -218,6 +219,7 @@ class TestDynamicPDFReader:
             assert mock_load.call_count == 1
         finally:
             lazyllm.config['cache_mode'] = old_cache_mode
+            lazyllm.config['reader_use_cache'] = old_reader_use_cache
             module_cache.close()
 
     def test_ppt_reader_reuses_mineru_auth_key(self):
