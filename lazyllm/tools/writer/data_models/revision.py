@@ -70,9 +70,6 @@ class PatchHunk(BaseModel):
         if self.modify_type in {'create', 'move'}:
             if self.index is None or self.index < 0:
                 raise ValueError(f'{self.modify_type} requires a non-negative index')
-        elif self.parent_node_id is not None or self.index is not None:
-            raise ValueError(
-                f'{self.modify_type} must not provide parent_node_id or index')
         return self
 
 

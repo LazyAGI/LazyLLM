@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Any, Dict, Optional
 
+from ..data_models.planning import SectionInstructionList
 from ..tools.context_tools import WriterContextTools
 from ..tools.drafting_tools import WriterDraftingTools
 from ..tools.planning_tools import WriterPlanningTools
@@ -76,9 +77,12 @@ class NaiveWriterWorkflow:
             outline=self._artifact_ref(outline, 'outline'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
+        section_instruction = SectionInstructionList.load(
+            self._artifact_ref(section_instructions, 'section_instructions'),
+        ).instructions[0]
         draft_block = self.drafting.generate_draft_section(
             task=task,
-            section_instruction=self._artifact_ref(section_instructions, 'section_instructions'),
+            section_instruction=section_instruction,
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
         section_review = self.quality.validate_section(

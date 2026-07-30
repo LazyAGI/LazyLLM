@@ -42,14 +42,6 @@ add_writer_english_doc('WriterPlanningTools.generate_section_instructions', '''
 Generate drafting instructions for the sections in an outline.
 ''')
 
-add_writer_models_chinese_doc('WriterDocument.validate_document', '''
-校验文档标识以及块标识的唯一性。
-''')
-
-add_writer_models_english_doc('WriterDocument.validate_document', '''
-Validate the document identifier and block identifier uniqueness.
-''')
-
 add_writer_models_chinese_doc('WriterDocument.iter_blocks', '''
 按文档顺序遍历全部内容块。
 ''')
@@ -64,14 +56,6 @@ add_writer_models_chinese_doc('WriterDocument.block_by_id', '''
 
 add_writer_models_english_doc('WriterDocument.block_by_id', '''
 Find a block by its node identifier.
-''')
-
-add_writer_models_chinese_doc('WriterBlock.validate_block', '''
-校验内容块标识和可见内容。
-''')
-
-add_writer_models_english_doc('WriterBlock.validate_block', '''
-Validate a block identifier and its visible content.
 ''')
 
 add_writer_models_chinese_doc('WriterBlock.iter_blocks', '''
