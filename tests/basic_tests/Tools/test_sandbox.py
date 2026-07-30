@@ -249,13 +249,13 @@ class TestToolManagerSandboxIntegration:
         sandbox = DummySandbox(timeout=10, return_sandbox_result=True)
         tm = ToolManager(['direct_tool'], sandbox=sandbox)
         result = tm([self._make_tool_call('direct_tool', {'x': 7})])
-        assert result[0] == 14
+        assert result[0] == {'ok': True, 'value': 14}
 
     def test_toolmanager_no_sandbox_calls_directly(self):
         '''When no sandbox is configured, ToolManager calls tools directly.'''
         tm = ToolManager(['no_sandbox_tool'], sandbox=None)
         result = tm([self._make_tool_call('no_sandbox_tool', {'val': 'hello'})])
-        assert result[0] == 'HELLO'
+        assert result[0] == {'ok': True, 'value': 'HELLO'}
 
     def test_toolmanager_sandbox_with_input_files(self):
         '''ToolManager should upload files specified by input_files_parm.'''

@@ -27,6 +27,13 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         super().__init__(return_trace=return_trace)
         self.use_cache(bool(config['reader_use_cache']))
 
+    @property
+    def __cache_hash__(self):
+        cache_hash = super().__cache_hash__
+        if self.post_action is not None:
+            cache_hash += f'@post_action:{self.post_action!r}'
+        return cache_hash
+
     def _lazy_load_data(self, *args, **load_kwargs) -> Iterable[DocNode]:
         raise NotImplementedError(f'{self.__class__.__name__} does not implement lazy_load_data method.')
 

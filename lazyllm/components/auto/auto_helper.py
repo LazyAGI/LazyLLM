@@ -1,10 +1,10 @@
 import re
 import functools
+from importlib import metadata
 from packaging import version
 
 from .dependencies.modelsconfig import models_config
 from lazyllm import LOG
-from lazyllm.thirdparty import pkg_resources
 
 def model_map(name: str):
     match = re.search(r'(\d+)[bB]', name)
@@ -38,14 +38,13 @@ def check_requirements(requirements):
         parts = package.split('==') if '==' in package else package.split('>=') if '>=' in package else [package]
         try:
             try:
-                installed = pkg_resources.get_distribution(parts[0])
-            except pkg_resources.DistributionNotFound:
-                installed = pkg_resources.get_distribution('lazyllm-' + parts[0])
+                installed_version = metadata.version(parts[0])
+            except metadata.PackageNotFoundError:
+                installed_version = metadata.version('lazyllm-' + parts[0])
             if len(parts) > 1:
-                # if parts[1] not in installed.version:
-                if compare_versions(installed.version, parts[1]) == -1:
-                    not_installed.append(f'{package} (Installed: {installed.version}, Required: {parts[1]})')
-        except pkg_resources.DistributionNotFound:
+                if compare_versions(installed_version, parts[1]) == -1:
+                    not_installed.append(f'{package} (Installed: {installed_version}, Required: {parts[1]})')
+        except metadata.PackageNotFoundError:
             not_installed.append(f'Required: {package}')
     if len(not_installed) != 0:
         LOG.warning(f'Because of missing packages, the model may not run. The required packages are: {not_installed}')
