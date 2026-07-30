@@ -39,6 +39,7 @@ from .base import (
     UploadRequest,
 )
 from .doc_manager import DocManager
+from .parser_client import ParserClient
 from .utils import from_json, sha256_file, to_json
 
 DEFAULT_OPENAPI_OUTPUT_PATH = os.path.join(os.path.dirname(__file__), 'doc_server.openapi.json')
@@ -204,8 +205,12 @@ class DocServer(ModuleBase):
             self._owned_kbs.add(kb_id)
 
         def set_runtime_callback_url(self, callback_url: str):
-            self._lazy_init()
-            self._manager.set_callback_url(callback_url)
+            # The callback URL is configuration, not a reason to initialize the
+            # service.  DocServer.start() invokes this as soon as its HTTP socket
+            # opens, which can precede parser readiness during parallel startup.
+            self._callback_url = callback_url
+            if self._manager is not None:
+                self._manager.set_callback_url(callback_url)
 
         @staticmethod
         def _response(data=None, code=200, msg='success', status_code=200):
@@ -1017,10 +1022,53 @@ class DocServer(ModuleBase):
             self._lazy_init()
             return self._run(lambda: self._manager.set_node_group_lazy_mode(group_name, lazy_mode))
 
+        @app.get('/v1/live')
+        def live(self):
+            return BaseResponse(code=200, msg='success', data={'status': 'ok', 'version': 'v1'})
+
+        @app.get('/v1/ready')
+        def ready(self):
+            # Do not enter the once-only initializer until the parser is ready.
+            # A failed once_wrapper call caches its exception, so probing first is
+            # required for dependency-tolerant parallel startup.
+            try:
+                ParserClient(parser_url=self._parser_url).health()
+            except Exception:
+                return fastapi.responses.JSONResponse(
+                    status_code=503,
+                    content=BaseResponse(
+                        code=503,
+                        msg='parser is not ready',
+                        data={'status': 'starting', 'version': 'v1', 'deps': {'sql': False, 'parser': False}},
+                    ).model_dump(mode='json'),
+                )
+            try:
+                self._lazy_init()
+            except Exception as exc:
+                # The dependency may disappear between the preflight and the
+                # initializer.  Clear once_wrapper's cached exception so a later
+                # readiness probe can retry safely.
+                self._lazy_init.flag.reset()
+                LOG.warning(f'[DocServer] readiness initialization failed: {exc}')
+                return fastapi.responses.JSONResponse(
+                    status_code=503,
+                    content=BaseResponse(
+                        code=503,
+                        msg='service initialization is not ready',
+                        data={'status': 'starting', 'version': 'v1'},
+                    ).model_dump(mode='json'),
+                )
+            health = self._manager.health()
+            if not health.get('deps', {}).get('parser'):
+                return fastapi.responses.JSONResponse(
+                    status_code=503,
+                    content=BaseResponse(code=503, msg='parser is not ready', data=health).model_dump(mode='json'),
+                )
+            return BaseResponse(code=200, msg='success', data=health)
+
         @app.get('/v1/health')
         def health(self):
-            self._lazy_init()
-            return BaseResponse(code=200, msg='success', data=self._manager.health())
+            return self.ready()
 
         @app.get('/v1/internal/parser-url')
         def get_parser_url(self):
