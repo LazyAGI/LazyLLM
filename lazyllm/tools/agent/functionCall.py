@@ -115,6 +115,21 @@ class FunctionCall(ModuleBase):
     def _build_history(self, input: Union[str, dict, list]):
         workspace = locals['_lazyllm_agent']['workspace']
         history_idx = len(workspace.setdefault('history', []))
+        budget_notice = None
+        if self._round_limit is not None:
+            current_round = int(workspace.get('_react_round_number', 0)) + 1
+            workspace['_react_round_number'] = current_round
+            round_limit = int(workspace.get('_react_round_limit', self._round_limit))
+            remaining_rounds = max(0, round_limit - current_round)
+            LOG.info(
+                f'[ReactAgent] [ROUND_BUDGET] sid={lazyllm_globals._sid} current_round={current_round} '
+                f'round_limit={round_limit} remaining_rounds={remaining_rounds}'
+            )
+            budget_notice = (
+                f'[Internal runtime notice] Internal ReAct rounds left: {remaining_rounds}. '
+                'Finish the task or provide a concise final summary before the limit.'
+            )
+
         if isinstance(input, str):
             workspace['history'].append({'role': 'user', 'content': input})
         elif isinstance(input, dict) and 'input' in input:
@@ -134,6 +149,11 @@ class FunctionCall(ModuleBase):
                     'name': tool_call['function']['name'],
                 } for tool_call in workspace['tool_call_trace']
             ]
+            if budget_notice and tool_call_results:
+                tool_call_results[-1] = {
+                    **tool_call_results[-1],
+                    'content': f'{tool_call_results[-1]["content"]}\n\n{budget_notice}',
+                }
             workspace['history'].append({
                 'role': 'assistant',
                 'content': input.get('content', ''),
@@ -146,20 +166,6 @@ class FunctionCall(ModuleBase):
         chat_history = workspace['history'][:history_idx]
         if self._keep_full_turns > 0:
             chat_history = _compact_chat_history(chat_history, self._keep_full_turns)
-        if self._round_limit is not None:
-            current_round = int(workspace.get('_react_round_number', 0)) + 1
-            workspace['_react_round_number'] = current_round
-            round_limit = int(workspace.get('_react_round_limit', self._round_limit))
-            remaining_rounds = max(0, round_limit - current_round)
-            LOG.info(
-                f'[ReactAgent] [ROUND_BUDGET] sid={lazyllm_globals._sid} current_round={current_round} '
-                f'round_limit={round_limit} remaining_rounds={remaining_rounds}'
-            )
-            budget_message = {'role': 'system', 'content': f'Internal ReAct rounds left: {remaining_rounds}.'}
-            if isinstance(input, dict) and isinstance(input.get('input'), list):
-                input = {**input, 'input': [*input['input'], budget_message]}
-            else:
-                chat_history = [*chat_history, budget_message]
         locals['chat_history'][self._llm._module_id] = chat_history
         return input
 
