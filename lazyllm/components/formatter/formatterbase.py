@@ -267,6 +267,12 @@ class FileFormatter(LazyLLMFormatterBase):
 def file_content_hash(value):
     res = decode_query_with_filepaths(value)
     if isinstance(res, str):
+        if os.path.isfile(value):
+            hash_obj = hashlib.md5()
+            with open(value, 'rb') as f:
+                while chunk := f.read(8192):
+                    hash_obj.update(chunk)
+            return hash_obj.hexdigest()
         return hashlib.md5(value.encode()).hexdigest()
     query = res['query']
     file_path_list = res['files']

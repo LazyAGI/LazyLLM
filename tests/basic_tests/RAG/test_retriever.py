@@ -4,9 +4,7 @@ from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag import (Document, Retriever, TempDocRetriever, ContextRetriever,
                                WeightedRetriever, PriorityRetriever)
 from lazyllm.launcher import cleanup
-from lazyllm import config
 from unittest.mock import MagicMock
-import os
 
 class TestRetriever(object):
     @classmethod
@@ -37,22 +35,27 @@ class TestRetriever(object):
         assert retriever2._embed_keys == [EMBED_DEFAULT_KEY]
 
 class TestTempRetriever():
-    def test_temp_retriever(self):
-        r = TempDocRetriever()(os.path.join(config['data_path'], 'rag_master/default/__data/sources/大学.txt'), '大学')
+    def test_temp_retriever(self, tmp_path):
+        first_path = tmp_path / 'university.txt'
+        second_path = tmp_path / 'learning.txt'
+        first_path.write_text('大学之道\n在明明德\n在止于至善', encoding='utf-8')
+        second_path.write_text('学而时习之\n有朋自远方来\n不亦乐乎', encoding='utf-8')
+
+        r = TempDocRetriever()(str(first_path), '大学')
         assert len(r) > 0 and isinstance(r[0], DocNode)
 
-        r = TempDocRetriever(output_format='content')('rag_master/default/__data/sources/大学.txt', '大学')
+        r = TempDocRetriever(output_format='content')(str(first_path), '大学')
         assert len(r) > 0 and isinstance(r[0], str)
 
         ret = TempDocRetriever(output_format='dict')
         ret.create_node_group('block', transform=lambda x: x.split('\n'))
         ret.add_subretriever(Document.CoarseChunk, topk=1)
         ret.add_subretriever('block', topk=3)
-        r = ret(['rag_master/default/__data/sources/大学.txt', 'rag_master/default/__data/sources/论语.txt'], '大学')
+        r = ret([str(first_path), str(second_path)], '大学')
         assert len(r) == 4 and isinstance(r[0], dict)
-        r = ret(['rag_master/default/__data/sources/大学.txt', 'rag_master/default/__data/sources/论语.txt'], '大学')
+        r = ret([str(first_path), str(second_path)], '大学')
         assert len(r) == 4 and isinstance(r[0], dict)
-        r = ret(['rag_master/default/__data/sources/论语.txt', 'rag_master/default/__data/sources/大学.txt'], '大学')
+        r = ret([str(second_path), str(first_path)], '大学')
         assert len(r) == 4 and isinstance(r[0], dict)
 
     def test_context_retriever(self):
@@ -106,8 +109,11 @@ class TestCompositeRetriever(object):
         # TODO: support temp retrievers in weighted retriever
         pass
 
-    def test_priority_retriever(self):
-        doc = Document('rag_master')
+    def test_priority_retriever(self, tmp_path):
+        for index in range(3):
+            content = ('大学之道，在明明德，在亲民，在止于至善。' * 30) + f'文档{index}'
+            (tmp_path / f'doc-{index}.txt').write_text(content, encoding='utf-8')
+        doc = Document(str(tmp_path))
         doc.create_node_group('chunk1', parent=Document.CoarseChunk,
                               transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
         with PriorityRetriever(topk=3) as w:

@@ -1,5 +1,6 @@
 import json
 import os
+import socket
 import subprocess
 import time
 import traceback
@@ -9,6 +10,7 @@ from datetime import datetime
 from typing import List, Optional, Dict
 from uuid import uuid4
 from lazyllm import LOG, FastapiApp as app, ModuleBase, ServerModule, once_wrapper, load_obj
+from lazyllm.thirdparty import fastapi
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from ..utils import BaseResponse, _get_default_db_config
 from .base import (
@@ -117,8 +119,13 @@ class DocumentProcessorWorker(ModuleBase):
                 value = os.getenv(key)
                 if value:
                     return value
+            hostname = socket.gethostname()
+            if hostname:
+                return hostname
             try:
-                ip = subprocess.check_output(['hostname', '-i'], text=True).strip()
+                ip = subprocess.check_output(
+                    ['hostname', '-i'], text=True, stderr=subprocess.DEVNULL,
+                ).strip()
                 if ip:
                     return ip
             except Exception:
@@ -266,15 +273,31 @@ class DocumentProcessorWorker(ModuleBase):
             self._schema_extractors = schema_extractors
             return BaseResponse(code=200, msg='success')
 
+        @app.get('/live')
+        def get_live(self):
+            if self._shutdown:
+                return fastapi.responses.JSONResponse(
+                    status_code=503,
+                    content=BaseResponse(code=503, msg='Worker is shutting down').model_dump(mode='json'),
+                )
+            return BaseResponse(code=200, msg='success')
+
+        @app.get('/ready')
         @app.get('/health')
         def get_health(self):
             self._lazy_init()
             if self._worker_thread is None:
-                return BaseResponse(code=503, msg='Worker thread not started')
+                return fastapi.responses.JSONResponse(
+                    status_code=503,
+                    content=BaseResponse(code=503, msg='Worker thread not started').model_dump(mode='json'),
+                )
 
             if not self._worker_thread.is_alive():
                 LOG.error(f'{self._log_prefix()} Worker thread is dead')
-                return BaseResponse(code=503, msg='Worker thread is not alive')
+                return fastapi.responses.JSONResponse(
+                    status_code=503,
+                    content=BaseResponse(code=503, msg='Worker thread is not alive').model_dump(mode='json'),
+                )
 
             return BaseResponse(code=200, msg='success')
 

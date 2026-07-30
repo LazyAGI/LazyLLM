@@ -19,7 +19,7 @@ runs:
     - name: Build project
       shell: bash
       run: |
-        pip install build
+        python -m pip install 'setuptools<82' build
         cp pyproject.toml ./lazyllm
         python -m build --config-setting=skbuild.wheel.cmake=false
 

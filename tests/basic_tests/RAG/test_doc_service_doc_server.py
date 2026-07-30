@@ -191,6 +191,43 @@ def test_parser_url_returns_none_when_remote_endpoint_unavailable(monkeypatch):
     assert server.parser_url is None
 
 
+def test_live_does_not_initialize_runtime():
+    impl = DocServer._Impl(storage_dir='.', parser_url='http://parser.test')
+    impl._lazy_init = lambda: (_ for _ in ()).throw(AssertionError('live must not initialize'))
+
+    response = impl.live()
+
+    assert response.code == 200
+    assert response.data['status'] == 'ok'
+
+
+def test_ready_returns_503_without_initializing_when_parser_is_down(monkeypatch):
+    impl = DocServer._Impl(storage_dir='.', parser_url='http://parser.test')
+    initialized = []
+    impl._lazy_init = lambda: initialized.append(True)
+
+    def fail_health(self):
+        raise requests.ConnectionError('parser is starting')
+
+    monkeypatch.setattr('lazyllm.tools.rag.doc_service.doc_server.ParserClient.health', fail_health)
+
+    response = impl.ready()
+    body = _decode_response(response)
+
+    assert response.status_code == 503
+    assert body['msg'] == 'parser is not ready'
+    assert initialized == []
+
+
+def test_runtime_callback_configuration_does_not_initialize():
+    impl = DocServer._Impl(storage_dir='.', parser_url='http://parser.test')
+    impl._lazy_init = lambda: (_ for _ in ()).throw(AssertionError('configuration must not initialize'))
+
+    impl.set_runtime_callback_url('http://doc.test/v1/internal/callbacks/tasks')
+
+    assert impl._callback_url == 'http://doc.test/v1/internal/callbacks/tasks'
+
+
 def test_task_cancel_request_requires_task_id():
     with pytest.raises(ValidationError):
         TaskCancelRequest.model_validate({})

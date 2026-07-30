@@ -2,10 +2,9 @@ import os
 import lazyllm
 import tiktoken
 from lazyllm.tools.rag.transform import SentenceSplitter
-import pytest
 from unittest.mock import patch
 from lazyllm.tools.rag.readers import ReaderBase
-from lazyllm.tools.rag.readers.readerBase import TxtReader
+from lazyllm.tools.rag.readers.readerBase import TxtReader, _callable_cache_signature
 from lazyllm.tools.rag.readers.docxReader import DocxReader
 from lazyllm.tools.rag import SimpleDirectoryReader, DocNode, Document
 from lazyllm.tools.rag.doc_node import RichDocNode
@@ -36,6 +35,17 @@ def processYmlWithMetadata(file):
         return [node]
 
 class TestRagReader(object):
+    def test_post_action_cache_signature(self):
+        def make_action(suffix):
+            return lambda node: DocNode(text=node.text + suffix)
+
+        assert _callable_cache_signature(make_action('a')) == _callable_cache_signature(make_action('a'))
+        assert _callable_cache_signature(make_action('a')) != _callable_cache_signature(make_action('b'))
+        assert _callable_cache_signature(SentenceSplitter(128, 16)) == \
+            _callable_cache_signature(SentenceSplitter(128, 16))
+        assert _callable_cache_signature(SentenceSplitter(128, 16)) != \
+            _callable_cache_signature(SentenceSplitter(256, 16))
+
     def setup_method(self):
         self.doc1 = Document(dataset_path='ci_data/rag_reader_full', manager=False)
         self.doc2 = Document(dataset_path='ci_data/rag_reader_full', manager=False)
@@ -63,17 +73,15 @@ class TestRagReader(object):
         assert nodes[0].global_metadata
         assert nodes[0].global_metadata['revision'] == 3
 
-    # TODO: remove *.pptx and *.jpg, *.png in mac and win
-    @pytest.mark.skip_on_mac
-    @pytest.mark.skip_on_win
-    def test_reader_dir(self):
-        input_dir = self.datasets
-        reader = SimpleDirectoryReader(input_dir=input_dir,
-                                       exclude=['*.yml', '*.pdf', '*.docx', '*.mp4'])
-        docs = []
-        for doc in reader():
-            docs.append(doc)
-        assert len(docs) == 23
+    def test_reader_dir(self, tmp_path):
+        (tmp_path / 'first.txt').write_text('first document', encoding='utf-8')
+        (tmp_path / 'second.txt').write_text('second document', encoding='utf-8')
+        (tmp_path / 'excluded.yml').write_text('excluded: true', encoding='utf-8')
+        reader = SimpleDirectoryReader(input_dir=str(tmp_path), exclude=['*.yml'])
+
+        docs = reader()
+
+        assert sorted(doc.text for doc in docs) == ['first document', 'second document']
 
     def test_register_local_reader(self):
         self.doc1.add_reader('**/*.yml', processYml)
@@ -125,12 +133,20 @@ class TestRagReader(object):
         r = self.doc1._impl._reader.load_data(input_files=files)
         assert len(r) > 0 and 'here in action' in r[0].text
 
-    def test_register_post_action_for_default_reader_transform(self):
-        lazyllm.tools.rag.add_post_action_for_default_reader('*.md', SentenceSplitter(128, 16))
-        files = [os.path.join(self.datasets, 'README.md')]
-        r = self.doc1._impl._reader.load_data(input_files=files)
-        tiktoken_tokenizer = tiktoken.encoding_for_model('gpt-3.5-turbo')
-        assert len(r) > 1 and len(tiktoken_tokenizer.encode(r[0].text, allowed_special='all')) < 128
+    def test_register_post_action_for_default_reader_transform(self, tmp_path):
+        markdown_file = tmp_path / 'long.md'
+        markdown_file.write_text(' '.join(['cache-safe markdown content'] * 100), encoding='utf-8')
+        reader_cls = SimpleDirectoryReader.get_default_reader('*.md')
+        original_post_action = reader_cls.post_action
+        try:
+            lazyllm.tools.rag.add_post_action_for_default_reader('*.md', SentenceSplitter(128, 16))
+            r = self.doc1._impl._reader.load_data(input_files=[str(markdown_file)])
+
+            tiktoken_tokenizer = tiktoken.encoding_for_model('gpt-3.5-turbo')
+            assert len(r) > 1
+            assert len(tiktoken_tokenizer.encode(r[0].text, allowed_special='all')) <= 128
+        finally:
+            reader_cls.post_action = original_post_action
 
     def test_mixed_encoding_files(self):
         temp_dir = tempfile.mkdtemp()

@@ -96,12 +96,30 @@ class ReWOOAgent(LazyLLMAgentBase):
         locals['chat_history'][self._planner._module_id] = []
         return input
 
-    def _parse_and_call_tool(self, tool_call: str, evidence: Dict[str, str]):
+    @staticmethod
+    def _resolve_evidence_refs(value: Any, evidence: Dict[str, Any]) -> Any:
+        if isinstance(value, str):
+            if value in evidence:
+                return evidence[value]
+            for var in re.findall(r'#E\d+', value):
+                if var not in evidence:
+                    continue
+                replacement = evidence[var]
+                if isinstance(replacement, (dict, list)):
+                    replacement = json.dumps(replacement, ensure_ascii=False)
+                value = value.replace(var, str(replacement))
+            return value
+        if isinstance(value, list):
+            return [ReWOOAgent._resolve_evidence_refs(item, evidence) for item in value]
+        if isinstance(value, dict):
+            return {key: ReWOOAgent._resolve_evidence_refs(item, evidence) for key, item in value.items()}
+        return value
+
+    def _parse_and_call_tool(self, tool_call: str, evidence: Dict[str, Any]):
         tool_name, tool_arguments = tool_call.split('[', 1)
         tool_arguments = tool_arguments.split(']')[0]
-        for var in re.findall(r'#E\d+', tool_arguments):
-            if var in evidence:
-                tool_arguments = tool_arguments.replace(var, str(evidence[var]))
+        parsed_arguments = self._tools_manager._safe_parse_json(tool_arguments)
+        tool_arguments = self._resolve_evidence_refs(parsed_arguments, evidence)
         tool_calls = [{'function': {'name': tool_name, 'arguments': tool_arguments}}]
         if self._stream:
             _write_agent_data('tool_calls', tool_calls=tool_calls)
@@ -112,7 +130,12 @@ class ReWOOAgent(LazyLLMAgentBase):
         locals['_lazyllm_agent']['workspace']['tool_call_trace'].append(
             {**tool_calls[0], 'tool_call_result': result[0]}
         )
-        return json.dumps(result[0]).strip('\"')
+        tool_result = result[0]
+        if isinstance(tool_result, dict) and 'ok' in tool_result:
+            if tool_result['ok']:
+                return tool_result.get('value')
+            return tool_result.get('msg') or 'Tool call failed'
+        return tool_result
 
     def _get_worker_evidences(self, response: str):
         _write_agent_data('plan_finished', text=response)
@@ -125,7 +148,10 @@ class ReWOOAgent(LazyLLMAgentBase):
             elif re.match(r'#E\d+\s*=', line.strip()):
                 e, tool_call = line.split('=', 1)
                 evidence[e.strip()] = self._parse_and_call_tool(tool_call.strip(), evidence)
-                worker_evidences += f'Evidence:\n{evidence[e.strip()]}\n'
+                rendered = evidence[e.strip()]
+                if not isinstance(rendered, str):
+                    rendered = json.dumps(rendered, ensure_ascii=False)
+                worker_evidences += f'Evidence:\n{rendered}\n'
 
         LOG.debug(f'worker_evidences: {worker_evidences}')
         return worker_evidences

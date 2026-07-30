@@ -9,11 +9,84 @@ from ..doc_node import DocNode, RichDocNode
 from lazyllm.module import ModuleBase
 from . import reader_config_inject as _reader_config_inject  # noqa: F401
 from pathlib import Path
+import functools
+import hashlib
+import inspect
+import json
 import locale
+import marshal
 import threading
 from lazyllm.thirdparty import charset_normalizer
 
 _READER_CALL_SKIP_KEYS = frozenset({'use_cache', 'lazyllm_files', 'llm_chat_history'})
+
+
+def _stable_cache_value(value):
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, bytes):
+        return {'bytes': hashlib.sha256(value).hexdigest()}
+    if isinstance(value, (list, tuple)):
+        return [_stable_cache_value(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): _stable_cache_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    raise TypeError(f'Unsupported cache signature value: {type(value).__name__}')
+
+
+def _callable_cache_signature(action):
+    try:
+        if isinstance(action, functools.partial):
+            signature = {
+                'type': 'partial',
+                'func': _callable_cache_signature(action.func),
+                'args': _stable_cache_value(action.args),
+                'keywords': _stable_cache_value(action.keywords or {}),
+            }
+        elif inspect.ismethod(action):
+            signature = {
+                'type': 'method',
+                'func': _callable_cache_signature(action.__func__),
+                'owner': _callable_cache_signature(action.__self__),
+            }
+        elif inspect.isfunction(action):
+            closure = tuple(cell.cell_contents for cell in (action.__closure__ or ()))
+            signature = {
+                'type': 'function',
+                'module': action.__module__,
+                'qualname': action.__qualname__,
+                'code': hashlib.sha256(marshal.dumps(action.__code__)).hexdigest(),
+                'defaults': _stable_cache_value(action.__defaults__ or ()),
+                'kwdefaults': _stable_cache_value(action.__kwdefaults__ or {}),
+                'closure': _stable_cache_value(closure),
+            }
+        elif inspect.isbuiltin(action):
+            signature = {
+                'type': 'builtin',
+                'module': action.__module__,
+                'qualname': action.__qualname__,
+            }
+        elif callable(action) and callable(getattr(action, 'sig_fields', None)):
+            signature = {
+                'type': f'{type(action).__module__}.{type(action).__qualname__}',
+                'fields': _stable_cache_value(action.sig_fields()),
+            }
+        else:
+            custom_hash = getattr(action, '__cache_hash__', None)
+            if custom_hash is None:
+                raise TypeError('Callable does not expose a stable cache signature')
+            signature = {
+                'type': f'{type(action).__module__}.{type(action).__qualname__}',
+                'cache_hash': _stable_cache_value(custom_hash() if callable(custom_hash) else custom_hash),
+            }
+        serialized = json.dumps(signature, ensure_ascii=True, sort_keys=True, separators=(',', ':'))
+        return hashlib.sha256(serialized.encode()).hexdigest()
+    except (AttributeError, TypeError, ValueError):
+        # An address-bearing repr may cause a safe cache miss, but cannot cause two
+        # semantically different actions to share a cache entry.
+        return f'unstable:{action!r}'
 
 
 class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
@@ -26,6 +99,13 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, *args, return_trace: bool = True, **kwargs):
         super().__init__(return_trace=return_trace)
         self.use_cache(bool(config['reader_use_cache']))
+
+    @property
+    def __cache_hash__(self):
+        cache_hash = super().__cache_hash__
+        if self.post_action is not None:
+            cache_hash += f'@post_action:{_callable_cache_signature(self.post_action)}'
+        return cache_hash
 
     def _lazy_load_data(self, *args, **load_kwargs) -> Iterable[DocNode]:
         raise NotImplementedError(f'{self.__class__.__name__} does not implement lazy_load_data method.')

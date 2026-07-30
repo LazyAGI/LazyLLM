@@ -34,6 +34,15 @@ class DocManager:
                  parser_url: Optional[str] = None, callback_url: Optional[str] = None):
         if not parser_url:
             raise ValueError('parser_url is required')
+        # Probe the runtime dependency before creating database models or running
+        # migrations.  During parallel startup the parser may legitimately lag
+        # behind this process; failing before touching SQL keeps a readiness retry
+        # side-effect free.
+        self._parser_client = ParserClient(parser_url=parser_url)
+        try:
+            self._parser_client.health()
+        except Exception as exc:
+            raise RuntimeError(f'parser service is unavailable: {parser_url}') from exc
         self._db_config = db_config or _get_default_db_config('doc_service')
         self._db_manager = SqlManager(
             **self._db_config,
@@ -44,11 +53,6 @@ class DocManager:
             ]})
         run_migrations(self._db_manager.engine)
         self._ensure_indexes()
-        self._parser_client = ParserClient(parser_url=parser_url)
-        try:
-            self._parser_client.health()
-        except Exception as exc:
-            raise RuntimeError(f'parser service is unavailable: {parser_url}') from exc
         self._cleanup_idempotency_records()
         self._callback_url = callback_url
         self._algo_ng_groups_cache: Dict[str, List[dict]] = {}

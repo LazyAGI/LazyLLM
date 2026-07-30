@@ -597,11 +597,24 @@ class DocumentProcessor(ModuleBase):
                     algo_dict['ng_id_to_name'] = {}
                 return algo_dict
 
+        @app.get('/live')
+        def get_live(self) -> None:
+            if self._shutdown:
+                return fastapi.responses.JSONResponse(
+                    status_code=503,
+                    content=BaseResponse(code=503, msg='DocumentProcessor is shutting down').model_dump(mode='json'),
+                )
+            return BaseResponse(code=200, msg='success')
+
+        @app.get('/ready')
         @app.get('/health')
         def get_health(self) -> None:
             self._lazy_init()
             if self._post_func_thread is None or not self._post_func_thread.is_alive():
-                return BaseResponse(code=503, msg='Post function thread not alive')
+                return fastapi.responses.JSONResponse(
+                    status_code=503,
+                    content=BaseResponse(code=503, msg='Post function thread not alive').model_dump(mode='json'),
+                )
 
             return BaseResponse(code=200, msg='success')
 
