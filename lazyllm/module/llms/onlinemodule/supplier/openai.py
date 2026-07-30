@@ -39,6 +39,14 @@ class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
     def _get_system_prompt(self):
         return 'You are ChatGPT, a large language model trained by OpenAI. You are a helpful assistant.'
 
+    def _prepare_request_data(self, data: Dict) -> Dict:
+        data = dict(data)
+        if data.get('stream'):
+            stream_options = dict(data.get('stream_options') or {})
+            stream_options.setdefault('include_usage', True)
+            data['stream_options'] = stream_options
+        return data
+
     def _convert_file_format(self, filepath: str) -> str:
         with open(filepath, 'r', encoding='utf-8') as fr:
             dataset = [json.loads(line) for line in fr]
