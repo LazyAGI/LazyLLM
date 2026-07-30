@@ -125,10 +125,7 @@ class FunctionCall(ModuleBase):
                 f'[ReactAgent] [ROUND_BUDGET] sid={lazyllm_globals._sid} current_round={current_round} '
                 f'round_limit={round_limit} remaining_rounds={remaining_rounds}'
             )
-            budget_notice = (
-                f'[Internal runtime notice] Internal ReAct rounds left: {remaining_rounds}. '
-                'Finish the task or provide a concise final summary before the limit.'
-            )
+            budget_notice = f'[Internal runtime notice] Internal ReAct rounds left: {remaining_rounds}.'
 
         if isinstance(input, str):
             workspace['history'].append({'role': 'user', 'content': input})

@@ -388,11 +388,9 @@ class TestReactAgentEvents(object):
             for input_value in llm.inputs[1:]
         ] == [
             '2\n\n'
-            '[Internal runtime notice] Internal ReAct rounds left: 2. '
-            'Finish the task or provide a concise final summary before the limit.',
+            '[Internal runtime notice] Internal ReAct rounds left: 2.',
             '3\n\n'
-            '[Internal runtime notice] Internal ReAct rounds left: 1. '
-            'Finish the task or provide a concise final summary before the limit.',
+            '[Internal runtime notice] Internal ReAct rounds left: 1.',
         ]
         persisted_history = lazyllm.locals['_lazyllm_agent']['history']
         persisted_budget_queries = [
@@ -434,8 +432,7 @@ class TestReactAgentEvents(object):
         assert tool_message['role'] == 'tool'
         assert tool_message['content'] == (
             f'{str({"status": "ok", "content": "Error handling reference"})}\n\n'
-            '[Internal runtime notice] Internal ReAct rounds left: 2. '
-            'Finish the task or provide a concise final summary before the limit.'
+            '[Internal runtime notice] Internal ReAct rounds left: 2.'
         )
 
     def test_react_agent_stream_emits_text_reasoning_and_tool_events(self):
