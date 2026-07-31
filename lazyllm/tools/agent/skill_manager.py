@@ -1,7 +1,6 @@
 import os
 import posixpath
 import re
-import shlex
 import subprocess
 import tempfile
 import threading
@@ -11,7 +10,6 @@ import yaml
 
 from lazyllm import config, LOG, ModuleBase
 from lazyllm.thirdparty import fsspec
-from .shell_tool import shell_tool as _shell_tool
 
 DEFAULT_SKILLS_DIR = os.path.join(config['home'], 'skills')
 os.makedirs(DEFAULT_SKILLS_DIR, exist_ok=True)
@@ -103,9 +101,13 @@ _META_REQUIRED_FIELDS = {
 
 class SkillManager(ModuleBase):
     def __init__(self, dir: Optional[str] = None, skills: Optional[Iterable[str]] = None,
-                 max_skill_md_bytes: Optional[int] = None, fs=None):
+                 max_skill_md_bytes: Optional[int] = None, fs=None, sandbox=None):
         super().__init__(return_trace=False)
         self._fs = fs or fsspec.implementations.local.LocalFileSystem()
+        if sandbox is None:
+            from lazyllm.tools.sandbox.sandbox_base import create_sandbox
+            sandbox = create_sandbox()
+        self._sandbox = sandbox
         self._skills_dir = self._parse_dirs(dir or config['skills_dir'], fs=fs)
         self._validate_fs_dir_consistency(fs, self._skills_dir)
         self._skills_expected = self._parse_skills(skills)
@@ -580,15 +582,6 @@ class SkillManager(ModuleBase):
             raise RuntimeError(f'Failed to materialize remote skill directory {base!r}: {exc}') from exc
         return str(materialized.get('local_dir') or temp_dir.name), temp_dir
 
-    @staticmethod
-    def _build_script_command(script_path: str, args: Optional[List[str]]) -> List[str]:
-        ext = os.path.splitext(script_path)[1].lower()
-        runner = 'python' if ext == '.py' else 'bash' if ext in ('.sh', '.bash') else 'sh'
-        cmd = [runner, script_path]
-        if args:
-            cmd.extend(args)
-        return cmd
-
     def _run_script_exception(self, name: str, rel_path: str, cwd: Optional[str],
                               run_cwd: Optional[str], exc: Exception) -> Dict[str, str]:
         error_cwd = run_cwd or cwd
@@ -642,8 +635,21 @@ class SkillManager(ModuleBase):
             script_exists = os.path.exists(script_path) if temp_dir is not None else self._fs.exists(script_path)
             if not script_exists:
                 return {'status': 'missing', 'name': name, 'path': script_path, 'rel_path': normalized_rel_path}
-            cmd = self._build_script_command(script_path, args)
-            result = _shell_tool(' '.join(shlex.quote(p) for p in cmd), cwd=run_cwd, allow_unsafe=allow_unsafe)
+            if self._sandbox is None or not hasattr(self._sandbox, 'execute_script'):
+                return {
+                    'status': 'error',
+                    'name': name,
+                    'rel_path': normalized_rel_path,
+                    'error_type': 'SandboxUnavailable',
+                    'error': 'The configured sandbox does not support skill script execution.',
+                }
+            result = self._sandbox.execute_script(
+                source_dir=base,
+                rel_path=normalized_rel_path,
+                args=args,
+                cwd=os.path.relpath(run_cwd, os.path.realpath(os.path.abspath(base))),
+                allow_unsafe=allow_unsafe,
+            )
             if result.get('status') == 'ok' and result.get('exit_code', 0) != 0:
                 result['status'] = 'failed'
             return result
