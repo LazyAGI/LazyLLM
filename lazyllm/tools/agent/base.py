@@ -74,9 +74,14 @@ class LazyLLMAgentBase(ModuleBase):
         if self._enable_builtin_tools:
             self._ensure_builtin_tools()
         if use_skills:
-            self._skill_manager = SkillManager(dir=skills_dir, skills=self._skills, fs=fs)
+            self._skill_manager = SkillManager(
+                dir=skills_dir, skills=self._skills, fs=fs, sandbox=self._sandbox,
+            )
             self._ensure_default_skill_tools()
         self._tools_manager = ToolManager(self._tools, return_trace=return_trace, sandbox=self._sandbox)
+        for tool in self._tools_manager.all_tools:
+            if tool.name in self._skill_tool_names:
+                tool.execute_in_sandbox = False
 
     @staticmethod
     def _normalize_skills_config(skills: Optional[Union[bool, str, Iterable[str]]]):

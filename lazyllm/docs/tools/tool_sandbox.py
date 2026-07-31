@@ -90,6 +90,70 @@ add_sandbox_example('DummySandbox', """\
 2
 """)
 
+add_sandbox_chinese_doc('DummySandbox.execute_script', '''\
+在临时执行目录中运行一个已物化的 Skill 脚本。
+
+该方法会将 `source_dir` 的完整目录树复制到临时目录，校验脚本路径和工作目录均未逃逸出临时目录，
+再根据扩展名选择解释器执行。`.py` 文件使用当前 Python 解释器，`.sh` 和 `.bash` 文件使用 Bash，
+其他扩展名使用 `sh`。执行结束后会清理临时目录。
+
+Args:
+    source_dir (str): 已物化的 Skill 包根目录。
+    rel_path (str): 相对于 `source_dir` 的脚本路径。
+    args (list[str] | None): 传递给脚本的参数。
+    cwd (str): 相对于 `source_dir` 的工作目录，默认为 `.`。
+    allow_unsafe (bool): 预留的审批参数；DummySandbox 当前不提供审批边界，因此会忽略该参数。
+
+**Returns:**\n
+    dict：包含 `status`、`stdout`、`stderr`、`exit_code` 和 `cwd`。脚本不存在时返回
+    `status='missing'`；非零退出码返回 `status='failed'`。
+
+Notes:
+    DummySandbox 只提供临时目录和子进程执行边界，并非强安全隔离。它不会限制脚本读取宿主机文件、
+    访问网络或继承当前进程环境。不要用它执行未经信任的代码。
+''')
+
+add_sandbox_english_doc('DummySandbox.execute_script', '''\
+Execute a materialized Skill script in a temporary working directory.
+
+The method copies the complete `source_dir` tree into a temporary directory, verifies that the script path and working
+directory remain inside it, and selects an interpreter by file extension. `.py` files use the current Python interpreter,
+`.sh` and `.bash` files use Bash, and other extensions use `sh`. The temporary directory is removed after execution.
+
+Args:
+    source_dir (str): root directory of the materialized Skill package.
+    rel_path (str): script path relative to `source_dir`.
+    args (list[str] | None): arguments passed to the script.
+    cwd (str): working directory relative to `source_dir`, default `.`.
+    allow_unsafe (bool): reserved approval parameter; DummySandbox currently has no approval boundary and ignores it.
+
+**Returns:**\n
+    dict: contains `status`, `stdout`, `stderr`, `exit_code`, and `cwd`. A missing script returns `status='missing'`;
+    a non-zero exit code returns `status='failed'`.
+
+Notes:
+    DummySandbox provides only a temporary-directory and subprocess boundary, not strong security isolation. It does not
+    prevent scripts from reading host files, accessing the network, or inheriting the current process environment. Do not
+    use it to execute untrusted code.
+''')
+
+add_sandbox_example('DummySandbox.execute_script', """\
+>>> import tempfile
+>>> from pathlib import Path
+>>> from lazyllm.tools.sandbox import DummySandbox
+>>> with tempfile.TemporaryDirectory() as root:
+...     script = Path(root) / "scripts" / "check.py"
+...     script.parent.mkdir()
+...     _ = script.write_text("print('ok')\\n", encoding="utf-8")
+...     result = DummySandbox(timeout=10).execute_script(
+...         source_dir=root,
+...         rel_path="scripts/check.py",
+...         args=[],
+...     )
+...     print(result['stdout'].strip())
+ok
+""")
+
 add_sandbox_chinese_doc('SandboxFusion', '''\
 远程沙箱实现，通过 HTTP API 执行代码并获取结果。
 
@@ -131,4 +195,3 @@ add_sandbox_example('SandboxFusion', """\
 >>> print(result['stdout'].strip())
 ok
 """)
-

@@ -49,6 +49,52 @@ class DummySandbox(LazyLLMSandboxBase):
             raise
         return {'returncode': proc.returncode, 'stdout': stdout, 'stderr': stderr}
 
+    def execute_script(self, source_dir: str, rel_path: str, args: Optional[List[str]] = None,
+                       cwd: str = '.', allow_unsafe: bool = False) -> Dict[str, Any]:
+        del allow_unsafe  # DummySandbox currently has no approval boundary.
+        context = self._create_context()
+        try:
+            sandbox_root = context['temp_dir']
+            shutil.copytree(source_dir, sandbox_root, dirs_exist_ok=True)
+            script_path = self._resolve_child(sandbox_root, rel_path, 'rel_path')
+            run_cwd = self._resolve_child(sandbox_root, cwd or '.', 'cwd')
+            if not os.path.isfile(script_path):
+                return {
+                    'status': 'missing',
+                    'path': script_path,
+                    'rel_path': rel_path,
+                    'cwd': run_cwd,
+                }
+            if not os.path.isdir(run_cwd):
+                raise FileNotFoundError(f'cwd not found: {run_cwd}')
+            ext = os.path.splitext(script_path)[1].lower()
+            runner = sys.executable if ext == '.py' else 'bash' if ext in ('.sh', '.bash') else 'sh'
+            completed = subprocess.run(
+                [runner, script_path, *(args or [])],
+                cwd=run_cwd,
+                env=os.environ.copy(),
+                text=True,
+                capture_output=True,
+                timeout=self._timeout,
+            )
+            return {
+                'status': 'ok' if completed.returncode == 0 else 'failed',
+                'stdout': completed.stdout,
+                'stderr': completed.stderr,
+                'exit_code': completed.returncode,
+                'cwd': run_cwd,
+            }
+        finally:
+            self._cleanup_context(context)
+
+    @staticmethod
+    def _resolve_child(root: str, rel_path: str, label: str) -> str:
+        root_real = os.path.realpath(os.path.abspath(root))
+        target = os.path.realpath(os.path.abspath(os.path.join(root_real, rel_path)))
+        if os.path.commonpath([root_real, target]) != root_real:
+            raise ValueError(f'{label} must stay inside the sandbox directory.')
+        return target
+
     def _create_context(self) -> dict:
         return {'temp_dir': tempfile.mkdtemp(prefix='lazyllm_sandbox_')}
 
