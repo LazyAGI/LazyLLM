@@ -456,7 +456,7 @@ class WriterRevisionTools(WriterToolBase):
             },
             artifact_filenames={
                 'patch_result': f'patch_result_{patch.patch_id or "patch"}.json',
-                'revised_document': f'revised_document_{source_doc.document_id or "document"}.json',
+                'revised_document': f'revised_document_{source_doc.document_id or "document"}_ir.lmd',
             },
         )
         return result.model_dump()

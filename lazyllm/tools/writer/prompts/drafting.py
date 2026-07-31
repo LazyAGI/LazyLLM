@@ -34,3 +34,36 @@ Writing context:
 Previous blocks:
 {previous_blocks_json}
 '''
+
+
+GENERATE_DRAFT_SECTION_MARKDOWN_PROMPT = '''Generate the body of one draft section in Markdown.
+
+Requirements:
+- Output Markdown only. Do not wrap the response in an outer code fence.
+- Do not output reasoning, analysis, review notes, or <think> tags.
+- Do not output the section title or its heading; the system adds the heading.
+- Follow the section instruction as a writing plan, not as a list of visible headings.
+- Respect required_points, fact_constraints, style_constraints, and relation_constraints.
+- Use references when relevant, but do not copy reference metadata into the document.
+- Do not invent facts that conflict with the writing context.
+- If previous Markdown is provided, maintain continuity and avoid repetition.
+- Use ordinary Markdown paragraphs, lists, quotes, fenced code, tables, images, and
+  subheadings only when they help the requested content.
+- Return substantial finished prose, not a summary, placeholder, or planning notes.
+
+Writing task:
+{task_json}
+
+Writing context:
+{context_json}
+
+Previously drafted Markdown (context only; do not review, summarize, or continue it):
+{previous_markdown}
+
+Current section instruction:
+{section_instruction_json}
+
+Write only the body of the current section now. Begin directly with its finished
+prose and follow the current section instruction, even when the previous Markdown
+covers a different section.
+'''
