@@ -118,6 +118,11 @@ class SkillManager(ModuleBase):
 
     @staticmethod
     def _extract_protocol(path: str) -> Optional[str]:
+        # A Windows drive path (for example, ``C:/skills``) is local.  Without
+        # this guard the generic protocol pattern mistakes the drive letter for
+        # a filesystem protocol and sends local files through materialize_dir.
+        if re.match(r'^[A-Za-z]:[/\\]', path):
+            return None
         m = re.match(r'^([a-zA-Z][a-zA-Z0-9+\-.]*)(@[^:/]+)?:/', path)
         return m.group(1).lower() if m else None
 
@@ -174,8 +179,8 @@ class SkillManager(ModuleBase):
             if not d:
                 continue
             # Keep cloud paths (protocol:/ prefix) as-is; expand local paths.
-            # Use the same regex as _extract_protocol for consistency.
-            is_cloud_path = bool(re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*(@[^:/]+)?:/', d))
+            # Windows drive paths are local and are excluded by _extract_protocol.
+            is_cloud_path = SkillManager._extract_protocol(d) is not None
             path = d if is_cloud_path or not expand_bare_paths else os.path.abspath(os.path.expanduser(d))
             if path not in seen:
                 seen.add(path)

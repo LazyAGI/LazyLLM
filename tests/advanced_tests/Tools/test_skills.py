@@ -110,6 +110,11 @@ class TestSkills(object):
         parsed = SkillManager._parse_dirs('s3:/remote/skills')
         assert parsed == ['s3:/remote/skills']
 
+    def test_extract_protocol_does_not_treat_windows_drive_as_protocol(self):
+        assert SkillManager._extract_protocol('C:/Users/test/skills') is None
+        assert SkillManager._extract_protocol(r'C:\Users\test\skills') is None
+        assert SkillManager._extract_protocol('s3:/remote/skills') == 's3'
+
     def test_parse_dirs_non_local_fs_preserves_bare_paths(self):
         fs = _MemoryCloudFS({}, {})
 
