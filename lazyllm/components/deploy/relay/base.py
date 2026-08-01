@@ -154,3 +154,17 @@ class FastapiApp(object):
                 cls.__relay_services__ = dict()
             cls.__relay_services__[method, path] = ([f.__name__, kw])
         FastapiApp.__relay_services__.clear()
+
+    @staticmethod
+    def _prepare_openapi(fastapi_app):
+        '''Prepare dynamically registered routes before OpenAPI generation.'''
+        for route in fastapi_app.routes:
+            body_field = getattr(route, 'body_field', None)
+            annotation = getattr(getattr(body_field, 'field_info', None), 'annotation', None)
+            if not hasattr(annotation, 'model_rebuild'):
+                continue
+            endpoint = getattr(route, 'endpoint', None)
+            globalns = getattr(endpoint, '__globals__', None)
+            if globalns is None:
+                globalns = getattr(getattr(endpoint, '__func__', None), '__globals__', {})
+            annotation.model_rebuild(force=True, _types_namespace=globalns)

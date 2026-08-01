@@ -113,7 +113,7 @@ async def lazyllm_call(request: fastapi.Request):
 
 @app.post('/generate')
 @security_check
-async def generate(request: fastapi.Request): # noqa C901
+async def generate(request: fastapi.Request):  # noqa C901
     try:
         input, kw = (await request.json()), {}
         try:
@@ -185,6 +185,7 @@ def find_services(cls):
         find_services(base)
 
 find_services(func.__class__)
+FastapiApp._prepare_openapi(app)
 
 class _Dummy: pass
 

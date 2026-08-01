@@ -12,15 +12,15 @@ from lazyllm import FastapiApp as app
 
 
 class BaseResponse(BaseModel):
-    code: int = pydantic.Field(200, description="API status code")
-    msg: str = pydantic.Field("success", description="API status message")
-    data: Any = pydantic.Field(None, description="API data")
+    code: int = pydantic.Field(200, description='API status code')
+    msg: str = pydantic.Field('success', description='API status message')
+    data: Any = pydantic.Field(None, description='API data')
 
     class Config:
         json_schema_extra = {
-            "example": {
-                "code": 200,
-                "msg": "success",
+            'example': {
+                'code': 200,
+                'msg': 'success',
             }
         }
 
@@ -64,31 +64,39 @@ class TestServerModule(object):
         m = lazyllm.ServerModule(Manager(), pythonpath=current_dir)
         m.start()
 
-        response = requests.get(m._url.replace("generate", "docs"))
+        response = requests.get(m._url.replace('generate', 'docs'))
         assert response.status_code == 200
 
-        response = requests.post(m._url.replace("generate", "getres"), data=json.dumps('ww'))
-        assert response.json() == "test"
+        response = requests.get(m._url.replace('generate', 'openapi.json'))
+        assert response.status_code == 200
+        assert '/' in response.json()['paths']
 
-        response = requests.post(m._url.replace("generate", "getres2"), data=json.dumps('ww'))
-        assert response.json() == "test_overwrite"
+        response = requests.post(m._url.replace('generate', 'getres'), data=json.dumps('ww'))
+        assert response.json() == 'test'
+
+        response = requests.post(m._url.replace('generate', 'getres2'), data=json.dumps('ww'))
+        assert response.json() == 'test_overwrite'
 
     def test_derived_module(self):
         current_dir = os.path.dirname(os.path.abspath(__file__))
         m = lazyllm.ServerModule(Derived(), pythonpath=current_dir)
         m.start()
 
-        response = requests.get(m._url.replace("generate", "docs"))
+        response = requests.get(m._url.replace('generate', 'docs'))
         assert response.status_code == 200
 
-        response = requests.post(m._url.replace("generate", "getres"), data=json.dumps('ww'))
-        assert response.json() == "test"
+        response = requests.get(m._url.replace('generate', 'openapi.json'))
+        assert response.status_code == 200
+        assert '/subclass_api' in response.json()['paths']
 
-        response = requests.post(m._url.replace("generate", "manager2"), data=json.dumps('ww'))
-        assert response.json() == "manager2"
+        response = requests.post(m._url.replace('generate', 'getres'), data=json.dumps('ww'))
+        assert response.json() == 'test'
 
-        response = requests.post(m._url.replace("generate", "getres2"), data=json.dumps('ww'))
+        response = requests.post(m._url.replace('generate', 'manager2'), data=json.dumps('ww'))
+        assert response.json() == 'manager2'
+
+        response = requests.post(m._url.replace('generate', 'getres2'), data=json.dumps('ww'))
         assert response.status_code == 404
 
-        response = requests.post(m._url.replace("generate", "subclass_api"), data=json.dumps('ww'))
-        assert response.json() == "subclass_api"
+        response = requests.post(m._url.replace('generate', 'subclass_api'), data=json.dumps('ww'))
+        assert response.json() == 'subclass_api'

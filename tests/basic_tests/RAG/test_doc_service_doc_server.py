@@ -196,6 +196,14 @@ def test_task_cancel_request_requires_task_id():
         TaskCancelRequest.model_validate({})
 
 
+def test_doc_server_openapi_schema_contains_doc_service_routes():
+    schema = DocServer.build_openapi_schema()
+
+    assert '/v1/health' in schema['paths']
+    assert '/v1/docs/add' in schema['paths']
+    assert '/v1/docs/upload' in schema['paths']
+
+
 def test_cancel_task_http_maps_conflict(server_impl):
     server_impl._manager.cancel_response = BaseResponse(
         code=409,
