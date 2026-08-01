@@ -1103,11 +1103,7 @@ class DocServer(ModuleBase):
             parser_url='http://127.0.0.1:9966',
         )
         cls._register_openapi_routes(openapi_app, impl)
-        for route in openapi_app.routes:
-            body_field = getattr(route, 'body_field', None)
-            annotation = getattr(getattr(body_field, 'field_info', None), 'annotation', None)
-            if hasattr(annotation, 'model_rebuild'):
-                annotation.model_rebuild(force=True, _types_namespace=route.endpoint.__globals__)
+        app._prepare_openapi(openapi_app)
         return openapi_app
 
     @classmethod

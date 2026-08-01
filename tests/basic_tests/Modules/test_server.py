@@ -67,6 +67,10 @@ class TestServerModule(object):
         response = requests.get(m._url.replace("generate", "docs"))
         assert response.status_code == 200
 
+        response = requests.get(m._url.replace("generate", "openapi.json"))
+        assert response.status_code == 200
+        assert '/' in response.json()['paths']
+
         response = requests.post(m._url.replace("generate", "getres"), data=json.dumps('ww'))
         assert response.json() == "test"
 
@@ -80,6 +84,10 @@ class TestServerModule(object):
 
         response = requests.get(m._url.replace("generate", "docs"))
         assert response.status_code == 200
+
+        response = requests.get(m._url.replace("generate", "openapi.json"))
+        assert response.status_code == 200
+        assert '/subclass_api' in response.json()['paths']
 
         response = requests.post(m._url.replace("generate", "getres"), data=json.dumps('ww'))
         assert response.json() == "test"
