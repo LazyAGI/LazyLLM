@@ -213,7 +213,7 @@ def write_file(path: str, content: str, mode: str = 'overwrite', encoding: str =
     path_abs = _resolve_path(path)
     if mode not in ('overwrite', 'append'):
         raise ValueError('mode must be "overwrite" or "append".')
-    if os.path.exists(path_abs) and not allow_unsafe:
+    if mode == 'overwrite' and os.path.exists(path_abs) and not allow_unsafe:
         return {
             'status': 'needs_approval',
             'reason': 'Writing to an existing file requires approval.',
