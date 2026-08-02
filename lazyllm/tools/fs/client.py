@@ -1,8 +1,11 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import re
+import os
+import ntpath
 import threading
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
+from urllib.parse import unquote, urlsplit
 from lazyllm import globals
 from lazyllm.tools.fs.base import LinkDocumentFSBase, clean_document_ref
 
@@ -21,6 +24,17 @@ _DOCUMENT_ROUTES = {
         'locator_prefixes': _NOTION_LINK_PATH_PREFIXES,
     },
 }
+
+
+def _local_path_from_file_uri(path: str) -> str:
+    '''Convert a file URI to the native local path without treating a drive as a protocol.'''
+    parsed = urlsplit(path)
+    local_path = unquote(parsed.path)
+    if parsed.netloc and parsed.netloc.lower() != 'localhost':
+        local_path = f'//{parsed.netloc}{local_path}'
+    if os.name == 'nt' and re.match(r'^/[A-Za-z]:[/\\]', local_path):
+        local_path = local_path[1:]
+    return local_path.replace('/', ntpath.sep) if os.name == 'nt' else local_path
 
 
 def _lookup_fs_cls(protocol: str):
@@ -65,6 +79,8 @@ class _FSRouter:
 
     def _parse(self, path: str):
         path = clean_document_ref(path)
+        if path.lower().startswith('file:'):
+            return 'file', None, _local_path_from_file_uri(path)
         bare_protocol = _match_bare_document_url(path)
         if bare_protocol:
             return bare_protocol, 'dynamic', LinkDocumentFSBase.to_link_path(path)
