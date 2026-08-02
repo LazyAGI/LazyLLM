@@ -1681,6 +1681,7 @@ Args:
     pandas_config (Optional[Dict]): pandas.read_excel 的可选配置项。
     fill_method (Optional[str]): 缺失值填充策略，可选 'fillna'(default) / 'ffill' / 'bfill'。
     return_trace (bool): 是否返回处理过程的 trace。
+    col_joiner (str): 列之间的连接符，默认为空格。
 ''')
 
 add_english_doc('rag.readers.PandasExcelReader', '''\
@@ -1692,6 +1693,7 @@ Args:
     pandas_config (Optional[Dict]): Optional config for pandas.read_excel.
     fill_method (Optional[str]): Missing value fill strategy: 'fillna'(default) / 'ffill' / 'bfill'.
     return_trace (bool): Whether to return the processing trace.
+    col_joiner (str): String used to join column values. Default is a single space.
 ''')
 
 add_chinese_doc('rag.readers.PDFReader', '''\

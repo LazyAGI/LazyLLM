@@ -1,9 +1,10 @@
 import os
 import lazyllm
 import tiktoken
+from lazyllm.thirdparty import pandas as pd
 from lazyllm.tools.rag.transform import SentenceSplitter
 from unittest.mock import patch
-from lazyllm.tools.rag.readers import ReaderBase
+from lazyllm.tools.rag.readers import PandasExcelReader, ReaderBase
 from lazyllm.tools.rag.readers.readerBase import TxtReader, _callable_cache_signature
 from lazyllm.tools.rag.readers.docxReader import DocxReader
 from lazyllm.tools.rag import SimpleDirectoryReader, DocNode, Document
@@ -82,6 +83,16 @@ class TestRagReader(object):
         docs = reader()
 
         assert sorted(doc.text for doc in docs) == ['first document', 'second document']
+
+    def test_pandas_excel_reader_col_joiner(self, tmp_path):
+        excel_file = tmp_path / 'data.xlsx'
+        pd.DataFrame({'name': ['Alice'], 'score': [10]}).to_excel(excel_file, index=False)
+
+        default_docs = PandasExcelReader()(excel_file)
+        custom_docs = PandasExcelReader(col_joiner=' | ')(excel_file)
+
+        assert [doc.text for doc in default_docs] == ['Alice 10']
+        assert [doc.text for doc in custom_docs] == ['Alice | 10']
 
     def test_register_local_reader(self):
         self.doc1.add_reader('**/*.yml', processYml)
