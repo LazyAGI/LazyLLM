@@ -223,18 +223,24 @@ def _milvus_rename_collection(client, pymilvus, old_name: str, new_name: str) ->
 # Chroma migration
 # ---------------------------------------------------------------------------
 
+def _chroma_local_path(uri: str) -> str:
+    if not uri.lower().startswith('file:'):
+        return uri
+    from lazyllm.tools.fs.client import _local_path_from_file_uri
+    return _local_path_from_file_uri(uri)
+
+
 def migrate_chroma(uri: str, algo_name: str, groups: List[str], dry_run: bool) -> int:
     '''Rename Chroma collections (each group has sub-collections per embed key).'''
     LOG.info(f'[Chroma] Migrating {uri}')
     try:
         from lazyllm.thirdparty import chromadb
-        if '://' in uri and not uri.startswith('file://'):
+        if '://' in uri and not uri.lower().startswith('file:'):
             from urllib.parse import urlparse
             p = urlparse(uri)
             client = chromadb.HttpClient(host=p.hostname, port=p.port or 80)
         else:
-            path = uri.replace('file://', '')
-            client = chromadb.PersistentClient(path=path)
+            client = chromadb.PersistentClient(path=_chroma_local_path(uri))
     except Exception as e:
         LOG.error(f'[Chroma] Cannot connect to {uri}: {e}')
         return 0
