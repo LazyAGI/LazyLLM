@@ -77,12 +77,13 @@ class PandasCSVReader(LazyLLMReaderBase):
 class PandasExcelReader(LazyLLMReaderBase):
     def __init__(self, concat_rows: bool = True, sheet_name: Optional[str] = None,
                  pandas_config: Optional[Dict] = None, fill_method: Optional[str] = 'fillna',
-                 return_trace: bool = True) -> None:
+                 return_trace: bool = True, col_joiner: str = ' ') -> None:
         super().__init__(return_trace=return_trace)
         self._concat_rows = concat_rows
         self._sheet_name = sheet_name
         self._pandas_config = pandas_config or {}
         self._fill_method = fill_method
+        self._col_joiner = col_joiner
 
     def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         openpyxl_spec = importlib.util.find_spec('openpyxl')
@@ -99,7 +100,7 @@ class PandasExcelReader(LazyLLMReaderBase):
 
         def process_df(df: pd.DataFrame) -> List[DocNode]:
             df = _apply_fill(df, self._fill_method)
-            text_list = (df.astype(str).apply(lambda row: ' '.join(row.values), axis=1).tolist())
+            text_list = df.astype(str).apply(lambda row: self._col_joiner.join(row.values), axis=1).tolist()
 
             if self._concat_rows:
                 return [DocNode(text='\n'.join(text_list))]
