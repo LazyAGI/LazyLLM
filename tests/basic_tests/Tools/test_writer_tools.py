@@ -1009,6 +1009,36 @@ def test_validate_draft_document_happy_path():
         assert report.meta['draft_block_count'] == 2
 
 
+def test_validate_markdown_section_and_document():
+    markdown = '# 第一章\n\n## 引言\n\n这是引言正文。'
+    instructions = SectionInstructionList(instructions=[SectionInstruction(
+        instruction_id='si-introduction',
+        content_ref=ContentRef(heading_path=['第一章', '引言']),
+        section_title='引言',
+        section_goal='介绍背景。',
+    )])
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()):
+            section_result = tool.validate_section(
+                draft_block='## 引言\n\n这是引言正文。\n\n### 背景\n\n这是背景正文。',
+                section_instruction=instructions,
+                context=_make_context(),
+            )
+            document_result = tool.validate_draft_document(
+                draft_document=markdown,
+                context=_make_context(),
+            )
+
+        section_report = load_artifact_json(section_result['artifact_path'], ReviewReport)
+        document_report = load_artifact_json(document_result['artifact_path'], ReviewReport)
+        assert section_report.meta['content_ref']['heading_path'] == ['第一章', '引言']
+        assert document_report.target is None
+        assert document_report.meta['draft_title'] == '第一章'
+        assert document_report.meta['draft_block_count'] == 2
+
+
 def _make_patch_set(hunks=None):
     return PatchSet(
         patch_id='patch-test-001',

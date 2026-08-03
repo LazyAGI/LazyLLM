@@ -1,5 +1,5 @@
 # flake8: noqa
-VALIDATE_SECTION_PROMPT = '''You are a section quality reviewer. Evaluate the draft WriterBlock subtree as a whole against its section instruction and writing context, then return an AuditResult.
+VALIDATE_SECTION_PROMPT = '''You are a section quality reviewer. Evaluate the draft section as a whole against its section instruction and writing context, then return an AuditResult. The section may be represented as Writer IR JSON or Markdown.
 
 Review the section along these dimensions:
 
@@ -19,10 +19,11 @@ Scoring:
 - Start at 100; deduct 20 per high issue, 10 per medium issue, and 3 per low issue, with a minimum of 0.
 - is_passed is false when there is any high issue or more than three medium issues; otherwise it is true.
 - Include every material issue, but do not create separate issues for multiple symptoms of the same underlying problem.
+- Locate issues with content_ref.node_id for Writer IR, or content_ref.heading_path and occurrence for Markdown.
 - Write a one-sentence summary in the same language as the draft.
 
-Draft WriterBlock subtree:
-{section_json}
+Draft section:
+{section_content}
 
 Section instruction:
 {instruction_json}
@@ -32,7 +33,7 @@ Writing context:
 '''
 
 
-VALIDATE_DRAFT_DOCUMENT_PROMPT = '''You are a draft-document quality reviewer. Evaluate the supplied WriterDocument as a whole against the writing context, then return an AuditResult. Section-level checks may already have run; focus on problems that emerge at document level.
+VALIDATE_DRAFT_DOCUMENT_PROMPT = '''You are a draft-document quality reviewer. Evaluate the supplied draft document as a whole against the writing context, then return an AuditResult. The document may be represented as Writer IR JSON or Markdown. Section-level checks may already have run; focus on problems that emerge at document level.
 
 Review the document along these dimensions:
 
@@ -52,10 +53,11 @@ Scoring:
 - Start at 100; deduct 20 per high issue, 10 per medium issue, and 3 per low issue, with a minimum of 0.
 - is_passed is false when there is any high issue or more than three medium issues; otherwise it is true.
 - Consolidate related observations into one useful issue instead of listing superficial symptoms separately.
+- Locate issues with content_ref.node_id for Writer IR, or content_ref.heading_path and occurrence for Markdown.
 - Write a one-sentence summary in the same language as the document.
 
 Draft document:
-{draft_document_json}
+{draft_document_content}
 
 Writing context:
 {context_json}
@@ -93,7 +95,8 @@ Validation rules:
    - Loss of key transitional phrases → severity=low, category=relevance.
 
 Scoring: is_passed=false if any high or >3 medium. score=100-20*high-10*medium-3*low, min 0.
-Include hunk_id and target_node_id in each issue's location field.
+Include hunk_id in the issue description and return the target as
+content_ref={{"node_id": "<target_node_id>"}}.
 
 User request:
 {task_query}

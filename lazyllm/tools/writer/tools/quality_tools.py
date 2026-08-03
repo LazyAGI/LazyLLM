@@ -14,7 +14,7 @@ from ..prompts.quality import (
     VALIDATE_PATCH_SET_PROMPT,
     VALIDATE_SECTION_PROMPT,
 )
-from ..utils import to_prompt_json
+from ..utils import parse_markdown_sections, to_prompt_json
 
 
 class WriterQualityTools(WriterToolBase):
@@ -30,30 +30,34 @@ class WriterQualityTools(WriterToolBase):
         section_instruction: Any,
         context: Any,
     ) -> dict:
-        draft = self._unified_model(draft_block, WriterBlock)
+        draft = self._unified_section(draft_block)
         instruction_list = self._unified_model(section_instruction, SectionInstructionList)
         writing_context = self._unified_model(context, WritingContext)
-        self._require_stage(draft.stage, 'draft', 'draft_block')
-
-        instruction = self._match_instruction(draft, instruction_list)
+        if isinstance(draft, WriterBlock):
+            self._require_stage(draft.stage, 'draft', 'draft_block')
+            instruction = self._match_instruction(draft, instruction_list)
+            target = draft.node_id
+            section_content = to_prompt_json(draft)
+        else:
+            instruction = self._match_markdown_instruction(draft, instruction_list)
+            target = '/'.join(instruction.content_ref.heading_path) if instruction else None
+            section_content = draft
         if instruction is None:
-            raise ValueError(
-                f'No section instruction matches draft block {draft.node_id!r}.'
-            )
+            raise ValueError('No section instruction matches the draft section.')
 
         prompt = VALIDATE_SECTION_PROMPT.format(
-            section_json=to_prompt_json(draft),
+            section_content=section_content,
             instruction_json=to_prompt_json(instruction),
             context_json=to_prompt_json(writing_context),
         )
         audit_result = self._call_llm_structured(prompt, AuditResult)
 
         report = ReviewReport(
-            target=draft.node_id,
+            target=target,
             result=audit_result,
             meta={
                 'instruction_id': instruction.instruction_id,
-                'outline_node_id': instruction.outline_node_id,
+                'content_ref': instruction.content_ref.model_dump(exclude_none=True),
                 'section_title': instruction.section_title,
             },
         )
@@ -70,8 +74,8 @@ class WriterQualityTools(WriterToolBase):
                 **counts,
             },
             artifact_meta={
-                'draft_node_id': draft.node_id,
-                'outline_node_id': instruction.outline_node_id,
+                'draft_node_id': draft.node_id if isinstance(draft, WriterBlock) else None,
+                'content_ref': instruction.content_ref.model_dump(exclude_none=True),
                 'instruction_id': instruction.instruction_id,
                 'is_passed': audit_result.is_passed,
                 'score': audit_result.score,
@@ -83,23 +87,35 @@ class WriterQualityTools(WriterToolBase):
         draft_document: Any,
         context: Any,
     ) -> dict:
-        document = self._unified_model(draft_document, WriterDocument)
+        document = self._unified_document(draft_document)
         writing_context = self._unified_model(context, WritingContext)
-        self._require_stage(document.stage, 'draft', 'draft_document')
+        if isinstance(document, WriterDocument):
+            self._require_stage(document.stage, 'draft', 'draft_document')
+            target = document.document_id
+            title = document.title
+            block_count = len(list(document.iter_blocks()))
+            document_content = to_prompt_json(document)
+        else:
+            sections = parse_markdown_sections(document)
+            target = None
+            title = sections[0][1][-1] if sections and sections[0][0] == 1 else ''
+            block_count = len(sections)
+            document_content = document
 
         prompt = VALIDATE_DRAFT_DOCUMENT_PROMPT.format(
-            draft_document_json=to_prompt_json(document),
+            draft_document_content=document_content,
             context_json=to_prompt_json(writing_context),
         )
         audit_result = self._call_llm_structured(prompt, AuditResult)
-        block_count = len(list(document.iter_blocks()))
 
         report = ReviewReport(
-            target=document.document_id,
+            target=target,
             result=audit_result,
             meta={
-                'draft_document_id': document.document_id,
-                'draft_title': document.title,
+                'draft_document_id': (
+                    document.document_id if isinstance(document, WriterDocument) else None
+                ),
+                'draft_title': title,
                 'draft_block_count': block_count,
                 'context_id': writing_context.context_id,
             },
@@ -117,8 +133,10 @@ class WriterQualityTools(WriterToolBase):
                 **counts,
             },
             artifact_meta={
-                'draft_document_id': document.document_id,
-                'draft_title': document.title,
+                'draft_document_id': (
+                    document.document_id if isinstance(document, WriterDocument) else None
+                ),
+                'draft_title': title,
                 'draft_block_count': block_count,
                 'is_passed': audit_result.is_passed,
                 'score': audit_result.score,
@@ -145,7 +163,7 @@ class WriterQualityTools(WriterToolBase):
         context_json = to_prompt_json({
             'facts': [
                 fact.model_dump(
-                    exclude={'fact_id', 'source', 'applies_to_block_ids', 'locked'},
+                    exclude={'fact_id', 'source', 'applies_to', 'locked'},
                 )
                 for fact in writing_context.facts
                 if fact.locked
@@ -192,7 +210,35 @@ class WriterQualityTools(WriterToolBase):
         return next(
             (
                 instruction for instruction in instruction_list.instructions
-                if instruction.outline_node_id == draft_block.node_id
+                if instruction.content_ref.node_id == draft_block.node_id
+            ),
+            None,
+        )
+
+    def _match_markdown_instruction(
+        self,
+        draft: str,
+        instruction_list: SectionInstructionList,
+    ) -> Optional[SectionInstruction]:
+        sections = parse_markdown_sections(draft)
+        if not sections:
+            return None
+        _, heading_path, occurrence, _ = sections[0]
+        exact_match = next(
+            (
+                instruction for instruction in instruction_list.instructions
+                if instruction.content_ref.heading_path == heading_path
+                and instruction.content_ref.occurrence == occurrence
+            ),
+            None,
+        )
+        if exact_match:
+            return exact_match
+        return next(
+            (
+                instruction for instruction in instruction_list.instructions
+                if instruction.content_ref.heading_path
+                and instruction.content_ref.heading_path[-1] == heading_path[-1]
             ),
             None,
         )

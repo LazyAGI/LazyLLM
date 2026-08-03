@@ -58,6 +58,34 @@ class WriterToolBase(ModuleBase):
             return None
         return self._unified_model(value, model_class)
 
+    def _unified_section(self, value: Any) -> WriterBlock | str:
+        if isinstance(value, WriterBlock):
+            return value
+        if isinstance(value, dict):
+            return WriterBlock.model_validate(value)
+        if isinstance(value, str):
+            if os.path.isfile(value):
+                if value.lower().endswith(('.md', '.markdown')):
+                    with open(value, 'r', encoding='utf-8') as stream:
+                        return stream.read()
+                return self._unified_model(value, WriterBlock)
+            return value
+        raise TypeError('value must be WriterBlock, Markdown text, or an artifact path.')
+
+    def _unified_document(self, value: Any) -> WriterDocument | str:
+        if isinstance(value, WriterDocument):
+            return value
+        if isinstance(value, dict):
+            return WriterDocument.model_validate(value)
+        if isinstance(value, str):
+            if os.path.isfile(value):
+                if value.lower().endswith(('.md', '.markdown')):
+                    with open(value, 'r', encoding='utf-8') as stream:
+                        return stream.read()
+                return self._unified_model(value, WriterDocument)
+            return value
+        raise TypeError('value must be WriterDocument, Markdown text, or an artifact path.')
+
     def _unified_models(self, value: Any, model_class: Type[T]) -> List[T]:
         if value is None:
             return []
