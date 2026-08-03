@@ -1,5 +1,4 @@
 from .task import InputResource, Selection, TargetDocument, WritingTask
-from .document import ContentRef, DocumentFormat, DocumentPayload
 from .resource import MaterialStyle, ResourceProfile
 from .context import (
     BlockRelationGraph,
@@ -11,6 +10,7 @@ from .context import (
 )
 from .planning import SectionInstruction, SectionInstructionList
 from .revision import (
+    LocatedContent,
     LocateResult,
     ModifyInstruction,
     ModifyPlan,
@@ -23,7 +23,7 @@ from .revision import (
 )
 from .multimodal import MediaAsset, MediaAssetLibrary, VisualInstruction
 from .quality import AuditIssue, AuditResult, ReviewReport
-from .writer_ir import WriterBlock, WriterDocument, WriterSpan, WriterStage
+from .writer_ir import ContentRef, WriterBlock, WriterDocument, WriterSpan, WriterStage
 
 __all__ = [
     'InputResource',
@@ -31,8 +31,6 @@ __all__ = [
     'TargetDocument',
     'WritingTask',
     'ContentRef',
-    'DocumentFormat',
-    'DocumentPayload',
     'MaterialStyle',
     'ResourceProfile',
     'BlockRelationGraph',
@@ -45,6 +43,7 @@ __all__ = [
     'SectionInstructionList',
     'ModifyInstruction',
     'ModifyPlan',
+    'LocatedContent',
     'PatchHunk',
     'PatchResult',
     'PatchSet',

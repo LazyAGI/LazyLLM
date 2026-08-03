@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 from ..utils.artifact import ArtifactModel
+from .writer_ir import ContentRef
 
 
 class MediaAsset(BaseModel):
@@ -18,13 +19,13 @@ class MediaAsset(BaseModel):
 class MediaAssetLibrary(ArtifactModel):
     library_id: str
     assets: Dict[str, MediaAsset] = Field(default_factory=dict)
-    section_asset_ids: Dict[str, List[str]] = Field(default_factory=dict)
     visual_need_asset_ids: Dict[str, List[str]] = Field(default_factory=dict)
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
 class VisualInstruction(BaseModel):
     need_id: str
+    content_ref: ContentRef
     visual_type: Literal['image', 'chart', 'table', 'diagram']
     purpose: str
     preferred_strategy: Literal[

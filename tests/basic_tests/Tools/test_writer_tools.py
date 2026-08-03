@@ -7,7 +7,6 @@ import pytest
 
 from lazyllm.tools.writer.data_models import (
     ContentRef,
-    DocumentPayload,
     DocumentSummary,
     MaterialStyle,
     ResourceProfile,
@@ -67,20 +66,15 @@ def test_text_response_strips_provider_think_block():
 
 
 def test_writer_document_compatibility_contract_models():
-    writer_ir = WriterDocument(document_id='doc-1', stage='final')
-    ir_payload = DocumentPayload(document_format='writer_ir', content=writer_ir)
-    markdown_payload = DocumentPayload(document_format='markdown', content='# 标题\n')
-
-    assert ir_payload.content == writer_ir
-    assert markdown_payload.content == '# 标题\n'
     assert ContentRef(node_id='section-1').node_id == 'section-1'
     assert ContentRef(heading_path=['第一章', '背景']).heading_path == ['第一章', '背景']
+    assert ContentRef(placeholder_id='visual-1').placeholder_id == 'visual-1'
 
 
 def test_section_instruction_and_markdown_revision_contracts():
-    legacy_instruction = SectionInstruction(
+    ir_instruction = SectionInstruction(
         instruction_id='section-ir',
-        outline_node_id='node-1',
+        content_ref=ContentRef(node_id='node-1'),
         section_title='引言',
         section_goal='介绍背景',
     )
@@ -97,9 +91,8 @@ def test_section_instruction_and_markdown_revision_contracts():
         new_string='扩写后的完整段落',
     )])
 
-    assert legacy_instruction.content_ref is None
-    assert legacy_instruction.resolved_content_ref == ContentRef(node_id='node-1')
-    assert markdown_instruction.outline_node_id is None
+    assert ir_instruction.content_ref == ContentRef(node_id='node-1')
+    assert markdown_instruction.content_ref.heading_path == ['第一章', '引言']
     assert replace_set.replacements[0].old_string == '原始段落'
 
 
@@ -201,7 +194,7 @@ def _make_section_instruction_list():
         instructions=[
             SectionInstruction(
                 instruction_id='si-prologue',
-                outline_node_id='prologue',
+                content_ref=ContentRef(node_id='prologue'),
                 section_title='楔子 · 星辰陨落',
                 section_goal='建立世界观的宏大感和宿命基调。',
                 required_points=['太古星辰大帝的实力层级'],
@@ -665,7 +658,7 @@ def test_generate_section_instructions_preserves_outline_references():
         instructions=[
             SectionInstruction(
                 instruction_id='instruction-section-1',
-                outline_node_id='section-1',
+                content_ref=ContentRef(node_id='section-1'),
                 section_title='第一节',
                 section_goal='写第一节',
                 references=[{'id': 'llm-invented-reference'}],
@@ -737,7 +730,7 @@ def test_generate_markdown_draft_then_convert_once_to_ir():
     context = WritingContext(context_id='ctx-md')
     instruction = SectionInstruction(
         instruction_id='instruction-section-1',
-        outline_node_id='section-1',
+        content_ref=ContentRef(node_id='section-1'),
         section_title='第一章',
         section_goal='说明方案',
         meta={'outline_node_level': 1},
@@ -976,7 +969,8 @@ def test_validate_section_happy_path():
         assert report.result.is_passed is True
         assert report.target == 'prologue'
         assert report.meta['instruction_id'] == 'si-prologue'
-        assert report.meta['outline_node_id'] == 'prologue'
+        assert report.meta['content_ref'] == {'node_id': 'prologue', 'heading_path': [],
+                                              'occurrence': 1}
 
 
 def test_validate_draft_document_happy_path():

@@ -1,17 +1,20 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
-from .document import ContentRef
-from .writer_ir import WriterBlock, WriterSpan
+from .writer_ir import ContentRef, WriterBlock, WriterSpan
 from ..utils.artifact import ArtifactModel
+
+
+class LocatedContent(BaseModel):
+    content_ref: ContentRef
+    reason: str = ''
 
 
 class LocateResult(ArtifactModel):
     task_id: Optional[str] = None
     doc_id: Optional[str] = None
     target_title: bool
-    target_node_ids: List[str]
-    target_reasons: Dict[str, str]
+    targets: List[LocatedContent] = Field(default_factory=list)
     summary: Optional[str] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
 
@@ -22,19 +25,11 @@ PatchPosition = Literal['before', 'after']
 
 class ModifyInstruction(BaseModel):
     instruction_id: Optional[str] = None
-    target_node_id: str
+    content_ref: ContentRef
     modify_type: ModifyType
-    anchor_node_id: Optional[str] = None
     position: Optional[PatchPosition] = None
     instruction: str
     meta: Dict[str, Any] = Field(default_factory=dict)
-
-    @model_validator(mode='after')
-    def validate_anchor(self) -> 'ModifyInstruction':
-        if self.modify_type in {'create', 'move'} \
-                and (not self.anchor_node_id or not self.position):
-            raise ValueError(f'{self.modify_type} requires anchor_node_id and position')
-        return self
 
 
 class ModifyPlan(BaseModel):
@@ -42,7 +37,6 @@ class ModifyPlan(BaseModel):
     task_id: Optional[str] = None
     scope: Literal['document', 'section', 'block', 'span']
     title_instruction: Optional[str] = None
-    target_node_ids: List[str] = Field(default_factory=list)
     instructions: List[ModifyInstruction] = Field(default_factory=list)
     summary: Optional[str] = None
     meta: Dict[str, Any] = Field(default_factory=dict)

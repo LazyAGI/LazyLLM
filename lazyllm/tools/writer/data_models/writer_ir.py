@@ -13,6 +13,15 @@ WRITER_BLOCK_MUTABLE_FIELDS = ('type', 'content', 'spans', 'stage', 'numbering',
 WRITER_BLOCK_PROVIDER_MANAGED_FIELDS = ('provider_binding', 'provider_payload', 'editable')
 
 
+class ContentRef(BaseModel):
+    '''A content locator for either Writer IR or Markdown.'''
+
+    node_id: Optional[str] = None
+    heading_path: List[str] = Field(default_factory=list)
+    placeholder_id: Optional[str] = None
+    occurrence: int = Field(default=1, ge=1)
+
+
 class WriterSpan(BaseModel):
     text: str = ''
     style: Dict[str, Any] = Field(default_factory=dict)
@@ -79,7 +88,7 @@ WriterDocument.model_rebuild()
 
 
 __all__ = [
-    'WriterDocument', 'WriterBlock', 'WriterSpan', 'WriterStage',
+    'ContentRef', 'WriterDocument', 'WriterBlock', 'WriterSpan', 'WriterStage',
     'WRITER_IR_FILE_EXTENSION', 'WRITER_IR_CONTENT_TYPE',
     'WRITER_BLOCK_MUTABLE_FIELDS', 'WRITER_BLOCK_PROVIDER_MANAGED_FIELDS',
 ]
