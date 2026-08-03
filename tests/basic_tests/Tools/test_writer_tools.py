@@ -459,8 +459,22 @@ def test_create_writing_context_tool_result():
         assert '# 背景分析' in context.document_summary.structure_summary
         assert len(context.block_summaries) == 3  # 2 headings + 1 paragraph all have text
         assert context.facts[0].value == '市场增长20%'
-        assert context.outline is None
-        assert context.draft_document is None
+
+
+def test_writing_context_supports_markdown():
+    task = WritingTask(task_id='t-md', query='扩写文稿', task_type='revise')
+    markdown = '# 第一章\n\n章节摘要\n\n## 背景\n\n背景正文'
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterContextTools(artifact_store=d)
+        result = tool.create_writing_context(task=task, document=markdown)
+        context = load_artifact_json(result['context_path'], WritingContext)
+
+        assert [summary.content_ref.heading_path for summary in context.block_summaries] == [
+            ['第一章'],
+            ['第一章', '背景'],
+        ]
+        assert context.block_summaries[1].summary == '背景正文'
 
 
 def test_create_context_multiple_profiles():
@@ -518,7 +532,6 @@ def test_update_context_first_update():
         assert updated.document_summary is not None
         assert updated.document_summary.summary == '第一章 这是第一章的内容。'
         assert len(updated.meta.get('context_updates', [])) >= 1
-        assert updated.draft_document == writer_ir
 
 
 def test_update_context_second_update():
@@ -577,7 +590,6 @@ def test_update_context_writer_ir_as_pydantic():
 
         updated = load_artifact_json(result['context_path'], WritingContext)
         assert updated.document_summary.summary == '终稿 最终输出内容'
-        assert updated.draft_document is None
 
 
 def test_update_context_routes_outline_writer_document():
@@ -604,7 +616,8 @@ def test_update_context_routes_outline_writer_document():
         )
         updated = load_artifact_json(result['context_path'], WritingContext)
 
-    assert updated.outline == outline
+    assert updated.document_summary.summary == '文档大纲 第一章'
+    assert updated.block_summaries[0].content_ref.node_id == 'outline-1'
 
 
 def test_update_context_routes_draft_writer_block_from_artifact_path():
@@ -633,8 +646,8 @@ def test_update_context_routes_draft_writer_block_from_artifact_path():
         )
         updated = load_artifact_json(result['context_path'], WritingContext)
 
-    assert updated.draft_sections == [draft_section]
     assert updated.document_summary.summary == '第一章 章节正文。'
+    assert updated.block_summaries[0].content_ref.node_id == 'section-1'
 
 
 def test_generate_section_instructions_preserves_outline_references():

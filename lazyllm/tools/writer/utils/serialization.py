@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import re
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
@@ -24,6 +25,34 @@ def render_document_markdown(document: WriterDocument) -> str:
     for block in document.blocks:
         parts.extend(_render_block_markdown(block, level=2))
     return '\n\n'.join(part for part in parts if part).strip() + '\n'
+
+
+def parse_markdown_sections(markdown: str) -> List[tuple[int, List[str], int, str]]:
+    sections: List[tuple[int, List[str], int, str]] = []
+    heading_path: List[str] = []
+    occurrences: dict[tuple[str, ...], int] = {}
+    current: Optional[tuple[int, List[str], int, List[str]]] = None
+
+    for line in markdown.splitlines():
+        match = re.match(r'^(#{1,6})\s+(.+?)\s*$', line)
+        if not match:
+            if current is not None:
+                current[3].append(line)
+            continue
+        if current is not None:
+            sections.append((current[0], current[1], current[2], '\n'.join(current[3]).strip()))
+        level = len(match.group(1))
+        title = match.group(2)
+        heading_path = heading_path[:level - 1]
+        heading_path.append(title)
+        path_key = tuple(heading_path)
+        occurrence = occurrences.get(path_key, 0) + 1
+        occurrences[path_key] = occurrence
+        current = (level, list(heading_path), occurrence, [])
+
+    if current is not None:
+        sections.append((current[0], current[1], current[2], '\n'.join(current[3]).strip()))
+    return sections
 
 
 def parse_document_markdown(  # noqa: C901
