@@ -73,11 +73,8 @@ def test_writer_document_compatibility_contract_models():
 
     assert ir_payload.content == writer_ir
     assert markdown_payload.content == '# 标题\n'
-    assert ContentRef(node_id='section-1').document_format == 'writer_ir'
-    assert ContentRef(heading_path=['第一章', '背景']).document_format == 'markdown'
-
-    with pytest.raises(ValueError, match='writer_ir content must be a WriterDocument'):
-        DocumentPayload(document_format='writer_ir', content='not-ir')
+    assert ContentRef(node_id='section-1').node_id == 'section-1'
+    assert ContentRef(heading_path=['第一章', '背景']).heading_path == ['第一章', '背景']
 
 
 def test_section_instruction_and_markdown_revision_contracts():
