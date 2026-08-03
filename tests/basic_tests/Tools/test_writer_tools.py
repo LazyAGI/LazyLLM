@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from lazyllm.tools.writer.data_models import (
+    ContentRef,
+    DocumentPayload,
     DocumentSummary,
     MaterialStyle,
     ResourceProfile,
@@ -20,6 +22,8 @@ from lazyllm.tools.writer.data_models.revision import (
     PatchHunk,
     PatchResult,
     PatchSet,
+    StringReplace,
+    StringReplaceSet,
 )
 from lazyllm.tools.writer.data_models.task import InputResource
 from lazyllm.tools.writer.data_models.planning import (
@@ -60,6 +64,46 @@ def test_text_response_strips_provider_think_block():
     tool = WriterToolBase(llm=lambda _: '<think>internal reasoning</think>\n\n正文')
 
     assert tool._call_llm_text('prompt') == '正文'
+
+
+def test_writer_document_compatibility_contract_models():
+    writer_ir = WriterDocument(document_id='doc-1', stage='final')
+    ir_payload = DocumentPayload(document_format='writer_ir', content=writer_ir)
+    markdown_payload = DocumentPayload(document_format='markdown', content='# 标题\n')
+
+    assert ir_payload.content == writer_ir
+    assert markdown_payload.content == '# 标题\n'
+    assert ContentRef(node_id='section-1').document_format == 'writer_ir'
+    assert ContentRef(heading_path=['第一章', '背景']).document_format == 'markdown'
+
+    with pytest.raises(ValueError, match='writer_ir content must be a WriterDocument'):
+        DocumentPayload(document_format='writer_ir', content='not-ir')
+
+
+def test_section_instruction_and_markdown_revision_contracts():
+    legacy_instruction = SectionInstruction(
+        instruction_id='section-ir',
+        outline_node_id='node-1',
+        section_title='引言',
+        section_goal='介绍背景',
+    )
+    markdown_instruction = SectionInstruction(
+        instruction_id='section-md',
+        content_ref=ContentRef(heading_path=['第一章', '引言']),
+        section_title='引言',
+        section_goal='介绍背景',
+    )
+    replace_set = StringReplaceSet(replacements=[StringReplace(
+        replacement_id='replace-1',
+        content_ref=markdown_instruction.content_ref,
+        old_string='原始段落',
+        new_string='扩写后的完整段落',
+    )])
+
+    assert legacy_instruction.content_ref is None
+    assert legacy_instruction.resolved_content_ref == ContentRef(node_id='node-1')
+    assert markdown_instruction.outline_node_id is None
+    assert replace_set.replacements[0].old_string == '原始段落'
 
 
 def _make_doc_adapter():

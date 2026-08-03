@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
+from .document import ContentRef
 from .writer_ir import WriterBlock, WriterSpan
 from ..utils.artifact import ArtifactModel
 
@@ -114,5 +115,36 @@ class PatchResult(BaseModel):
     success: bool
     applied_hunks: List[str] = Field(default_factory=list)
     failed_hunks: List[str] = Field(default_factory=list)
+    message: Optional[str] = None
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class StringReplace(BaseModel):
+    replacement_id: Optional[str] = None
+    old_string: str
+    new_string: str
+    content_ref: Optional[ContentRef] = None
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode='after')
+    def validate_replacement(self) -> 'StringReplace':
+        if not self.old_string:
+            raise ValueError('old_string must not be empty')
+        if self.old_string == self.new_string:
+            raise ValueError('old_string and new_string must differ')
+        return self
+
+
+class StringReplaceSet(ArtifactModel):
+    replace_set_id: Optional[str] = None
+    replacements: List[StringReplace] = Field(default_factory=list)
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class StringReplaceResult(BaseModel):
+    replace_set_id: Optional[str] = None
+    success: bool
+    applied_replacements: List[str] = Field(default_factory=list)
+    failed_replacements: List[str] = Field(default_factory=list)
     message: Optional[str] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
