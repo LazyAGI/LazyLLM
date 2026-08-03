@@ -332,6 +332,7 @@ class WriterDraftingTools(WriterToolBase):
         if not instructions:
             raise ValueError('section instruction list is empty.')
         return instructions[0]
+
     def _normalize_draft_block(
         self,
         draft_block: WriterBlock,
@@ -380,6 +381,7 @@ class WriterDraftingTools(WriterToolBase):
         with open(path, 'w', encoding='utf-8') as fh:
             fh.write(content)
         return os.path.abspath(path)
+
     def _write_markdown_artifact(self, filename: str, content: str) -> str:
         if not self.artifact_store:
             raise ValueError('artifact_store is not set')

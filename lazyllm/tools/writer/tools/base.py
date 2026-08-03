@@ -203,7 +203,7 @@ class WriterToolBase(ModuleBase):
 
     @staticmethod
     def _strip_leading_think_blocks(text: str) -> str:
-        """Remove provider reasoning blocks without touching document content."""
+        '''Remove provider reasoning blocks without touching document content.'''
         cleaned = text
         pattern = re.compile(r'^\s*<think\b[^>]*>.*?</think>\s*', re.IGNORECASE | re.DOTALL)
         while True:
@@ -229,63 +229,80 @@ class WriterToolBase(ModuleBase):
             model = model.formatter(JsonFormatter())
         return model
 
+    @classmethod
+    def _inherit_document_stage(cls, blocks: Any, document_stage: str) -> None:
+        if not isinstance(blocks, list):
+            return
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            block.setdefault('stage', document_stage)
+            cls._inherit_document_stage(block.get('children'), document_stage)
+
+    @classmethod
+    def _prepare_structured_candidate(cls, candidate: Any, schema: Type[T]) -> Any:
+        if schema is not WriterDocument or not isinstance(candidate, dict):
+            return candidate
+        document_stage = candidate.get('stage')
+        if not document_stage:
+            return candidate
+        normalized = deepcopy(candidate)
+        cls._inherit_document_stage(normalized.get('blocks'), document_stage)
+        return normalized
+
+    @staticmethod
+    def _parse_structured_response(response: Any, schema: Type[T]) -> Any:
+        if not isinstance(response, str):
+            return response
+        try:
+            return JsonFormatter()(response)
+        except Exception as exc:
+            raise ValueError(
+                f'Failed to parse LLM output as JSON for {schema.__name__}. '
+                f'Response: {response!r}'
+            ) from exc
+
+    @classmethod
+    def _select_structured_candidate(
+        cls,
+        parsed: List[Any],
+        schema: Type[T],
+        response: Any,
+    ) -> Optional[T]:
+        candidates = []
+        for item in parsed:
+            try:
+                candidates.append(schema.model_validate(cls._prepare_structured_candidate(item, schema)))
+            except Exception:
+                continue
+        unique_candidates = {
+            candidate.model_dump_json(exclude_defaults=True): candidate
+            for candidate in candidates
+        }
+        if len(unique_candidates) == 1:
+            return next(iter(unique_candidates.values()))
+        if len(unique_candidates) > 1:
+            raise ValueError(
+                f'Failed to select one unambiguous {schema.__name__} from LLM output. '
+                f'Response: {response!r}'
+            )
+        return None
+
     def _validate_structured_response(self, response: Any, schema: Type[T]) -> T:
-        def prepare_candidate(candidate: Any) -> Any:
-            if schema is not WriterDocument or not isinstance(candidate, dict):
-                return candidate
-            document_stage = candidate.get('stage')
-            if not document_stage:
-                return candidate
-            normalized = deepcopy(candidate)
-
-            def inherit_stage(blocks: Any) -> None:
-                if not isinstance(blocks, list):
-                    return
-                for block in blocks:
-                    if not isinstance(block, dict):
-                        continue
-                    block.setdefault('stage', document_stage)
-                    inherit_stage(block.get('children'))
-
-            inherit_stage(normalized.get('blocks'))
-            return normalized
-
-        parsed = response
+        parsed = self._parse_structured_response(response, schema)
         if isinstance(parsed, schema):
             return parsed
-        if isinstance(parsed, str):
-            try:
-                parsed = JsonFormatter()(parsed)
-            except Exception as exc:
-                raise ValueError(
-                    f'Failed to parse LLM output as JSON for {schema.__name__}. '
-                    f'Response: {response!r}'
-                ) from exc
         direct_error = None
         if isinstance(parsed, (dict, list)):
             try:
-                return schema.model_validate(prepare_candidate(parsed))
+                return schema.model_validate(self._prepare_structured_candidate(parsed, schema))
             except Exception as exc:
                 direct_error = exc
 
         if isinstance(parsed, list):
-            candidates = []
-            for item in parsed:
-                try:
-                    candidates.append(schema.model_validate(prepare_candidate(item)))
-                except Exception:
-                    continue
-            unique_candidates = {
-                candidate.model_dump_json(exclude_defaults=True): candidate
-                for candidate in candidates
-            }
-            if len(unique_candidates) == 1:
-                return next(iter(unique_candidates.values()))
-            if len(unique_candidates) > 1:
-                raise ValueError(
-                    f'Failed to select one unambiguous {schema.__name__} from LLM output. '
-                    f'Response: {response!r}'
-                )
+            candidate = self._select_structured_candidate(parsed, schema, response)
+            if candidate is not None:
+                return candidate
 
         if direct_error is not None:
             raise ValueError(
