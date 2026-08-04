@@ -9,8 +9,8 @@ from ..data_models.writer_ir import WriterBlock, WriterDocument
 from ..data_models.planning import SectionInstruction
 from ..prompts import GENERATE_DRAFT_SECTION_MARKDOWN_PROMPT, GENERATE_DRAFT_SECTION_PROMPT
 from ..utils import (
-    ToolResult,
     get_markdown_outline_targets,
+    make_markdown_tool_result,
     parse_markdown_sections,
     render_document_markdown,
     to_prompt_json,
@@ -67,14 +67,14 @@ class WriterDraftingTools(WriterToolBase):
 
             filename = self._safe_artifact_component(instruction.instruction_id)
             path = self._write_markdown_artifact(f'draft_block/{filename}.md', markdown)
-            return self._markdown_result(
+            return make_markdown_tool_result(
                 path=path,
                 step_name='generate_draft_section',
                 artifact_key='draft_block',
                 summary='Generated draft section as Markdown.',
                 counts={'characters': len(markdown)},
                 extra=result_extra,
-            )
+            ).model_dump()
 
         previous_data = self._unified_raw_data(previous_blocks)
         prompt = GENERATE_DRAFT_SECTION_PROMPT.format(
@@ -209,7 +209,7 @@ class WriterDraftingTools(WriterToolBase):
             raise ValueError('Assembled Markdown draft does not preserve section order.')
 
         path = self._write_markdown_artifact('draft_document.md', markdown)
-        return self._markdown_result(
+        return make_markdown_tool_result(
             path=path,
             step_name='generate_draft_document',
             artifact_key='draft_document',
@@ -224,7 +224,7 @@ class WriterDraftingTools(WriterToolBase):
                 'doc_id': context.doc_id,
                 'outline_title': document_title,
             },
-        )
+        ).model_dump()
 
     def generate_final_document(
         self, draft: Any, context: Any,
@@ -240,7 +240,7 @@ class WriterDraftingTools(WriterToolBase):
             if not content.strip() or not parse_markdown_sections(content):
                 raise ValueError('Markdown draft document must contain at least one heading.')
             path = self._write_markdown_artifact('final_document.md', content)
-            result = self._markdown_result(
+            result = make_markdown_tool_result(
                 path=path,
                 step_name='generate_final_document',
                 artifact_key='final_document',
@@ -259,7 +259,7 @@ class WriterDraftingTools(WriterToolBase):
                     'doc_id': writing_context.doc_id,
                     'output_format': output_format,
                 },
-            )
+            ).model_dump()
             result['output_file_path'] = path
             return result
 
@@ -392,23 +392,3 @@ class WriterDraftingTools(WriterToolBase):
     def _safe_artifact_component(value: str) -> str:
         component = re.sub(r'[^\w.-]+', '_', value, flags=re.UNICODE).strip('._')
         return component or 'section'
-
-    @staticmethod
-    def _markdown_result(
-        *, path: str, step_name: str, artifact_key: str,
-        summary: str, counts: dict, extra: dict,
-    ) -> dict:
-        return ToolResult(
-            artifact_path=path,
-            summary=summary,
-            metadata={
-                'step_name': step_name,
-                'artifact_key': artifact_key,
-                'artifact_paths': {artifact_key: path},
-                'schema_names': {artifact_key: 'text/markdown'},
-                'counts': counts,
-                'status': 'success',
-                'warnings': [],
-                'extra': extra,
-            },
-        ).model_dump()

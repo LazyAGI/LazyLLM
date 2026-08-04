@@ -1,10 +1,13 @@
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import BaseModel
 
 import lazyllm
+from lazyllm.tools.writer.adapter.feishu import FeishuWriterAdapter
 from lazyllm.tools.writer.tools.base import WriterToolBase
 from lazyllm.tools.writer.data_models.context import DocumentSummary, WritingContext
 from lazyllm.tools.writer.data_models.quality import AuditResult, ReviewReport
@@ -77,6 +80,19 @@ def _load_stage(stages: dict, key: str, model_class=None):
     return load_artifact_json(path, model_class)
 
 
+@contextmanager
+def _mock_document_write(wf, target_document, document_id):
+    write_fs = MagicMock()
+    with patch.object(
+        wf.resource, '_resolve_document_target',
+        return_value=(
+            'feishu', f'/{document_id}.md', write_fs, FeishuWriterAdapter(),
+            target_document.uri, document_id,
+        ),
+    ):
+        yield write_fs
+
+
 def test_write_workflow_e2e():
     '''Run NaiveWriterWorkflow.write() end-to-end and verify every stage's artifact.'''
     llm = lazyllm.OnlineChatModule(
@@ -95,7 +111,10 @@ def test_write_workflow_e2e():
         task_type='write',
         target_document=TargetDocument(
             title='Technical Overview of AI-Powered Coding Assistant',
+            uri='feishu:///writer-ir-e2e.md',
+            adapter='feishu',
         ),
+        output={'representation': 'ir'},
     )
     inputs = [
         InputResource(
@@ -125,11 +144,12 @@ def test_write_workflow_e2e():
         ),
     ]
 
-    result = lazyllm.enable_trace(
-        wf.write,
-        task=task.model_dump(),
-        input_resources=[r.model_dump() for r in inputs],
-    )
+    with _mock_document_write(wf, task.target_document, 'writer-ir-e2e') as write_fs:
+        result = lazyllm.enable_trace(
+            wf.write,
+            task=task.model_dump(),
+            input_resources=[r.model_dump() for r in inputs],
+        )
     stages = result.get('stage_results') or {}
     assert stages, 'stage_results must not be empty'
 
@@ -203,7 +223,9 @@ def test_write_workflow_e2e():
 
     # --- Step 11: write_result ---
     write_result = _load_stage(stages, 'write_result')
-    assert write_result is not None
+    assert write_result['doc_id'] == 'writer-ir-e2e'
+    assert write_result['block_count'] > 0
+    write_fs.write_doc_blocks.assert_called_once()
 
     # --- primary_result ---
     primary = result.get('primary_result') or {}
@@ -229,7 +251,11 @@ def test_write_workflow_markdown_e2e():
             'to Kubernetes and supports both SaaS and on-premises operation.'
         ),
         task_type='write',
-        target_document=TargetDocument(title='AI Coding Assistant Deployment Note'),
+        target_document=TargetDocument(
+            title='AI Coding Assistant Deployment Note',
+            uri='feishu:///writer-markdown-e2e.md',
+            adapter='feishu',
+        ),
         output={'representation': 'markdown'},
     )
     inputs = [
@@ -244,11 +270,12 @@ def test_write_workflow_markdown_e2e():
         ),
     ]
 
-    result = lazyllm.enable_trace(
-        wf.write,
-        task=task.model_dump(),
-        input_resources=[resource.model_dump() for resource in inputs],
-    )
+    with _mock_document_write(wf, task.target_document, 'writer-markdown-e2e') as write_fs:
+        result = lazyllm.enable_trace(
+            wf.write,
+            task=task.model_dump(),
+            input_resources=[resource.model_dump() for resource in inputs],
+        )
     stages = result.get('stage_results') or {}
     assert stages
 
@@ -306,7 +333,9 @@ def test_write_workflow_markdown_e2e():
 
     # --- Step 11: write_result ---
     write_result = _load_stage(stages, 'write_result')
-    assert write_result is not None
+    assert write_result['doc_id'] == 'writer-markdown-e2e'
+    assert write_result['block_count'] > 0
+    write_fs.write_doc_blocks.assert_called_once()
 
     # --- primary_result ---
     primary = result.get('primary_result') or {}

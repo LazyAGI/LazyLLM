@@ -4,6 +4,7 @@ from .artifact import (
     ArtifactModel,
     ToolResult,
     load_artifact_json,
+    make_markdown_tool_result,
     save_artifact_json,
 )
 from .serialization import (
@@ -20,6 +21,7 @@ __all__ = [
     'ArtifactModel',
     'ToolResult',
     'load_artifact_json',
+    'make_markdown_tool_result',
     'save_artifact_json',
     'render_document_markdown',
     'get_markdown_outline_targets',

@@ -13,8 +13,8 @@ from ..prompts import (
     GENERATE_SECTION_INSTRUCTIONS_PROMPT,
 )
 from ..utils import (
-    ToolResult,
     get_markdown_outline_targets,
+    make_markdown_tool_result,
     parse_markdown_sections,
     to_prompt_json,
 )
@@ -50,28 +50,22 @@ class WriterPlanningTools(WriterToolBase):
             outline = self._call_llm_text(prompt).strip() + '\n'
             _, targets = get_markdown_outline_targets(outline)
             path = self._write_markdown_artifact('outline.md', outline)
-            return ToolResult(
-                artifact_path=path,
+            return make_markdown_tool_result(
+                path=path,
+                step_name='generate_outline',
+                artifact_key='outline',
                 summary='Generated writing outline as Markdown.',
-                metadata={
-                    'step_name': 'generate_outline',
-                    'artifact_key': 'outline',
-                    'artifact_paths': {'outline': path},
-                    'schema_names': {'outline': 'text/markdown'},
-                    'counts': {
-                        'top_level_sections': len(targets),
-                        'outline_nodes': len(parse_markdown_sections(outline)),
-                        'characters': len(outline),
-                    },
-                    'status': 'success',
-                    'warnings': [],
-                    'extra': {
-                        'representation': 'markdown',
-                        'task_id': writing_task.task_id,
-                        'context_id': writing_context.context_id,
-                        'resource_profile_count': len(profiles),
-                        'has_execution_results': execution_data is not None,
-                    },
+                counts={
+                    'top_level_sections': len(targets),
+                    'outline_nodes': len(parse_markdown_sections(outline)),
+                    'characters': len(outline),
+                },
+                extra={
+                    'representation': 'markdown',
+                    'task_id': writing_task.task_id,
+                    'context_id': writing_context.context_id,
+                    'resource_profile_count': len(profiles),
+                    'has_execution_results': execution_data is not None,
                 },
             ).model_dump()
 
@@ -194,7 +188,7 @@ class WriterPlanningTools(WriterToolBase):
         task: WritingTask,
         representation: Literal['ir', 'markdown'] | None,
     ) -> Literal['ir', 'markdown']:
-        resolved = representation or task.output.get('representation') or 'ir'
+        resolved = representation or task.output.get('representation') or 'markdown'
         if resolved not in {'ir', 'markdown'}:
             raise ValueError("representation must be 'ir' or 'markdown'.")
         return resolved

@@ -24,6 +24,25 @@ class ToolResult(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+def make_markdown_tool_result(
+    *,
+    path: str, step_name: str,
+    artifact_key: str, summary: str,
+    counts: Dict[str, Any], extra: Dict[str, Any],
+) -> ToolResult:
+    return ToolResult(
+        artifact_path=path, summary=summary,
+        metadata={
+            'step_name': step_name,
+            'artifact_key': artifact_key,
+            'artifact_paths': {artifact_key: path},
+            'schema_names': {artifact_key: 'text/markdown'},
+            'counts': counts, 'status': 'success',
+            'warnings': [], 'extra': extra,
+        },
+    )
+
+
 def _schema_name(obj: BaseModel) -> str:
     cls = type(obj)
     return _schema_name_for_class(cls)
