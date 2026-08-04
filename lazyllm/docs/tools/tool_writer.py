@@ -24,14 +24,6 @@ add_writer_english_doc('WriterToolBase', '''
 Base class for writer tools with shared model, adapter, and artifact storage support.
 ''')
 
-add_writer_models_chinese_doc('ModifyInstruction.validate_anchor', '''
-校验移动指令所需的锚点和位置。
-''')
-
-add_writer_models_english_doc('ModifyInstruction.validate_anchor', '''
-Validate the anchor and position required by a move instruction.
-''')
-
 add_writer_revision_models_chinese_doc('RevisionBlockContent.validate_spans', '''
 校验修订内容中的文本与富文本片段保持一致。
 ''')
