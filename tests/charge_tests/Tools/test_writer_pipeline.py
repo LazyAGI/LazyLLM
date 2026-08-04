@@ -201,6 +201,10 @@ def test_write_workflow_e2e():
     assert isinstance(out_review.result.is_passed, bool)
     assert 0 <= out_review.result.score <= 100
 
+    # --- Step 11: write_result ---
+    write_result = _load_stage(stages, 'write_result')
+    assert write_result is not None
+
     # --- primary_result ---
     primary = result.get('primary_result') or {}
     primary_path = primary.get('artifact_path') if isinstance(primary, dict) else ''
@@ -299,6 +303,10 @@ def test_write_workflow_markdown_e2e():
     # --- Step 10: output_review ---
     document_review = _load_stage(stages, 'draft_document_review', ReviewReport)
     assert 0 <= document_review.result.score <= 100
+
+    # --- Step 11: write_result ---
+    write_result = _load_stage(stages, 'write_result')
+    assert write_result is not None
 
     # --- primary_result ---
     primary = result.get('primary_result') or {}

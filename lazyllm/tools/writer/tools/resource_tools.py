@@ -13,6 +13,7 @@ from ..data_models.revision import PatchResult, PatchSet
 from ..data_models.task import InputResource, TargetDocument, WritingTask
 from ..data_models.writer_ir import WriterDocument, WriterStage
 from ..prompts.profile_resources import RESOURCE_PROFILE_PROMPT
+from ..utils import parse_document_markdown
 
 _WRITER_STAGE_ADAPTER = TypeAdapter(WriterStage)
 
@@ -237,11 +238,11 @@ class WriterResourceTools(WriterToolBase):
         return self.append_to_document(content, target_document)
 
     def append_to_document(self, content: Any, target_document: Any) -> dict:
-        '''Append a final WriterDocument to an existing provider document.'''
+        '''Append final Writer IR or Markdown to an existing provider document.'''
         return self._write_document(content, target_document, mode='append')
 
     def replace_document(self, content: Any, target_document: Any) -> dict:
-        '''Replace an existing provider document with a final WriterDocument.'''
+        '''Replace an existing provider document with final Writer IR or Markdown.'''
         return self._write_document(content, target_document, mode='replace')
 
     def _write_document(
@@ -251,11 +252,12 @@ class WriterResourceTools(WriterToolBase):
         *,
         mode: str,
     ) -> dict:
-        document = self._unified_model(content, WriterDocument)
-        if document.stage != 'final':
-            raise ValueError(f'content must have stage="final", got {document.stage!r}')
+        source = self._unified_document(content)
+        source_document = source if isinstance(source, WriterDocument) else None
+        if source_document and source_document.stage != 'final':
+            raise ValueError(f'content must have stage="final", got {source_document.stage!r}')
         target = self._unified_optional_model(target_document, TargetDocument) or TargetDocument()
-        locator = self._target_locator(target, document)
+        locator = self._target_locator(target, source_document)
 
         if not locator:
             LOG.warning(
@@ -266,7 +268,10 @@ class WriterResourceTools(WriterToolBase):
             return self._save_write_result('', '', '', 0)
 
         protocol, real_path, fs, adapter, locator, document_id = \
-            self._resolve_document_target(target, source_document=document)
+            self._resolve_document_target(target, source_document=source_document)
+        document = source_document or parse_document_markdown(
+            source, document_id=adapter.make_document_id(document_id), stage='final',
+        )
         method_name = 'replace_doc_blocks' if mode == 'replace' else 'write_doc_blocks'
         write_blocks = getattr(fs, method_name, None)
         if not callable(write_blocks):
