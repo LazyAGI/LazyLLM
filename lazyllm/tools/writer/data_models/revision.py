@@ -26,6 +26,7 @@ PatchPosition = Literal['before', 'after']
 class ModifyInstruction(BaseModel):
     instruction_id: Optional[str] = None
     content_ref: ContentRef
+    destination_ref: Optional[ContentRef] = None
     modify_type: ModifyType
     position: Optional[PatchPosition] = None
     instruction: str

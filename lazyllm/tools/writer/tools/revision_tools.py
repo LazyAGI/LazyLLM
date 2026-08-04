@@ -1,5 +1,7 @@
 from __future__ import annotations
 from copy import deepcopy
+import os
+import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
 
@@ -7,6 +9,7 @@ from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.revision import (
     GeneratedRevision,
+    LocatedContent,
     LocateResult,
     ModifyInstruction,
     ModifyPlan,
@@ -14,11 +17,15 @@ from ..data_models.revision import (
     PatchResult,
     PatchSet,
     RevisionBlockContent,
+    StringReplace,
+    StringReplaceResult,
+    StringReplaceSet,
 )
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import (
     WRITER_BLOCK_MUTABLE_FIELDS,
     WRITER_BLOCK_PROVIDER_MANAGED_FIELDS,
+    ContentRef,
     WriterBlock,
     WriterDocument,
     WriterStage,
@@ -26,9 +33,10 @@ from ..data_models.writer_ir import (
 from ..prompts import (
     GENERATE_MODIFY_PLAN_PROMPT,
     GENERATE_PATCH_SET_PROMPT,
+    GENERATE_STRING_REPLACE_SET_PROMPT,
     LOCATE_REVISION_TARGET_PROMPT,
 )
-from ..utils import to_prompt_json
+from ..utils import parse_markdown_sections, to_prompt_json
 
 
 def apply_patch_to_ir(
@@ -72,8 +80,10 @@ class WriterRevisionTools(WriterToolBase):
         'locate_revision_target',
         'generate_modify_plan',
         'generate_patch_set',
+        'generate_string_replace_set',
         'build_patch_set_from_documents',
         'apply_patch',
+        'apply_string_replace',
     ]
 
     def _apply_patch_hunk(
@@ -164,49 +174,51 @@ class WriterRevisionTools(WriterToolBase):
             raise ValueError(
                 f'task.task_type must be \'revise\', got {writing_task.task_type!r}.'
             )
-        source_doc = self._unified_model(document, WriterDocument)
+        source_doc = self._unified_document(document)
         user_selection = writing_task.selection
-
-        valid_node_ids = {
-            block.node_id for block in source_doc.iter_blocks() if block.editable
-        }
-
-        candidate_node_ids = valid_node_ids
-        if user_selection and user_selection.block_ids:
-            selected = set(user_selection.block_ids) & valid_node_ids
-            if not selected:
-                raise ValueError('selection.block_ids contains no valid node_ids.')
-            candidate_node_ids = selected
+        candidates = self._revision_candidates(source_doc)
+        if user_selection and user_selection.content_refs:
+            selected_refs = {
+                self._content_ref_key(content_ref)
+                for content_ref in user_selection.content_refs
+            }
+            candidates = [
+                candidate for candidate in candidates
+                if self._content_ref_key(candidate['content_ref']) in selected_refs
+            ]
+            if not candidates:
+                raise ValueError('selection.content_refs contains no valid content references.')
 
         prompt = LOCATE_REVISION_TARGET_PROMPT.format(
             task_json=to_prompt_json(writing_task),
-            document_json=to_prompt_json([
-                {
-                    'node_id': block.node_id,
-                    'type': block.type,
-                    'content': block.content,
-                }
-                for block in source_doc.iter_blocks()
-                if block.node_id in candidate_node_ids
-            ]),
+            document_content=to_prompt_json(candidates),
         )
         locate_result = self._call_llm_structured(prompt, LocateResult)
-
-        located = [nid for nid in (locate_result.target_node_ids or []) if nid]
-        invalid = [nid for nid in located if nid not in candidate_node_ids]
-        if invalid:
-            raise ValueError(
-                f'locate_result contains node_ids not in candidates: {invalid}.'
-            )
-        locate_result.target_node_ids = list(dict.fromkeys(located))
-        if not locate_result.target_node_ids and not locate_result.target_title:
-            raise ValueError('locate_result contains no revision targets.')
-        locate_result.target_reasons = {
-            nid: locate_result.target_reasons.get(nid, '')
-            for nid in locate_result.target_node_ids
+        candidate_refs = {
+            self._content_ref_key(candidate['content_ref'])
+            for candidate in candidates
         }
+        invalid = [
+            target.content_ref.model_dump(exclude_none=True)
+            for target in locate_result.targets
+            if self._content_ref_key(target.content_ref) not in candidate_refs
+        ]
+        if invalid:
+            raise ValueError(f'locate_result contains references not in candidates: {invalid}.')
+        located: List[LocatedContent] = []
+        seen_refs = set()
+        for target in locate_result.targets:
+            key = self._content_ref_key(target.content_ref)
+            if key not in seen_refs:
+                seen_refs.add(key)
+                located.append(target)
+        locate_result.targets = located
+        if not locate_result.targets and not locate_result.target_title:
+            raise ValueError('locate_result contains no revision targets.')
         locate_result.task_id = writing_task.task_id
-        locate_result.doc_id = source_doc.document_id
+        locate_result.doc_id = (
+            source_doc.document_id if isinstance(source_doc, WriterDocument) else None
+        )
 
         result = self._save_artifacts(
             {'locate_result': locate_result},
@@ -215,12 +227,14 @@ class WriterRevisionTools(WriterToolBase):
             context_key=None,
             summary='Located revision targets.',
             counts={
-                'target_node_count': len(locate_result.target_node_ids),
+                'target_count': len(locate_result.targets),
                 'target_title': int(locate_result.target_title),
             },
             artifact_meta={
                 'task_id': writing_task.task_id,
-                'document_id': source_doc.document_id,
+                'document_id': (
+                    source_doc.document_id if isinstance(source_doc, WriterDocument) else None
+                ),
                 'has_selection': user_selection is not None,
             },
             artifact_filenames={
@@ -237,24 +251,37 @@ class WriterRevisionTools(WriterToolBase):
         context: Any,
     ) -> dict:
         writing_task = self._unified_model(task, WritingTask)
-        source_doc = self._unified_model(document, WriterDocument)
+        source_doc = self._unified_document(document)
         located = self._unified_model(locate_result, LocateResult)
         writing_context = self._unified_model(context, WritingContext)
 
-        if located.doc_id != source_doc.document_id:
+        document_id = source_doc.document_id if isinstance(source_doc, WriterDocument) else None
+        if located.doc_id != document_id:
             raise ValueError('locate_result does not belong to the current document.')
         if writing_task.task_id is not None and located.task_id != writing_task.task_id:
             raise ValueError('locate_result does not belong to the current task.')
 
-        if located.target_node_ids or located.target_title:
-            block_map = {b.node_id: b for b in source_doc.iter_blocks()}
-            missing = [nid for nid in located.target_node_ids if nid not in block_map]
+        valid_refs = {
+            self._content_ref_key(candidate['content_ref'])
+            for candidate in self._revision_candidates(source_doc)
+        }
+        located_refs = [target.content_ref for target in located.targets]
+        if located_refs or located.target_title:
+            missing = [
+                content_ref.model_dump(exclude_none=True)
+                for content_ref in located_refs
+                if self._content_ref_key(content_ref) not in valid_refs
+            ]
             if missing:
-                raise ValueError(f'locate_result has node_ids absent from document: {missing}.')
+                raise ValueError(f'locate_result has references absent from document: {missing}.')
 
             prompt = GENERATE_MODIFY_PLAN_PROMPT.format(
                 task_json=to_prompt_json(writing_task),
-                document_json=to_prompt_json(self._visible_document(source_doc)),
+                document_content=(
+                    to_prompt_json(self._visible_document(source_doc))
+                    if isinstance(source_doc, WriterDocument)
+                    else source_doc
+                ),
                 locate_result_json=to_prompt_json(located),
                 context_json=to_prompt_json(writing_context),
             )
@@ -265,8 +292,8 @@ class WriterRevisionTools(WriterToolBase):
         modify_plan = self._normalize_modify_plan(
             modify_plan,
             writing_task,
-            located.target_node_ids,
-            {block.node_id for block in source_doc.iter_blocks()},
+            located_refs,
+            valid_refs,
             target_title=located.target_title,
         )
 
@@ -279,7 +306,7 @@ class WriterRevisionTools(WriterToolBase):
             counts={'instruction_count': len(modify_plan.instructions)},
             artifact_meta={
                 'task_id': writing_task.task_id,
-                'document_id': source_doc.document_id,
+                'document_id': document_id,
             },
             artifact_filenames={
                 'modify_plan': f'modify_plan_{writing_task.task_id or "task"}.json',
@@ -329,6 +356,46 @@ class WriterRevisionTools(WriterToolBase):
         )
         return result.model_dump()
 
+    def generate_string_replace_set(
+        self,
+        document: Any,
+        modify_plan: Any,
+        context: Any,
+    ) -> dict:
+        source = self._unified_document(document)
+        if isinstance(source, WriterDocument):
+            raise TypeError('generate_string_replace_set requires Markdown input.')
+        plan = self._unified_model(modify_plan, ModifyPlan)
+        writing_context = self._unified_model(context, WritingContext)
+
+        replace_set = StringReplaceSet(
+            replace_set_id=f'replace-{writing_context.context_id}',
+            meta={'source': 'generate_string_replace_set'},
+        )
+        if plan.instructions or plan.title_instruction:
+            prompt = GENERATE_STRING_REPLACE_SET_PROMPT.format(
+                document_content=source,
+                modify_plan_json=to_prompt_json(plan),
+                context_json=to_prompt_json(writing_context),
+            )
+            replace_set = self._call_llm_structured(prompt, StringReplaceSet)
+            replace_set.replace_set_id = (
+                replace_set.replace_set_id or f'replace-{writing_context.context_id}'
+            )
+            for index, replacement in enumerate(replace_set.replacements, start=1):
+                replacement.replacement_id = replacement.replacement_id or f'replace-{index}'
+
+        return self._save_artifacts(
+            {'string_replace_set': replace_set},
+            step_name='generate_string_replace_set',
+            primary_key='string_replace_set',
+            context_key=None,
+            summary='Generated Markdown string replacements.',
+            counts={'replacement_count': len(replace_set.replacements)},
+            artifact_meta={'context_id': writing_context.context_id},
+            artifact_filenames={'string_replace_set': 'string_replace_set.json'},
+        ).model_dump()
+
     def _compile_generated_revision(
         self,
         document: WriterDocument,
@@ -358,7 +425,7 @@ class WriterRevisionTools(WriterToolBase):
     ) -> None:
         if instruction.modify_type == 'update':
             content, = blocks
-            target = revised.block_by_id(instruction.target_node_id)
+            target = revised.block_by_id(self._node_id(instruction.content_ref, 'content_ref'))
             self._apply_block_content(target, content)
             return
 
@@ -367,7 +434,10 @@ class WriterRevisionTools(WriterToolBase):
                 raise ValueError(
                     f'create instruction {instruction.instruction_id!r} requires new content blocks.')
             parent_id, index = self._insertion_point(
-                revised, instruction.anchor_node_id, instruction.position)
+                revised,
+                self._node_id(instruction.content_ref, 'content_ref'),
+                instruction.position,
+            )
             siblings = self._children_for_parent(revised, parent_id)
             for offset, content in enumerate(blocks):
                 siblings.insert(
@@ -376,11 +446,14 @@ class WriterRevisionTools(WriterToolBase):
                 )
             return
 
-        target = revised.block_by_id(instruction.target_node_id)
+        target = revised.block_by_id(self._node_id(instruction.content_ref, 'content_ref'))
         self._remove_block(revised, target)
         if instruction.modify_type == 'move':
             parent_id, index = self._insertion_point(
-                revised, instruction.anchor_node_id, instruction.position)
+                revised,
+                self._node_id(instruction.destination_ref, 'destination_ref'),
+                instruction.position,
+            )
             self._children_for_parent(revised, parent_id).insert(index, target)
 
     def _apply_block_content(
@@ -425,10 +498,10 @@ class WriterRevisionTools(WriterToolBase):
     def _insertion_point(
         self,
         document: WriterDocument,
-        anchor_node_id: str,
+        destination_node_id: str,
         position: str,
     ) -> Tuple[Optional[str], int]:
-        parent_id, index = self._block_parent_index(document, anchor_node_id)
+        parent_id, index = self._block_parent_index(document, destination_node_id)
         return parent_id, index + int(position == 'after')
 
     def apply_patch(
@@ -460,6 +533,47 @@ class WriterRevisionTools(WriterToolBase):
             },
         )
         return result.model_dump()
+
+    def apply_string_replace(
+        self,
+        document: Any,
+        replace_set: Any,
+        context: Any,
+    ) -> dict:
+        source = self._unified_document(document)
+        if isinstance(source, WriterDocument):
+            raise TypeError('apply_string_replace requires Markdown input.')
+        replacements = self._unified_model(replace_set, StringReplaceSet)
+        writing_context = self._unified_model(context, WritingContext)
+
+        revised = source
+        applied: List[str] = []
+        for index, replacement in enumerate(replacements.replacements, start=1):
+            revised = self._apply_markdown_replacement(revised, replacement)
+            applied.append(replacement.replacement_id or f'replace-{index}')
+
+        replace_result = StringReplaceResult(
+            replace_set_id=replacements.replace_set_id,
+            success=True,
+            applied_replacements=applied,
+            message='String replacements applied.',
+        )
+        markdown_path = self._write_markdown_artifact('revised_document.md', revised)
+        result = self._save_artifacts(
+            {'string_replace_result': replace_result},
+            step_name='apply_string_replace',
+            primary_key='string_replace_result',
+            context_key=None,
+            summary='Applied Markdown string replacements.',
+            counts={'applied': len(applied), 'failed': 0},
+            artifact_meta={'context_id': writing_context.context_id},
+            artifact_filenames={'string_replace_result': 'string_replace_result.json'},
+        )
+        dumped = result.model_dump()
+        dumped['revised_document_md'] = markdown_path
+        dumped['metadata']['artifact_paths']['revised_document_md'] = markdown_path
+        dumped['metadata']['schema_names']['revised_document_md'] = 'text/markdown'
+        return dumped
 
     def _diff_documents(  # noqa: C901
         self,
@@ -657,18 +771,17 @@ class WriterRevisionTools(WriterToolBase):
         visible['children'] = [cls._visible_block(child) for child in block.children]
         return visible
 
-    def _normalize_modify_plan(
+    def _normalize_modify_plan(  # noqa: C901
         self,
         plan: ModifyPlan,
         task: WritingTask,
-        located_node_ids: List[str],
-        valid_node_ids: set,
+        located_refs: List[ContentRef],
+        valid_refs: set,
         *,
         target_title: bool = False,
     ) -> ModifyPlan:
         plan.plan_id = plan.plan_id or f'plan-{task.task_id or "task"}'
         plan.task_id = task.task_id
-        plan.target_node_ids = list(located_node_ids)
         if target_title:
             if not plan.title_instruction or not plan.title_instruction.strip():
                 raise ValueError('modify_plan requires title_instruction for a title target.')
@@ -676,42 +789,145 @@ class WriterRevisionTools(WriterToolBase):
         elif plan.title_instruction is not None:
             plan.title_instruction = None
 
-        located_set = set(located_node_ids)
+        located_set = {self._content_ref_key(content_ref) for content_ref in located_refs}
         instruction_ids: set = set()
         normalized: List[ModifyInstruction] = []
         for index, instr in enumerate(plan.instructions, start=1):
-            target_id = instr.target_node_id
-            if target_id not in located_set:
+            content_key = self._content_ref_key(instr.content_ref)
+            if content_key not in located_set:
                 raise ValueError(
-                    f'modify_plan instruction targets block {target_id!r} '
-                    f'not in locate_result.target_node_ids.'
+                    'modify_plan instruction content_ref is not present in locate_result.targets.'
                 )
             instr.instruction_id = (
-                instr.instruction_id or f'instr-{index}-{target_id}'
+                instr.instruction_id or f'instr-{index}'
             ).strip()
             if instr.instruction_id in instruction_ids:
                 raise ValueError(
                     f'modify_plan has duplicate instruction_id {instr.instruction_id!r}.')
             instruction_ids.add(instr.instruction_id)
+            if instr.modify_type in {'create', 'move'} and instr.position is None:
+                raise ValueError(f'{instr.modify_type} instruction requires position.')
             if instr.modify_type == 'create' and normalized \
                     and normalized[-1].modify_type == 'create' \
-                    and normalized[-1].anchor_node_id == instr.anchor_node_id \
+                    and normalized[-1].content_ref == instr.content_ref \
                     and normalized[-1].position == instr.position:
                 normalized[-1].instruction += f'\n{instr.instruction}'
                 continue
             if instr.modify_type == 'move':
-                if instr.anchor_node_id not in valid_node_ids:
-                    raise ValueError(
-                        f'move instruction anchor {instr.anchor_node_id!r} is absent from document.'
-                    )
-                if instr.anchor_node_id == target_id:
-                    raise ValueError('move instruction cannot use the target block as its own anchor.')
+                if instr.destination_ref is None:
+                    raise ValueError('move instruction requires destination_ref.')
+                destination_key = self._content_ref_key(instr.destination_ref)
+                if destination_key not in valid_refs:
+                    raise ValueError('move instruction destination_ref is absent from document.')
+                if destination_key == content_key:
+                    raise ValueError('move instruction cannot use its source as the destination.')
             normalized.append(instr)
 
         if located_set and not normalized and not target_title:
             raise ValueError('modify_plan contains no operations for the located revision scope.')
         plan.instructions = normalized
         return plan
+
+    def _revision_candidates(self, document: WriterDocument | str) -> List[Dict[str, Any]]:
+        if isinstance(document, WriterDocument):
+            return [
+                {
+                    'content_ref': ContentRef(node_id=block.node_id),
+                    'type': block.type,
+                    'content': block.content,
+                }
+                for block in document.iter_blocks()
+                if block.editable
+            ]
+        sections = parse_markdown_sections(document)
+        if not sections:
+            return [{
+                'content_ref': ContentRef(document_root=True),
+                'type': 'document',
+                'content': document,
+            }]
+        return [
+            {
+                'content_ref': ContentRef(
+                    heading_path=heading_path,
+                    occurrence=occurrence,
+                ),
+                'type': 'section',
+                'content': body,
+            }
+            for _, heading_path, occurrence, body in sections
+        ]
+
+    @staticmethod
+    def _content_ref_key(content_ref: ContentRef) -> Tuple[Any, ...]:
+        return (
+            content_ref.node_id,
+            tuple(content_ref.heading_path),
+            content_ref.placeholder_id,
+            content_ref.document_root,
+            content_ref.occurrence,
+        )
+
+    @staticmethod
+    def _node_id(content_ref: Optional[ContentRef], field: str) -> str:
+        if content_ref is None or not content_ref.node_id:
+            raise ValueError(f'{field}.node_id is required for IR revision.')
+        return content_ref.node_id
+
+    def _apply_markdown_replacement(
+        self,
+        markdown: str,
+        replacement: StringReplace,
+    ) -> str:
+        if replacement.content_ref is None or replacement.content_ref.document_root:
+            if replacement.old_string not in markdown:
+                raise ValueError(f'old_string is absent for {replacement.replacement_id!r}.')
+            return markdown.replace(replacement.old_string, replacement.new_string, 1)
+
+        if not replacement.content_ref.heading_path:
+            raise ValueError('Markdown content_ref requires heading_path or document_root.')
+
+        start, end = self._markdown_section_range(markdown, replacement.content_ref)
+        section = markdown[start:end]
+        if replacement.old_string not in section:
+            raise ValueError(f'old_string is absent for {replacement.replacement_id!r}.')
+        revised_section = section.replace(replacement.old_string, replacement.new_string, 1)
+        return markdown[:start] + revised_section + markdown[end:]
+
+    @staticmethod
+    def _markdown_section_range(markdown: str, content_ref: ContentRef) -> Tuple[int, int]:
+        headings: List[Tuple[int, int, List[str], int]] = []
+        heading_path: List[str] = []
+        occurrences: Dict[Tuple[str, ...], int] = {}
+        pattern = re.compile(r'^(#{1,6})\s+(.+?)\s*$', re.MULTILINE)
+        for match in pattern.finditer(markdown):
+            level = len(match.group(1))
+            heading_path = heading_path[:level - 1]
+            heading_path.append(match.group(2))
+            path_key = tuple(heading_path)
+            occurrence = occurrences.get(path_key, 0) + 1
+            occurrences[path_key] = occurrence
+            headings.append((match.start(), level, list(heading_path), occurrence))
+
+        for index, (start, level, path, occurrence) in enumerate(headings):
+            if path != content_ref.heading_path or occurrence != content_ref.occurrence:
+                continue
+            end = len(markdown)
+            for next_start, next_level, _, _ in headings[index + 1:]:
+                if next_level <= level:
+                    end = next_start
+                    break
+            return start, end
+        raise ValueError('content_ref is absent from Markdown document.')
+
+    def _write_markdown_artifact(self, filename: str, content: str) -> str:
+        if not self.artifact_store:
+            raise ValueError('artifact_store is not set')
+        path = os.path.join(self.artifact_store, filename)
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as stream:
+            stream.write(content)
+        return os.path.abspath(path)
 
     @staticmethod
     def _validate_model_revision(

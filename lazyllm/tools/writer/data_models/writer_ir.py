@@ -19,6 +19,7 @@ class ContentRef(BaseModel):
     node_id: Optional[str] = None
     heading_path: List[str] = Field(default_factory=list)
     placeholder_id: Optional[str] = None
+    document_root: bool = False
     occurrence: int = Field(default=1, ge=1)
 
 

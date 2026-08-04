@@ -57,7 +57,10 @@ class WriterQualityTools(WriterToolBase):
             result=audit_result,
             meta={
                 'instruction_id': instruction.instruction_id,
-                'content_ref': instruction.content_ref.model_dump(exclude_none=True),
+                'content_ref': instruction.content_ref.model_dump(
+                    exclude_none=True,
+                    exclude={'document_root'},
+                ),
                 'section_title': instruction.section_title,
             },
         )
@@ -75,7 +78,10 @@ class WriterQualityTools(WriterToolBase):
             },
             artifact_meta={
                 'draft_node_id': draft.node_id if isinstance(draft, WriterBlock) else None,
-                'content_ref': instruction.content_ref.model_dump(exclude_none=True),
+                'content_ref': instruction.content_ref.model_dump(
+                    exclude_none=True,
+                    exclude={'document_root'},
+                ),
                 'instruction_id': instruction.instruction_id,
                 'is_passed': audit_result.is_passed,
                 'score': audit_result.score,

@@ -1,12 +1,26 @@
+import tempfile
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from lazyllm.tools.writer.data_models import (
+    ContentRef,
+    LocatedContent,
+    LocateResult,
+    ModifyInstruction,
+    ModifyPlan,
     PatchHunk,
     PatchSet,
+    StringReplace,
+    StringReplaceSet,
     WriterBlock,
     WriterDocument,
     WriterSpan,
+    WritingContext,
+    WritingTask,
 )
+from lazyllm.tools.writer.data_models.revision import GeneratedRevision, RevisionBlockContent
+from lazyllm.tools.writer.utils import load_artifact_json
 from lazyllm.tools.writer.tools.revision_tools import WriterRevisionTools, apply_patch_to_ir
 
 
@@ -159,3 +173,177 @@ def test_apply_patch_rejects_move_into_descendant():
 
     with pytest.raises(ValueError, match='own subtree'):
         apply_patch_to_ir(document, patch)
+
+
+def test_locate_revision_target_supports_ir_and_markdown():
+    task = WritingTask(query='修改第一章', task_type='revise')
+    context = WritingContext(context_id='ctx-1')
+    ir_result = LocateResult(
+        target_title=False,
+        targets=[LocatedContent(content_ref=ContentRef(node_id='update'))],
+    )
+    markdown_result = LocateResult(
+        target_title=False,
+        targets=[LocatedContent(content_ref=ContentRef(heading_path=['第一章']))],
+    )
+    plain_text_result = LocateResult(
+        target_title=False,
+        targets=[LocatedContent(content_ref=ContentRef(document_root=True))],
+    )
+
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterRevisionTools(llm=MagicMock(), artifact_store=directory)
+        with patch.object(
+            tool,
+            '_call_llm_structured',
+            side_effect=[ir_result, markdown_result, plain_text_result],
+        ):
+            ir_output = tool.locate_revision_target(task, _document(), context)
+            located_ir = load_artifact_json(ir_output['artifact_path'], LocateResult)
+            markdown_output = tool.locate_revision_target(task, '# 第一章\n\n原始正文', context)
+            located_markdown = load_artifact_json(markdown_output['artifact_path'], LocateResult)
+            plain_text_output = tool.locate_revision_target(task, '原始纯文本', context)
+
+        located_plain_text = load_artifact_json(plain_text_output['artifact_path'], LocateResult)
+        assert located_ir.targets[0].content_ref.node_id == 'update'
+        assert located_markdown.targets[0].content_ref.heading_path == ['第一章']
+        assert located_plain_text.targets[0].content_ref.document_root is True
+
+
+def test_normalize_move_plan_uses_destination_ref():
+    tool = WriterRevisionTools()
+    source_ref = ContentRef(node_id='move')
+    destination_ref = ContentRef(node_id='anchor')
+    plan = ModifyPlan(
+        scope='block',
+        instructions=[ModifyInstruction(
+            content_ref=source_ref,
+            destination_ref=destination_ref,
+            modify_type='move',
+            position='after',
+            instruction='移动到锚点之后',
+        )],
+    )
+
+    normalized = tool._normalize_modify_plan(
+        plan,
+        WritingTask(query='移动段落', task_type='revise'),
+        [source_ref],
+        {tool._content_ref_key(source_ref), tool._content_ref_key(destination_ref)},
+    )
+
+    assert normalized.instructions[0].destination_ref == destination_ref
+
+
+def test_normalize_create_plan_requires_position():
+    content_ref = ContentRef(node_id='anchor')
+    plan = ModifyPlan(
+        scope='block',
+        instructions=[ModifyInstruction(
+            content_ref=content_ref,
+            modify_type='create',
+            instruction='补充一段内容',
+        )],
+    )
+
+    with pytest.raises(ValueError, match='create instruction requires position'):
+        WriterRevisionTools()._normalize_modify_plan(
+            plan,
+            WritingTask(query='补充内容', task_type='revise'),
+            [content_ref],
+            {WriterRevisionTools._content_ref_key(content_ref)},
+        )
+
+
+def test_generate_patch_set_uses_instruction_content_ref():
+    plan = ModifyPlan(
+        scope='block',
+        instructions=[ModifyInstruction(
+            instruction_id='update-1',
+            content_ref=ContentRef(node_id='update'),
+            modify_type='update',
+            instruction='更新正文',
+        )],
+    )
+    generated = GeneratedRevision(changes={
+        'update-1': [RevisionBlockContent(content='new')],
+    })
+
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterRevisionTools(llm=MagicMock(), artifact_store=directory)
+        with patch.object(tool, '_call_llm_structured', return_value=generated):
+            output = tool.generate_patch_set(_document(), plan, WritingContext(context_id='ctx-1'))
+        patch_set = load_artifact_json(output['artifact_path'], PatchSet)
+
+    assert patch_set.hunks[0].target_node_id == 'update'
+    assert patch_set.hunks[0].block.content == 'new'
+
+
+def test_generate_modify_plan_supports_markdown_content_ref():
+    content_ref = ContentRef(heading_path=['第一章'])
+    located = LocateResult(
+        target_title=False,
+        targets=[LocatedContent(content_ref=content_ref)],
+    )
+    plan = ModifyPlan(
+        scope='section',
+        instructions=[ModifyInstruction(
+            content_ref=content_ref,
+            modify_type='update',
+            instruction='更新第一章',
+        )],
+    )
+
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterRevisionTools(llm=MagicMock(), artifact_store=directory)
+        with patch.object(tool, '_call_llm_structured', return_value=plan):
+            output = tool.generate_modify_plan(
+                WritingTask(query='修改第一章', task_type='revise'),
+                '# 第一章\n\n原始正文',
+                located,
+                WritingContext(context_id='ctx-1'),
+            )
+        modified_plan = load_artifact_json(output['artifact_path'], ModifyPlan)
+
+    assert modified_plan.instructions[0].content_ref == content_ref
+
+
+def test_apply_string_replace_updates_markdown_section():
+    markdown = '# 第一章\n\n原始正文\n\n# 第二章\n\n保持不变'
+    replace_set = StringReplaceSet(replacements=[StringReplace(
+        replacement_id='replace-1',
+        content_ref=ContentRef(heading_path=['第一章']),
+        old_string='原始正文',
+        new_string='修改后的正文',
+    )])
+
+    with tempfile.TemporaryDirectory() as directory:
+        result = WriterRevisionTools(artifact_store=directory).apply_string_replace(
+            markdown,
+            replace_set,
+            WritingContext(context_id='ctx-1'),
+        )
+        with open(result['revised_document_md'], 'r', encoding='utf-8') as stream:
+            revised = stream.read()
+
+    assert '修改后的正文' in revised
+    assert '# 第二章\n\n保持不变' in revised
+
+
+def test_apply_string_replace_updates_plain_text_document():
+    replace_set = StringReplaceSet(replacements=[StringReplace(
+        content_ref=ContentRef(document_root=True),
+        old_string='原始内容',
+        new_string='修改后的内容',
+    )])
+
+    with tempfile.TemporaryDirectory() as directory:
+        result = WriterRevisionTools(artifact_store=directory).apply_string_replace(
+            '原始内容',
+            replace_set,
+            WritingContext(context_id='ctx-1'),
+        )
+        with open(result['revised_document_md'], 'r', encoding='utf-8') as stream:
+            revised = stream.read()
+
+    assert revised == '修改后的内容'

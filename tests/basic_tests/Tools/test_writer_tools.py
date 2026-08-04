@@ -70,6 +70,7 @@ def test_writer_document_compatibility_contract_models():
     assert ContentRef(node_id='section-1').node_id == 'section-1'
     assert ContentRef(heading_path=['第一章', '背景']).heading_path == ['第一章', '背景']
     assert ContentRef(placeholder_id='visual-1').placeholder_id == 'visual-1'
+    assert ContentRef(document_root=True).document_root is True
 
 
 def test_section_instruction_and_markdown_revision_contracts():
