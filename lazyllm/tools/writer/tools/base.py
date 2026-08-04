@@ -1,10 +1,13 @@
 from __future__ import annotations
 import json
 import os
+import re
+from copy import deepcopy
 from typing import Any, Dict, Iterable, List, Optional, Type, TypeVar
 from pydantic import BaseModel
 from lazyllm.components.formatter import JsonFormatter
 from lazyllm.module import ModuleBase
+from ..data_models.writer_ir import WriterBlock, WriterDocument
 from ..prompts.structured_output import STRUCTURED_OUTPUT_SYSTEM_PROMPT
 from ..utils.artifact import ToolResult, load_artifact_json, save_artifact_json
 
@@ -123,7 +126,7 @@ class WriterToolBase(ModuleBase):
             filename = (
                 artifact_filenames.get(artifact_key)
                 if artifact_filenames and artifact_key in artifact_filenames
-                else f'{artifact_key}.json'
+                else self._default_artifact_filename(artifact_key, artifact)
             )
             artifact_extra_meta = {
                 'step_name': step_name or type(self).__name__,
@@ -160,6 +163,11 @@ class WriterToolBase(ModuleBase):
             metadata=metadata,
         )
 
+    def _default_artifact_filename(self, artifact_key: str, artifact: Any) -> str:
+        if isinstance(artifact, (WriterDocument, WriterBlock)):
+            return f'{artifact_key}_ir.lmd'
+        return f'{artifact_key}.json'
+
     def _artifact_schema_name(self, artifact: Any, artifact_key: Optional[str] = None) -> str:
         if isinstance(artifact, BaseModel):
             cls = type(artifact)
@@ -180,6 +188,30 @@ class WriterToolBase(ModuleBase):
         response = model(prompt)
         return self._validate_structured_response(response, schema)
 
+    def _call_llm_text(self, prompt: str) -> str:
+        if self.llm is None:
+            raise ValueError('llm is not set')
+        model = self.llm
+        if hasattr(model, 'share'):
+            try:
+                model = model.share(stream=False)
+            except TypeError:
+                model = model.share()
+        response = model(prompt)
+        text = response if isinstance(response, str) else str(response)
+        return self._strip_leading_think_blocks(text)
+
+    @staticmethod
+    def _strip_leading_think_blocks(text: str) -> str:
+        '''Remove provider reasoning blocks without touching document content.'''
+        cleaned = text
+        pattern = re.compile(r'^\s*<think\b[^>]*>.*?</think>\s*', re.IGNORECASE | re.DOTALL)
+        while True:
+            stripped = pattern.sub('', cleaned, count=1)
+            if stripped == cleaned:
+                return cleaned
+            cleaned = stripped
+
     def _structured_output_prompt(self, schema: Type[BaseModel]) -> str:
         schema_json = json.dumps(schema.model_json_schema(), ensure_ascii=False, indent=2)
         return STRUCTURED_OUTPUT_SYSTEM_PROMPT.format(schema_name=schema.__name__, schema_json=schema_json)
@@ -197,28 +229,86 @@ class WriterToolBase(ModuleBase):
             model = model.formatter(JsonFormatter())
         return model
 
+    @classmethod
+    def _inherit_document_stage(cls, blocks: Any, document_stage: str) -> None:
+        if not isinstance(blocks, list):
+            return
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            block.setdefault('stage', document_stage)
+            cls._inherit_document_stage(block.get('children'), document_stage)
+
+    @classmethod
+    def _prepare_structured_candidate(cls, candidate: Any, schema: Type[T]) -> Any:
+        if schema is not WriterDocument or not isinstance(candidate, dict):
+            return candidate
+        document_stage = candidate.get('stage')
+        if not document_stage:
+            return candidate
+        normalized = deepcopy(candidate)
+        cls._inherit_document_stage(normalized.get('blocks'), document_stage)
+        return normalized
+
+    @staticmethod
+    def _parse_structured_response(response: Any, schema: Type[T]) -> Any:
+        if not isinstance(response, str):
+            return response
+        try:
+            return JsonFormatter()(response)
+        except Exception as exc:
+            raise ValueError(
+                f'Failed to parse LLM output as JSON for {schema.__name__}. '
+                f'Response: {response!r}'
+            ) from exc
+
+    @classmethod
+    def _select_structured_candidate(
+        cls,
+        parsed: List[Any],
+        schema: Type[T],
+        response: Any,
+    ) -> Optional[T]:
+        candidates = []
+        for item in parsed:
+            try:
+                candidates.append(schema.model_validate(cls._prepare_structured_candidate(item, schema)))
+            except Exception:
+                continue
+        unique_candidates = {
+            candidate.model_dump_json(exclude_defaults=True): candidate
+            for candidate in candidates
+        }
+        if len(unique_candidates) == 1:
+            return next(iter(unique_candidates.values()))
+        if len(unique_candidates) > 1:
+            raise ValueError(
+                f'Failed to select one unambiguous {schema.__name__} from LLM output. '
+                f'Response: {response!r}'
+            )
+        return None
+
     def _validate_structured_response(self, response: Any, schema: Type[T]) -> T:
-        parsed = response
+        parsed = self._parse_structured_response(response, schema)
         if isinstance(parsed, schema):
             return parsed
-        if isinstance(parsed, str):
+        direct_error = None
+        if isinstance(parsed, (dict, list)):
             try:
-                parsed = JsonFormatter()(parsed)
+                return schema.model_validate(self._prepare_structured_candidate(parsed, schema))
             except Exception as exc:
-                raise ValueError(
-                    f'Failed to parse LLM output as JSON for {schema.__name__}. '
-                    f'Response: {response!r}'
-                ) from exc
-        if isinstance(parsed, list) and len(parsed) == 1:
-            parsed = parsed[0]
-        if isinstance(parsed, dict):
-            try:
-                return schema.model_validate(parsed)
-            except Exception as exc:
-                raise ValueError(
-                    f'Failed to validate LLM output as {schema.__name__}. '
-                    f'Response: {parsed!r}'
-                ) from exc
+                direct_error = exc
+
+        if isinstance(parsed, list):
+            candidate = self._select_structured_candidate(parsed, schema, response)
+            if candidate is not None:
+                return candidate
+
+        if direct_error is not None:
+            raise ValueError(
+                f'Failed to validate LLM output as {schema.__name__}. '
+                f'Response: {parsed!r}'
+            ) from direct_error
         raise ValueError(
             f'Failed to parse LLM output as {schema.__name__}. '
             f'Response: {response!r}'

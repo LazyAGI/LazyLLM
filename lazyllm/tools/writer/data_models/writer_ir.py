@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 
 WriterStage = Literal['outline', 'draft', 'final']
 
+WRITER_IR_FILE_EXTENSION = '.lmd'
+WRITER_IR_CONTENT_TYPE = 'application/vnd.lazymind.writer+json'
 WRITER_BLOCK_MUTABLE_FIELDS = ('type', 'content', 'spans', 'stage', 'numbering', 'references')
 WRITER_BLOCK_PROVIDER_MANAGED_FIELDS = ('provider_binding', 'provider_payload', 'editable')
 
@@ -78,5 +80,6 @@ WriterDocument.model_rebuild()
 
 __all__ = [
     'WriterDocument', 'WriterBlock', 'WriterSpan', 'WriterStage',
+    'WRITER_IR_FILE_EXTENSION', 'WRITER_IR_CONTENT_TYPE',
     'WRITER_BLOCK_MUTABLE_FIELDS', 'WRITER_BLOCK_PROVIDER_MANAGED_FIELDS',
 ]

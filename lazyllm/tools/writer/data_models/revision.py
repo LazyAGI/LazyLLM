@@ -1,16 +1,16 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
-from .writer_ir import WriterBlock
+from .writer_ir import WriterBlock, WriterSpan
 from ..utils.artifact import ArtifactModel
 
 
 class LocateResult(ArtifactModel):
     task_id: Optional[str] = None
     doc_id: Optional[str] = None
-    target_title: bool = False
-    target_node_ids: List[str] = Field(default_factory=list)
-    target_reasons: Dict[str, str] = Field(default_factory=dict)
+    target_title: bool
+    target_node_ids: List[str]
+    target_reasons: Dict[str, str]
     summary: Optional[str] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
 
@@ -29,9 +29,10 @@ class ModifyInstruction(BaseModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode='after')
-    def validate_move(self) -> 'ModifyInstruction':
-        if self.modify_type == 'move' and (not self.anchor_node_id or not self.position):
-            raise ValueError('move requires anchor_node_id and position')
+    def validate_anchor(self) -> 'ModifyInstruction':
+        if self.modify_type in {'create', 'move'} \
+                and (not self.anchor_node_id or not self.position):
+            raise ValueError(f'{self.modify_type} requires anchor_node_id and position')
         return self
 
 
@@ -44,6 +45,33 @@ class ModifyPlan(BaseModel):
     instructions: List[ModifyInstruction] = Field(default_factory=list)
     summary: Optional[str] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class RevisionBlockContent(BaseModel):
+    type: Optional[str] = None
+    content: Optional[str] = None
+    spans: Optional[List[WriterSpan]] = None
+    numbering: Optional[Dict[str, Any]] = None
+    references: Optional[List[Dict[str, Any]]] = None
+    children: List['RevisionBlockContent'] = Field(default_factory=list)
+
+    @model_validator(mode='after')
+    def validate_spans(self) -> 'RevisionBlockContent':
+        if self.spans:
+            span_content = ''.join(span.text for span in self.spans)
+            if self.content is None:
+                self.content = span_content
+            elif self.content != span_content:
+                raise ValueError('content must equal the concatenated span text')
+        return self
+
+
+RevisionBlockContent.model_rebuild()
+
+
+class GeneratedRevision(BaseModel):
+    new_title: Optional[str] = None
+    changes: Dict[str, List[RevisionBlockContent]] = Field(default_factory=dict)
 
 
 class PatchHunk(BaseModel):

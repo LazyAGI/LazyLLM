@@ -56,6 +56,35 @@ def test_trace_controls_disable_and_overrides(exporter):
     assert [span.name for span in exporter.get_finished_spans()] == ['test_embed', '<lambda>', 'Pipeline']
 
 
+def test_runtime_module_trace_filters_flows_and_callables(exporter):
+    def hidden(value):
+        return value + 1
+
+    def retained(value):
+        return value + 1
+
+    set_trace_context(LazyTraceContext(enabled=True, module_trace={
+        'by_class': {'Pipeline': False},
+        'by_name': {'hidden': False},
+    }))
+    with pipeline() as flow:
+        flow.hidden = hidden
+        flow.retained = retained
+
+    assert flow(1) == 3
+    assert [span.name for span in exporter.get_finished_spans()] == ['retained']
+
+
+def test_runtime_module_trace_filters_enable_trace_callable(exporter):
+    def hidden(value):
+        return value + 1
+
+    assert lazyllm.enable_trace(
+        hidden, 1, module_trace={'by_name': {'hidden': False}}
+    ) == 2
+    assert not exporter.get_finished_spans()
+
+
 def test_nested_parallel_error_propagates_status_to_parent_flows(exporter):
     def first(value): return value + 1
     def raises_error(value): raise ValueError(f'boom:{value}')

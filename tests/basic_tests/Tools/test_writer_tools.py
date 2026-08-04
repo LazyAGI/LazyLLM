@@ -28,10 +28,38 @@ from lazyllm.tools.writer.data_models.planning import (
 )
 from lazyllm.tools.writer.tools.context_tools import WriterContextTools
 from lazyllm.tools.writer.tools.drafting_tools import WriterDraftingTools
+from lazyllm.tools.writer.tools.base import WriterToolBase
 from lazyllm.tools.writer.tools.planning_tools import WriterPlanningTools
 from lazyllm.tools.writer.tools.quality_tools import WriterQualityTools
 from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
 from lazyllm.tools.writer.utils import load_artifact_json, save_artifact_json
+
+
+def test_structured_response_selects_one_schema_valid_candidate():
+    document = WriterDocument(
+        document_id='outline-1',
+        stage='outline',
+        title='Outline',
+        blocks=[WriterBlock(
+            node_id='heading-1',
+            type='heading',
+            content='Heading',
+            stage='outline',
+        )],
+    )
+    noisy_document = document.model_dump()
+    noisy_document['blocks'][0].pop('stage')
+    parsed = WriterToolBase()._validate_structured_response(
+        [{'level': 1}, noisy_document, noisy_document],
+        WriterDocument,
+    )
+    assert parsed == document
+
+
+def test_text_response_strips_provider_think_block():
+    tool = WriterToolBase(llm=lambda _: '<think>internal reasoning</think>\n\n正文')
+
+    assert tool._call_llm_text('prompt') == '正文'
 
 
 def _make_doc_adapter():
@@ -661,6 +689,51 @@ def test_generate_final_document_writes_markdown_file():
             markdown = fh.read()
         assert '# 测试文档' in markdown
         assert '这是第一章正文。' in markdown
+
+
+def test_generate_markdown_draft_then_convert_once_to_ir():
+    task = WritingTask(task_id='task-md', query='写测试文档', task_type='write')
+    context = WritingContext(context_id='ctx-md')
+    instruction = SectionInstruction(
+        instruction_id='instruction-section-1',
+        outline_node_id='section-1',
+        section_title='第一章',
+        section_goal='说明方案',
+        meta={'outline_node_level': 1},
+    )
+    outline = WriterDocument(
+        document_id='outline-md',
+        stage='outline',
+        title='测试文档',
+        blocks=[WriterBlock(
+            node_id='section-1',
+            type='heading',
+            content='第一章',
+            stage='outline',
+        )],
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterDraftingTools(artifact_store=d)
+        with patch.object(tool, '_call_llm_text', return_value='这是正文。\n\n- 要点一'):
+            section_result = tool.generate_draft_section_markdown(
+                task=task,
+                section_instruction=instruction,
+                context=context,
+            )
+        draft_result = tool.generate_draft_document_markdown(
+            draft_sections=[section_result['artifact_path']],
+            context=context,
+            outline=outline,
+        )
+        draft = load_artifact_json(draft_result['artifact_path'], WriterDocument)
+
+    assert section_result['artifact_path'].endswith('.md')
+    assert draft_result['artifact_path'].endswith('_ir.lmd')
+    assert draft_result['draft_document_md'].endswith('.md')
+    assert draft.title == '测试文档'
+    assert draft.blocks[0].node_id == 'section-1'
+    assert [child.type for child in draft.blocks[0].children] == ['paragraph', 'list_item']
 
 
 def test_document_to_docir():

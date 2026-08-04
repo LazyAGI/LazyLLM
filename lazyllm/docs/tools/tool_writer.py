@@ -7,6 +7,12 @@ add_writer_chinese_doc = functools.partial(utils.add_chinese_doc, module=importl
 add_writer_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer'))
 add_writer_models_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.data_models'))
 add_writer_models_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.data_models'))
+add_writer_revision_models_chinese_doc = functools.partial(
+    utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.data_models.revision')
+)
+add_writer_revision_models_english_doc = functools.partial(
+    utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.data_models.revision')
+)
 add_writer_adapter_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.feishu'))
 add_writer_adapter_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.feishu'))
 
@@ -18,12 +24,20 @@ add_writer_english_doc('WriterToolBase', '''
 Base class for writer tools with shared model, adapter, and artifact storage support.
 ''')
 
-add_writer_models_chinese_doc('ModifyInstruction.validate_move', '''
+add_writer_models_chinese_doc('ModifyInstruction.validate_anchor', '''
 校验移动指令所需的锚点和位置。
 ''')
 
-add_writer_models_english_doc('ModifyInstruction.validate_move', '''
+add_writer_models_english_doc('ModifyInstruction.validate_anchor', '''
 Validate the anchor and position required by a move instruction.
+''')
+
+add_writer_revision_models_chinese_doc('RevisionBlockContent.validate_spans', '''
+校验修订内容中的文本与富文本片段保持一致。
+''')
+
+add_writer_revision_models_english_doc('RevisionBlockContent.validate_spans', '''
+Validate that revision text matches its rich-text spans.
 ''')
 
 add_writer_chinese_doc('WriterPlanningTools.generate_outline', '''
@@ -202,12 +216,28 @@ add_writer_english_doc('WriterDraftingTools.generate_draft_section', '''
 Generate a draft block for one section.
 ''')
 
+add_writer_chinese_doc('WriterDraftingTools.generate_draft_section_markdown', '''
+为单个章节生成 Markdown 草稿。
+''')
+
+add_writer_english_doc('WriterDraftingTools.generate_draft_section_markdown', '''
+Generate a Markdown draft for one section.
+''')
+
 add_writer_chinese_doc('WriterDraftingTools.generate_draft_document', '''
 将草稿内容块组装为草稿文档。
 ''')
 
 add_writer_english_doc('WriterDraftingTools.generate_draft_document', '''
 Assemble draft blocks into a draft document.
+''')
+
+add_writer_chinese_doc('WriterDraftingTools.generate_draft_document_markdown', '''
+将 Markdown 章节组装为完整草稿，并生成结构化写作文档。
+''')
+
+add_writer_english_doc('WriterDraftingTools.generate_draft_document_markdown', '''
+Assemble Markdown sections into a complete draft and structured writer document.
 ''')
 
 add_writer_chinese_doc('WriterDraftingTools.generate_final_document', '''

@@ -291,6 +291,8 @@ class WriterResourceTools(WriterToolBase):
                 f'patch target_doc_id {patch.target_doc_id!r} does not match '
                 f'document_id {source.document_id!r}.'
             )
+        if not patch.hunks and (patch.new_title is None or patch.new_title == source.title):
+            raise ValueError('patch contains no document operations.')
 
         target = self._unified_optional_model(target_document, TargetDocument) or TargetDocument()
         protocol, real_path, fs, adapter, locator, document_id = \
