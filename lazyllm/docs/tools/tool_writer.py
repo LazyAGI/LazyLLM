@@ -41,11 +41,11 @@ Validate that revision text matches its rich-text spans.
 ''')
 
 add_writer_chinese_doc('WriterPlanningTools.generate_outline', '''
-根据写作任务和上下文生成结构化大纲。
+根据写作任务和上下文生成 Writer IR 或 Markdown 大纲。
 ''')
 
 add_writer_english_doc('WriterPlanningTools.generate_outline', '''
-Generate a structured outline from a writing task and context.
+Generate a Writer IR or Markdown outline from a writing task and context.
 ''')
 
 add_writer_chinese_doc('WriterPlanningTools.generate_section_instructions', '''
@@ -209,35 +209,19 @@ Apply a patch set to a writer document.
 ''')
 
 add_writer_chinese_doc('WriterDraftingTools.generate_draft_section', '''
-为单个章节生成草稿内容块。
+为单个章节生成 Writer IR 或 Markdown 草稿。
 ''')
 
 add_writer_english_doc('WriterDraftingTools.generate_draft_section', '''
-Generate a draft block for one section.
-''')
-
-add_writer_chinese_doc('WriterDraftingTools.generate_draft_section_markdown', '''
-为单个章节生成 Markdown 草稿。
-''')
-
-add_writer_english_doc('WriterDraftingTools.generate_draft_section_markdown', '''
-Generate a Markdown draft for one section.
+Generate a Writer IR or Markdown draft for one section.
 ''')
 
 add_writer_chinese_doc('WriterDraftingTools.generate_draft_document', '''
-将草稿内容块组装为草稿文档。
+将 Writer IR 内容块或 Markdown 章节组装为草稿文档。
 ''')
 
 add_writer_english_doc('WriterDraftingTools.generate_draft_document', '''
-Assemble draft blocks into a draft document.
-''')
-
-add_writer_chinese_doc('WriterDraftingTools.generate_draft_document_markdown', '''
-将 Markdown 章节组装为完整草稿，并生成结构化写作文档。
-''')
-
-add_writer_english_doc('WriterDraftingTools.generate_draft_document_markdown', '''
-Assemble Markdown sections into a complete draft and structured writer document.
+Assemble Writer IR blocks or Markdown sections into a draft document.
 ''')
 
 add_writer_chinese_doc('WriterDraftingTools.generate_final_document', '''

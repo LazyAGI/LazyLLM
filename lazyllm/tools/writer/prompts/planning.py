@@ -1,4 +1,31 @@
 # flake8: noqa
+GENERATE_OUTLINE_MARKDOWN_PROMPT = '''Generate a writing outline in Markdown from the given task and context.
+
+Requirements:
+- Output Markdown only. Do not wrap the response in an outer code fence.
+- Do not output reasoning, analysis, review notes, or <think> tags.
+- Start with exactly one H1 document title.
+- Add at least one H2 section directly under the H1 title.
+- Every H2 section title must be unique.
+- Use H3-H6 only for optional subsection planning under an H2 section.
+- Keep the outline concise but concrete enough to guide drafting.
+- Use resource profiles and execution results as constraints, not as text to copy blindly.
+- Do not invent facts that conflict with the writing context.
+
+Writing task:
+{task_json}
+
+Writing context:
+{context_json}
+
+Resource profiles:
+{resource_profiles_json}
+
+Execution results:
+{execution_results_json}
+'''
+
+
 GENERATE_OUTLINE_PROMPT = '''Generate a writing outline from the given writing task and context.
 
 Requirements:
@@ -39,17 +66,17 @@ GENERATE_SECTION_INSTRUCTIONS_PROMPT = '''Generate section-level writing instruc
 
 Requirements:
 - Return a SectionInstructionList object.
-- Generate exactly one SectionInstruction for every top-level block listed in target_outline_blocks.
-- Each instruction's outline_node_id MUST equal the corresponding outline block's node_id.
-- section_title MUST equal the corresponding outline block's content.
+- Generate exactly one SectionInstruction for every item listed in target_outline_blocks.
+- Copy each target's content_ref exactly. For Writer IR this contains node_id; for Markdown it
+  contains heading_path and occurrence. Do not mix locator types.
+- section_title MUST equal the corresponding target's section_title.
 - instruction_id should be stable, such as instruction-section-1 or instruction-ch01.
 - section_goal should be concrete and actionable.
 - required_points should contain the key content that must appear in the section.
 - fact_constraints should preserve the literal text of locked facts and important context facts
   relevant to this section. It must not contain fact IDs or resource IDs.
 - fact_constraints MUST only contain factual statements actually present in the writing context.
-- references are owned by the authoritative outline. Omit references; the system copies them from
-  the matching outline block.
+- references are owned by the authoritative outline. Omit references; the system normalizes them.
 - style_constraints should include tone, pov, audience, and style requirements when applicable.
 - relation_constraints should describe dependencies on previous or later sections when useful.
 - expected_blocks should be a concise block-level content plan for the draft tool.

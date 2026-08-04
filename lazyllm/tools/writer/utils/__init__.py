@@ -7,6 +7,7 @@ from .artifact import (
     save_artifact_json,
 )
 from .serialization import (
+    get_markdown_outline_targets,
     parse_document_markdown,
     parse_markdown_sections,
     render_document_markdown,
@@ -21,6 +22,7 @@ __all__ = [
     'load_artifact_json',
     'save_artifact_json',
     'render_document_markdown',
+    'get_markdown_outline_targets',
     'parse_document_markdown',
     'parse_markdown_sections',
     'to_prompt_json',

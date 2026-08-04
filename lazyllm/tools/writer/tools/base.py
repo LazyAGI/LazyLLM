@@ -124,6 +124,15 @@ class WriterToolBase(ModuleBase):
             extra_meta=extra_meta,
         )
 
+    def _write_markdown_artifact(self, filename: str, content: str) -> str:
+        if not self.artifact_store:
+            raise ValueError('artifact_store is not set')
+        path = os.path.join(self.artifact_store, filename)
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as stream:
+            stream.write(content)
+        return os.path.abspath(path)
+
     def _save_artifacts(
         self,
         artifacts: Dict[str, Any],

@@ -55,6 +55,14 @@ def parse_markdown_sections(markdown: str) -> List[tuple[int, List[str], int, st
     return sections
 
 
+def get_markdown_outline_targets(
+    markdown: str,
+) -> tuple[str, List[tuple[int, List[str], int, str]]]:
+    sections = parse_markdown_sections(markdown)
+    title = next((heading_path[-1] for level, heading_path, _, _ in sections if level == 1), '')
+    return title, [section for section in sections if section[0] == 2]
+
+
 def parse_document_markdown(  # noqa: C901
     markdown: str,
     document_id: str,

@@ -111,11 +111,6 @@ class NaiveWriterWorkflow:
             draft=self._artifact_ref(draft_document, 'draft_document'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
-        target_doc = task.get('target_document') if isinstance(task, dict) else getattr(task, 'target_document', None)
-        write_result = self.resource.write_to_document(
-            content=self._artifact_ref(writing_output, 'final_document'),
-            target_document=target_doc,
-        )
 
         return {
             'primary_result': writing_output,
@@ -129,7 +124,6 @@ class NaiveWriterWorkflow:
                 'draft_document': draft_document,
                 'draft_document_review': draft_document_review,
                 'final_document': writing_output,
-                'write_result': write_result,
             },
         }
 
