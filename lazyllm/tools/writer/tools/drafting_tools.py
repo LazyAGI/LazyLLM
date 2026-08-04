@@ -173,6 +173,7 @@ class WriterDraftingTools(WriterToolBase):
     ) -> dict:
         section_markdown = [block for block in blocks if isinstance(block, str)]
         section_titles = [self._markdown_draft_section_title(section) for section in section_markdown]
+        content_refs = []
         if outline is None:
             document_title = str(title or '').strip()
             if not document_title:
@@ -185,28 +186,39 @@ class WriterDraftingTools(WriterToolBase):
             if title is not None and str(title).strip() != outline_title:
                 raise ValueError('Markdown draft title must match the outline H1 title.')
             document_title = outline_title
-            target_titles = [target[1][-1] for target in outline_targets]
-            target_indices = []
+            target_index = 0
             for section_title in section_titles:
-                if section_title not in target_titles:
+                while target_index < len(outline_targets) \
+                        and outline_targets[target_index][1][-1] != section_title:
+                    target_index += 1
+                if target_index == len(outline_targets):
                     raise ValueError(
-                        f'Markdown draft section {section_title!r} is not present in the outline.'
+                        'Markdown draft sections must match the outline headings in order, '
+                        f'including occurrence: {section_title!r}.'
                     )
-                target_indices.append(target_titles.index(section_title))
-            if target_indices != sorted(set(target_indices)):
-                raise ValueError('Markdown draft sections must follow outline order without duplicates.')
+                _, heading_path, occurrence, _ = outline_targets[target_index]
+                content_refs.append({
+                    'heading_path': heading_path,
+                    'occurrence': occurrence,
+                })
+                target_index += 1
 
         markdown = f'# {document_title}\n\n' + '\n\n'.join(
             section.strip() for section in section_markdown
         )
         markdown = markdown.rstrip() + '\n'
-        assembled_targets = [
-            section[1][-1]
-            for section in parse_markdown_sections(markdown)
+        assembled_sections = [
+            section for section in parse_markdown_sections(markdown)
             if section[0] == 2
         ]
+        assembled_targets = [section[1][-1] for section in assembled_sections]
         if assembled_targets != section_titles:
             raise ValueError('Assembled Markdown draft does not preserve section order.')
+        if outline is None:
+            content_refs = [
+                {'heading_path': heading_path, 'occurrence': occurrence}
+                for _, heading_path, occurrence, _ in assembled_sections
+            ]
 
         path = self._write_markdown_artifact('draft_document.md', markdown)
         return make_markdown_tool_result(
@@ -223,6 +235,7 @@ class WriterDraftingTools(WriterToolBase):
                 'context_id': context.context_id,
                 'doc_id': context.doc_id,
                 'outline_title': document_title,
+                'content_refs': content_refs,
             },
         ).model_dump()
 

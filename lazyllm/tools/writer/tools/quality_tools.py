@@ -5,7 +5,7 @@ from typing import Any, Optional
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.quality import AuditResult, ReviewReport
-from ..data_models.revision import PatchSet
+from ..data_models.revision import PatchSet, StringReplaceSet
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import WriterBlock, WriterDocument
 from ..data_models.planning import SectionInstruction, SectionInstructionList
@@ -13,6 +13,7 @@ from ..prompts.quality import (
     VALIDATE_DRAFT_DOCUMENT_PROMPT,
     VALIDATE_PATCH_SET_PROMPT,
     VALIDATE_SECTION_PROMPT,
+    VALIDATE_STRING_REPLACE_SET_PROMPT,
 )
 from ..utils import parse_markdown_sections, to_prompt_json
 
@@ -22,6 +23,7 @@ class WriterQualityTools(WriterToolBase):
         'validate_section',
         'validate_draft_document',
         'validate_patch_set',
+        'validate_string_replace_set',
     ]
 
     def validate_section(
@@ -166,25 +168,10 @@ class WriterQualityTools(WriterToolBase):
             )
             for hunk in patch.hunks
         ])
-        context_json = to_prompt_json({
-            'facts': [
-                fact.model_dump(
-                    exclude={'fact_id', 'source', 'applies_to', 'locked'},
-                )
-                for fact in writing_context.facts
-                if fact.locked
-            ],
-            'style_profile': (
-                writing_context.style_profile.model_dump()
-                if writing_context.style_profile
-                else None
-            ),
-        })
-
         prompt = VALIDATE_PATCH_SET_PROMPT.format(
             task_query=writing_task.query,
             hunks_json=hunks_json,
-            context_json=context_json,
+            context_json=self._revision_context_json(writing_context),
         )
         audit_result = self._call_llm_structured(prompt, AuditResult)
         counts = self._issue_counts(audit_result)
@@ -207,6 +194,65 @@ class WriterQualityTools(WriterToolBase):
                 'score': audit_result.score,
             },
         ).model_dump()
+
+    def validate_string_replace_set(
+        self,
+        replace_set: Any,
+        document: Any,
+        context: Any,
+        task: Any,
+    ) -> dict:
+        replacements = self._unified_model(replace_set, StringReplaceSet)
+        source = self._unified_document(document)
+        if isinstance(source, WriterDocument):
+            raise TypeError('validate_string_replace_set requires Markdown input.')
+        writing_context = self._unified_model(context, WritingContext)
+        writing_task = self._unified_model(task, WritingTask)
+
+        prompt = VALIDATE_STRING_REPLACE_SET_PROMPT.format(
+            task_query=writing_task.query,
+            document_content=source,
+            replacements_json=to_prompt_json(replacements.replacements),
+            context_json=self._revision_context_json(writing_context),
+        )
+        audit_result = self._call_llm_structured(prompt, AuditResult)
+        counts = self._issue_counts(audit_result)
+
+        return self._save_artifacts(
+            {'string_replace_set_review': audit_result},
+            step_name='validate_string_replace_set',
+            primary_key='string_replace_set_review',
+            summary=f'StringReplaceSet validation: '
+                    f'{"PASSED" if audit_result.is_passed else "FAILED"} '
+                    f'(score: {audit_result.score}/100)',
+            counts={
+                'total_replacements': len(replacements.replacements),
+                'total_issues': len(audit_result.issues),
+                **counts,
+            },
+            artifact_meta={
+                'replace_set_id': replacements.replace_set_id,
+                'is_passed': audit_result.is_passed,
+                'score': audit_result.score,
+            },
+        ).model_dump()
+
+    @staticmethod
+    def _revision_context_json(writing_context: WritingContext) -> str:
+        return to_prompt_json({
+            'facts': [
+                fact.model_dump(
+                    exclude={'fact_id', 'source', 'applies_to', 'locked'},
+                )
+                for fact in writing_context.facts
+                if fact.locked
+            ],
+            'style_profile': (
+                writing_context.style_profile.model_dump()
+                if writing_context.style_profile
+                else None
+            ),
+        })
 
     def _match_instruction(
         self,

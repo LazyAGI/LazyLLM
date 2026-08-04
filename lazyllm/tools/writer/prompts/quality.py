@@ -107,3 +107,29 @@ PatchSet hunks:
 Writing context:
 {context_json}
 '''
+
+
+VALIDATE_STRING_REPLACE_SET_PROMPT = '''You are a Markdown revision quality reviewer. Validate every replacement against the source Markdown, writing context, and user request before it is applied. Return an AuditResult.
+
+Review each replacement for:
+1. APPLICABILITY (category=format): old_string must identify the intended source content, using content_ref as location context when provided.
+2. MARKDOWN INTEGRITY (category=format): the replacement must not break headings, lists, tables, links, or fenced code blocks.
+3. FACT CONSISTENCY (category=evidence): new_string must not contradict locked facts.
+4. INTENT MATCH (category=coverage): the replacement must fulfill the user's revision request without unrelated changes.
+5. CONTEXT CONTINUITY (category=relevance or style): new_string must fit the surrounding content and configured style.
+
+Scoring: is_passed=false if any high or >3 medium. score=100-20*high-10*medium-3*low, min 0.
+Include replacement_id in the issue description. Locate issues using the replacement's content_ref when available.
+
+User request:
+{task_query}
+
+Source Markdown:
+{document_content}
+
+String replacements:
+{replacements_json}
+
+Writing context:
+{context_json}
+'''

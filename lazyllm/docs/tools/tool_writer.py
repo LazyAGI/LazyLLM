@@ -144,6 +144,14 @@ add_writer_english_doc('WriterQualityTools.validate_patch_set', '''
 Validate a patch set against its revision task.
 ''')
 
+add_writer_chinese_doc('WriterQualityTools.validate_string_replace_set', '''
+根据修订任务校验 Markdown 字符串替换集。
+''')
+
+add_writer_english_doc('WriterQualityTools.validate_string_replace_set', '''
+Validate a Markdown string replacement set against its revision task.
+''')
+
 add_writer_models_chinese_doc('PatchHunk.validate_operation', '''
 校验各补丁操作所需的字段。
 ''')

@@ -59,8 +59,18 @@ def get_markdown_outline_targets(
     markdown: str,
 ) -> tuple[str, List[tuple[int, List[str], int, str]]]:
     sections = parse_markdown_sections(markdown)
-    title = next((heading_path[-1] for level, heading_path, _, _ in sections if level == 1), '')
-    return title, [section for section in sections if section[0] == 2]
+    titles = [heading_path[-1] for level, heading_path, _, _ in sections if level == 1]
+    if len(titles) != 1:
+        raise ValueError('Markdown outline must contain exactly one H1 title.')
+
+    title = titles[0]
+    targets = [section for section in sections if section[0] == 2]
+    if not targets:
+        raise ValueError('Markdown outline must contain at least one H2 section.')
+    if any(len(heading_path) < 2 or heading_path[0] != title
+           for _, heading_path, _, _ in targets):
+        raise ValueError('Markdown outline H2 sections must appear under the H1 title.')
+    return title, targets
 
 
 def parse_document_markdown(  # noqa: C901

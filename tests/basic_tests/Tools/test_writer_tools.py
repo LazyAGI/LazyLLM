@@ -36,7 +36,11 @@ from lazyllm.tools.writer.tools.base import WriterToolBase
 from lazyllm.tools.writer.tools.planning_tools import WriterPlanningTools
 from lazyllm.tools.writer.tools.quality_tools import WriterQualityTools
 from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
-from lazyllm.tools.writer.utils import load_artifact_json, save_artifact_json
+from lazyllm.tools.writer.utils import (
+    get_markdown_outline_targets,
+    load_artifact_json,
+    save_artifact_json,
+)
 
 
 def test_structured_response_selects_one_schema_valid_candidate():
@@ -781,6 +785,38 @@ def test_generate_markdown_draft_without_ir_conversion():
     assert final == draft
 
 
+def test_markdown_outline_requires_title_and_section():
+    with pytest.raises(ValueError, match='exactly one H1'):
+        get_markdown_outline_targets('## 第一章\n')
+    with pytest.raises(ValueError, match='at least one H2'):
+        get_markdown_outline_targets('# 测试文档\n')
+
+
+def test_generate_markdown_draft_document_preserves_repeated_heading_order():
+    context = WritingContext(context_id='ctx-md-repeated')
+    outline = '# 测试文档\n\n## 第一章\n\n## 第二章\n\n## 第一章\n'
+    sections = [
+        '## 第一章\n\n第一次出现。\n',
+        '## 第二章\n\n中间章节。\n',
+        '## 第一章\n\n第二次出现。\n',
+    ]
+
+    with tempfile.TemporaryDirectory() as d:
+        result = WriterDraftingTools(artifact_store=d).generate_draft_document(
+            draft_blocks=sections,
+            context=context,
+            outline=outline,
+        )
+        draft = Path(result['artifact_path']).read_text(encoding='utf-8')
+
+    assert draft.count('## 第一章') == 2
+    assert draft.index('第一次出现。') < draft.index('第二章') < draft.index('第二次出现。')
+    assert result['metadata']['extra']['content_refs'][-1] == {
+        'heading_path': ['测试文档', '第一章'],
+        'occurrence': 2,
+    }
+
+
 def test_document_to_docir():
     pytest.importorskip('fsspec')
     adapter = _make_doc_adapter()
@@ -1153,6 +1189,38 @@ def test_validate_patch_set_failing():
         assert audit.is_passed is False
         assert audit.score == 70
         assert len(audit.issues) == 1
+
+
+def test_validate_string_replace_set():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        replace_set = StringReplaceSet(
+            replace_set_id='replace-1',
+            replacements=[StringReplace(
+                replacement_id='replacement-1',
+                old_string='旧内容',
+                new_string='新内容',
+                content_ref=ContentRef(heading_path=['引言']),
+            )],
+        )
+        with patch.object(
+            tool,
+            '_call_llm_structured',
+            return_value=_make_passing_audit(),
+        ) as mock_llm:
+            result = tool.validate_string_replace_set(
+                replace_set=replace_set,
+                document='# 引言\n\n旧内容',
+                context=_make_context(),
+                task=_make_task(),
+            )
+
+        audit = load_artifact_json(result['artifact_path'], AuditResult)
+        assert audit.is_passed is True
+        assert result['metadata']['counts']['total_replacements'] == 1
+        prompt = mock_llm.call_args.args[0]
+        assert '旧内容' in prompt
+        assert '新内容' in prompt
 
 
 # --- Scenario 5: Hunk without matching ModifyInstruction ---

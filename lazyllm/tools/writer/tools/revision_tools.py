@@ -1,6 +1,5 @@
 from __future__ import annotations
 from copy import deepcopy
-import os
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
@@ -919,15 +918,6 @@ class WriterRevisionTools(WriterToolBase):
                     break
             return start, end
         raise ValueError('content_ref is absent from Markdown document.')
-
-    def _write_markdown_artifact(self, filename: str, content: str) -> str:
-        if not self.artifact_store:
-            raise ValueError('artifact_store is not set')
-        path = os.path.join(self.artifact_store, filename)
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with open(path, 'w', encoding='utf-8') as stream:
-            stream.write(content)
-        return os.path.abspath(path)
 
     @staticmethod
     def _validate_model_revision(
