@@ -172,12 +172,10 @@ class WriterRevisionTools(WriterToolBase):
         }
 
         candidate_node_ids = valid_node_ids
-        if user_selection and user_selection.content_refs:
-            selected = {
-                ref.node_id for ref in user_selection.content_refs if ref.node_id
-            } & valid_node_ids
+        if user_selection and user_selection.block_ids:
+            selected = set(user_selection.block_ids) & valid_node_ids
             if not selected:
-                raise ValueError('selection.content_refs contains no valid node_ids.')
+                raise ValueError('selection.block_ids contains no valid node_ids.')
             candidate_node_ids = selected
 
         prompt = LOCATE_REVISION_TARGET_PROMPT.format(
@@ -194,24 +192,19 @@ class WriterRevisionTools(WriterToolBase):
         )
         locate_result = self._call_llm_structured(prompt, LocateResult)
 
-        located = [
-            target for target in locate_result.targets
-            if target.content_ref.node_id
-        ]
-        invalid = [
-            target.content_ref.node_id for target in located
-            if target.content_ref.node_id not in candidate_node_ids
-        ]
+        located = [nid for nid in (locate_result.target_node_ids or []) if nid]
+        invalid = [nid for nid in located if nid not in candidate_node_ids]
         if invalid:
             raise ValueError(
                 f'locate_result contains node_ids not in candidates: {invalid}.'
             )
-        unique_targets = {}
-        for target in located:
-            unique_targets.setdefault(target.content_ref.node_id, target)
-        locate_result.targets = list(unique_targets.values())
-        if not locate_result.targets and not locate_result.target_title:
+        locate_result.target_node_ids = list(dict.fromkeys(located))
+        if not locate_result.target_node_ids and not locate_result.target_title:
             raise ValueError('locate_result contains no revision targets.')
+        locate_result.target_reasons = {
+            nid: locate_result.target_reasons.get(nid, '')
+            for nid in locate_result.target_node_ids
+        }
         locate_result.task_id = writing_task.task_id
         locate_result.doc_id = source_doc.document_id
 
@@ -222,7 +215,7 @@ class WriterRevisionTools(WriterToolBase):
             context_key=None,
             summary='Located revision targets.',
             counts={
-                'target_node_count': len(locate_result.targets),
+                'target_node_count': len(locate_result.target_node_ids),
                 'target_title': int(locate_result.target_title),
             },
             artifact_meta={
@@ -253,14 +246,9 @@ class WriterRevisionTools(WriterToolBase):
         if writing_task.task_id is not None and located.task_id != writing_task.task_id:
             raise ValueError('locate_result does not belong to the current task.')
 
-        located_node_ids = [
-            target.content_ref.node_id
-            for target in located.targets
-            if target.content_ref.node_id
-        ]
-        if located_node_ids or located.target_title:
+        if located.target_node_ids or located.target_title:
             block_map = {b.node_id: b for b in source_doc.iter_blocks()}
-            missing = [nid for nid in located_node_ids if nid not in block_map]
+            missing = [nid for nid in located.target_node_ids if nid not in block_map]
             if missing:
                 raise ValueError(f'locate_result has node_ids absent from document: {missing}.')
 
@@ -277,7 +265,7 @@ class WriterRevisionTools(WriterToolBase):
         modify_plan = self._normalize_modify_plan(
             modify_plan,
             writing_task,
-            located_node_ids,
+            located.target_node_ids,
             {block.node_id for block in source_doc.iter_blocks()},
             target_title=located.target_title,
         )
@@ -370,7 +358,7 @@ class WriterRevisionTools(WriterToolBase):
     ) -> None:
         if instruction.modify_type == 'update':
             content, = blocks
-            target = revised.block_by_id(instruction.content_ref.node_id or '')
+            target = revised.block_by_id(instruction.target_node_id)
             self._apply_block_content(target, content)
             return
 
@@ -680,6 +668,7 @@ class WriterRevisionTools(WriterToolBase):
     ) -> ModifyPlan:
         plan.plan_id = plan.plan_id or f'plan-{task.task_id or "task"}'
         plan.task_id = task.task_id
+        plan.target_node_ids = list(located_node_ids)
         if target_title:
             if not plan.title_instruction or not plan.title_instruction.strip():
                 raise ValueError('modify_plan requires title_instruction for a title target.')
@@ -691,11 +680,11 @@ class WriterRevisionTools(WriterToolBase):
         instruction_ids: set = set()
         normalized: List[ModifyInstruction] = []
         for index, instr in enumerate(plan.instructions, start=1):
-            target_id = instr.content_ref.node_id
+            target_id = instr.target_node_id
             if target_id not in located_set:
                 raise ValueError(
                     f'modify_plan instruction targets block {target_id!r} '
-                    f'not in locate_result.targets.'
+                    f'not in locate_result.target_node_ids.'
                 )
             instr.instruction_id = (
                 instr.instruction_id or f'instr-{index}-{target_id}'

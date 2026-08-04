@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 from .writer_ir import ContentRef, WriterBlock, WriterSpan
 from ..utils.artifact import ArtifactModel
 
@@ -67,16 +67,6 @@ RevisionBlockContent.model_rebuild()
 class GeneratedRevision(BaseModel):
     new_title: Optional[str] = None
     changes: Dict[str, List[RevisionBlockContent]] = Field(default_factory=dict)
-
-    @field_validator('changes', mode='before')
-    @classmethod
-    def _normalize_changes(cls, value: Any) -> Any:
-        if not isinstance(value, dict):
-            return value
-        return {
-            instruction_id: [change] if isinstance(change, dict) else change
-            for instruction_id, change in value.items()
-        }
 
 
 class PatchHunk(BaseModel):
