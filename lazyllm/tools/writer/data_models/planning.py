@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..utils.artifact import ArtifactModel
 from .writer_ir import ContentRef
@@ -23,6 +23,11 @@ class SectionInstruction(BaseModel):
     pending_subtasks: List[str] = Field(default_factory=list)
     revision_notes: List[str] = Field(default_factory=list)
     meta: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator('style_constraints', mode='before')
+    @classmethod
+    def _normalize_style_constraints(cls, value: Any) -> Any:
+        return [value] if isinstance(value, str) else value
 
 class SectionInstructionList(ArtifactModel):
     instruction_set_id: Optional[str] = None

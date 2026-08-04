@@ -10,7 +10,7 @@ from lazyllm.tools.writer.data_models.context import DocumentSummary, WritingCon
 from lazyllm.tools.writer.data_models.quality import AuditResult, ReviewReport
 from lazyllm.tools.writer.data_models.revision import LocateResult, ModifyPlan, PatchResult, PatchSet
 from lazyllm.tools.writer.data_models.task import InputResource, Selection, TargetDocument, WritingTask
-from lazyllm.tools.writer.data_models.writer_ir import WriterBlock, WriterDocument
+from lazyllm.tools.writer.data_models.writer_ir import ContentRef, WriterBlock, WriterDocument
 from lazyllm.tools.writer.data_models.planning import SectionInstructionList
 from lazyllm.tools.writer.workflow.naive_writer_workflow import NaiveWriterWorkflow
 from lazyllm.tools.writer.utils import load_artifact_json, parse_markdown_sections
@@ -387,7 +387,10 @@ def test_revise_workflow_e2e():
                 'Do not change anything else.'
             ),
             task_type='revise',
-            selection=Selection(block_ids=['blk-lang-list', 'blk-deploy']),
+            selection=Selection(content_refs=[
+                ContentRef(node_id='blk-lang-list'),
+                ContentRef(node_id='blk-deploy'),
+            ]),
         ).model_dump(),
         document=document,
         context=context,
@@ -397,16 +400,17 @@ def test_revise_workflow_e2e():
 
     # --- locate ---
     locate = _load_stage(stages, 'locate_result', LocateResult)
-    assert locate.target_node_ids, 'locate must select at least one block.'
-    assert set(locate.target_node_ids) <= {'blk-lang-list', 'blk-deploy'}, (
-        f'locate must only pick blocks within selection, got {locate.target_node_ids}'
+    located_node_ids = [target.content_ref.node_id for target in locate.targets]
+    assert located_node_ids, 'locate must select at least one block.'
+    assert set(located_node_ids) <= {'blk-lang-list', 'blk-deploy'}, (
+        f'locate must only pick blocks within selection, got {located_node_ids}'
     )
-    for nid in locate.target_node_ids:
-        assert locate.target_reasons.get(nid, '').strip(), f'missing reason for selected block {nid}.'
+    for target in locate.targets:
+        assert target.reason.strip(), f'missing reason for selected block {target.content_ref.node_id}.'
 
     # --- modify_plan ---
     plan = _load_stage(stages, 'modify_plan', ModifyPlan)
-    assert {i.target_node_id for i in plan.instructions} == set(locate.target_node_ids)
+    assert {i.content_ref.node_id for i in plan.instructions} == set(located_node_ids)
     for instr in plan.instructions:
         assert instr.modify_type in {'create', 'update', 'delete', 'move'}
         assert instr.instruction.strip()

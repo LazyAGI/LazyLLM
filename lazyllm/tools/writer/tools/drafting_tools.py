@@ -25,11 +25,8 @@ class WriterDraftingTools(WriterToolBase):
     ]
 
     def generate_draft_section(
-        self,
-        task: Any,
-        section_instruction: Any,
-        context: Any,
-        previous_blocks: Any = None,
+        self, task: Any, section_instruction: Any,
+        context: Any, previous_blocks: Any = None,
     ) -> dict:
         writing_task = self._unified_model(task, WritingTask)
         instruction = self._unified_model(section_instruction, SectionInstruction)
@@ -106,11 +103,8 @@ class WriterDraftingTools(WriterToolBase):
         return result.model_dump()
 
     def generate_draft_document(
-        self,
-        draft_blocks: Any,
-        context: Any,
-        outline: Any = None,
-        title: Any = None,
+        self, draft_blocks: Any, context: Any,
+        outline: Any = None, title: Any = None,
     ) -> dict:
         blocks = self._unified_draft_blocks(draft_blocks)
         if not blocks:
@@ -118,58 +112,65 @@ class WriterDraftingTools(WriterToolBase):
         writing_context = self._unified_model(context, WritingContext)
 
         if all(isinstance(block, WriterBlock) for block in blocks):
-            writing_outline = None
-            if outline is not None:
-                writing_outline = self._unified_document(outline)
-                if not isinstance(writing_outline, WriterDocument):
-                    raise ValueError('IR draft blocks require a WriterDocument outline.')
-            writer_blocks = [block for block in blocks if isinstance(block, WriterBlock)]
-            for block in writer_blocks:
-                for item in block.iter_blocks():
-                    item.stage = 'draft'
-            draft_document = WriterDocument(
-                document_id=f'draft-document-{writing_context.context_id}',
-                stage='draft',
-                title=(
-                    str(title)
-                    if title is not None
-                    else writing_outline.title if writing_outline else ''
-                ),
-                blocks=writer_blocks,
-                ui_editable=False,
-                metadata={
-                    'source': 'generate_draft_document',
-                    'context_id': writing_context.context_id,
-                    'outline_id': writing_outline.document_id if writing_outline else None,
-                    'outline_title': writing_outline.title if writing_outline else None,
-                },
-            )
-            draft_block_count = (len(list(draft_document.iter_blocks())) - len(draft_document.blocks))
-
-            result = self._save_artifacts(
-                {'draft_document': draft_document},
-                step_name='generate_draft_document',
-                primary_key='draft_document',
-                context_key=None,
-                summary='Generated draft document.',
-                counts={
-                    'draft_sections': len(draft_document.blocks),
-                    'draft_blocks': draft_block_count,
-                },
-                extra={'representation': 'ir'},
-                artifact_meta={
-                    'context_id': writing_context.context_id,
-                    'doc_id': writing_context.doc_id,
-                    'outline_id': writing_outline.document_id if writing_outline else None,
-                    'outline_title': writing_outline.title if writing_outline else None,
-                    'draft_section_count': len(draft_document.blocks),
-                },
-            )
-            return result.model_dump()
+            return self._generate_ir_draft_document(blocks, writing_context, outline, title)
 
         if not all(isinstance(block, str) for block in blocks):
             raise ValueError('draft_blocks must not mix WriterBlock and Markdown sections.')
 
+        return self._generate_markdown_draft_document(blocks, writing_context, outline, title)
+
+    def _generate_ir_draft_document(
+        self, blocks: List[WriterBlock | str],
+        context: WritingContext, outline: Any, title: Any,
+    ) -> dict:
+        writing_outline = None
+        if outline is not None:
+            writing_outline = self._unified_document(outline)
+            if not isinstance(writing_outline, WriterDocument):
+                raise ValueError('IR draft blocks require a WriterDocument outline.')
+        writer_blocks = [block for block in blocks if isinstance(block, WriterBlock)]
+        for block in writer_blocks:
+            for item in block.iter_blocks():
+                item.stage = 'draft'
+        draft_document = WriterDocument(
+            document_id=f'draft-document-{context.context_id}',
+            stage='draft',
+            title=str(title) if title is not None else writing_outline.title if writing_outline else '',
+            blocks=writer_blocks,
+            ui_editable=False,
+            metadata={
+                'source': 'generate_draft_document',
+                'context_id': context.context_id,
+                'outline_id': writing_outline.document_id if writing_outline else None,
+                'outline_title': writing_outline.title if writing_outline else None,
+            },
+        )
+        draft_block_count = len(list(draft_document.iter_blocks())) - len(draft_document.blocks)
+        result = self._save_artifacts(
+            {'draft_document': draft_document},
+            step_name='generate_draft_document',
+            primary_key='draft_document',
+            context_key=None,
+            summary='Generated draft document.',
+            counts={
+                'draft_sections': len(draft_document.blocks),
+                'draft_blocks': draft_block_count,
+            },
+            extra={'representation': 'ir'},
+            artifact_meta={
+                'context_id': context.context_id,
+                'doc_id': context.doc_id,
+                'outline_id': writing_outline.document_id if writing_outline else None,
+                'outline_title': writing_outline.title if writing_outline else None,
+                'draft_section_count': len(draft_document.blocks),
+            },
+        )
+        return result.model_dump()
+
+    def _generate_markdown_draft_document(
+        self, blocks: List[WriterBlock | str],
+        context: WritingContext, outline: Any, title: Any,
+    ) -> dict:
         section_markdown = [block for block in blocks if isinstance(block, str)]
         section_titles = [self._markdown_draft_section_title(section) for section in section_markdown]
         if outline is None:
@@ -219,16 +220,14 @@ class WriterDraftingTools(WriterToolBase):
             },
             extra={
                 'representation': 'markdown',
-                'context_id': writing_context.context_id,
-                'doc_id': writing_context.doc_id,
+                'context_id': context.context_id,
+                'doc_id': context.doc_id,
                 'outline_title': document_title,
             },
         )
 
     def generate_final_document(
-        self,
-        draft: Any,
-        context: Any,
+        self, draft: Any, context: Any,
         output_format: str = 'markdown',
     ) -> dict:
         if output_format != 'markdown':
@@ -396,13 +395,8 @@ class WriterDraftingTools(WriterToolBase):
 
     @staticmethod
     def _markdown_result(
-        *,
-        path: str,
-        step_name: str,
-        artifact_key: str,
-        summary: str,
-        counts: dict,
-        extra: dict,
+        *, path: str, step_name: str, artifact_key: str,
+        summary: str, counts: dict, extra: dict,
     ) -> dict:
         return ToolResult(
             artifact_path=path,

@@ -7,10 +7,10 @@ Output semantics:
 - Updates and deletions target the blocks being changed.
 - Insertions target the existing section or block being extended.
 - Reordering targets every existing block whose relative order participates in the change.
-- target_node_ids contains the relevant node_id values copied from the document blocks.
-- target_reasons briefly states each selected block's role.
+- targets contains each selected block as an object with content_ref.node_id copied from the
+  document and a brief reason.
 - summary describes the revision scope in one sentence.
-- A body revision has one or more target_node_ids.
+- A body revision has one or more targets.
 
 Writing task:
 {task_json}
@@ -31,9 +31,7 @@ Plan semantics:
   - move relocates an existing block.
 - A contiguous insertion uses one create instruction so its blocks share one destination
   and retain their final document order.
-- target_node_id identifies the located source block involved in the operation.
-- create and move use anchor_node_id and position to identify their destination; the
-  anchor may be any existing block in the document.
+- content_ref.node_id identifies the located source block involved in the operation.
 - instruction describes the complete visible result of the operation.
 - instruction_id is unique, and instructions follow execution order.
 - scope and summary describe the plan as a whole.
