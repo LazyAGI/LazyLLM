@@ -1,12 +1,15 @@
 import ast
 import copy
+from dataclasses import dataclass
 import json5 as json
 import lazyllm
 import docstring_parser
 import os
+from pathlib import Path
 from lazyllm.module import ModuleBase
-from lazyllm.common import LazyLLMRegisterMetaClass, kwargs
+from lazyllm.common import LazyLLMRegisterMetaClass, kwargs, _change_exception_type
 from lazyllm.common.utils import SecurityVisitor
+from lazyllm.flow.flow import FlowException
 from typing import Callable, Any, Union, Optional, get_type_hints, List, Dict, Type, Set
 import inspect
 import re
@@ -16,34 +19,123 @@ from typing import *  # noqa F403, to import all types for compile_func(), do no
 
 # ---------------------------------------------------------------------------- #
 
-_SERIAL_TOOL_GROUP_ATTR = '__lazyllm_serial_tool_group__'
-_DEFAULT_SERIAL_TOOL_GROUP = 'default'
+_TOOL_CONCURRENCY_ATTR = '__lazyllm_tool_concurrency__'
+_FILE_RESOURCE_NAMESPACE = 'file'
 
 
-def serial_tool(group: str = _DEFAULT_SERIAL_TOOL_GROUP):
-    '''Mark a tool function for serial execution within one ToolManager call.
+def _as_resource_keys(value: Any) -> List[Any]:
+    if isinstance(value, (str, tuple)):
+        keys = [value]
+    elif isinstance(value, (list, set, frozenset)):
+        keys = list(value)
+    else:
+        raise TypeError('concurrency keys must be a string, tuple, list, set, or frozenset')
+    if not keys:
+        raise ValueError('concurrency keys must not be empty')
+    return keys
 
-    Tool functions with the same group execute in tool-call order. This
-    execution metadata is local to ToolManager and is not exposed in the
+
+def _validate_resource_key(key: Any) -> None:
+    if isinstance(key, str):
+        if not key.strip():
+            raise ValueError('concurrency keys must not contain empty strings')
+        return
+    if not isinstance(key, tuple) or not key:
+        raise TypeError('each concurrency key must be a non-empty string or tuple')
+    if key[0] == _FILE_RESOURCE_NAMESPACE:
+        if len(key) != 2:
+            raise ValueError('file concurrency keys must have the form ("file", path)')
+        try:
+            path = os.fspath(key[1])
+        except TypeError:
+            raise TypeError('file concurrency key paths must be strings or path-like objects') from None
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError('file concurrency key paths must be non-empty strings')
+        return
+    try:
+        hash(key)
+    except TypeError:
+        raise TypeError('non-file concurrency keys must be hashable') from None
+
+
+def _validate_key_source(source: Any, name: str) -> None:
+    if source is None or callable(source):
+        return
+    try:
+        keys = _as_resource_keys(source)
+        for key in keys:
+            _validate_resource_key(key)
+    except (TypeError, ValueError) as error:
+        raise type(error)(f'{name}: {error}') from None
+
+
+@dataclass(frozen=True)
+class _ResourceKey:
+    namespace: str
+    value: Any
+
+
+@dataclass(frozen=True)
+class _ConcurrencyAccess:
+    read_keys: frozenset = frozenset()
+    write_keys: frozenset = frozenset()
+    exclusive: bool = False
+
+
+class _ToolConcurrencySpec:
+    def __init__(self, read_keys=None, write_keys=None, exclusive: bool = False):
+        if not isinstance(exclusive, bool):
+            raise TypeError('exclusive must be a bool')
+        if not exclusive and read_keys is None and write_keys is None:
+            raise ValueError('at least one of read_keys, write_keys, or exclusive=True is required')
+        if exclusive and (read_keys is not None or write_keys is not None):
+            raise ValueError('exclusive cannot be combined with read_keys or write_keys')
+        _validate_key_source(read_keys, 'read_keys')
+        _validate_key_source(write_keys, 'write_keys')
+        self.read_keys = read_keys
+        self.write_keys = write_keys
+        self.exclusive = exclusive
+
+    @staticmethod
+    def _resolve_source(source, arguments):
+        if source is None:
+            return []
+        value = source(arguments) if callable(source) else source
+        return [_normalize_resource_key(key) for key in _as_resource_keys(value)]
+
+    def resolve(self, arguments: Dict[str, Any]) -> _ConcurrencyAccess:
+        if self.exclusive:
+            return _ConcurrencyAccess(exclusive=True)
+        read_keys = frozenset(self._resolve_source(self.read_keys, arguments))
+        write_keys = frozenset(self._resolve_source(self.write_keys, arguments))
+        if not read_keys and not write_keys:
+            raise ValueError('declared concurrency keys resolved to an empty set')
+        return _ConcurrencyAccess(
+            read_keys=read_keys - write_keys,
+            write_keys=write_keys,
+        )
+
+
+def tool_concurrency(*, read_keys=None, write_keys=None, exclusive: bool = False):
+    '''Declare the resources read or written by a tool invocation.
+
+    Key declarations may be static or callables that receive validated tool
+    arguments. The metadata is local to ToolManager and is not exposed in the
     model-facing tool schema.
     '''
-    if not isinstance(group, str):
-        raise TypeError('serial tool group must be a non-empty string')
-    normalized_group = group.strip()
-    if not normalized_group:
-        raise ValueError('serial tool group must be a non-empty string')
+    spec = _ToolConcurrencySpec(read_keys=read_keys, write_keys=write_keys, exclusive=exclusive)
 
     def decorator(func: Callable) -> Callable:
         if not (inspect.isfunction(func) or inspect.ismethod(func)):
-            raise TypeError('serial_tool can only decorate functions or methods')
+            raise TypeError('tool_concurrency can only decorate functions or methods')
         target = getattr(func, '__func__', func)
-        setattr(target, _SERIAL_TOOL_GROUP_ATTR, normalized_group)
+        setattr(target, _TOOL_CONCURRENCY_ATTR, spec)
         return func
 
     return decorator
 
 
-def _get_serial_tool_group(func: Optional[Callable]) -> Optional[str]:
+def _get_tool_concurrency_spec(func: Optional[Callable]) -> Optional[_ToolConcurrencySpec]:
     if func is None:
         return None
 
@@ -55,10 +147,41 @@ def _get_serial_tool_group(func: Optional[Callable]) -> Optional[str]:
     candidates.extend([unwrapped, getattr(unwrapped, '__func__', None)])
 
     for candidate in candidates:
-        group = getattr(candidate, _SERIAL_TOOL_GROUP_ATTR, None)
-        if group:
-            return str(group)
+        spec = getattr(candidate, _TOOL_CONCURRENCY_ATTR, None)
+        if spec is not None:
+            return spec
     return None
+
+
+def _normalize_resource_key(key: Any) -> _ResourceKey:
+    _validate_resource_key(key)
+    if isinstance(key, tuple) and key[0] == _FILE_RESOURCE_NAMESPACE:
+        path = os.fspath(key[1])
+        expanded = os.path.expanduser(path)
+        normalized = os.path.normcase(os.path.realpath(os.path.abspath(expanded)))
+        return _ResourceKey(_FILE_RESOURCE_NAMESPACE, Path(normalized))
+    return _ResourceKey('exact', key)
+
+
+def _resource_keys_overlap(left: _ResourceKey, right: _ResourceKey) -> bool:
+    if left.namespace != right.namespace:
+        return False
+    if left.namespace != _FILE_RESOURCE_NAMESPACE:
+        return left.value == right.value
+    left_parts, right_parts = left.value.parts, right.value.parts
+    common_length = min(len(left_parts), len(right_parts))
+    return bool(common_length) and left_parts[:common_length] == right_parts[:common_length]
+
+
+def _accesses_conflict(current: _ConcurrencyAccess, reserved: _ConcurrencyAccess) -> bool:
+    for current_write in current.write_keys:
+        if any(_resource_keys_overlap(current_write, key)
+               for key in reserved.read_keys | reserved.write_keys):
+            return True
+    for current_read in current.read_keys:
+        if any(_resource_keys_overlap(current_read, key) for key in reserved.write_keys):
+            return True
+    return False
 
 
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
@@ -83,7 +206,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self._input_files_parm = None
         self._output_files_parm = None
         self._output_files = []
-        self._serial_group = _get_serial_tool_group(
+        self._concurrency_spec = _get_tool_concurrency_spec(
             metadata_func or schema_func or apply_func or self.__class__.apply)
 
         self._params_schema = self._load_function_schema(schema_func or self.__class__.apply)
@@ -166,8 +289,20 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self._execute_in_sandbox = value
 
     @property
-    def serial_group(self) -> Optional[str]:
-        return self._serial_group
+    def concurrency_spec(self) -> Optional[_ToolConcurrencySpec]:
+        return self._concurrency_spec
+
+    def resolve_concurrency(self, arguments: Dict[str, Any]) -> _ConcurrencyAccess:
+        if self._concurrency_spec is None:
+            return _ConcurrencyAccess()
+        try:
+            return self._concurrency_spec.resolve(arguments)
+        except Exception as error:
+            LOG.warning(
+                f'[ToolConcurrency] tool={self.name!r} could not resolve resource keys; '
+                f'using exclusive execution: {type(error).__name__}: {error}'
+            )
+            return _ConcurrencyAccess(exclusive=True)
 
     @property
     def input_files_parm(self) -> str:
@@ -749,8 +884,13 @@ class ToolManager(ModuleBase):
         entry = self._tool_call.get(tool_name)
         if not entry:
             LOG.error(f'cannot find tool named [{tool_name}]')
-            return False
-        return entry.validate_parameters(tool_arguments)
+            return None
+        if len(entry.required_args.difference(set(tool_arguments.keys()))) != 0:
+            return None
+        try:
+            return entry._validate_input(tool_arguments)
+        except ValidationError:
+            return None
 
     def _format_tools(self):
         if isinstance(self._tools, List):
@@ -827,22 +967,23 @@ class ToolManager(ModuleBase):
     def _parse_tool_call(self, tc):
         func = tc.get('function') if isinstance(tc, dict) else None
         if not func or 'name' not in func or 'arguments' not in func:
-            return None, f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}'
+            return None, f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}', None
         name = func['name']
         raw_args = func['arguments']
         arguments = ToolManager._safe_parse_json(raw_args) if isinstance(raw_args, str) else raw_args
         if not isinstance(arguments, dict):
-            return None, f'Tool [{name}] arguments format error.'
+            return None, f'Tool [{name}] arguments format error.', None
         tool = self._tool_call.get(name)
         if tool is None:
             lazyllm.LOG.warning(
                 f'[ToolManager] tool {name!r} not found. '
                 f'Available: {list(self._tool_call.keys())}'
             )
-            return None, f'Tool [{name}] is not available. Please choose from the available tools.'
-        if not self._validate_tool(name, arguments):
-            return None, f'Tool [{name}] parameters error.'
-        return tool, arguments
+            return None, f'Tool [{name}] is not available. Please choose from the available tools.', None
+        validated_arguments = self._validate_tool(name, arguments)
+        if validated_arguments is None:
+            return None, f'Tool [{name}] parameters error.', None
+        return tool, arguments, validated_arguments
 
     @staticmethod
     def _tool_error(tool, error):
@@ -862,17 +1003,22 @@ class ToolManager(ModuleBase):
             return cls._tool_error(tool, e)
 
     def _build_tool_invocation(self, tool_call):
-        tool, arguments = self._parse_tool_call(tool_call)
+        tool, arguments, validated_arguments = self._parse_tool_call(tool_call)
         if tool is None:
-            return lambda *_, _e=arguments: {'ok': False, 'value': None, 'msg': _e}, {}, None
+            return (
+                lambda *_, _e=arguments: {'ok': False, 'value': None, 'msg': _e},
+                {},
+                _ConcurrencyAccess(),
+            )
+        access = tool.resolve_concurrency(validated_arguments)
         if self._sandbox and tool.execute_in_sandbox:
             sandbox_arguments = self._build_sandbox_args(tool, arguments)
-            return self._sandbox, sandbox_arguments, tool.serial_group
+            return self._sandbox, sandbox_arguments, access
 
         def _safe_call(args):
             return self._call_tool(tool, args)
 
-        return _safe_call, arguments, tool.serial_group
+        return _safe_call, arguments, access
 
     @staticmethod
     def _invoke_tool_callable(callable_, arguments):
@@ -880,65 +1026,70 @@ class ToolManager(ModuleBase):
             return callable_(**arguments)
         return callable_(arguments)
 
+    @staticmethod
+    def _build_execution_segments(accesses):
+        segments = []
+        current_segment = []
+        reserved = _ConcurrencyAccess()
+
+        def close_current_segment():
+            nonlocal current_segment, reserved
+            if current_segment:
+                segments.append(current_segment)
+                current_segment = []
+                reserved = _ConcurrencyAccess()
+
+        for index, access in enumerate(accesses):
+            if access.exclusive:
+                close_current_segment()
+                segments.append([index])
+                continue
+            if _accesses_conflict(access, reserved):
+                close_current_segment()
+            current_segment.append(index)
+            reserved = _ConcurrencyAccess(
+                read_keys=reserved.read_keys | access.read_keys,
+                write_keys=reserved.write_keys | access.write_keys,
+            )
+        close_current_segment()
+        return segments
+
     @classmethod
-    def _build_execution_branches(cls, callables, call_arguments, serial_groups):
-        grouped_calls = {}
+    def _execute_segment(cls, indices, callables, call_arguments):
         branch_callables = []
         branch_arguments = []
-
-        for index, (callable_, arguments, group) in enumerate(
-                zip(callables, call_arguments, serial_groups)):
-            if group:
-                grouped_calls.setdefault(group, []).append((index, callable_, arguments))
-                continue
-
-            def _indexed_call(_, _index=index, _callable=callable_, _arguments=arguments):
-                return _index, cls._invoke_tool_callable(_callable, _arguments)
+        for index in indices:
+            def _indexed_call(_, _index=index, _callable=callables[index],
+                              _arguments=call_arguments[index]):
+                try:
+                    return _index, cls._invoke_tool_callable(_callable, _arguments), None
+                except Exception as error:
+                    flow_error = error if isinstance(error, FlowException) \
+                        else _change_exception_type(error, FlowException)
+                    return _index, None, flow_error
 
             branch_callables.append(_indexed_call)
             branch_arguments.append({})
-
-        for calls in grouped_calls.values():
-            def _serial_lane(_, _calls=calls):
-                results = []
-                first_error = None
-                for index, callable_, arguments in _calls:
-                    try:
-                        result = cls._invoke_tool_callable(callable_, arguments)
-                    except Exception as e:
-                        if first_error is None:
-                            first_error = e
-                    else:
-                        results.append((index, result))
-                if first_error is not None:
-                    raise first_error
-                return results
-
-            branch_callables.append(_serial_lane)
-            branch_arguments.append({})
-
-        return branch_callables, branch_arguments
+        tool_diverter = lazyllm.diverter(tuple(branch_callables))
+        return tool_diverter(tuple(branch_arguments))
 
     @classmethod
-    def _execute_tool_calls(cls, tool_calls, callables, call_arguments, serial_groups):
-        if not any(serial_groups):
-            tool_diverter = lazyllm.diverter(tuple(callables))
-            return tool_diverter(tuple(call_arguments))
-
-        branch_callables, branch_arguments = cls._build_execution_branches(
-            callables, call_arguments, serial_groups)
-        tool_diverter = lazyllm.diverter(tuple(branch_callables))
-        branch_results = tool_diverter(tuple(branch_arguments))
+    def _execute_tool_calls(cls, tool_calls, callables, call_arguments, accesses):
         ordered_results = [None] * len(tool_calls)
-        for branch_result in branch_results:
-            indexed_results = branch_result if isinstance(branch_result, list) else [branch_result]
-            for index, result in indexed_results:
-                ordered_results[index] = result
+        errors = []
+        for segment in cls._build_execution_segments(accesses):
+            for index, result, error in cls._execute_segment(segment, callables, call_arguments):
+                if error is not None:
+                    errors.append((index, error))
+                else:
+                    ordered_results[index] = result
+        if errors:
+            raise min(errors, key=lambda item: item[0])[1]
         return lazyllm.package(ordered_results)
 
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False):
         if not tools: return []
         tool_calls = [tools] if isinstance(tools, dict) else tools
         invocations = [self._build_tool_invocation(tool_call) for tool_call in tool_calls]
-        callables, call_arguments, serial_groups = map(list, zip(*invocations))
-        return self._execute_tool_calls(tool_calls, callables, call_arguments, serial_groups)
+        callables, call_arguments, accesses = map(list, zip(*invocations))
+        return self._execute_tool_calls(tool_calls, callables, call_arguments, accesses)
