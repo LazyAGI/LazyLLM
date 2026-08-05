@@ -292,7 +292,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def concurrency_spec(self) -> Optional[_ToolConcurrencySpec]:
         return self._concurrency_spec
 
-    def resolve_concurrency(self, arguments: Dict[str, Any]) -> _ConcurrencyAccess:
+    def _resolve_concurrency(self, arguments: Dict[str, Any]) -> _ConcurrencyAccess:
         if self._concurrency_spec is None:
             return _ConcurrencyAccess()
         try:
@@ -1010,7 +1010,7 @@ class ToolManager(ModuleBase):
                 {},
                 _ConcurrencyAccess(),
             )
-        access = tool.resolve_concurrency(validated_arguments)
+        access = tool._resolve_concurrency(validated_arguments)
         if self._sandbox and tool.execute_in_sandbox:
             sandbox_arguments = self._build_sandbox_args(tool, arguments)
             return self._sandbox, sandbox_arguments, access
