@@ -23,56 +23,34 @@ _TOOL_CONCURRENCY_ATTR = '__lazyllm_tool_concurrency__'
 _FILE_RESOURCE_NAMESPACE = 'file'
 
 
-def _as_resource_keys(value: Any) -> List[Any]:
-    if isinstance(value, (str, tuple)):
-        keys = [value]
-    elif isinstance(value, (list, set, frozenset)):
-        keys = list(value)
-    else:
-        raise TypeError('concurrency keys must be a string, tuple, list, set, or frozenset')
-    if not keys:
-        raise ValueError('concurrency keys must not be empty')
-    return keys
-
-
-def _validate_resource_key(key: Any) -> None:
+def _normalize_resource_key(key: Any):
     if isinstance(key, str):
         if not key.strip():
             raise ValueError('concurrency keys must not contain empty strings')
-        return
+        return 'exact', key
     if not isinstance(key, tuple) or not key:
         raise TypeError('each concurrency key must be a non-empty string or tuple')
     if key[0] == _FILE_RESOURCE_NAMESPACE:
         if len(key) != 2:
             raise ValueError('file concurrency keys must have the form ("file", path)')
-        try:
-            path = os.fspath(key[1])
-        except TypeError:
-            raise TypeError('file concurrency key paths must be strings or path-like objects') from None
+        path = os.fspath(key[1])
         if not isinstance(path, str) or not path.strip():
             raise ValueError('file concurrency key paths must be non-empty strings')
-        return
-    try:
-        hash(key)
-    except TypeError:
-        raise TypeError('non-file concurrency keys must be hashable') from None
+        path = os.path.normcase(os.path.realpath(os.path.abspath(os.path.expanduser(path))))
+        return _FILE_RESOURCE_NAMESPACE, Path(path)
+    return 'exact', key
 
 
-def _validate_key_source(source: Any, name: str) -> None:
-    if source is None or callable(source):
-        return
-    try:
-        keys = _as_resource_keys(source)
-        for key in keys:
-            _validate_resource_key(key)
-    except (TypeError, ValueError) as error:
-        raise type(error)(f'{name}: {error}') from None
-
-
-@dataclass(frozen=True)
-class _ResourceKey:
-    namespace: str
-    value: Any
+def _normalize_resource_keys(value: Any):
+    if isinstance(value, (str, tuple)):
+        values = (value,)
+    elif isinstance(value, (list, set, frozenset)):
+        values = value
+    else:
+        raise TypeError('concurrency keys must be a string, tuple, list, set, or frozenset')
+    if not values:
+        raise ValueError('concurrency keys must not be empty')
+    return frozenset(_normalize_resource_key(key) for key in values)
 
 
 @dataclass(frozen=True)
@@ -90,8 +68,9 @@ class _ToolConcurrencySpec:
             raise ValueError('at least one of read_keys, write_keys, or exclusive=True is required')
         if exclusive and (read_keys is not None or write_keys is not None):
             raise ValueError('exclusive cannot be combined with read_keys or write_keys')
-        _validate_key_source(read_keys, 'read_keys')
-        _validate_key_source(write_keys, 'write_keys')
+        for source in (read_keys, write_keys):
+            if source is not None and not callable(source):
+                _normalize_resource_keys(source)
         self.read_keys = read_keys
         self.write_keys = write_keys
         self.exclusive = exclusive
@@ -99,17 +78,15 @@ class _ToolConcurrencySpec:
     @staticmethod
     def _resolve_source(source, arguments):
         if source is None:
-            return []
+            return frozenset()
         value = source(arguments) if callable(source) else source
-        return [_normalize_resource_key(key) for key in _as_resource_keys(value)]
+        return _normalize_resource_keys(value)
 
     def resolve(self, arguments: Dict[str, Any]) -> _ConcurrencyAccess:
         if self.exclusive:
             return _ConcurrencyAccess(exclusive=True)
-        read_keys = frozenset(self._resolve_source(self.read_keys, arguments))
-        write_keys = frozenset(self._resolve_source(self.write_keys, arguments))
-        if not read_keys and not write_keys:
-            raise ValueError('declared concurrency keys resolved to an empty set')
+        read_keys = self._resolve_source(self.read_keys, arguments)
+        write_keys = self._resolve_source(self.write_keys, arguments)
         return _ConcurrencyAccess(
             read_keys=read_keys - write_keys,
             write_keys=write_keys,
@@ -126,8 +103,6 @@ def tool_concurrency(*, read_keys=None, write_keys=None, exclusive: bool = False
     spec = _ToolConcurrencySpec(read_keys=read_keys, write_keys=write_keys, exclusive=exclusive)
 
     def decorator(func: Callable) -> Callable:
-        if not (inspect.isfunction(func) or inspect.ismethod(func)):
-            raise TypeError('tool_concurrency can only decorate functions or methods')
         target = getattr(func, '__func__', func)
         setattr(target, _TOOL_CONCURRENCY_ATTR, spec)
         return func
@@ -138,50 +113,33 @@ def tool_concurrency(*, read_keys=None, write_keys=None, exclusive: bool = False
 def _get_tool_concurrency_spec(func: Optional[Callable]) -> Optional[_ToolConcurrencySpec]:
     if func is None:
         return None
-
-    candidates = [func, getattr(func, '__func__', None)]
+    target = getattr(func, '__func__', func)
+    spec = getattr(target, _TOOL_CONCURRENCY_ATTR, None)
+    if spec is not None:
+        return spec
     try:
-        unwrapped = inspect.unwrap(func)
+        target = inspect.unwrap(target)
     except (TypeError, ValueError):
-        unwrapped = None
-    candidates.extend([unwrapped, getattr(unwrapped, '__func__', None)])
-
-    for candidate in candidates:
-        spec = getattr(candidate, _TOOL_CONCURRENCY_ATTR, None)
-        if spec is not None:
-            return spec
-    return None
+        return None
+    return getattr(target, _TOOL_CONCURRENCY_ATTR, None)
 
 
-def _normalize_resource_key(key: Any) -> _ResourceKey:
-    _validate_resource_key(key)
-    if isinstance(key, tuple) and key[0] == _FILE_RESOURCE_NAMESPACE:
-        path = os.fspath(key[1])
-        expanded = os.path.expanduser(path)
-        normalized = os.path.normcase(os.path.realpath(os.path.abspath(expanded)))
-        return _ResourceKey(_FILE_RESOURCE_NAMESPACE, Path(normalized))
-    return _ResourceKey('exact', key)
-
-
-def _resource_keys_overlap(left: _ResourceKey, right: _ResourceKey) -> bool:
-    if left.namespace != right.namespace:
+def _resource_keys_overlap(left, right) -> bool:
+    if left[0] != right[0]:
         return False
-    if left.namespace != _FILE_RESOURCE_NAMESPACE:
-        return left.value == right.value
-    left_parts, right_parts = left.value.parts, right.value.parts
+    if left[0] != _FILE_RESOURCE_NAMESPACE:
+        return left[1] == right[1]
+    left_parts, right_parts = left[1].parts, right[1].parts
     common_length = min(len(left_parts), len(right_parts))
     return bool(common_length) and left_parts[:common_length] == right_parts[:common_length]
 
 
 def _accesses_conflict(current: _ConcurrencyAccess, reserved: _ConcurrencyAccess) -> bool:
-    for current_write in current.write_keys:
-        if any(_resource_keys_overlap(current_write, key)
-               for key in reserved.read_keys | reserved.write_keys):
-            return True
-    for current_read in current.read_keys:
-        if any(_resource_keys_overlap(current_read, key) for key in reserved.write_keys):
-            return True
-    return False
+    occupied = reserved.read_keys | reserved.write_keys
+    return (
+        any(_resource_keys_overlap(write, key) for write in current.write_keys for key in occupied)
+        or any(_resource_keys_overlap(read, key) for read in current.read_keys for key in reserved.write_keys)
+    )
 
 
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
