@@ -175,8 +175,6 @@ def test_serial_sandbox_calls_preserve_results():
 
         def __call__(self, **kwargs):
             self.calls += 1
-            if self.calls == 2:
-                raise RuntimeError('expected sandbox failure')
             return {'sandbox_call': self.calls, 'has_code': bool(kwargs.get('code'))}
 
     sandbox = RecordingSandbox()
@@ -191,12 +189,40 @@ def test_serial_sandbox_calls_preserve_results():
 
     assert isinstance(results, lazyllm.package)
     assert results[0] == {'sandbox_call': 1, 'has_code': True}
-    assert results[1] == {
-        'ok': False,
-        'value': None,
-        'msg': '[Tool Error] RuntimeError: expected sandbox failure',
-    }
+    assert results[1] == {'sandbox_call': 2, 'has_code': True}
     assert results[2] == {'sandbox_call': 3, 'has_code': True}
+
+
+def test_serial_sandbox_failure_preserves_exception_contract_and_continues_lane():
+    @serial_tool(group='sandbox-state')
+    def sandbox_tool(value: str):
+        '''Return a value.
+
+        Args:
+            value: Input value.
+        '''
+        return value
+
+    class RecordingSandbox:
+        def __init__(self):
+            self.calls = 0
+
+        def __call__(self, **kwargs):
+            self.calls += 1
+            if self.calls in (2, 3):
+                raise RuntimeError(f'expected sandbox failure {self.calls}')
+            return {'sandbox_call': self.calls, 'has_code': bool(kwargs.get('code'))}
+
+    sandbox = RecordingSandbox()
+    manager = ToolManager([sandbox_tool], sandbox=sandbox)
+    with pytest.raises(FlowException, match='expected sandbox failure 2'):
+        manager([
+            _tool_call('sandbox_tool', {'value': 'first'}),
+            _tool_call('sandbox_tool', {'value': 'second'}),
+            _tool_call('sandbox_tool', {'value': 'third'}),
+        ])
+
+    assert sandbox.calls == 3
 
 
 def test_plain_sandbox_failure_still_raises():

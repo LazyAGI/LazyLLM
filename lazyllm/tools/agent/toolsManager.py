@@ -861,24 +861,13 @@ class ToolManager(ModuleBase):
         except Exception as e:
             return cls._tool_error(tool, e)
 
-    def _call_sandbox(self, tool, arguments):
-        try:
-            return self._sandbox(**arguments)
-        except Exception as e:
-            return self._tool_error(tool, e)
-
     def _build_tool_invocation(self, tool_call):
         tool, arguments = self._parse_tool_call(tool_call)
         if tool is None:
             return lambda *_, _e=arguments: {'ok': False, 'value': None, 'msg': _e}, {}, None
         if self._sandbox and tool.execute_in_sandbox:
             sandbox_arguments = self._build_sandbox_args(tool, arguments)
-            if tool.serial_group:
-                def _safe_sandbox_call(**kwargs):
-                    return self._call_sandbox(tool, kwargs)
-
-                return _safe_sandbox_call, sandbox_arguments, tool.serial_group
-            return self._sandbox, sandbox_arguments, None
+            return self._sandbox, sandbox_arguments, tool.serial_group
 
         def _safe_call(args):
             return self._call_tool(tool, args)
@@ -911,10 +900,19 @@ class ToolManager(ModuleBase):
 
         for calls in grouped_calls.values():
             def _serial_lane(_, _calls=calls):
-                return [
-                    (index, cls._invoke_tool_callable(callable_, arguments))
-                    for index, callable_, arguments in _calls
-                ]
+                results = []
+                first_error = None
+                for index, callable_, arguments in _calls:
+                    try:
+                        result = cls._invoke_tool_callable(callable_, arguments)
+                    except Exception as e:
+                        if first_error is None:
+                            first_error = e
+                    else:
+                        results.append((index, result))
+                if first_error is not None:
+                    raise first_error
+                return results
 
             branch_callables.append(_serial_lane)
             branch_arguments.append({})
