@@ -21,7 +21,7 @@ from .revision import (
     StringReplaceResult,
     StringReplaceSet,
 )
-from .multimodal import MediaAsset, MediaAssetLibrary, VisualInstruction
+from .multimodal import MediaAsset, MediaAssetLibrary, VisualInstruction, VisualPlan
 from .quality import AuditIssue, AuditResult, ReviewReport
 from .writer_ir import ContentRef, WriterBlock, WriterDocument, WriterSpan, WriterStage
 
@@ -54,6 +54,7 @@ __all__ = [
     'MediaAsset',
     'MediaAssetLibrary',
     'VisualInstruction',
+    'VisualPlan',
     'AuditIssue',
     'AuditResult',
     'ReviewReport',

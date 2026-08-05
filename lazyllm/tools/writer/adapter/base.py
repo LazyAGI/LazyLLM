@@ -76,7 +76,7 @@ class WriterAdapterBase(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def ir_to_blocks(self, document: WriterDocument) -> List[NativeBlock]:
+    def ir_to_blocks(self, document: WriterDocument, media_assets: Any = None) -> List[NativeBlock]:
         '''Convert a WriterDocument into provider-native blocks.'''
         raise NotImplementedError
 

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..utils.feishu_docx import DOCX_BLOCK_TYPE_FIELDS, prepare_docx_descendants
 from ..data_models.revision import PatchHunk
+from ..data_models.multimodal import MediaAssetLibrary
 from ..data_models.writer_ir import (
     WRITER_BLOCK_MUTABLE_FIELDS,
     WriterBlock,
@@ -151,7 +153,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
             source_order.append(block_id)
         return raw_by_id, source_order
 
-    def ir_to_blocks(self, document: WriterDocument) -> List[NativeBlock]:
+    def ir_to_blocks(self, document: WriterDocument, media_assets: Any = None) -> List[NativeBlock]:
         if not isinstance(document, WriterDocument):
             raise TypeError(
                 f'document must be a WriterDocument, got {type(document).__name__}.')
@@ -159,6 +161,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
         if provider and str(provider).lower() != self.provider:
             raise ValueError(
                 f'document provider must be {self.provider!r}, got {provider!r}.')
+        media_library = None if media_assets is None else MediaAssetLibrary.model_validate(media_assets)
 
         flat_blocks: List[Tuple[WriterBlock, Optional[WriterBlock]]] = []
 
@@ -180,7 +183,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
 
         output: List[NativeBlock] = []
         for block, parent in flat_blocks:
-            raw = self._ir_block_to_raw(block)
+            raw = self._ir_block_to_raw(block, media_library)
             raw['block_id'] = output_ids[block.node_id]
             raw.pop('children', None)
             if parent is not None:
@@ -497,6 +500,10 @@ class FeishuWriterAdapter(WriterAdapterBase):
         block_type = raw.get('block_type')
         ir_type = _BLOCK_TYPE_NAMES.get(block_type, 'feishu_unknown')
         content, spans = self._content_and_spans(raw)
+        if block_type == 27:
+            caption = ((raw.get('image') or {}).get('caption') or {}).get('content')
+            content = caption if isinstance(caption, str) else ''
+            spans = []
         numbering: Dict[str, Any] = {}
         if isinstance(block_type, int) and 3 <= block_type <= 11:
             numbering['level'] = block_type - 2
@@ -529,7 +536,16 @@ class FeishuWriterAdapter(WriterAdapterBase):
             editable=block_type in _TEXT_BLOCK_TYPES,
         )
 
-    def _ir_block_to_raw(self, block: WriterBlock) -> NativeBlock:
+    def _ir_block_to_raw(
+        self,
+        block: WriterBlock,
+        media_assets: Optional[MediaAssetLibrary] = None,
+    ) -> NativeBlock:
+        if block.type == 'image':
+            return self._ir_image_block_to_raw(block, media_assets)
+        return self._ir_non_image_block_to_raw(block)
+
+    def _ir_non_image_block_to_raw(self, block: WriterBlock) -> NativeBlock:
         original = self._raw_payload(block)
         raw = deepcopy(original)
         original_type = original.get('block_type')
@@ -574,6 +590,47 @@ class FeishuWriterAdapter(WriterAdapterBase):
         raw[content_field] = content_payload
         raw['plain_text'] = block.content
         return raw
+
+    def _ir_image_block_to_raw(
+        self,
+        block: WriterBlock,
+        media_assets: Optional[MediaAssetLibrary],
+    ) -> NativeBlock:
+        original = self._raw_payload(block)
+        if original:
+            caption = ((original.get('image') or {}).get('caption') or {}).get('content') or ''
+            if block.content != caption:
+                raise ValueError('Updating an existing Feishu image is not supported.')
+            return deepcopy(original)
+        return self._image_block_to_raw(block, media_assets)
+
+    @staticmethod
+    def _image_block_to_raw(
+        block: WriterBlock,
+        media_assets: Optional[MediaAssetLibrary],
+    ) -> NativeBlock:
+        references = [
+            reference for reference in block.references
+            if reference.get('type') == 'media_asset' and reference.get('id')
+        ]
+        if len(references) != 1:
+            raise ValueError('A new image block requires exactly one media_asset reference.')
+        asset_id = str(references[0]['id'])
+        asset = media_assets.assets.get(asset_id) if media_assets else None
+        if asset is None or not asset.local_path or not Path(asset.local_path).is_file():
+            raise ValueError(f'Image media asset {asset_id!r} is unavailable.')
+        return {
+            'block_type': 27,
+            'image': {
+                'align': 2,
+                'caption': {'content': block.content},
+            },
+            '_media': {
+                'media_asset_id': asset_id,
+                'local_path': asset.local_path,
+                'file_name': Path(asset.local_path).name,
+            },
+        }
 
     def _block_type_from_ir(self, block: WriterBlock, original_type: Any) -> int:
         if block.type == 'heading':

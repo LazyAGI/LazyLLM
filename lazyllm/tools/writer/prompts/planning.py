@@ -62,6 +62,28 @@ Execution results:
 '''
 
 
+GENERATE_VISUAL_PLAN_PROMPT = '''Generate a visual plan for this Writer IR outline.
+
+Requirements:
+- Return a VisualPlan object.
+- Create a visual only when the user explicitly requires it or it materially improves the section.
+- Each content_ref must contain only node_id for one top-level heading in the outline.
+- Use visual_type image or diagram and preferred_strategy image_generation.
+- purpose must state what the visual communicates for its section.
+- Set required=true only when the user explicitly requires the visual.
+- Do not change the outline. Do not generate asset IDs, paths, URLs, captions, placeholders, or upload details.
+
+Writing task:
+{task_json}
+
+Writing context:
+{context_json}
+
+Outline:
+{outline_json}
+'''
+
+
 GENERATE_SECTION_INSTRUCTIONS_PROMPT = '''Generate section-level writing instructions from the outline and writing context.
 
 Requirements:
@@ -79,6 +101,9 @@ Requirements:
 - references are owned by the authoritative outline. Omit references; the system normalizes them.
 - style_constraints should include tone, pov, audience, and style requirements when applicable.
 - relation_constraints should describe dependencies on previous or later sections when useful.
+- Use the visual plan to shape section goals, ordering, and transitions when its content_ref targets
+  the same section. Do not copy visual needs into SectionInstruction or generate asset IDs, paths,
+  placeholders, captions, or acquisition instructions.
 - expected_blocks should be a concise block-level content plan for the draft tool.
 - For a normal section, expected_blocks should usually contain 3 to 6 planned content blocks unless the section is explicitly very short.
 - expected_blocks are planning labels for coverage and ordering, not visible headings that must appear in final text.
@@ -95,4 +120,7 @@ Writing context:
 
 Execution results:
 {execution_results_json}
+
+Visual plan:
+{visual_plan_json}
 '''

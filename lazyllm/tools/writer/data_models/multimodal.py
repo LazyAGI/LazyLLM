@@ -33,3 +33,7 @@ class VisualInstruction(BaseModel):
     ] = 'web_search'
     required: bool = True
     meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class VisualPlan(ArtifactModel):
+    instructions: List[VisualInstruction] = Field(default_factory=list)

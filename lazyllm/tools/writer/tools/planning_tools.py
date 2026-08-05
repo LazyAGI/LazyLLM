@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Literal
 
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
+from ..data_models.multimodal import VisualPlan
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import WriterBlock, WriterDocument
@@ -11,6 +12,7 @@ from ..prompts import (
     GENERATE_OUTLINE_MARKDOWN_PROMPT,
     GENERATE_OUTLINE_PROMPT,
     GENERATE_SECTION_INSTRUCTIONS_PROMPT,
+    GENERATE_VISUAL_PLAN_PROMPT,
 )
 from ..utils import (
     get_markdown_outline_targets,
@@ -101,15 +103,40 @@ class WriterPlanningTools(WriterToolBase):
         )
         return result.model_dump()
 
+    def generate_visual_plan(self, task: Any, outline: Any, context: Any) -> dict:
+        writing_task = self._unified_model(task, WritingTask)
+        writing_outline = self._unified_document(outline)
+        writing_context = self._unified_model(context, WritingContext)
+        visual_plan = VisualPlan()
+        if isinstance(writing_outline, WriterDocument):
+            prompt = GENERATE_VISUAL_PLAN_PROMPT.format(
+                task_json=to_prompt_json(writing_task),
+                context_json=to_prompt_json(writing_context),
+                outline_json=to_prompt_json(writing_outline),
+            )
+            visual_plan = self._normalize_visual_plan(
+                self._call_llm_structured(prompt, VisualPlan), writing_outline)
+        return self._save_artifacts(
+            {'visual_plan': visual_plan},
+            step_name='generate_visual_plan',
+            primary_key='visual_plan',
+            context_key=None,
+            summary='Generated visual plan.',
+            counts={'visual_instructions': len(visual_plan.instructions)},
+            extra={'representation': 'ir' if isinstance(writing_outline, WriterDocument) else 'markdown'},
+        ).model_dump()
+
     def generate_section_instructions(
         self,
         outline: Any,
         context: Any,
+        visual_plan: Any = None,
         execution_results: Any = None,
     ) -> dict:
         writing_outline = self._unified_document(outline)
         writing_context = self._unified_model(context, WritingContext)
         execution_data = self._unified_raw_data(execution_results)
+        writing_visual_plan = self._unified_optional_model(visual_plan, VisualPlan) or VisualPlan()
 
         if isinstance(writing_outline, WriterDocument):
             target_blocks = [block for block in writing_outline.blocks if block.type == 'heading']
@@ -145,6 +172,7 @@ class WriterPlanningTools(WriterToolBase):
             target_outline_blocks_json=to_prompt_json(target_payload),
             context_json=to_prompt_json(writing_context),
             execution_results_json=to_prompt_json(execution_data),
+            visual_plan_json=to_prompt_json(writing_visual_plan),
         )
         instruction_list = self._call_llm_structured(prompt, SectionInstructionList)
         if isinstance(writing_outline, WriterDocument):
@@ -179,9 +207,28 @@ class WriterPlanningTools(WriterToolBase):
                 'outline_id': outline_id,
                 'context_id': writing_context.context_id,
                 'has_execution_results': execution_data is not None,
+                'visual_instructions': len(writing_visual_plan.instructions),
             },
         )
         return result.model_dump()
+
+    @staticmethod
+    def _normalize_visual_plan(visual_plan: VisualPlan, outline: WriterDocument) -> VisualPlan:
+        node_ids = {block.node_id for block in outline.blocks if block.type == 'heading'}
+        counts: Dict[str, int] = {}
+        for need in visual_plan.instructions:
+            ref = need.content_ref
+            node_id = ref.node_id
+            if (
+                not node_id or ref.heading_path or ref.placeholder_id or ref.document_root
+                or node_id not in node_ids
+            ):
+                raise ValueError('Visual plan must target a top-level outline node_id.')
+            if not need.purpose.strip():
+                raise ValueError(f'Visual need for {node_id!r} has an empty purpose.')
+            counts[node_id] = counts.get(node_id, 0) + 1
+            need.need_id = f'visual-{node_id}-{counts[node_id]}'
+        return visual_plan
 
     @staticmethod
     def _resolve_representation(
@@ -354,6 +401,7 @@ class WriterPlanningTools(WriterToolBase):
         self._validate_instruction(instruction, block.node_id)
         instruction.section_title = block.content
         instruction.references = [dict(reference) for reference in block.references]
+        instruction.visual_needs = []
         if not has_available_facts:
             instruction.fact_constraints = []
         instruction.meta.update({

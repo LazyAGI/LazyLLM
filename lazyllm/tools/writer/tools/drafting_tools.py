@@ -1,9 +1,10 @@
 from __future__ import annotations
 import re
-from typing import Any, List
+from typing import Any, Dict, List, Optional
 
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
+from ..data_models.multimodal import MediaAssetLibrary, VisualPlan
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import WriterBlock, WriterDocument
 from ..data_models.planning import SectionInstruction
@@ -26,7 +27,8 @@ class WriterDraftingTools(WriterToolBase):
 
     def generate_draft_section(
         self, task: Any, section_instruction: Any,
-        context: Any, previous_blocks: Any = None,
+        context: Any, previous_blocks: Any = None, visual_plan: Any = None,
+        media_assets: Any = None,
     ) -> dict:
         writing_task = self._unified_model(task, WritingTask)
         instruction = self._unified_model(section_instruction, SectionInstruction)
@@ -77,11 +79,15 @@ class WriterDraftingTools(WriterToolBase):
             ).model_dump()
 
         previous_data = self._unified_raw_data(previous_blocks)
+        visual_plan = self._unified_optional_model(visual_plan, VisualPlan) or VisualPlan()
+        media_library = self._unified_optional_model(media_assets, MediaAssetLibrary)
+        section_media = self._media_assets_for_section(instruction, visual_plan, media_library)
         prompt = GENERATE_DRAFT_SECTION_PROMPT.format(
             task_json=to_prompt_json(writing_task),
             section_instruction_json=to_prompt_json(instruction),
             context_json=to_prompt_json(writing_context),
             previous_blocks_json=to_prompt_json(previous_data),
+            section_media_json=to_prompt_json(section_media),
         )
         draft_block = self._call_llm_structured(prompt, WriterBlock)
         draft_block = self._normalize_draft_block(draft_block, instruction)
@@ -377,6 +383,45 @@ class WriterDraftingTools(WriterToolBase):
             block.stage = 'draft'
         draft_block.references = [dict(reference) for reference in instruction.references]
         return draft_block
+
+    @staticmethod
+    def _media_assets_for_section(
+        instruction: SectionInstruction,
+        visual_plan: VisualPlan,
+        library: Optional[MediaAssetLibrary],
+    ) -> Dict[str, Any]:
+        node_id = instruction.content_ref.node_id
+        needs = [need for need in visual_plan.instructions if need.content_ref.node_id == node_id]
+        asset_ids = {
+            asset_id
+            for need in needs
+            for asset_id in (library.visual_need_asset_ids.get(need.need_id, []) if library else [])
+        }
+        return {
+            'visual_needs': [
+                {
+                    'need_id': need.need_id,
+                    'visual_type': need.visual_type,
+                    'purpose': need.purpose,
+                    'required': need.required,
+                }
+                for need in needs
+            ],
+            'assets': [
+                {
+                    'media_asset_id': asset.media_asset_id,
+                    'asset_type': asset.asset_type,
+                    'caption': asset.caption,
+                    'summary': asset.summary,
+                }
+                for asset_id, asset in (library.assets.items() if library else [])
+                if asset_id in asset_ids
+            ],
+            'visual_need_asset_ids': {
+                need.need_id: library.visual_need_asset_ids.get(need.need_id, []) if library else []
+                for need in needs
+            },
+        }
 
     def _unified_draft_blocks(self, value: Any) -> List[WriterBlock | str]:
         if value is None:
