@@ -1036,13 +1036,15 @@ class WriterRevisionTools(WriterToolBase):
 
     @staticmethod
     def _content_ref_key(content_ref: ContentRef) -> Tuple[Any, ...]:
-        return (
-            content_ref.node_id,
-            tuple(content_ref.heading_path),
-            content_ref.placeholder_id,
-            content_ref.document_root,
-            content_ref.occurrence,
-        )
+        if content_ref.node_id:
+            return ('node_id', content_ref.node_id)
+        if content_ref.placeholder_id:
+            return ('placeholder_id', content_ref.placeholder_id)
+        if content_ref.heading_path:
+            return ('heading_path', tuple(content_ref.heading_path), content_ref.occurrence)
+        if content_ref.document_root:
+            return ('document_root',)
+        return ('empty',)
 
     @staticmethod
     def _node_id(content_ref: Optional[ContentRef], field: str) -> str:

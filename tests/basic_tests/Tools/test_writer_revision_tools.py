@@ -335,6 +335,32 @@ def test_normalize_move_plan_uses_destination_ref():
     assert normalized.instructions[0].destination_ref == destination_ref
 
 
+def test_content_ref_key_prefers_node_id_over_auxiliary_locators():
+    node_ref = ContentRef(node_id='anchor')
+    enriched_ref = ContentRef(
+        node_id='anchor',
+        heading_path=['第一章'],
+        placeholder_id='legacy-placeholder',
+        document_root=True,
+        occurrence=2,
+    )
+
+    assert WriterRevisionTools._content_ref_key(node_ref) == \
+        WriterRevisionTools._content_ref_key(enriched_ref)
+
+
+def test_content_ref_key_preserves_non_ir_locator_identity():
+    first_heading = ContentRef(heading_path=['第一章'])
+    second_heading = ContentRef(heading_path=['第一章'], occurrence=2)
+
+    assert WriterRevisionTools._content_ref_key(first_heading) != \
+        WriterRevisionTools._content_ref_key(second_heading)
+    assert WriterRevisionTools._content_ref_key(ContentRef(placeholder_id='visual-1')) == \
+        ('placeholder_id', 'visual-1')
+    assert WriterRevisionTools._content_ref_key(ContentRef(document_root=True)) == \
+        ('document_root',)
+
+
 def test_normalize_create_plan_requires_position():
     content_ref = ContentRef(node_id='anchor')
     plan = ModifyPlan(
