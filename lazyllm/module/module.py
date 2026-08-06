@@ -359,16 +359,30 @@ class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
 
     def _stream_output(self, text: str, color: Optional[str] = None, *, cls: Optional[str] = 'text'):
         payload = {'tag': cls, 'delta': colored_text(text, color)}
-        FileSystemQueue().enqueue(json.dumps(payload))
+        stream_sink = getattr(self, '_stream_sink', None)
+        if stream_sink is not None:
+            stream_sink(payload)
+        else:
+            FileSystemQueue().enqueue(json.dumps(payload))
         return ''
 
     @contextmanager
     def stream_output(self, stream_output: Optional[Union[bool, Dict]] = None):
-        if stream_output and isinstance(stream_output, dict) and (prefix := stream_output.get('prefix')):
-            self._stream_output(prefix, stream_output.get('prefix_color'))
-        yield
-        if isinstance(stream_output, dict) and (suffix := stream_output.get('suffix')):
-            self._stream_output(suffix, stream_output.get('suffix_color'))
+        stream_sink = stream_output.get('_stream_sink') if isinstance(stream_output, dict) else None
+        if stream_sink is not None and not callable(stream_sink):
+            raise TypeError('_stream_sink must be callable.')
+        previous_stream_sink = getattr(self, '_stream_sink', None)
+        if stream_sink is not None:
+            self._stream_sink = stream_sink
+        try:
+            if stream_output and isinstance(stream_output, dict) and (prefix := stream_output.get('prefix')):
+                self._stream_output(prefix, stream_output.get('prefix_color'))
+            yield
+            if isinstance(stream_output, dict) and (suffix := stream_output.get('suffix')):
+                self._stream_output(suffix, stream_output.get('suffix_color'))
+        finally:
+            if stream_sink is not None:
+                self._stream_sink = previous_stream_sink
 
     def used_by(self, module_id):
         self._used_by_moduleid = module_id

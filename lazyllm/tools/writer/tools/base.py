@@ -225,15 +225,19 @@ class WriterToolBase(ModuleBase):
         response = model(prompt)
         return self._validate_structured_response(response, schema)
 
-    def _call_llm_text(self, prompt: str) -> str:
+    def _call_llm_text(self, prompt: str, stream_output: Any = False) -> str:
         if self.llm is None:
             raise ValueError('llm is not set')
         model = self.llm
         if hasattr(model, 'share'):
             try:
-                model = model.share(stream=False)
-            except TypeError:
+                model = model.share(stream=stream_output)
+            except TypeError as exc:
+                if stream_output:
+                    raise TypeError('llm.share() must accept stream for text streaming.') from exc
                 model = model.share()
+        elif stream_output:
+            raise TypeError('llm must support share(stream=...) for text streaming.')
         response = model(prompt)
         text = response if isinstance(response, str) else str(response)
         return self._strip_leading_think_blocks(text)

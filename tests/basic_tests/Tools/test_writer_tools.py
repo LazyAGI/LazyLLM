@@ -1,11 +1,15 @@
 import os
 import tempfile
+import time
 from contextlib import contextmanager
+from copy import copy
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from lazyllm.common import FileSystemQueue
+from lazyllm.module.module import ModuleBase
 from lazyllm.tools.writer.data_models import (
     ContentRef,
     DocumentSummary,
@@ -43,6 +47,48 @@ from lazyllm.tools.writer.utils import (
 )
 
 
+class _StreamingTextLLM(ModuleBase):
+    def __init__(self, chunks, *, response=None, start_delay=0.0, error=None):
+        super().__init__()
+        self._chunks = chunks
+        self._response = response
+        self._start_delay = start_delay
+        self._error = error
+        self._stream = False
+
+    def share(self, stream=None):
+        shared = copy(self)
+        if stream is not None:
+            shared._stream = stream
+        return shared
+
+    def forward(self, prompt):
+        if self._start_delay:
+            time.sleep(self._start_delay)
+        with self.stream_output(self._stream):
+            for tag, delta in self._chunks:
+                self._stream_output(delta, cls=tag)
+        if self._error is not None:
+            raise self._error
+        if self._response is not None:
+            return self._response
+        return ''.join(delta for tag, delta in self._chunks if tag == 'text')
+
+
+def _markdown_draft_inputs():
+    return (
+        WritingTask(task_id='task-md-stream', query='写测试文档', task_type='write'),
+        SectionInstruction(
+            instruction_id='instruction-section-1',
+            content_ref=ContentRef(heading_path=['测试文档', '第一章']),
+            section_title='第一章',
+            section_goal='说明方案',
+            meta={'outline_heading_level': 2},
+        ),
+        WritingContext(context_id='ctx-md-stream'),
+    )
+
+
 def test_structured_response_selects_one_schema_valid_candidate():
     document = WriterDocument(
         document_id='outline-1',
@@ -68,6 +114,92 @@ def test_text_response_strips_provider_think_block():
     tool = WriterToolBase(llm=lambda _: '<think>internal reasoning</think>\n\n正文')
 
     assert tool._call_llm_text('prompt') == '正文'
+
+
+def test_stream_markdown_draft_is_isolated_and_returns_tool_result():
+    chunks = [
+        ('think', 'provider reasoning'),
+        ('text', '  <thi'),
+        ('text', 'nk>inline reasoning</think>\n\n  第一段。'),
+        ('text', '\n\n'),
+        ('text', '- 要点一   '),
+    ]
+    task, instruction, context = _markdown_draft_inputs()
+    queue = FileSystemQueue()
+    queue.clear()
+
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterDraftingTools(
+            llm=_StreamingTextLLM(chunks),
+            artifact_store=directory,
+        )
+        with tool.stream_draft_section(
+            task=task,
+            section_instruction=instruction,
+            context=context,
+            idle_timeout=1,
+        ) as stream:
+            markdown = ''.join(stream)
+            result = stream.result()
+
+        artifact = Path(result['artifact_path']).read_text(encoding='utf-8')
+
+    assert markdown == '## 第一章\n\n第一段。\n\n- 要点一\n'
+    assert artifact == markdown
+    assert result['metadata']['extra']['representation'] == 'markdown'
+    assert queue.dequeue() == []
+
+
+def test_stream_markdown_draft_rejects_ir_instruction():
+    task, _, context = _markdown_draft_inputs()
+    instruction = SectionInstruction(
+        instruction_id='instruction-ir',
+        content_ref=ContentRef(node_id='section-1'),
+        section_title='第一章',
+        section_goal='说明方案',
+    )
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterDraftingTools(
+            llm=_StreamingTextLLM([('text', '正文')]),
+            artifact_store=directory,
+        )
+        with pytest.raises(ValueError, match='only supports Markdown'):
+            tool.stream_draft_section(task, instruction, context)
+
+
+def test_stream_markdown_draft_propagates_model_error():
+    task, instruction, context = _markdown_draft_inputs()
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterDraftingTools(
+            llm=_StreamingTextLLM(
+                [('text', '部分正文')],
+                error=RuntimeError('draft stream failed'),
+            ),
+            artifact_store=directory,
+        )
+        stream = tool.stream_draft_section(
+            task, instruction, context, idle_timeout=1,
+        )
+        with pytest.raises(Exception, match='draft stream failed'):
+            list(stream)
+        with pytest.raises(Exception, match='draft stream failed'):
+            stream.result()
+
+
+def test_stream_markdown_draft_idle_timeout():
+    task, instruction, context = _markdown_draft_inputs()
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterDraftingTools(
+            llm=_StreamingTextLLM([('text', '正文')], start_delay=0.2),
+            artifact_store=directory,
+        )
+        stream = tool.stream_draft_section(
+            task, instruction, context, idle_timeout=0.02,
+        )
+        assert next(stream) == '## 第一章\n\n'
+        with pytest.raises(TimeoutError, match='idle'):
+            next(stream)
+        stream.close()
 
 
 def test_writer_document_compatibility_contract_models():

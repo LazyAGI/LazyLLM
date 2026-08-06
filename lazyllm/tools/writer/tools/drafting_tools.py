@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 import re
 from typing import Any, Dict, List, Optional
 
 from .base import WriterToolBase
+from .stream_tools import DraftMarkdownStream
 from ..data_models.context import WritingContext
 from ..data_models.multimodal import MediaAssetLibrary, VisualPlan
 from ..data_models.task import WritingTask
@@ -16,7 +18,6 @@ from ..utils import (
     render_document_markdown,
     to_prompt_json,
 )
-
 
 class WriterDraftingTools(WriterToolBase):
     __public_apis__ = [
@@ -34,49 +35,18 @@ class WriterDraftingTools(WriterToolBase):
         instruction = self._unified_model(section_instruction, SectionInstruction)
         writing_context = self._unified_model(context, WritingContext)
         representation = self._instruction_representation(instruction)
-        result_extra = {
-            'representation': representation,
-            'task_id': writing_task.task_id,
-            'context_id': writing_context.context_id,
-            'instruction_id': instruction.instruction_id,
-            'content_ref': instruction.content_ref.model_dump(
-                exclude_none=True,
-                exclude_defaults=True,
-            ),
-            'outline_title': instruction.meta.get('outline_title'),
-        }
+        result_extra = self._draft_result_extra(
+            writing_task, instruction, writing_context, representation,
+        )
 
         if representation == 'markdown':
-            previous_markdown = self._unified_previous_markdown(previous_blocks)
-            prompt = GENERATE_DRAFT_SECTION_MARKDOWN_PROMPT.format(
-                task_json=to_prompt_json(writing_task),
-                section_instruction_json=to_prompt_json(instruction),
-                context_json=to_prompt_json(writing_context),
-                previous_markdown=previous_markdown or '(none)',
+            return self._generate_markdown_draft_section(
+                writing_task,
+                instruction,
+                writing_context,
+                previous_blocks,
+                result_extra,
             )
-            body = self._call_llm_text(prompt).strip()
-            if not body:
-                raise ValueError('Markdown draft section body must not be empty.')
-
-            heading_level = instruction.meta.get(
-                'outline_heading_level',
-                len(instruction.content_ref.heading_path),
-            )
-            if heading_level != 2:
-                raise ValueError('Markdown draft sections must target an H2 outline section.')
-            markdown = f'## {instruction.section_title.strip()}\n\n{body}\n'
-            self._validate_markdown_draft_section(markdown, instruction)
-
-            filename = self._safe_artifact_component(instruction.instruction_id)
-            path = self._write_markdown_artifact(f'draft_block/{filename}.md', markdown)
-            return make_markdown_tool_result(
-                path=path,
-                step_name='generate_draft_section',
-                artifact_key='draft_block',
-                summary='Generated draft section as Markdown.',
-                counts={'characters': len(markdown)},
-                extra=result_extra,
-            ).model_dump()
 
         previous_data = self._unified_raw_data(previous_blocks)
         visual_plan = self._unified_optional_model(visual_plan, VisualPlan) or VisualPlan()
@@ -107,6 +77,133 @@ class WriterDraftingTools(WriterToolBase):
             },
         )
         return result.model_dump()
+
+    def stream_draft_section(
+        self,
+        task: Any,
+        section_instruction: Any,
+        context: Any,
+        previous_blocks: Any = None,
+        *,
+        idle_timeout: Optional[float] = None,
+    ) -> DraftMarkdownStream:
+        writing_task = self._unified_model(task, WritingTask)
+        instruction = self._unified_model(section_instruction, SectionInstruction)
+        writing_context = self._unified_model(context, WritingContext)
+        if self._instruction_representation(instruction) != 'markdown':
+            raise ValueError('stream_draft_section only supports Markdown section instructions.')
+
+        result_extra = self._draft_result_extra(
+            writing_task, instruction, writing_context, 'markdown',
+        )
+        prompt = self._markdown_draft_prompt(
+            writing_task, instruction, writing_context, previous_blocks,
+        )
+        heading = self._markdown_draft_heading(instruction)
+        timeout = self._draft_stream_idle_timeout(idle_timeout)
+        return DraftMarkdownStream(
+            call=lambda sink: self._call_llm_text(
+                prompt,
+                stream_output={'_stream_sink': sink},
+            ),
+            finalize=lambda body: self._finalize_markdown_draft_section(
+                body, instruction, result_extra,
+            ),
+            prefix=f'{heading}\n\n',
+            idle_timeout=timeout,
+        )
+
+    def _generate_markdown_draft_section(
+        self,
+        task: WritingTask,
+        instruction: SectionInstruction,
+        context: WritingContext,
+        previous_blocks: Any,
+        result_extra: Dict[str, Any],
+    ) -> dict:
+        prompt = self._markdown_draft_prompt(task, instruction, context, previous_blocks)
+        body = self._call_llm_text(prompt)
+        return self._finalize_markdown_draft_section(body, instruction, result_extra)
+
+    def _markdown_draft_prompt(
+        self,
+        task: WritingTask,
+        instruction: SectionInstruction,
+        context: WritingContext,
+        previous_blocks: Any,
+    ) -> str:
+        previous_markdown = self._unified_previous_markdown(previous_blocks)
+        return GENERATE_DRAFT_SECTION_MARKDOWN_PROMPT.format(
+            task_json=to_prompt_json(task),
+            section_instruction_json=to_prompt_json(instruction),
+            context_json=to_prompt_json(context),
+            previous_markdown=previous_markdown or '(none)',
+        )
+
+    def _finalize_markdown_draft_section(
+        self,
+        body: str,
+        instruction: SectionInstruction,
+        result_extra: Dict[str, Any],
+    ) -> dict:
+        body = body.strip()
+        if not body:
+            raise ValueError('Markdown draft section body must not be empty.')
+        heading = self._markdown_draft_heading(instruction)
+        markdown = f'{heading}\n\n{body}\n'
+        self._validate_markdown_draft_section(markdown, instruction)
+
+        filename = self._safe_artifact_component(instruction.instruction_id)
+        path = self._write_markdown_artifact(f'draft_block/{filename}.md', markdown)
+        return make_markdown_tool_result(
+            path=path,
+            step_name='generate_draft_section',
+            artifact_key='draft_block',
+            summary='Generated draft section as Markdown.',
+            counts={'characters': len(markdown)},
+            extra=result_extra,
+        ).model_dump()
+
+    @staticmethod
+    def _markdown_draft_heading(instruction: SectionInstruction) -> str:
+        heading_level = instruction.meta.get(
+            'outline_heading_level',
+            len(instruction.content_ref.heading_path),
+        )
+        if heading_level != 2:
+            raise ValueError('Markdown draft sections must target an H2 outline section.')
+        return f'## {instruction.section_title.strip()}'
+
+    def _draft_stream_idle_timeout(self, idle_timeout: Optional[float]) -> float:
+        value: Any = idle_timeout
+        if value is None:
+            value = getattr(self.llm, '_timeout', None)
+        if isinstance(value, (tuple, list)):
+            value = value[-1] if value else None
+        if value is None:
+            value = 180.0
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            raise ValueError('idle_timeout must be a positive number.')
+        return float(value)
+
+    @staticmethod
+    def _draft_result_extra(
+        task: WritingTask,
+        instruction: SectionInstruction,
+        context: WritingContext,
+        representation: str,
+    ) -> Dict[str, Any]:
+        return {
+            'representation': representation,
+            'task_id': task.task_id,
+            'context_id': context.context_id,
+            'instruction_id': instruction.instruction_id,
+            'content_ref': instruction.content_ref.model_dump(
+                exclude_none=True,
+                exclude_defaults=True,
+            ),
+            'outline_title': instruction.meta.get('outline_title'),
+        }
 
     def generate_draft_document(
         self, draft_blocks: Any, context: Any,
