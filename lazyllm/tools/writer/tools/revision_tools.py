@@ -947,7 +947,7 @@ class WriterRevisionTools(WriterToolBase):
             self._validate_modify_instruction(instr, document=document)
             if instr.modify_type == 'create' and normalized \
                     and normalized[-1].modify_type == 'create' \
-                    and normalized[-1].content_ref == instr.content_ref \
+                    and self._content_ref_key(normalized[-1].content_ref) == content_key \
                     and normalized[-1].position == instr.position \
                     and normalized[-1].visual_instruction is None \
                     and instr.visual_instruction is None:

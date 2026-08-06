@@ -361,6 +361,38 @@ def test_content_ref_key_preserves_non_ir_locator_identity():
         ('document_root',)
 
 
+def test_normalize_create_plan_merges_content_refs_with_same_node_id():
+    content_ref = ContentRef(node_id='anchor')
+    enriched_ref = ContentRef(node_id='anchor', heading_path=['第一章'])
+    plan = ModifyPlan(
+        scope='block',
+        instructions=[
+            ModifyInstruction(
+                content_ref=content_ref,
+                modify_type='create',
+                position='after',
+                instruction='新增第一段',
+            ),
+            ModifyInstruction(
+                content_ref=enriched_ref,
+                modify_type='create',
+                position='after',
+                instruction='新增第二段',
+            ),
+        ],
+    )
+
+    normalized = WriterRevisionTools()._normalize_modify_plan(
+        plan,
+        WritingTask(query='新增两段', task_type='revise'),
+        [content_ref],
+        {WriterRevisionTools._content_ref_key(content_ref)},
+    )
+
+    assert len(normalized.instructions) == 1
+    assert normalized.instructions[0].instruction == '新增第一段\n新增第二段'
+
+
 def test_normalize_create_plan_requires_position():
     content_ref = ContentRef(node_id='anchor')
     plan = ModifyPlan(
