@@ -944,21 +944,17 @@ class ToolManager(ModuleBase):
         return tool, arguments, validated_arguments
 
     @staticmethod
-    def _tool_error(tool, error):
-        lazyllm.LOG.warning(
-            f'[ToolCall] tool={tool.name!r} raised: {type(error).__name__}: {error}')
-        return {
-            'ok': False,
-            'value': None,
-            'msg': f'[Tool Error] {type(error).__name__}: {error}',
-        }
-
-    @classmethod
-    def _call_tool(cls, tool, arguments):
+    def _call_tool(tool, arguments):
         try:
             return {'ok': True, 'value': tool(arguments)}
-        except Exception as e:
-            return cls._tool_error(tool, e)
+        except Exception as error:
+            lazyllm.LOG.warning(
+                f'[ToolCall] tool={tool.name!r} raised: {type(error).__name__}: {error}')
+            return {
+                'ok': False,
+                'value': None,
+                'msg': f'[Tool Error] {type(error).__name__}: {error}',
+            }
 
     def _build_tool_invocation(self, tool_call):
         tool, arguments, validated_arguments = self._parse_tool_call(tool_call)

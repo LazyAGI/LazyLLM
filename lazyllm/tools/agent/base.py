@@ -28,7 +28,7 @@ def _write_agent_data(tag: str, **kwargs):
 
 
 def _unwrap_tool_result(result: Any) -> Any:
-    # Unpack structured tool results produced by ToolManager._safe_call.
+    # Unpack structured tool results produced by ToolManager._call_tool.
     # {'ok': True,  'value': v}  → v
     # {'ok': False, 'msg':   m}  → m  (already a human-readable error string)
     # anything else              → result  (sandbox output, parse errors, etc.)
