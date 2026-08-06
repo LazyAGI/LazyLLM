@@ -1,5 +1,5 @@
 from .functionCall import FunctionCall, FunctionCallAgent
-from .toolsManager import register, ToolManager
+from .toolsManager import register, tool_concurrency, ToolManager
 from .base import LazyLLMAgentBase
 from .reactAgent import ReactAgent
 from .planAndSolveAgent import PlanAndSolveAgent
@@ -16,6 +16,7 @@ __all__ = [
     'FunctionCallAgent',
     'LazyLLMAgentBase',
     'register',
+    'tool_concurrency',
     'ReactAgent',
     'PlanAndSolveAgent',
     'ReWOOAgent',

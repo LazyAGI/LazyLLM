@@ -4,7 +4,7 @@ import re
 import shutil
 from typing import Dict, List, Optional
 
-from .toolsManager import register
+from .toolsManager import register, tool_concurrency
 
 
 def _resolve_path(path: str) -> str:
@@ -28,6 +28,7 @@ def _check_root(path: str, root: Optional[str]) -> Optional[Dict[str, str]]:
 
 @register('builtin_tools', execute_in_sandbox=False)
 @register('tool', execute_in_sandbox=False)
+@tool_concurrency(read_keys=lambda args: ('file', args['path']))
 def read_file(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None,
               encoding: str = 'utf-8', errors: str = 'replace', root: Optional[str] = None,
               max_chars: int = 200000) -> dict:
@@ -74,6 +75,7 @@ def read_file(path: str, start_line: Optional[int] = None, end_line: Optional[in
 
 @register('builtin_tools', execute_in_sandbox=False)
 @register('tool', execute_in_sandbox=False)
+@tool_concurrency(read_keys=lambda args: ('file', args.get('path', '.')))
 def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
              root: Optional[str] = None) -> dict:
     '''List directory entries.
@@ -115,6 +117,7 @@ def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
 
 @register('builtin_tools', execute_in_sandbox=False)
 @register('tool', execute_in_sandbox=False)
+@tool_concurrency(read_keys=lambda args: ('file', args.get('path', '.')))
 def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
                     max_results: int = 50, root: Optional[str] = None,
                     encoding: str = 'utf-8', errors: str = 'replace',
@@ -167,6 +170,7 @@ def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
 
 @register('builtin_tools', execute_in_sandbox=False)
 @register('tool', execute_in_sandbox=False)
+@tool_concurrency(write_keys=lambda args: ('file', args['path']))
 def make_dir(path: str, parents: bool = True, exist_ok: bool = True,
              root: Optional[str] = None) -> dict:
     '''Create a directory.
@@ -190,6 +194,7 @@ def make_dir(path: str, parents: bool = True, exist_ok: bool = True,
 
 @register('builtin_tools', execute_in_sandbox=False)
 @register('tool', execute_in_sandbox=False)
+@tool_concurrency(write_keys=lambda args: ('file', args['path']))
 def write_file(path: str, content: str, mode: str = 'overwrite', encoding: str = 'utf-8',
                root: Optional[str] = None, create_parents: bool = True,
                allow_unsafe: bool = False) -> dict:
@@ -232,6 +237,7 @@ def write_file(path: str, content: str, mode: str = 'overwrite', encoding: str =
 
 @register('builtin_tools', execute_in_sandbox=False)
 @register('tool', execute_in_sandbox=False)
+@tool_concurrency(write_keys=lambda args: ('file', args['path']))
 def delete_file(path: str, root: Optional[str] = None, allow_unsafe: bool = False) -> dict:
     '''Delete a file.
 
@@ -260,6 +266,7 @@ def delete_file(path: str, root: Optional[str] = None, allow_unsafe: bool = Fals
 
 @register('builtin_tools', execute_in_sandbox=False)
 @register('tool', execute_in_sandbox=False)
+@tool_concurrency(write_keys=lambda args: [('file', args['src']), ('file', args['dst'])])
 def move_file(src: str, dst: str, root: Optional[str] = None, allow_unsafe: bool = False,
               overwrite: bool = False, create_parents: bool = True) -> dict:
     '''Move or rename a file.

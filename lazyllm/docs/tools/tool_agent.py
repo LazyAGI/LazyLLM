@@ -280,6 +280,73 @@ Args:
     output_files (List[str]): additional output file paths for the sandbox to download, for cases where output filenames are hardcoded in the tool rather than passed as parameters.
 ''')
 
+add_chinese_doc('tool_concurrency', '''\
+声明工具调用读取或写入的资源。``read_keys`` 和 ``write_keys`` 可以是静态 key，
+也可以是接收已校验工具参数字典的函数。读操作之间可以并行；路径重叠或 key 相同且
+至少一方为写操作时，``ToolManager`` 会保持工具调用顺序。``("file", path)`` 会按
+规范化后的文件路径及父子目录关系判断重叠。该声明不会出现在模型可见的工具 schema 中。
+
+Args:
+    read_keys: 静态读资源 key，或根据工具参数返回一个或多个读资源 key 的函数。
+    write_keys: 静态写资源 key，或根据工具参数返回一个或多个写资源 key 的函数。
+    exclusive (bool): 是否独占执行。不能与 ``read_keys`` 或 ``write_keys`` 同时使用。
+''')
+
+add_english_doc('tool_concurrency', '''\
+Declares the resources read or written by a tool invocation. ``read_keys`` and
+``write_keys`` may be static keys or callables receiving validated tool arguments.
+Readers may run concurrently; overlapping resources are ordered whenever either
+side writes. ``("file", path)`` uses canonical file paths and parent/child path
+overlap. The declaration is not included in the model-facing tool schema.
+
+Args:
+    read_keys: Static read keys or a callable returning one or more read keys.
+    write_keys: Static write keys or a callable returning one or more write keys.
+    exclusive (bool): Whether the tool runs exclusively. Cannot be combined with keys.
+''')
+
+add_example('tool_concurrency', '''\
+>>> from lazyllm.tools import tool_concurrency
+>>> @tool_concurrency(write_keys={'current_memory'})
+... def update_profile(value: str) -> str:
+...     \"\"\"Update profile.
+...
+...     Args:
+...         value (str): New value.
+...     \"\"\"
+...     return value
+
+>>> @tool_concurrency(read_keys=lambda args: ('file', args['path']))
+... def read_text(path: str) -> str:
+...     \"\"\"Read text.
+...
+...     Args:
+...         path (str): File path.
+...     \"\"\"
+...     with open(path) as stream:
+...         return stream.read()
+
+>>> @tool_concurrency(write_keys=lambda args: [
+...     ('file', args['source']), ('file', args['target'])])
+... def move_text(source: str, target: str) -> str:
+...     \"\"\"Move text.
+...
+...     Args:
+...         source (str): Source path.
+...         target (str): Target path.
+...     \"\"\"
+...     return target
+
+>>> @tool_concurrency(exclusive=True)
+... def clarify(question: str) -> str:
+...     \"\"\"Ask a question.
+...
+...     Args:
+...         question (str): Question text.
+...     \"\"\"
+...     return question
+''')
+
 add_agent_example('register', """\
 >>> from lazyllm.tools import fc_register
 >>> @fc_register("tool")
