@@ -240,11 +240,11 @@ class WriterResourceTools(WriterToolBase):
         return self.append_to_document(content, target_document, media_assets)
 
     def append_to_document(self, content: Any, target_document: Any, media_assets: Any = None) -> dict:
-        '''Append final Writer IR or Markdown to an existing provider document.'''
+        '''Append Writer IR or Markdown to an existing provider document.'''
         return self._write_document(content, target_document, media_assets=media_assets, mode='append')
 
     def replace_document(self, content: Any, target_document: Any, media_assets: Any = None) -> dict:
-        '''Replace an existing provider document with final Writer IR or Markdown.'''
+        '''Replace an existing provider document with Writer IR or Markdown.'''
         return self._write_document(content, target_document, media_assets=media_assets, mode='replace')
 
     def _write_document(
@@ -257,8 +257,6 @@ class WriterResourceTools(WriterToolBase):
     ) -> dict:
         source = self._unified_document(content)
         source_document = source if isinstance(source, WriterDocument) else None
-        if source_document and source_document.stage != 'final':
-            raise ValueError(f'content must have stage="final", got {source_document.stage!r}')
         target = self._unified_optional_model(target_document, TargetDocument) or TargetDocument()
         locator = self._target_locator(target, source_document)
 

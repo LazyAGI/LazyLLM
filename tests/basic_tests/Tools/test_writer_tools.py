@@ -976,8 +976,12 @@ def test_document_write_modes(public_method, provider_method):
 
     with tempfile.TemporaryDirectory() as d:
         with _route_doc_fs(fs, '/write-test.md'):
+            content = _make_final_writer_document(content='world', title='Hello')
+            content.stage = 'draft'
+            for block in content.iter_blocks():
+                block.stage = 'draft'
             getattr(WriterResourceTools(artifact_store=d), public_method)(
-                content=_make_final_writer_document(content='world', title='Hello'),
+                content=content,
                 target_document={'uri': 'feishu:///write-test.md', 'adapter': 'feishu'},
             )
 

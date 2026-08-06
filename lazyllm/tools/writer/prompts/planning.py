@@ -8,6 +8,17 @@ Requirements:
 - Add at least one H2 section directly under the H1 title.
 - Every H2 section title must be unique.
 - Use H3-H6 only for optional subsection planning under an H2 section.
+- Treat the outline as the exact structural skeleton of the final deliverable: every H2
+  will become a visible section in the drafted document.
+- Do not create meta-planning H2 sections such as background and setting, character
+  profiles, themes and symbols, writing style, chapter-plan commentary, or writing plan,
+  unless the user explicitly requested those sections in the final deliverable.
+- For fiction and other narrative writing, use H2 only for actual chapter titles and use
+  H3-H6 for scenes, plot beats, or events within that chapter. Distribute character,
+  setting, theme, and style requirements into the relevant chapters instead of exposing
+  them as standalone planning sections.
+- For non-fiction, reports, and articles, use H2 only for sections that should appear in
+  the final document.
 - Keep the outline concise but concrete enough to guide drafting.
 - Use resource profiles and execution results as constraints, not as text to copy blindly.
 - Do not invent facts that conflict with the writing context.
@@ -33,6 +44,17 @@ Requirements:
 - Set document_id to the exact document_id below.
 - Generate at least 3 top-level blocks unless the task explicitly asks for fewer.
 - Each top-level block is a section. Use type="heading" for section blocks.
+- Treat the outline as the exact structural skeleton of the final deliverable: every
+  top-level heading block will become a visible section in the drafted document.
+- Do not create meta-planning top-level sections such as background and setting,
+  character profiles, themes and symbols, writing style, chapter-plan commentary, or
+  writing plan, unless the user explicitly requested those sections in the final
+  deliverable.
+- For fiction and other narrative writing, use top-level heading blocks only for actual
+  chapter titles. Put scenes, plot beats, and events in child blocks, and distribute
+  character, setting, theme, and style requirements into the relevant chapters.
+- For non-fiction, reports, and articles, use top-level heading blocks only for sections
+  that should appear in the final document.
 - All user-visible outline text MUST use the same document tree contract as draft and final content:
   put section titles in heading block.content, and put section descriptions and key points in
   paragraph or list_item blocks under block.children.
