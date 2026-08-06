@@ -85,6 +85,7 @@ class WriterAdapterBase(ABC):
         self,
         patch: PatchHunk,
         document: WriterDocument,
+        media_assets: Any = None,
     ) -> NativePatchOperation:
         '''Convert one Writer patch hunk into a classified provider operation.'''
         raise NotImplementedError

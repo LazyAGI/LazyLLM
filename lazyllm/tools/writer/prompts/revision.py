@@ -30,6 +30,18 @@ Plan semantics:
   - update changes the visible fields of an existing block;
   - delete removes an existing block;
   - move relocates an existing block.
+- Image-specific revision semantics:
+  - A create instruction that adds an image must include visual_instruction.
+  - visual_instruction.need_id must equal instruction_id and its content_ref must
+    equal the create instruction's content_ref.
+  - visual_instruction.visual_type must be "image" for this revision workflow.
+  - visual_instruction.purpose is the semantic image requirement used to match an
+    uploaded asset or request image generation. required must be true.
+  - visual_instruction.preferred_strategy must be null or "image_generation"
+    for a revision image create.
+  - A delete instruction targeting an existing image must not include visual_instruction.
+  - Existing image blocks must not be updated or moved. Text blocks continue to support
+    create, update, delete, and move.
 - A contiguous insertion uses one create instruction so its blocks share one destination
   and retain their final document order.
 - content_ref identifies the located content involved in the operation.
@@ -41,6 +53,8 @@ Plan semantics:
   including paragraph count, list-item count, heading level, and ordering. Render distinct
   Markdown paragraphs with blank lines and render lists/headings with their Markdown syntax;
   do not record required structure only in meta.
+- For an image create, describe one image block and its final caption in instruction;
+  do not invent media_asset IDs, file paths, URLs, or provider identifiers.
 - instruction_id is unique, and instructions follow execution order.
 - scope and summary describe the plan as a whole.
 - The result preserves the facts, terminology, and style established by the writing context.
@@ -99,6 +113,9 @@ Output semantics:
 - new_title represents title_instruction when the plan includes a title revision.
 - Headings use type="heading" with numbering.level; inline formatting uses spans.
 - All authored content is complete, self-contained, and consistent with the writing context.
+- For an image create, return exactly one new block with type="image". Its content is
+  the final caption. Do not invent references or asset IDs; the system adds the single
+  resolved media_asset reference after generation.
 
 Visible document:
 {document_json}

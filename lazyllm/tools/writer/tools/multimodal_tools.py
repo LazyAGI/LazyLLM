@@ -4,7 +4,7 @@ import hashlib
 import json
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
@@ -13,7 +13,12 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.thirdparty import PIL
 
 from .base import WriterToolBase
-from ..data_models.multimodal import MediaAsset, MediaAssetLibrary, VisualPlan
+from ..data_models.multimodal import (
+    MediaAsset,
+    MediaAssetLibrary,
+    VisualPlan,
+    _VISUAL_STRATEGY_ORDER,
+)
 from ..data_models.task import InputResource, WritingTask
 from ..prompts import RESOLVE_VISUAL_NEEDS_PROMPT, VISION_SUMMARY_PROMPT
 
@@ -73,7 +78,12 @@ class WriterMultimodalTools(WriterToolBase):
             warnings=warnings,
         ).model_dump()
 
-    def resolve_visual_needs(self, visual_plan: Any, media_assets: Any) -> Dict[str, Any]:
+    def resolve_visual_needs(
+        self,
+        visual_plan: Any,
+        media_assets: Any,
+        allowed_strategies: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         '''Reuse matching assets and request generated images for the remaining needs.'''
         plan = self._unified_model(visual_plan, VisualPlan)
         library = self._unified_model(media_assets, MediaAssetLibrary).model_copy(deep=True)
@@ -110,22 +120,33 @@ class WriterMultimodalTools(WriterToolBase):
             if library.visual_need_asset_ids.get(need_id):
                 continue
             need = needs[need_id]
-            if need.visual_type in {'image', 'diagram'}:
-                acquisition_requests.append({
-                    'instruction_id': need_id,
-                    'visual_type': need.visual_type,
-                    'purpose': need.purpose,
-                    'strategies': ['image_generation'],
-                    'required': need.required,
-                })
-            else:
+            strategies = self._visual_strategies(need, allowed_strategies)
+            if not strategies:
                 warnings.append(f'Visual need {need_id!r} has no MVP acquisition strategy.')
+                continue
+            acquisition_requests.append({
+                'instruction_id': need_id,
+                'visual_type': need.visual_type,
+                'purpose': need.purpose,
+                'strategies': strategies,
+                'required': need.required,
+            })
 
         return {
             'media_assets': library,
             'acquisition_requests': acquisition_requests,
             'warnings': warnings,
         }
+
+    @staticmethod
+    def _visual_strategies(need: Any, allowed_strategies: Optional[List[str]]) -> List[str]:
+        strategies = list(_VISUAL_STRATEGY_ORDER.get(need.visual_type, []))
+        if allowed_strategies is not None:
+            strategies = [strategy for strategy in strategies if strategy in allowed_strategies]
+        if need.preferred_strategy in strategies:
+            strategies.remove(need.preferred_strategy)
+            strategies.insert(0, need.preferred_strategy)
+        return strategies
 
     def materialize_acquired_media(
         self,

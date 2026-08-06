@@ -1,7 +1,13 @@
 from copy import deepcopy
 
 from lazyllm.tools.writer.adapter.feishu import FeishuWriterAdapter
-from lazyllm.tools.writer.data_models import PatchHunk, WriterBlock, WriterSpan
+from lazyllm.tools.writer.data_models import (
+    MediaAsset,
+    MediaAssetLibrary,
+    PatchHunk,
+    WriterBlock,
+    WriterSpan,
+)
 from lazyllm.tools.writer.utils.feishu_docx import prepare_docx_clone_descendants
 
 
@@ -61,6 +67,40 @@ def test_create_and_delete_build_native_operations():
         'start_index': 0,
         'end_index': 1,
     }
+
+
+def test_image_create_operation_carries_private_media_binding_metadata(tmp_path):
+    image_path = tmp_path / 'image.png'
+    image_path.write_bytes(b'image')
+    media_assets = MediaAssetLibrary(
+        library_id='library-1',
+        assets={'asset-1': MediaAsset(
+            media_asset_id='asset-1',
+            asset_type='image',
+            source_type='image_generation',
+            local_path=str(image_path),
+        )},
+    )
+    adapter = FeishuWriterAdapter()
+    document = adapter.blocks_to_ir(
+        [_block('paragraph-1', '段落一')], external_document_id='doc-1')
+    image = WriterBlock(
+        node_id='new-image',
+        type='image',
+        content='图片说明',
+        stage='final',
+        references=[{'type': 'media_asset', 'id': 'asset-1'}],
+    )
+
+    operation = adapter.patch_to_operation(PatchHunk(
+        target_node_id=image.node_id,
+        modify_type='create',
+        block=image,
+        index=1,
+    ), document, media_assets=media_assets)
+
+    assert operation.params['descendants'][0]['block_type'] == 27
+    assert operation.params['descendants'][0]['_media']['media_asset_id'] == 'asset-1'
 
 
 def test_update_maps_styles_and_block_type_changes():

@@ -329,10 +329,12 @@ class WriterResourceTools(WriterToolBase):
         patch_set: Any,
         source_document: Any,
         target_document: Any = None,
+        media_assets: Any = None,
     ) -> dict:
         '''Translate a PatchSet into native block operations and persist it.'''
         patch = self._unified_model(patch_set, PatchSet)
         source = self._unified_model(source_document, WriterDocument)
+        media_library = self._unified_optional_model(media_assets, MediaAssetLibrary)
         if patch.target_doc_id != source.document_id:
             raise ValueError(
                 f'patch target_doc_id {patch.target_doc_id!r} does not match '
@@ -363,7 +365,8 @@ class WriterResourceTools(WriterToolBase):
         title_updated = patch.new_title is not None and patch.new_title != source.title
         normalized_fields: Dict[str, List[str]] = {}
         for hunk in patch.hunks:
-            operation = adapter.patch_to_operation(hunk, persisted_document)
+            operation = adapter.patch_to_operation(
+                hunk, persisted_document, media_assets=media_library)
             try:
                 operation_result = self._execute_native_operation(
                     fs, document_id, operation, persisted_document.revision)

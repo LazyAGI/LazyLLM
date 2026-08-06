@@ -197,6 +197,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
         self,
         patch: PatchHunk,
         document: WriterDocument,
+        media_assets: Any = None,
     ) -> NativePatchOperation:
         if not isinstance(patch, PatchHunk):
             raise TypeError(f'patch must be a PatchHunk, got {type(patch).__name__}.')
@@ -210,6 +211,8 @@ class FeishuWriterAdapter(WriterAdapterBase):
             'delete': self._delete_patch_to_operation,
             'move': self._move_patch_to_operation,
         }
+        if patch.modify_type == 'create':
+            return self._create_patch_to_operation(patch, document, media_assets)
         return handlers[patch.modify_type](patch, document)
 
     def merge_refreshed_document(  # noqa: C901
@@ -340,6 +343,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
         self,
         patch: PatchHunk,
         document: WriterDocument,
+        media_assets: Any = None,
     ) -> NativePatchOperation:
         '''Convert a semantic block creation into Feishu descendant creation.'''
         if patch.block is None or patch.index is None:
@@ -363,8 +367,19 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 'document_id': document.provider_binding.get('document_id', ''),
             },
         )
-        children_id, descendants = prepare_docx_descendants(
-            self.ir_to_blocks(inserted_document))
+        native_blocks = self.ir_to_blocks(inserted_document, media_assets=media_assets)
+        children_id, descendants = prepare_docx_descendants(native_blocks)
+        media_by_block_id = {
+            block.get('block_id'): block.get('_media')
+            for block in native_blocks
+            if isinstance(block.get('_media'), dict)
+        }
+        for descendant in descendants:
+            media = media_by_block_id.get(descendant.get('block_id'))
+            if media is not None:
+                # Keep this private metadata in the operation so the Feishu
+                # supplier can bind the uploaded media after block creation.
+                descendant['_media'] = deepcopy(media)
         return NativePatchOperation(
             operation='create',
             params={

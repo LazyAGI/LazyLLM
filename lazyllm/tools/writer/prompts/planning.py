@@ -90,7 +90,8 @@ Requirements:
 - Return a VisualPlan object.
 - Create a visual only when the user explicitly requires it or it materially improves the section.
 - Each content_ref must contain only node_id for one top-level heading in the outline.
-- Use visual_type image or diagram and preferred_strategy image_generation.
+- Use the most appropriate visual_type. preferred_strategy is optional; if omitted, the system
+  derives it from visual_type. Do not use image_generation for chart or table.
 - purpose must state what the visual communicates for its section.
 - Set required=true only when the user explicitly requires the visual.
 - Do not change the outline. Do not generate asset IDs, paths, URLs, captions, placeholders, or upload details.

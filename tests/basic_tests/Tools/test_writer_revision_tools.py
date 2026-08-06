@@ -7,6 +7,8 @@ from lazyllm.tools.writer.data_models import (
     ContentRef,
     LocatedContent,
     LocateResult,
+    MediaAsset,
+    MediaAssetLibrary,
     ModifyInstruction,
     ModifyPlan,
     PatchHunk,
@@ -19,6 +21,7 @@ from lazyllm.tools.writer.data_models import (
     WritingContext,
     WritingTask,
 )
+from lazyllm.tools.writer.data_models.multimodal import VisualInstruction
 from lazyllm.tools.writer.data_models.revision import GeneratedRevision, RevisionBlockContent
 from lazyllm.tools.writer.utils import load_artifact_json
 from lazyllm.tools.writer.tools.revision_tools import WriterRevisionTools, apply_patch_to_ir
@@ -45,6 +48,33 @@ def _document():
             _block('move', 'move me'),
             _block('anchor', 'anchor'),
         ],
+    )
+
+
+def _image_block(node_id='image', content='图片说明', *, editable=False):
+    return WriterBlock(
+        node_id=node_id,
+        type='image',
+        content=content,
+        stage='final',
+        editable=editable,
+    )
+
+
+def _image_library(tmp_path, need_id='instr-image'):
+    image_path = tmp_path / 'generated-image.png'
+    image_path.write_bytes(b'not-analyzed-by-the-provider-test')
+    return MediaAssetLibrary(
+        library_id='media-library-1',
+        assets={
+            'asset-image-1': MediaAsset(
+                media_asset_id='asset-image-1',
+                asset_type='image',
+                source_type='image_generation',
+                local_path=str(image_path),
+            ),
+        },
+        visual_need_asset_ids={need_id: ['asset-image-1']},
     )
 
 
@@ -104,6 +134,76 @@ def test_apply_patch_supports_all_block_operations():
     assert result.applied_hunks == [
         'update-hunk', 'delete-hunk', 'move-hunk', 'create-hunk',
     ]
+
+
+def test_apply_patch_supports_image_create_and_delete(tmp_path):
+    image_library = _image_library(tmp_path)
+    source = WriterDocument(
+        document_id='doc-1',
+        stage='final',
+        blocks=[_block('anchor', '锚点')],
+    )
+    image = _image_block('image-new')
+    image.references = [{'type': 'media_asset', 'id': 'asset-image-1'}]
+    create_patch = PatchSet(
+        target_doc_id='doc-1',
+        hunks=[PatchHunk(
+            hunk_id='create-image',
+            target_node_id=image.node_id,
+            modify_type='create',
+            block=image,
+            index=1,
+        )],
+    )
+
+    revised, _ = apply_patch_to_ir(source, create_patch, media_assets=image_library)
+    assert revised.blocks[1].type == 'image'
+    assert revised.blocks[1].references == [
+        {'type': 'media_asset', 'id': 'asset-image-1'},
+    ]
+
+    delete_patch = PatchSet(
+        target_doc_id='doc-1',
+        hunks=[PatchHunk(
+            hunk_id='delete-image',
+            target_node_id='image-existing',
+            modify_type='delete',
+        )],
+    )
+    with_image = source.model_copy(deep=True)
+    with_image.blocks.append(_image_block('image-existing'))
+    deleted, _ = apply_patch_to_ir(with_image, delete_patch)
+    assert deleted.block_by_id('image-existing') is None
+
+
+def test_apply_patch_rejects_image_update_and_move():
+    source = WriterDocument(
+        document_id='doc-1',
+        stage='final',
+        blocks=[_block('anchor', '锚点'), _image_block('image-existing')],
+    )
+    updated_image = _image_block('image-existing', content='新说明')
+    update_patch = PatchSet(
+        target_doc_id='doc-1',
+        hunks=[PatchHunk(
+            target_node_id='image-existing',
+            modify_type='update',
+            block=updated_image,
+        )],
+    )
+    with pytest.raises(ValueError, match='cannot be updated or moved'):
+        apply_patch_to_ir(source, update_patch)
+
+    move_patch = PatchSet(
+        target_doc_id='doc-1',
+        hunks=[PatchHunk(
+            target_node_id='image-existing',
+            modify_type='move',
+            index=0,
+        )],
+    )
+    with pytest.raises(ValueError, match='cannot be updated or moved'):
+        apply_patch_to_ir(source, move_patch)
 
 
 def test_document_diff_round_trips_arbitrary_visible_edits():
@@ -255,6 +355,33 @@ def test_normalize_create_plan_requires_position():
         )
 
 
+def test_modify_instruction_keeps_meta_with_explicit_image_instruction():
+    content_ref = ContentRef(node_id='anchor')
+    instruction = ModifyInstruction(
+        instruction_id='instr-image',
+        content_ref=content_ref,
+        modify_type='create',
+        position='after',
+        instruction='新增配图',
+        meta={'caller': 'existing-generic-metadata'},
+        visual_instruction=VisualInstruction(
+            need_id='instr-image',
+            content_ref=content_ref,
+            visual_type='image',
+            purpose='补充说明',
+        ),
+    )
+
+    assert instruction.meta == {'caller': 'existing-generic-metadata'}
+    with pytest.raises(ValueError, match='only valid for create'):
+        ModifyInstruction(
+            content_ref=content_ref,
+            modify_type='delete',
+            instruction='删除图片',
+            visual_instruction=instruction.visual_instruction,
+        )
+
+
 def test_generate_patch_set_uses_instruction_content_ref():
     plan = ModifyPlan(
         scope='block',
@@ -277,6 +404,45 @@ def test_generate_patch_set_uses_instruction_content_ref():
 
     assert patch_set.hunks[0].target_node_id == 'update'
     assert patch_set.hunks[0].block.content == 'new'
+
+
+def test_generate_patch_set_materializes_required_image_reference(tmp_path):
+    content_ref = ContentRef(node_id='anchor')
+    instruction = ModifyInstruction(
+        instruction_id='instr-image',
+        content_ref=content_ref,
+        modify_type='create',
+        position='after',
+        instruction='在锚点后新增配图',
+        visual_instruction=VisualInstruction(
+            need_id='instr-image',
+            content_ref=content_ref,
+            visual_type='image',
+            purpose='解释正文中的核心概念',
+            preferred_strategy='image_generation',
+        ),
+    )
+    plan = ModifyPlan(scope='block', instructions=[instruction])
+    generated = GeneratedRevision(changes={
+        'instr-image': [RevisionBlockContent(content='核心概念示意图')],
+    })
+
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterRevisionTools(llm=MagicMock(), artifact_store=directory)
+        with patch.object(tool, '_call_llm_structured', return_value=generated):
+            output = tool.generate_patch_set(
+                _document(),
+                plan,
+                WritingContext(context_id='ctx-1'),
+                media_assets=_image_library(tmp_path),
+            )
+        patch_set = load_artifact_json(output['artifact_path'], PatchSet)
+
+    image_hunk = next(hunk for hunk in patch_set.hunks if hunk.modify_type == 'create')
+    assert image_hunk.block.type == 'image'
+    assert image_hunk.block.references == [
+        {'type': 'media_asset', 'id': 'asset-image-1'},
+    ]
 
 
 def test_generate_modify_plan_supports_markdown_content_ref():

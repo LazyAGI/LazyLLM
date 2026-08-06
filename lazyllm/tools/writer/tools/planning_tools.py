@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Literal
 
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
-from ..data_models.multimodal import VisualPlan
+from ..data_models.multimodal import VisualPlan, _VISUAL_STRATEGY_ORDER
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import WriterBlock, WriterDocument
@@ -226,6 +226,8 @@ class WriterPlanningTools(WriterToolBase):
                 raise ValueError('Visual plan must target a top-level outline node_id.')
             if not need.purpose.strip():
                 raise ValueError(f'Visual need for {node_id!r} has an empty purpose.')
+            if need.preferred_strategy is None:
+                need.preferred_strategy = _VISUAL_STRATEGY_ORDER[need.visual_type][0]
             counts[node_id] = counts.get(node_id, 0) + 1
             need.need_id = f'visual-{node_id}-{counts[node_id]}'
         return visual_plan

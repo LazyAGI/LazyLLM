@@ -1,11 +1,13 @@
 from __future__ import annotations
 from copy import deepcopy
+from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
 
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
+from ..data_models.multimodal import MediaAssetLibrary
 from ..data_models.revision import (
     GeneratedRevision,
     LocatedContent,
@@ -41,10 +43,11 @@ from ..utils import parse_markdown_sections, to_prompt_json
 def apply_patch_to_ir(
     document: WriterDocument,
     patch_set: PatchSet,
+    media_assets: Optional[MediaAssetLibrary] = None,
 ) -> Tuple[WriterDocument, PatchResult]:
     '''Apply a provider-neutral patch without artifact or context dependencies.'''
     tools = WriterRevisionTools()
-    tools._validate_patch(document, patch_set)
+    tools._validate_patch(document, patch_set, media_assets=media_assets)
     if not patch_set.hunks \
             and (patch_set.new_title is None or patch_set.new_title == document.title):
         raise ValueError('patch contains no document operations.')
@@ -295,6 +298,7 @@ class WriterRevisionTools(WriterToolBase):
             writing_task,
             located_refs,
             valid_refs,
+            document=source_doc if isinstance(source_doc, WriterDocument) else None,
             target_title=located.target_title,
         )
 
@@ -320,10 +324,12 @@ class WriterRevisionTools(WriterToolBase):
         document: Any,
         modify_plan: Any,
         context: Any,
+        media_assets: Any = None,
     ) -> dict:
         source_doc = self._unified_model(document, WriterDocument)
         plan = self._unified_model(modify_plan, ModifyPlan)
         writing_context = self._unified_model(context, WritingContext)
+        media_library = self._unified_optional_model(media_assets, MediaAssetLibrary)
 
         patch_set = PatchSet(
             patch_id=f'patch-{source_doc.document_id or "document"}',
@@ -337,8 +343,13 @@ class WriterRevisionTools(WriterToolBase):
                 context_json=to_prompt_json(writing_context),
             )
             generated = self._call_llm_structured(prompt, GeneratedRevision)
-            patch_set = self._compile_generated_revision(source_doc, plan, generated)
-            apply_patch_to_ir(source_doc, patch_set)
+            patch_set = self._compile_generated_revision(
+                source_doc,
+                plan,
+                generated,
+                media_assets=media_library,
+            )
+            apply_patch_to_ir(source_doc, patch_set, media_assets=media_library)
 
         result = self._save_artifacts(
             {'patch_set': patch_set},
@@ -362,10 +373,12 @@ class WriterRevisionTools(WriterToolBase):
         document: Any,
         modify_plan: Any,
         context: Any,
+        media_assets: Any = None,
     ) -> dict:
         source = self._unified_document(document)
         if isinstance(source, WriterDocument):
-            return self.generate_patch_set(source, modify_plan, context)
+            return self.generate_patch_set(
+                source, modify_plan, context, media_assets=media_assets)
         return self.generate_string_replace_set(source, modify_plan, context)
 
     def generate_string_replace_set(
@@ -413,6 +426,7 @@ class WriterRevisionTools(WriterToolBase):
         document: WriterDocument,
         plan: ModifyPlan,
         generated: GeneratedRevision,
+        media_assets: Optional[MediaAssetLibrary] = None,
     ) -> PatchSet:
         if plan.title_instruction is not None and not (generated.new_title or '').strip():
             raise ValueError('generated revision omits the requested title change.')
@@ -422,9 +436,12 @@ class WriterRevisionTools(WriterToolBase):
             revised.title = generated.new_title
         for instruction in plan.instructions:
             self._apply_generated_instruction(
-                revised, instruction, generated.changes[instruction.instruction_id],
+                revised,
+                instruction,
+                generated.changes[instruction.instruction_id],
+                media_assets=media_assets,
             )
-        patch = self._diff_documents(document, revised)
+        patch = self._diff_documents(document, revised, media_assets=media_assets)
         patch.patch_id = f'patch-{document.document_id or "document"}'
         patch.meta['source'] = 'generate_patch_set'
         return patch
@@ -434,6 +451,7 @@ class WriterRevisionTools(WriterToolBase):
         revised: WriterDocument,
         instruction: ModifyInstruction,
         blocks: List[RevisionBlockContent],
+        media_assets: Optional[MediaAssetLibrary] = None,
     ) -> None:
         if instruction.modify_type == 'update':
             content, = blocks
@@ -445,6 +463,11 @@ class WriterRevisionTools(WriterToolBase):
             if not blocks:
                 raise ValueError(
                     f'create instruction {instruction.instruction_id!r} requires new content blocks.')
+            blocks = self._prepare_generated_blocks(
+                instruction,
+                blocks,
+                media_assets=media_assets,
+            )
             parent_id, index = self._insertion_point(
                 revised,
                 self._node_id(instruction.content_ref, 'content_ref'),
@@ -507,6 +530,54 @@ class WriterRevisionTools(WriterToolBase):
             references=deepcopy(content.references or []),
         )
 
+    def _prepare_generated_blocks(
+        self,
+        instruction: ModifyInstruction,
+        blocks: List[RevisionBlockContent],
+        *,
+        media_assets: Optional[MediaAssetLibrary],
+    ) -> List[RevisionBlockContent]:
+        visual = instruction.visual_instruction
+        if visual is None:
+            return blocks
+        if len(blocks) != 1:
+            raise ValueError(
+                f'image create instruction {instruction.instruction_id!r} '
+                'requires exactly one block.'
+            )
+        asset_id = self._require_visual_asset(visual, media_assets)
+        content = blocks[0].model_copy(deep=True)
+        if content.type not in {None, 'image'}:
+            raise ValueError(
+                f'image create instruction {instruction.instruction_id!r} '
+                'must produce type="image".'
+            )
+        if content.children:
+            raise ValueError('image create content must not contain child blocks.')
+        content.type = 'image'
+        content.references = [{'type': 'media_asset', 'id': asset_id}]
+        return [content]
+
+    @staticmethod
+    def _require_visual_asset(
+        visual: Any,
+        media_assets: Optional[MediaAssetLibrary],
+    ) -> str:
+        if media_assets is None:
+            raise ValueError(
+                f'visual instruction {visual.need_id!r} requires resolved media_assets.'
+            )
+        asset_ids = media_assets.visual_need_asset_ids.get(visual.need_id, [])
+        if len(asset_ids) != 1:
+            raise ValueError(
+                f'visual instruction {visual.need_id!r} must resolve to exactly one media asset.'
+            )
+        asset_id = asset_ids[0]
+        asset = media_assets.assets.get(asset_id)
+        if asset is None or not asset.local_path or not Path(asset.local_path).is_file():
+            raise ValueError(f'Image media asset {asset_id!r} is unavailable.')
+        return asset_id
+
     def _insertion_point(
         self,
         document: WriterDocument,
@@ -521,12 +592,18 @@ class WriterRevisionTools(WriterToolBase):
         document: Any,
         patch_set: Any,
         context: Any,
+        media_assets: Any = None,
     ) -> dict:
         source_doc = self._unified_model(document, WriterDocument)
         patch = self._unified_model(patch_set, PatchSet)
         writing_context = self._unified_model(context, WritingContext)
+        media_library = self._unified_optional_model(media_assets, MediaAssetLibrary)
 
-        revised_doc, patch_result = apply_patch_to_ir(source_doc, patch)
+        revised_doc, patch_result = apply_patch_to_ir(
+            source_doc,
+            patch,
+            media_assets=media_library,
+        )
 
         result = self._save_artifacts(
             {'patch_result': patch_result, 'revised_document': revised_doc},
@@ -551,10 +628,12 @@ class WriterRevisionTools(WriterToolBase):
         document: Any,
         revision_set: Any,
         context: Any,
+        media_assets: Any = None,
     ) -> dict:
         source = self._unified_document(document)
         if isinstance(source, WriterDocument):
-            return self.apply_patch(source, revision_set, context)
+            return self.apply_patch(
+                source, revision_set, context, media_assets=media_assets)
         result = self.apply_string_replace(source, revision_set, context)
         metadata = result['metadata']
         metadata['artifact_paths']['revised_document'] = metadata['artifact_paths'][
@@ -608,6 +687,7 @@ class WriterRevisionTools(WriterToolBase):
         self,
         source: WriterDocument,
         revised: WriterDocument,
+        media_assets: Optional[MediaAssetLibrary] = None,
     ) -> PatchSet:
         if source.document_id != revised.document_id:
             raise ValueError('source and revised documents must have the same document_id.')
@@ -702,7 +782,7 @@ class WriterRevisionTools(WriterToolBase):
             hunks=hunks,
             meta={'source': 'document_diff'},
         )
-        applied, _ = apply_patch_to_ir(source, patch)
+        applied, _ = apply_patch_to_ir(source, patch, media_assets=media_assets)
         self._assert_revision_applied(applied, revised)
         return patch
 
@@ -807,6 +887,7 @@ class WriterRevisionTools(WriterToolBase):
         located_refs: List[ContentRef],
         valid_refs: set,
         *,
+        document: Optional[WriterDocument] = None,
         target_title: bool = False,
     ) -> ModifyPlan:
         plan.plan_id = plan.plan_id or f'plan-{task.task_id or "task"}'
@@ -863,10 +944,13 @@ class WriterRevisionTools(WriterToolBase):
             instruction_ids.add(instr.instruction_id)
             if instr.modify_type in {'create', 'move'} and instr.position is None:
                 raise ValueError(f'{instr.modify_type} instruction requires position.')
+            self._validate_modify_instruction(instr, document=document)
             if instr.modify_type == 'create' and normalized \
                     and normalized[-1].modify_type == 'create' \
                     and normalized[-1].content_ref == instr.content_ref \
-                    and normalized[-1].position == instr.position:
+                    and normalized[-1].position == instr.position \
+                    and normalized[-1].visual_instruction is None \
+                    and instr.visual_instruction is None:
                 normalized[-1].instruction += f'\n{instr.instruction}'
                 continue
             if instr.modify_type == 'move':
@@ -884,6 +968,42 @@ class WriterRevisionTools(WriterToolBase):
         plan.instructions = normalized
         return plan
 
+    @staticmethod
+    def _validate_modify_instruction(
+        instruction: ModifyInstruction,
+        *,
+        document: Optional[WriterDocument] = None,
+    ) -> None:
+        visual = instruction.visual_instruction
+        if visual is not None:
+            if instruction.modify_type != 'create':
+                raise ValueError('visual_instruction is only valid for create instructions.')
+            if visual.visual_type != 'image':
+                raise ValueError('revision visual_instruction.visual_type must be "image".')
+            if not visual.purpose.strip():
+                raise ValueError('revision visual_instruction.purpose must not be empty.')
+            if not visual.required:
+                raise ValueError('revision image additions must be required.')
+            if visual.need_id != instruction.instruction_id:
+                raise ValueError(
+                    'visual_instruction.need_id must equal instruction_id.'
+                )
+            if visual.content_ref != instruction.content_ref:
+                raise ValueError(
+                    'visual_instruction.content_ref must equal instruction.content_ref.'
+                )
+            if visual.preferred_strategy not in {None, 'image_generation'}:
+                raise ValueError(
+                    'revision image preferred_strategy must be null or image_generation.'
+                )
+
+        if document is None or instruction.modify_type not in {'update', 'move'}:
+            return
+        node_id = instruction.content_ref.node_id
+        target = document.block_by_id(node_id) if node_id else None
+        if target is not None and target.type == 'image':
+            raise ValueError('existing image blocks cannot be updated or moved.')
+
     def _revision_candidates(self, document: WriterDocument | str) -> List[Dict[str, Any]]:
         if isinstance(document, WriterDocument):
             return [
@@ -893,7 +1013,7 @@ class WriterRevisionTools(WriterToolBase):
                     'content': block.content,
                 }
                 for block in document.iter_blocks()
-                if block.editable
+                if block.editable or block.type == 'image'
             ]
         sections = parse_markdown_sections(document)
         if not sections:
@@ -1010,7 +1130,13 @@ class WriterRevisionTools(WriterToolBase):
         if plan.title_instruction is not None and not revised.title.strip():
             raise ValueError('model revision produced an empty title.')
 
-    def _validate_patch(self, document: WriterDocument, patch: PatchSet) -> None:
+    def _validate_patch(
+        self,
+        document: WriterDocument,
+        patch: PatchSet,
+        *,
+        media_assets: Optional[MediaAssetLibrary] = None,
+    ) -> None:
         if patch.target_doc_id != document.document_id:
             raise ValueError(
                 f'patch target_doc_id {patch.target_doc_id!r} does not match '
@@ -1023,6 +1149,44 @@ class WriterRevisionTools(WriterToolBase):
                 if hunk.hunk_id in hunk_ids:
                     raise ValueError(f'patch contains duplicate hunk_id {hunk.hunk_id!r}.')
                 hunk_ids.add(hunk.hunk_id)
+            target = document.block_by_id(hunk.target_node_id)
+            if hunk.modify_type == 'create':
+                if hunk.block is None:
+                    continue
+                for block in hunk.block.iter_blocks():
+                    if block.type == 'image':
+                        self._validate_image_block(block, media_assets)
+            elif hunk.modify_type in {'update', 'move'} \
+                    and target is not None \
+                    and target.type == 'image':
+                raise ValueError('existing image blocks cannot be updated or moved.')
+            if hunk.modify_type == 'update' \
+                    and hunk.block is not None \
+                    and hunk.block.type == 'image':
+                raise ValueError('image blocks cannot be created through an update.')
+
+    @classmethod
+    def _validate_image_block(
+        cls,
+        block: WriterBlock,
+        media_assets: Optional[MediaAssetLibrary],
+    ) -> None:
+        references = [
+            reference for reference in block.references
+            if reference.get('type') == 'media_asset' and reference.get('id')
+        ]
+        if len(references) != 1:
+            raise ValueError(
+                f'new image block {block.node_id!r} requires exactly one media_asset reference.'
+            )
+        if media_assets is None:
+            raise ValueError(
+                f'new image block {block.node_id!r} requires resolved media_assets.'
+            )
+        asset_id = str(references[0]['id'])
+        asset = media_assets.assets.get(asset_id)
+        if asset is None or not asset.local_path or not Path(asset.local_path).is_file():
+            raise ValueError(f'Image media asset {asset_id!r} is unavailable.')
 
     @staticmethod
     def _apply_block_update(target: WriterBlock, revised: WriterBlock) -> None:

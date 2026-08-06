@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 from .writer_ir import ContentRef, WriterBlock, WriterSpan
+from .multimodal import VisualInstruction
 from ..utils.artifact import ArtifactModel
 
 
@@ -31,6 +32,13 @@ class ModifyInstruction(BaseModel):
     position: Optional[PatchPosition] = None
     instruction: str
     meta: Dict[str, Any] = Field(default_factory=dict)
+    visual_instruction: Optional[VisualInstruction] = None
+
+    @model_validator(mode='after')
+    def validate_visual_instruction(self) -> 'ModifyInstruction':
+        if self.visual_instruction is not None and self.modify_type != 'create':
+            raise ValueError('visual_instruction is only valid for create instructions.')
+        return self
 
 
 class ModifyPlan(BaseModel):

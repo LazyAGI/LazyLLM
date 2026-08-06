@@ -192,6 +192,78 @@ class TestMoveBlock(unittest.TestCase):
         self.assertEqual(fs._batch_delete_child_blocks.call_count, 1)
 
 
+class TestCreateBlockImageBinding(unittest.TestCase):
+
+    @staticmethod
+    def _make_fs():
+        fs = object.__new__(FeishuFS)
+        fs._base_url = 'https://example.test/open-apis'
+        fs._post = MagicMock(return_value={'data': {
+            'document_revision_id': 11,
+            'block_id_relations': [{
+                'temporary_block_id': 'temporary-image',
+                'block_id': 'real-image',
+            }],
+        }})
+        fs._upload_docx_media = MagicMock(return_value='file-token')
+        fs._batch_update_blocks = MagicMock(return_value={'document_revision_id': 12})
+        return fs
+
+    @staticmethod
+    def _image_descendant():
+        return [{
+            'block_id': 'temporary-image',
+            'block_type': 27,
+            'image': {'caption': {'content': '图片说明'}},
+            '_media': {
+                'media_asset_id': 'asset-1',
+                'local_path': '/tmp/image.png',
+                'file_name': 'image.png',
+            },
+        }]
+
+    def test_create_binds_image_after_descendant_creation(self):
+        fs = self._make_fs()
+        descendants = self._image_descendant()
+
+        result = fs.create_block(
+            document_id='doc-1',
+            parent_block_id='doc-1',
+            index=0,
+            children_id=['temporary-image'],
+            descendants=descendants,
+            document_revision_id=10,
+        )
+
+        payload = fs._post.call_args.kwargs['json']
+        self.assertNotIn('_media', payload['descendants'][0])
+        fs._upload_docx_media.assert_called_once_with(
+            'doc-1', 'real-image', 'image.png', '/tmp/image.png')
+        fs._batch_update_blocks.assert_called_once()
+        self.assertEqual(
+            fs._batch_update_blocks.call_args.kwargs['document_revision_id'], 11)
+        self.assertEqual(result['document_revision_id'], 12)
+
+    def test_create_removes_empty_image_when_binding_fails(self):
+        fs = self._make_fs()
+        fs._upload_docx_media.side_effect = RuntimeError('upload failed')
+        fs._get_docx_children = MagicMock(return_value=[{'block_id': 'real-image'}])
+        fs._batch_delete_child_blocks = MagicMock(return_value={'document_revision_id': 13})
+
+        with self.assertRaisesRegex(RuntimeError, 'Failed to bind'):
+            fs.create_block(
+                document_id='doc-1',
+                parent_block_id='doc-1',
+                index=0,
+                children_id=['temporary-image'],
+                descendants=self._image_descendant(),
+                document_revision_id=10,
+            )
+
+        fs._batch_delete_child_blocks.assert_called_once_with(
+            'doc-1', 'doc-1', 0, 1, document_revision_id=11)
+
+
 class TestEffectiveSpaceId(unittest.TestCase):
 
     def _make_wiki_fs(self, space_id: str = '') -> FeishuWikiFS:

@@ -568,13 +568,17 @@ class FeishuFSBase(LinkDocumentFSBase):
         document_revision_id: int = -1,
     ) -> Dict[str, Any]:
         url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{parent_block_id}/descendant'
+        api_descendants = deepcopy(descendants)
+        for descendant in api_descendants:
+            if isinstance(descendant, dict):
+                descendant.pop('_media', None)
         response = self._post(
             url,
             params={'document_revision_id': document_revision_id},
             json={
                 'index': index,
                 'children_id': children_id,
-                'descendants': descendants,
+                'descendants': api_descendants,
             },
         )
         return (response or {}).get('data') or {}
@@ -646,6 +650,9 @@ class FeishuFSBase(LinkDocumentFSBase):
         blocks: List[Dict[str, Any]],
         created: Dict[str, Any],
         document_revision_id: int = -1,
+        *,
+        raise_on_error: bool = False,
+        parent_block_id: Optional[str] = None,
     ) -> int:
         block_ids = {
             relation.get('temporary_block_id'): relation.get('block_id')
@@ -653,13 +660,17 @@ class FeishuFSBase(LinkDocumentFSBase):
             if isinstance(relation, dict)
         }
         revision = document_revision_id
+        binding_errors: List[Exception] = []
         for block in blocks:
             media = block.get('_media')
             if block.get('block_type') != 27 or not isinstance(media, dict):
                 continue
             block_id = block_ids.get(block.get('block_id'))
             if not block_id:
-                LOG.warning(f'Feishu did not return a block ID for image {block.get("block_id")!r}.')
+                error = RuntimeError(
+                    f'Feishu did not return a block ID for image {block.get("block_id")!r}.')
+                binding_errors.append(error)
+                LOG.warning(str(error))
                 continue
             try:
                 token = self._upload_docx_media(
@@ -673,8 +684,10 @@ class FeishuFSBase(LinkDocumentFSBase):
                 )
                 revision = int(updated.get('document_revision_id', revision))
             except Exception as exc:
+                binding_errors.append(exc)
                 LOG.warning(f'Failed to bind Feishu image {media.get("media_asset_id")!r}: {exc}')
-                parent_id = block_ids.get(block.get('parent_id'), document_id)
+                parent_id = block_ids.get(
+                    block.get('parent_id'), parent_block_id or document_id)
                 children = self._get_docx_children(document_id, parent_id)
                 index = self._block_index(children, block_id)
                 if index is not None:
@@ -686,6 +699,9 @@ class FeishuFSBase(LinkDocumentFSBase):
                         revision = int(deleted.get('document_revision_id', revision))
                     except Exception as delete_exc:
                         LOG.warning(f'Failed to remove empty Feishu image {block_id!r}: {delete_exc}')
+        if raise_on_error and binding_errors:
+            raise RuntimeError(
+                f'Failed to bind {len(binding_errors)} Feishu image block(s).') from binding_errors[0]
         return revision
 
     def create_block(
@@ -698,7 +714,7 @@ class FeishuFSBase(LinkDocumentFSBase):
         *,
         document_revision_id: int = -1,
     ) -> Dict[str, Any]:
-        return self._create_descendant_blocks(
+        created = self._create_descendant_blocks(
             document_id,
             parent_block_id,
             index,
@@ -706,6 +722,20 @@ class FeishuFSBase(LinkDocumentFSBase):
             descendants,
             document_revision_id=document_revision_id,
         )
+        try:
+            initial_revision = int(created.get('document_revision_id', document_revision_id))
+        except (TypeError, ValueError):
+            initial_revision = document_revision_id
+        revision = self._bind_docx_images(
+            document_id,
+            descendants,
+            created,
+            document_revision_id=initial_revision,
+            raise_on_error=True,
+            parent_block_id=parent_block_id,
+        )
+        created['document_revision_id'] = revision
+        return created
 
     def update_block(
         self,
