@@ -364,8 +364,26 @@ class WriterResourceTools(WriterToolBase):
         normalized_fields: Dict[str, List[str]] = {}
         for hunk in patch.hunks:
             operation = adapter.patch_to_operation(hunk, persisted_document)
-            operation_result = self._execute_native_operation(
-                fs, document_id, operation, persisted_document.revision)
+            try:
+                operation_result = self._execute_native_operation(
+                    fs, document_id, operation, persisted_document.revision)
+            except Exception as exc:
+                block_id = operation.params.get('block_id')
+                if block_id is None:
+                    requests = operation.params.get('requests')
+                    if isinstance(requests, list) and requests and isinstance(requests[0], dict):
+                        block_id = requests[0].get('block_id')
+                hunk_id = hunk.hunk_id or hunk.target_node_id
+                LOG.error(
+                    'Writer provider patch failed: operation=%s hunk_id=%s block_id=%s '
+                    'revision=%s error=%s',
+                    operation.operation, hunk_id, block_id,
+                    persisted_document.revision, exc,
+                )
+                raise RuntimeError(
+                    f'provider {operation.operation} failed for block {block_id or "unknown"!r} '
+                    f'at revision {persisted_document.revision!r}: {exc}'
+                ) from exc
             if isinstance(operation_result, dict) \
                     and isinstance(operation_result.get('normalized_fields'), list):
                 normalized_fields[hunk.hunk_id or hunk.target_node_id] = \
