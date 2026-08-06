@@ -22,6 +22,7 @@ class WriterQualityTools(WriterToolBase):
     __public_apis__ = [
         'validate_section',
         'validate_draft_document',
+        'validate_revision_set',
         'validate_patch_set',
         'validate_string_replace_set',
     ]
@@ -194,6 +195,20 @@ class WriterQualityTools(WriterToolBase):
                 'score': audit_result.score,
             },
         ).model_dump()
+
+    def validate_revision_set(
+        self,
+        revision_set: Any,
+        document: Any,
+        context: Any,
+        task: Any,
+    ) -> dict:
+        source = self._unified_document(document)
+        if isinstance(source, WriterDocument):
+            return self.validate_patch_set(revision_set, context, task)
+        return self.validate_string_replace_set(
+            revision_set, source, context, task,
+        )
 
     def validate_string_replace_set(
         self,

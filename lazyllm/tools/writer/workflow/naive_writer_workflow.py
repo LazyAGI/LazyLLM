@@ -154,23 +154,24 @@ class NaiveWriterWorkflow:
             locate_result=self._artifact_ref(locate_result, 'locate_result'),
             context=context_ref,
         )
-        patch_set = self.revision.generate_patch_set(
+        revision_set = self.revision.generate_revision_set(
             document=document,
             modify_plan=self._artifact_ref(modify_plan, 'modify_plan'),
             context=context_ref,
         )
-        patch_review = self.quality.validate_patch_set(
-            patch_set=self._artifact_ref(patch_set, 'patch_set'),
+        revision_review = self.quality.validate_revision_set(
+            revision_set=self._artifact_ref(revision_set),
+            document=document,
             context=context_ref,
             task=task,
         )
-        patch_result = self.revision.apply_patch(
+        revision_result = self.revision.apply_revision(
             document=document,
-            patch_set=self._artifact_ref(patch_set, 'patch_set'),
+            revision_set=self._artifact_ref(revision_set),
             context=context_ref,
         )
 
-        revised_document_ref = self._artifact_ref(patch_result, 'revised_document')
+        revised_document_ref = self._artifact_ref(revision_result, 'revised_document')
 
         writing_context = self.context.update_writing_context(
             artifacts=revised_document_ref,
@@ -187,9 +188,9 @@ class NaiveWriterWorkflow:
                 'task': task,
                 'locate_result': locate_result,
                 'modify_plan': modify_plan,
-                'patch_set': patch_set,
-                'patch_review': patch_review,
-                'patch_result': patch_result,
+                'revision_set': revision_set,
+                'revision_review': revision_review,
+                'revision_result': revision_result,
                 'revised_document': revised_document_ref,
                 'writing_context': writing_context,
                 'final_document': writing_output,

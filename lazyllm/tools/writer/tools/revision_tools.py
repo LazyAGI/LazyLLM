@@ -78,9 +78,11 @@ class WriterRevisionTools(WriterToolBase):
     __public_apis__ = [
         'locate_revision_target',
         'generate_modify_plan',
+        'generate_revision_set',
         'generate_patch_set',
         'generate_string_replace_set',
         'build_patch_set_from_documents',
+        'apply_revision',
         'apply_patch',
         'apply_string_replace',
     ]
@@ -355,6 +357,17 @@ class WriterRevisionTools(WriterToolBase):
         )
         return result.model_dump()
 
+    def generate_revision_set(
+        self,
+        document: Any,
+        modify_plan: Any,
+        context: Any,
+    ) -> dict:
+        source = self._unified_document(document)
+        if isinstance(source, WriterDocument):
+            return self.generate_patch_set(source, modify_plan, context)
+        return self.generate_string_replace_set(source, modify_plan, context)
+
     def generate_string_replace_set(
         self,
         document: Any,
@@ -532,6 +545,23 @@ class WriterRevisionTools(WriterToolBase):
             },
         )
         return result.model_dump()
+
+    def apply_revision(
+        self,
+        document: Any,
+        revision_set: Any,
+        context: Any,
+    ) -> dict:
+        source = self._unified_document(document)
+        if isinstance(source, WriterDocument):
+            return self.apply_patch(source, revision_set, context)
+        result = self.apply_string_replace(source, revision_set, context)
+        metadata = result['metadata']
+        metadata['artifact_paths']['revised_document'] = metadata['artifact_paths'][
+            'revised_document_md'
+        ]
+        metadata['schema_names']['revised_document'] = 'text/markdown'
+        return result
 
     def apply_string_replace(
         self,
@@ -789,11 +819,38 @@ class WriterRevisionTools(WriterToolBase):
             plan.title_instruction = None
 
         located_set = {self._content_ref_key(content_ref) for content_ref in located_refs}
+        def canonical_ref(reference: ContentRef, candidates: List[ContentRef]) -> Optional[ContentRef]:
+            exact_key = self._content_ref_key(reference)
+            exact = [candidate for candidate in candidates
+                     if self._content_ref_key(candidate) == exact_key]
+            if exact:
+                return exact[0]
+            if reference.node_id or not reference.heading_path:
+                return None
+            valid_at_location = [
+                key for key in valid_refs
+                if not key[0] and key[1] == tuple(reference.heading_path) and not key[3]
+            ]
+            if len(valid_at_location) != 1:
+                return None
+            same_location = [candidate for candidate in candidates
+                             if not candidate.node_id
+                             and candidate.heading_path == reference.heading_path
+                             and not candidate.document_root]
+            return same_location[0] if len(same_location) == 1 else None
+
         instruction_ids: set = set()
         normalized: List[ModifyInstruction] = []
         for index, instr in enumerate(plan.instructions, start=1):
+            resolved_content_ref = canonical_ref(instr.content_ref, located_refs)
+            if resolved_content_ref is not None:
+                instr.content_ref = resolved_content_ref.model_copy(deep=True)
             content_key = self._content_ref_key(instr.content_ref)
-            if content_key not in located_set:
+            if instr.modify_type == 'create' and content_key not in valid_refs:
+                raise ValueError(
+                    'create instruction content_ref is absent from document.'
+                )
+            if instr.modify_type != 'create' and content_key not in located_set:
                 raise ValueError(
                     'modify_plan instruction content_ref is not present in locate_result.targets.'
                 )
@@ -888,10 +945,25 @@ class WriterRevisionTools(WriterToolBase):
 
         start, end = self._markdown_section_range(markdown, replacement.content_ref)
         section = markdown[start:end]
-        if replacement.old_string not in section:
+        if replacement.old_string in section:
+            revised_section = section.replace(replacement.old_string, replacement.new_string, 1)
+            return markdown[:start] + revised_section + markdown[end:]
+
+        match_starts: List[int] = []
+        search_from = 0
+        while True:
+            match_start = markdown.find(replacement.old_string, search_from)
+            if match_start < 0:
+                break
+            match_end = match_start + len(replacement.old_string)
+            if start <= match_start < end or match_start < start < match_end:
+                match_starts.append(match_start)
+            search_from = match_start + 1
+        if len(match_starts) != 1:
             raise ValueError(f'old_string is absent for {replacement.replacement_id!r}.')
-        revised_section = section.replace(replacement.old_string, replacement.new_string, 1)
-        return markdown[:start] + revised_section + markdown[end:]
+        match_start = match_starts[0]
+        match_end = match_start + len(replacement.old_string)
+        return markdown[:match_start] + replacement.new_string + markdown[match_end:]
 
     @staticmethod
     def _markdown_section_range(markdown: str, content_ref: ContentRef) -> Tuple[int, int]:

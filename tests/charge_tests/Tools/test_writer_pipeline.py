@@ -11,7 +11,9 @@ from lazyllm.tools.writer.adapter.feishu import FeishuWriterAdapter
 from lazyllm.tools.writer.tools.base import WriterToolBase
 from lazyllm.tools.writer.data_models.context import DocumentSummary, WritingContext
 from lazyllm.tools.writer.data_models.quality import AuditResult, ReviewReport
-from lazyllm.tools.writer.data_models.revision import LocateResult, ModifyPlan, PatchResult, PatchSet
+from lazyllm.tools.writer.data_models.revision import (
+    LocateResult, ModifyPlan, PatchResult, PatchSet, StringReplaceSet,
+)
 from lazyllm.tools.writer.data_models.task import InputResource, Selection, TargetDocument, WritingTask
 from lazyllm.tools.writer.data_models.writer_ir import ContentRef, WriterBlock, WriterDocument
 from lazyllm.tools.writer.data_models.planning import SectionInstructionList
@@ -452,8 +454,8 @@ def test_revise_workflow_e2e():
         assert instr.modify_type in {'create', 'update', 'delete', 'move'}
         assert instr.instruction.strip()
 
-    # --- patch_set ---
-    patch = _load_stage(stages, 'patch_set', PatchSet)
+    # --- revision_set (PatchSet for Writer IR) ---
+    patch = _load_stage(stages, 'revision_set', PatchSet)
     assert len(patch.hunks) == len(plan.instructions)
     original_text_by_id = {}
     for block in document.iter_blocks():
@@ -468,14 +470,14 @@ def test_revise_workflow_e2e():
     assert any('financial' in (h.block.content if h.block else '').lower() for h in patch.hunks
                if h.target_node_id == 'blk-deploy'), 'financial must appear in blk-deploy patch.'
 
-    # --- patch_review ---
-    review = _load_stage(stages, 'patch_review', AuditResult)
+    # --- revision_review ---
+    review = _load_stage(stages, 'revision_review', AuditResult)
     assert review is not None
     assert isinstance(review.is_passed, bool)
     assert 0 <= review.score <= 100
 
-    # --- apply_patch ---
-    patch_result = _load_stage(stages, 'patch_result', PatchResult)
+    # --- apply_revision ---
+    patch_result = _load_stage(stages, 'revision_result', PatchResult)
     assert patch_result is not None and patch_result.success
     assert not patch_result.failed_hunks
 
@@ -505,3 +507,103 @@ def test_revise_workflow_e2e():
 
     primary = result.get('primary_result') or {}
     assert primary.get('artifact_path'), 'primary_result must carry an artifact_path.'
+
+
+def test_revise_workflow_markdown_e2e():
+    '''Run the Writer IR revision scenario against the equivalent Markdown document.'''
+    llm = lazyllm.OnlineChatModule(
+        source='qwen', model=QWEN_MODEL,
+        api_key=get_api_key('qwen'), stream=False,
+    )
+    store = str(
+        REPO_ROOT / 'tests' / 'charge_tests' / 'artifacts' / 'revise_workflow_markdown_e2e'
+    )
+    wf = NaiveWriterWorkflow(llm=llm, artifact_store=store)
+    source = (
+        '# LazyCoder Product Overview\n\n'
+        '## Product Overview\n'
+        'LazyCoder is an AI-powered coding assistant designed for professional developers.\n\n'
+        'LazyCoder offers a free tier with basic features, a Pro tier at $12/month, '
+        'and an Enterprise tier with custom pricing.\n\n'
+        '## Supported Languages\n'
+        'Currently supported languages include Python, JavaScript, TypeScript, and Go. '
+        'The team is actively working on expanding coverage.\n\n'
+        'IntelliSense and LSP integration is available for all supported languages. '
+        'Code completion quality varies by language maturity.\n\n'
+        '## Deployment & Security\n'
+        'Deployment modes include on-premises Kubernetes, SaaS multi-tenant cloud, '
+        'and a single-tenant dedicated option for regulated industries.\n\n'
+        'All customer code is encrypted at rest and in transit. '
+        'The product has SOC 2 Type II certification.\n'
+    )
+    task = WritingTask(
+        task_id='revise-md-e2e',
+        query=(
+            'Add support for Rust and Java to the supported languages list '
+            'in the Languages section. Also update the deployment section '
+            'to mention that single-tenant is available for financial services. '
+            'Do not change anything else.'
+        ),
+        task_type='revise',
+        selection=Selection(content_refs=[
+            ContentRef(heading_path=['LazyCoder Product Overview', 'Supported Languages']),
+            ContentRef(heading_path=['LazyCoder Product Overview', 'Deployment & Security']),
+        ]),
+    )
+    context = WritingContext(
+        context_id='revise-md-e2e',
+        document_summary=DocumentSummary(summary='LazyCoder Product Overview', key_points=[]),
+    )
+
+    result = lazyllm.enable_trace(
+        wf.revise,
+        task=task.model_dump(),
+        document=source,
+        context=context,
+    )
+    stages = result.get('stage_results') or {}
+    assert stages
+    locate = _load_stage(stages, 'locate_result', LocateResult)
+    assert locate.targets
+    assert all(target.content_ref.heading_path for target in locate.targets)
+    assert {target.content_ref.heading_path[-1] for target in locate.targets} == {
+        'Supported Languages', 'Deployment & Security',
+    }
+
+    plan = _load_stage(stages, 'modify_plan', ModifyPlan)
+    assert plan.instructions
+    assert all(instruction.modify_type == 'update' for instruction in plan.instructions)
+    assert {instruction.content_ref.heading_path[-1] for instruction in plan.instructions} == {
+        'Supported Languages', 'Deployment & Security',
+    }
+
+    replace_set = _load_stage(stages, 'revision_set', StringReplaceSet)
+    assert len(replace_set.replacements) >= 2
+    assert all(replacement.old_string != replacement.new_string for replacement in replace_set.replacements)
+    review = _load_stage(stages, 'revision_review', AuditResult)
+    assert review is not None
+    assert 0 <= review.score <= 100
+
+    replace_result = _load_stage(stages, 'revision_result')
+    assert replace_result['success'] is True
+    assert len(replace_result['applied_replacements']) == len(replace_set.replacements)
+
+    revised_path = stages['revised_document']
+    revised = Path(revised_path).read_text(encoding='utf-8')
+    assert Path(revised_path).suffix == '.md'
+    assert 'Rust' in revised and 'Java' in revised
+    assert 'financial services' in revised.lower()
+    assert 'LazyCoder is an AI-powered coding assistant designed for professional developers.' in revised
+    assert 'a Pro tier at $12/month' in revised
+    assert 'IntelliSense and LSP integration is available for all supported languages.' in revised
+    assert 'The product has SOC 2 Type II certification.' in revised
+
+    context_result = _load_stage(stages, 'writing_context', WritingContext)
+    assert context_result.meta.get('context_updates')
+
+    final_path = Path(_stage_path(stages, 'final_document'))
+    final = final_path.read_text(encoding='utf-8')
+    assert final_path.suffix == '.md'
+    assert final == revised
+    assert result['primary_result']['metadata']['extra']['representation'] == 'markdown'
+    assert Path(result['primary_result']['artifact_path']) == final_path

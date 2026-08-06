@@ -69,6 +69,18 @@ class GeneratedRevision(BaseModel):
     new_title: Optional[str] = None
     changes: Dict[str, List[RevisionBlockContent]] = Field(default_factory=dict)
 
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_single_block_changes(cls, value: Any) -> Any:
+        if not isinstance(value, dict) or not isinstance(value.get('changes'), dict):
+            return value
+        normalized = dict(value)
+        normalized['changes'] = {
+            instruction_id: [blocks] if isinstance(blocks, dict) else blocks
+            for instruction_id, blocks in value['changes'].items()
+        }
+        return normalized
+
 
 class PatchHunk(BaseModel):
     hunk_id: Optional[str] = None

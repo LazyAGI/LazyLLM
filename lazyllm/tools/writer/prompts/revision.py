@@ -37,6 +37,10 @@ Plan semantics:
 - For move, content_ref identifies the content being moved, while destination_ref and
   position identify its destination. Move must provide both destination_ref and position.
 - instruction describes the complete visible result of the operation.
+- Preserve every explicit structural constraint from task.query in instruction itself,
+  including paragraph count, list-item count, heading level, and ordering. Render distinct
+  Markdown paragraphs with blank lines and render lists/headings with their Markdown syntax;
+  do not record required structure only in meta.
 - instruction_id is unique, and instructions follow execution order.
 - scope and summary describe the plan as a whole.
 - The result preserves the facts, terminology, and style established by the writing context.
@@ -63,6 +67,12 @@ Output semantics:
 - Plain text without headings uses content_ref.document_root=true.
 - Update replaces the selected content, delete replaces it with an empty string, and create inserts content before or after its content_ref.
 - Move is represented by replacements that remove the source content and insert it at destination_ref.
+- Every ModifyPlan instruction must be implemented by one or more replacements; do not omit an instruction.
+- Every replacement must make a real change: new_string must differ from old_string and implement the instruction.
+- Never return an unchanged section as a replacement.
+- new_string must visibly preserve the instruction's required Markdown structure and exact
+  counts/order. In particular, distinct paragraphs are separated by a blank line; do not
+  collapse them into sentences in one paragraph even if replacement meta describes them.
 - Replacements are returned in application order and preserve unaffected Markdown exactly.
 
 Markdown document:
