@@ -14,6 +14,25 @@ from ..utils.artifact import ToolResult, load_artifact_json, save_artifact_json
 T = TypeVar('T', bound=BaseModel)
 
 
+def _strip_leading_think_blocks(text: str) -> str:
+    cleaned = text
+    pattern = re.compile(r'^\s*<think\b[^>]*>.*?</think>\s*', re.IGNORECASE | re.DOTALL)
+    while True:
+        stripped = pattern.sub('', cleaned, count=1)
+        if stripped == cleaned:
+            return cleaned
+        cleaned = stripped
+
+
+class _WriterJsonFormatter(JsonFormatter):
+    def _load(self, msg: str):
+        cleaned = _strip_leading_think_blocks(msg)
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            return super()._load(cleaned)
+
+
 class WriterToolBase(ModuleBase):
     def __init__(
         self,
@@ -216,12 +235,17 @@ class WriterToolBase(ModuleBase):
         module = cls.__module__ or ''
         return f'{module}.{cls.__qualname__}'
 
-    def _call_llm_structured(self, prompt: str, schema: Type[T]) -> T:
+    def _call_llm_structured(
+        self,
+        prompt: str,
+        schema: Type[T],
+        stream_output: Any = False,
+    ) -> T:
         if self.llm is None:
             raise ValueError('llm is not set')
 
         system_prompt = self._structured_output_prompt(schema)
-        model = self._build_structured_llm(system_prompt)
+        model = self._build_structured_llm(system_prompt, stream_output=stream_output)
         response = model(prompt)
         return self._validate_structured_response(response, schema)
 
@@ -245,29 +269,31 @@ class WriterToolBase(ModuleBase):
     @staticmethod
     def _strip_leading_think_blocks(text: str) -> str:
         '''Remove provider reasoning blocks without touching document content.'''
-        cleaned = text
-        pattern = re.compile(r'^\s*<think\b[^>]*>.*?</think>\s*', re.IGNORECASE | re.DOTALL)
-        while True:
-            stripped = pattern.sub('', cleaned, count=1)
-            if stripped == cleaned:
-                return cleaned
-            cleaned = stripped
+        return _strip_leading_think_blocks(text)
 
     def _structured_output_prompt(self, schema: Type[BaseModel]) -> str:
         schema_json = json.dumps(schema.model_json_schema(), ensure_ascii=False, indent=2)
         return STRUCTURED_OUTPUT_SYSTEM_PROMPT.format(schema_name=schema.__name__, schema_json=schema_json)
 
-    def _build_structured_llm(self, system_prompt: str) -> Any:
+    def _build_structured_llm(
+        self,
+        system_prompt: str,
+        stream_output: Any = False,
+    ) -> Any:
         model = self.llm
         if hasattr(model, 'share'):
             try:
-                model = model.share(stream=False)
-            except TypeError:
+                model = model.share(stream=stream_output)
+            except TypeError as exc:
+                if stream_output:
+                    raise TypeError('llm.share() must accept stream for structured streaming.') from exc
                 model = model.share()
+        elif stream_output:
+            raise TypeError('llm must support share(stream=...) for structured streaming.')
         if hasattr(model, 'prompt'):
             model = model.prompt(system_prompt)
         if hasattr(model, 'formatter'):
-            model = model.formatter(JsonFormatter())
+            model = model.formatter(_WriterJsonFormatter())
         return model
 
     @classmethod
@@ -296,7 +322,7 @@ class WriterToolBase(ModuleBase):
         if not isinstance(response, str):
             return response
         try:
-            return JsonFormatter()(response)
+            return _WriterJsonFormatter()(response)
         except Exception as exc:
             raise ValueError(
                 f'Failed to parse LLM output as JSON for {schema.__name__}. '

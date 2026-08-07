@@ -26,6 +26,7 @@ Requirements:
   {{"type": "media_asset", "id": "..."}} entry from section_media. Do not invent asset IDs,
   paths, URLs, tokens, placeholders, or image blocks for unresolved needs.
 - Omit spans, provider_binding and provider_payload; the system manages them.
+- Emit WriterBlock fields in schema order. In particular, emit numbering and references before content.
 
 Writing task:
 {task_json}

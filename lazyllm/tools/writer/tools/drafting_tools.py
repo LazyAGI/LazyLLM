@@ -4,7 +4,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from .base import WriterToolBase
-from .stream_tools import DraftMarkdownStream
+from .stream_tools import DraftIRStream, DraftMarkdownStream
 from ..data_models.context import WritingContext
 from ..data_models.multimodal import MediaAssetLibrary, VisualPlan
 from ..data_models.task import WritingTask
@@ -48,35 +48,15 @@ class WriterDraftingTools(WriterToolBase):
                 result_extra,
             )
 
-        previous_data = self._unified_raw_data(previous_blocks)
-        visual_plan = self._unified_optional_model(visual_plan, VisualPlan) or VisualPlan()
-        media_library = self._unified_optional_model(media_assets, MediaAssetLibrary)
-        section_media = self._media_assets_for_section(instruction, visual_plan, media_library)
-        prompt = GENERATE_DRAFT_SECTION_PROMPT.format(
-            task_json=to_prompt_json(writing_task),
-            section_instruction_json=to_prompt_json(instruction),
-            context_json=to_prompt_json(writing_context),
-            previous_blocks_json=to_prompt_json(previous_data),
-            section_media_json=to_prompt_json(section_media),
+        return self._generate_ir_draft_section(
+            writing_task,
+            instruction,
+            writing_context,
+            previous_blocks,
+            visual_plan,
+            media_assets,
+            result_extra,
         )
-        draft_block = self._call_llm_structured(prompt, WriterBlock)
-        draft_block = self._normalize_draft_block(draft_block, instruction)
-
-        result = self._save_artifacts(
-            {'draft_block': draft_block},
-            step_name='generate_draft_section',
-            primary_key='draft_block',
-            context_key=None,
-            summary='Generated draft section.',
-            counts={
-                'draft_blocks': len(draft_block.children) + 1,
-            },
-            extra=result_extra,
-            artifact_filenames={
-                'draft_block': f'draft_block/{draft_block.node_id}_ir.lmd',
-            },
-        )
-        return result.model_dump()
 
     def stream_draft_section(
         self,
@@ -112,6 +92,116 @@ class WriterDraftingTools(WriterToolBase):
             prefix=f'{heading}\n\n',
             idle_timeout=timeout,
         )
+
+    def stream_draft_section_ir(
+        self,
+        task: Any,
+        section_instruction: Any,
+        context: Any,
+        previous_blocks: Any = None,
+        visual_plan: Any = None,
+        media_assets: Any = None,
+        *,
+        idle_timeout: Optional[float] = None,
+    ) -> DraftIRStream:
+        writing_task = self._unified_model(task, WritingTask)
+        instruction = self._unified_model(section_instruction, SectionInstruction)
+        writing_context = self._unified_model(context, WritingContext)
+        if self._instruction_representation(instruction) != 'ir':
+            raise ValueError('stream_draft_section_ir only supports IR section instructions.')
+
+        result_extra = self._draft_result_extra(
+            writing_task, instruction, writing_context, 'ir',
+        )
+        prompt = self._ir_draft_prompt(
+            writing_task,
+            instruction,
+            writing_context,
+            previous_blocks,
+            visual_plan,
+            media_assets,
+        )
+        return DraftIRStream(
+            call=lambda sink: self._call_llm_structured(
+                prompt,
+                WriterBlock,
+                stream_output={'_stream_sink': sink},
+            ),
+            normalize=lambda block: self._normalize_draft_block(block, instruction),
+            finalize=lambda block: self._save_ir_draft_section(block, result_extra),
+            instruction=instruction,
+            idle_timeout=self._draft_stream_idle_timeout(idle_timeout),
+        )
+
+    def _generate_ir_draft_section(
+        self,
+        task: WritingTask,
+        instruction: SectionInstruction,
+        context: WritingContext,
+        previous_blocks: Any,
+        visual_plan: Any,
+        media_assets: Any,
+        result_extra: Dict[str, Any],
+    ) -> dict:
+        prompt = self._ir_draft_prompt(
+            task,
+            instruction,
+            context,
+            previous_blocks,
+            visual_plan,
+            media_assets,
+        )
+        block = self._normalize_draft_block(
+            self._call_llm_structured(prompt, WriterBlock),
+            instruction,
+        )
+        return self._save_ir_draft_section(block, result_extra)
+
+    def _ir_draft_prompt(
+        self,
+        task: WritingTask,
+        instruction: SectionInstruction,
+        context: WritingContext,
+        previous_blocks: Any,
+        visual_plan: Any,
+        media_assets: Any,
+    ) -> str:
+        previous_data = self._unified_raw_data(previous_blocks)
+        resolved_visual_plan = self._unified_optional_model(
+            visual_plan, VisualPlan,
+        ) or VisualPlan()
+        media_library = self._unified_optional_model(media_assets, MediaAssetLibrary)
+        section_media = self._media_assets_for_section(
+            instruction, resolved_visual_plan, media_library,
+        )
+        return GENERATE_DRAFT_SECTION_PROMPT.format(
+            task_json=to_prompt_json(task),
+            section_instruction_json=to_prompt_json(instruction),
+            context_json=to_prompt_json(context),
+            previous_blocks_json=to_prompt_json(previous_data),
+            section_media_json=to_prompt_json(section_media),
+        )
+
+    def _save_ir_draft_section(
+        self,
+        draft_block: WriterBlock,
+        result_extra: Dict[str, Any],
+    ) -> dict:
+        result = self._save_artifacts(
+            {'draft_block': draft_block},
+            step_name='generate_draft_section',
+            primary_key='draft_block',
+            context_key=None,
+            summary='Generated draft section.',
+            counts={
+                'draft_blocks': len(draft_block.children) + 1,
+            },
+            extra=result_extra,
+            artifact_filenames={
+                'draft_block': f'draft_block/{draft_block.node_id}_ir.lmd',
+            },
+        )
+        return result.model_dump()
 
     def _generate_markdown_draft_section(
         self,

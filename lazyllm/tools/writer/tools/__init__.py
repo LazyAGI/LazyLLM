@@ -6,7 +6,7 @@ from .planning_tools import WriterPlanningTools
 from .quality_tools import WriterQualityTools
 from .resource_tools import WriterResourceTools
 from .revision_tools import WriterRevisionTools, apply_patch_to_ir
-from .stream_tools import DraftMarkdownStream
+from .stream_tools import DraftIRStream, DraftMarkdownStream, DraftPreviewStream
 
 __all__ = [
     'WriterToolBase',
@@ -18,5 +18,7 @@ __all__ = [
     'WriterResourceTools',
     'WriterRevisionTools',
     'apply_patch_to_ir',
+    'DraftIRStream',
     'DraftMarkdownStream',
+    'DraftPreviewStream',
 ]

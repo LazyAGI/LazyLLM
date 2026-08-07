@@ -35,12 +35,12 @@ class WriterBlock(BaseModel):
     # identifiers belong in provider_binding (for example provider_binding.block_id).
     node_id: str
     type: str
+    numbering: Dict[str, Any] = Field(default_factory=dict)
+    references: List[Dict[str, Any]] = Field(default_factory=list)
     content: str = ''
     spans: List[WriterSpan] = Field(default_factory=list)
     children: List['WriterBlock'] = Field(default_factory=list)
     stage: WriterStage = 'draft'
-    numbering: Dict[str, Any] = Field(default_factory=dict)
-    references: List[Dict[str, Any]] = Field(default_factory=list)
     # Provider-neutral binding contract. Common keys are provider, uri, document_id,
     # block_id, parent_block_id and revision. IDs here belong to the external system.
     provider_binding: Dict[str, Any] = Field(default_factory=dict)

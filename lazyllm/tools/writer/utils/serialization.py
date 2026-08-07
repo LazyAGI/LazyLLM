@@ -119,6 +119,12 @@ def render_document_markdown(document: WriterDocument) -> str:
     return '\n\n'.join(part for part in parts if part).strip() + '\n'
 
 
+def render_block_markdown(block: WriterBlock, level: int = 2) -> str:
+    return '\n\n'.join(
+        part for part in _render_block_markdown(block, level=level) if part
+    ).strip()
+
+
 def parse_markdown_sections(markdown: str) -> List[tuple[int, List[str], int, str]]:
     sections: List[tuple[int, List[str], int, str]] = []
     heading_path: List[str] = []
