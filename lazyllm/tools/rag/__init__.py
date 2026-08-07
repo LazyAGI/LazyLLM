@@ -23,7 +23,7 @@ from .dataReader import SimpleDirectoryReader, FileReader
 from .global_metadata import GlobalMetadataDesc as DocField
 from .data_type import DataType
 from .index_base import IndexBase
-from .store import LazyLLMStoreBase
+from .store import LazyLLMStoreBase, create_segment_store
 from .doc_to_db import SchemaExtractor
 from .query_enh_ac import QueryEnhACProcessor
 
@@ -83,6 +83,7 @@ __all__ = [
     'DocField',
     'DataType',
     'IndexBase',
+    'create_segment_store',
     'LazyLLMStoreBase',
     'FileReader',
     'CharacterSplitter',
