@@ -602,7 +602,11 @@ class WriterRevisionTools(WriterToolBase):
         if content.children:
             raise ValueError('image create content must not contain child blocks.')
         content.type = 'image'
-        content.references = [{'type': 'media_asset', 'id': asset_id}]
+        references = {'type': 'media_asset', 'id': asset_id}
+        asset = media_assets.assets[asset_id]
+        if asset.uri:
+            references['path'] = asset.uri
+        content.references = [references]
         return [content]
 
     @staticmethod
