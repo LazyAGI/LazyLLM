@@ -200,7 +200,9 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         parsed_docstring = docstring_parser.parse(self._description)
         doc_type_hints = self._parse_type_from_docstring(parsed_docstring)
 
-        func_type_hints = get_type_hints(func, globals(), locals())
+        # Resolve annotations in the callable's defining module. Host toolkits
+        # commonly use structured request models that are not imported here.
+        func_type_hints = get_type_hints(func, getattr(func, '__globals__', globals()), locals())
 
         func_return = func_type_hints.get('return')
         doc_return = doc_type_hints.get('return')
@@ -460,13 +462,19 @@ def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
 def _build_tool_desc(tool: 'ModuleTool') -> Dict:
     parsed_docstring = docstring_parser.parse(tool.description)
     args = _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring)
-    required_arg_list = tool.params_schema.model_json_schema().get('required', [])
+    model_schema = tool.params_schema.model_json_schema()
+    parameters = {
+        key: copy.deepcopy(value)
+        for key, value in model_schema.items()
+        if key not in {'title', 'properties'}
+    }
+    parameters['properties'] = args
     return {
         'type': 'function',
         'function': {
             'name': tool.name,
             'description': parsed_docstring.description,
-            'parameters': {'type': 'object', 'properties': args, 'required': required_arg_list},
+            'parameters': parameters,
         }
     }
 
@@ -756,7 +764,10 @@ def _build_tool_from_element(
         return group
     if callable(element):
         register('tmp_tool')(element)
-        tool = lazyllm.tmp_tool.resolve(element.__name__)()
+        # The registry wraps callables in a generated method whose module globals
+        # differ from the callable's defining module. Keep the original callable
+        # as the schema source so forward references and structured models resolve.
+        tool = lazyllm.tmp_tool.resolve(element.__name__)(schema_func=element)
         lazyllm.tmp_tool.remove(element.__name__)
         return tool
     raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, got {type(element)}')

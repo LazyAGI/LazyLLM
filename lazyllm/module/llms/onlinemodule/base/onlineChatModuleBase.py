@@ -139,6 +139,18 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         elif isinstance(src[0], list):
             src = [ele for ele in src if ele]
             if not src: return []
+            # Providers may stream several tool calls one at a time and may put
+            # the tail of one call next to the head of another.  In that case
+            # each delta contains a different number of indexed tool-call
+            # fragments, so positional zip merging is not valid.  Flatten the
+            # fragments and let the dict branch merge them by their stable
+            # provider index instead.
+            if all(
+                isinstance(item, dict) and 'index' in item
+                for chunk in src for item in chunk
+            ):
+                merged = self._merge_stream_result([item for chunk in src for item in chunk])
+                return merged if isinstance(merged, list) else [merged]
             assert len(set(map(len, src))) == 1, f'The lists of elements: {src} have different lengths.'
             ret = list(map(self._merge_stream_result, zip(*src)))
             return ret[0] if (len(ret) > 0 and isinstance(ret[0], list)) else ret
