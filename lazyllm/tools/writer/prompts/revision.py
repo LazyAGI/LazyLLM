@@ -100,6 +100,25 @@ Writing context:
 '''
 
 
+REWRITE_MARKDOWN_BLOCK_PROMPT = '''You are revising exactly one Markdown block.
+
+Return one StringReplace. Copy the selected block exactly into old_string and
+return the complete replacement paragraph in new_string. Set content_ref to
+document_root=true.
+Preserve unaffected inline formatting.
+Do not return surrounding document content or explanations.
+
+Instruction:
+{instruction}
+
+Selected complete Markdown block:
+{markdown_block}
+
+Writing context:
+{context_json}
+'''
+
+
 GENERATE_PATCH_SET_PROMPT = '''You are a revision content writer. Produce the visible document content requested by a ModifyPlan.
 
 Output semantics:

@@ -36,8 +36,15 @@ from ..prompts import (
     GENERATE_PATCH_SET_PROMPT,
     GENERATE_STRING_REPLACE_SET_PROMPT,
     LOCATE_REVISION_TARGET_PROMPT,
+    REWRITE_MARKDOWN_BLOCK_PROMPT,
 )
-from ..utils import parse_markdown_sections, to_prompt_json
+from ..utils import (
+    MarkdownSelectionError,
+    locate_markdown_paragraph,
+    parse_markdown_sections,
+    to_prompt_json,
+    validate_markdown_paragraph,
+)
 
 
 def apply_patch_to_ir(
@@ -88,7 +95,47 @@ class WriterRevisionTools(WriterToolBase):
         'apply_revision',
         'apply_patch',
         'apply_string_replace',
+        'build_selected_markdown_replace_set',
     ]
+
+    def build_selected_markdown_replace_set(
+        self,
+        document: Any,
+        instruction: str,
+        selected_text: str,
+        context: Any,
+    ) -> Dict[str, Any]:
+        """Rewrite one deterministically located Markdown paragraph."""
+        source = self._unified_document(document)
+        if isinstance(source, WriterDocument):
+            raise TypeError('build_selected_markdown_replace_set requires Markdown input.')
+        writing_context = self._unified_model(context, WritingContext)
+        requested = str(instruction or '').strip()
+        if not requested:
+            raise MarkdownSelectionError(
+                'SELECTION_UNSUPPORTED', 'instruction must not be empty.',
+            )
+        old_markdown = locate_markdown_paragraph(source, selected_text)
+        generated = self._call_llm_structured(
+            REWRITE_MARKDOWN_BLOCK_PROMPT.format(
+                instruction=requested,
+                markdown_block=old_markdown,
+                context_json=to_prompt_json(writing_context),
+            ),
+            StringReplace,
+        )
+        new_markdown = validate_markdown_paragraph(generated.new_string)
+        replace_set = StringReplaceSet(
+            replace_set_id=f'replace-{uuid4()}',
+            replacements=[StringReplace(
+                replacement_id='rewrite-selection',
+                old_string=old_markdown,
+                new_string=new_markdown,
+                content_ref=ContentRef(document_root=True),
+            )],
+            meta={'source': 'selection_rewrite'},
+        )
+        return replace_set.model_dump()
 
     def _apply_patch_hunk(
         self,

@@ -8,11 +8,14 @@ from .artifact import (
     save_artifact_json,
 )
 from .serialization import (
+    MarkdownSelectionError,
     get_markdown_outline_targets,
+    locate_markdown_paragraph,
     parse_document_markdown,
     parse_markdown_sections,
     render_document_markdown,
     to_prompt_json,
+    validate_markdown_paragraph,
 )
 
 __all__ = [
@@ -28,4 +31,7 @@ __all__ = [
     'parse_document_markdown',
     'parse_markdown_sections',
     'to_prompt_json',
+    'MarkdownSelectionError',
+    'locate_markdown_paragraph',
+    'validate_markdown_paragraph',
 ]
