@@ -202,7 +202,9 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         # Resolve annotations in the callable's defining module. Host toolkits
         # commonly use structured request models that are not imported here.
-        func_type_hints = get_type_hints(func, getattr(func, '__globals__', globals()), locals())
+        annotation_func = inspect.unwrap(func)
+        func_type_hints = get_type_hints(
+            annotation_func, getattr(annotation_func, '__globals__', globals()), locals())
 
         func_return = func_type_hints.get('return')
         doc_return = doc_type_hints.get('return')
@@ -764,12 +766,13 @@ def _build_tool_from_element(
         return group
     if callable(element):
         register('tmp_tool')(element)
-        # The registry wraps callables in a generated method whose module globals
-        # differ from the callable's defining module. Keep the original callable
-        # as the schema source so forward references and structured models resolve.
-        tool = lazyllm.tmp_tool.resolve(element.__name__)(schema_func=element)
-        lazyllm.tmp_tool.remove(element.__name__)
-        return tool
+        try:
+            # The registry wraps callables in a generated method whose module globals
+            # differ from the callable's defining module. Keep the original callable
+            # as the schema source so forward references and structured models resolve.
+            return lazyllm.tmp_tool.resolve(element.__name__)(schema_func=element)
+        finally:
+            lazyllm.tmp_tool.remove(element.__name__)
     raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, got {type(element)}')
 
 
