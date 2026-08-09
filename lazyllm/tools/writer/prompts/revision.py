@@ -9,6 +9,9 @@ Output semantics:
 - Reordering targets every existing block whose relative order participates in the change.
 - targets contains the relevant content_ref values copied exactly from the document candidates.
 - Each target contains content_ref and a brief reason.
+- For Writer IR, each content_ref must be exactly {{"node_id": "<string copied from a candidate>"}}.
+- node_id must be a string. Never put an object inside node_id, and do not add
+  heading_path, document_root, occurrence, or other fields when node_id is present.
 - Plain text without headings uses content_ref.document_root=true.
 - summary describes the revision scope in one sentence.
 - A body revision has one or more targets.
@@ -30,6 +33,19 @@ Plan semantics:
   - update changes the visible fields of an existing block;
   - delete removes an existing block;
   - move relocates an existing block.
+- Choose operations that match the requested structural outcome, not merely an
+  approximately similar textual result:
+  - If task.query explicitly asks to delete or remove N paragraphs, sections, or
+    blocks, produce exactly N delete instructions targeting those complete existing
+    blocks. Do not simulate structural deletion by shortening them with update.
+  - If task.query asks to merge or consolidate blocks, update the retained block with
+    the essential combined content and delete each absorbed block.
+  - If task.query specifies only a substantial length reduction, choose update,
+    delete, or a coherent combination based on semantic redundancy. Prefer removing
+    or consolidating whole redundant blocks when that preserves the narrative or
+    argument; do not mechanically shrink every located block by the same ratio.
+  - Do not delete a semantically distinct block solely to satisfy a length target when
+    its essential content cannot be preserved in a retained block.
 - Image-specific revision semantics:
   - A create instruction that adds an image must include visual_instruction.
   - visual_instruction.need_id must equal instruction_id and its content_ref must

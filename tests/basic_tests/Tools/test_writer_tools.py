@@ -831,6 +831,132 @@ def test_generate_section_instructions_preserves_outline_references():
         assert instruction.fact_constraints == []
 
 
+def test_generate_rewrite_section_instructions_ir_uses_existing_meta_for_source_refs():
+    task = WritingTask(task_id='task-rewrite-ir', query='全文重写', task_type='revise')
+    context = WritingContext(context_id='ctx-rewrite-ir')
+    source = WriterDocument(
+        document_id='source-ir',
+        stage='draft',
+        title='原文标题',
+        blocks=[WriterBlock(
+            node_id='source-section-1',
+            type='heading',
+            content='原第一章',
+            stage='draft',
+            children=[WriterBlock(
+                node_id='source-paragraph-1',
+                type='paragraph',
+                content='需要被重写的原文。',
+                stage='draft',
+            )],
+        )],
+    )
+    llm_result = SectionInstructionList(
+        instructions=[SectionInstruction(
+            instruction_id='rewrite-1',
+            content_ref=ContentRef(node_id='model-generated-id'),
+            section_title='新第一章',
+            section_goal='重写第一章',
+            references=[{'node_id': 'source-section-1'}],
+        )],
+        meta={'document_title': '新文档'},
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterPlanningTools(artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=llm_result):
+            result = tool.generate_rewrite_section_instructions(task, source, context)
+        instructions = load_artifact_json(result['artifact_path'], SectionInstructionList)
+
+    instruction = instructions.instructions[0]
+    assert instruction.content_ref == ContentRef(node_id='rewrite-section-1')
+    assert instruction.references == []
+    assert instruction.meta['source_content_refs'] == [{'node_id': 'source-section-1'}]
+    assert '需要被重写的原文。' in instruction.meta['source_content']
+    assert instructions.meta['representation'] == 'ir'
+    assert instructions.meta['document_title'] == '新文档'
+
+
+def test_generate_rewrite_section_instructions_supports_markdown():
+    task = WritingTask(task_id='task-rewrite-md', query='全文重写', task_type='revise')
+    context = WritingContext(context_id='ctx-rewrite-md')
+    source = '# 原文标题\n\n## 原第一章\n\n需要被重写的 Markdown 原文。\n'
+    llm_result = SectionInstructionList(
+        instructions=[SectionInstruction(
+            instruction_id='rewrite-md-1',
+            content_ref=ContentRef(heading_path=['ignored', 'ignored']),
+            section_title='新第一章',
+            section_goal='重写第一章',
+            references=[{
+                'heading_path': ['原文标题', '原第一章'],
+                'occurrence': 1,
+            }],
+        )],
+        meta={'document_title': '新 Markdown 文档'},
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterPlanningTools(artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=llm_result):
+            result = tool.generate_rewrite_section_instructions(task, source, context)
+        instructions = load_artifact_json(result['artifact_path'], SectionInstructionList)
+
+    instruction = instructions.instructions[0]
+    assert instruction.content_ref == ContentRef(
+        heading_path=['新 Markdown 文档', '新第一章'], occurrence=1,
+    )
+    assert instruction.meta['source_content_refs'] == [{
+        'heading_path': ['原文标题', '原第一章'],
+        'occurrence': 1,
+    }]
+    assert 'Markdown 原文' in instruction.meta['source_content']
+    assert instructions.meta['representation'] == 'markdown'
+
+
+def test_generate_ir_draft_document_is_ui_editable_without_outline():
+    context = WritingContext(context_id='ctx-rewrite-draft')
+    block = WriterBlock(
+        node_id='rewrite-section-1',
+        type='heading',
+        content='重写章节',
+        stage='draft',
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        result = WriterDraftingTools(artifact_store=d).generate_draft_document(
+            draft_blocks=[block],
+            context=context,
+            title='重写后文档',
+        )
+        document = load_artifact_json(result['artifact_path'], WriterDocument)
+
+    assert document.title == '重写后文档'
+    assert document.ui_editable is True
+
+
+def test_normalized_outline_is_not_ui_editable():
+    task = WritingTask(task_id='task-outline-ui', query='生成大纲', task_type='write')
+    context = WritingContext(context_id='ctx-outline-ui')
+    outline = WriterDocument(
+        document_id='outline-ui',
+        stage='outline',
+        title='大纲',
+        blocks=[WriterBlock(
+            node_id='outline-section-1',
+            type='heading',
+            content='第一章',
+            stage='outline',
+        )],
+        ui_editable=True,
+    )
+
+    normalized = WriterPlanningTools()._normalize_outline(
+        outline, task, context, [],
+    )
+
+    assert normalized.ui_editable is False
+
+
 def test_generate_final_document_writes_markdown_file():
     context = WritingContext(context_id='ctx-output-file', doc_id='doc-output-file')
     draft_document = WriterDocument(

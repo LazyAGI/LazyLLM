@@ -6,11 +6,13 @@ from ..data_models.context import WritingContext
 from ..data_models.multimodal import VisualPlan, _VISUAL_STRATEGY_ORDER
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
-from ..data_models.writer_ir import WriterBlock, WriterDocument
+from ..data_models.writer_ir import ContentRef, WriterBlock, WriterDocument
 from ..data_models.planning import SectionInstruction, SectionInstructionList
 from ..prompts import (
     GENERATE_OUTLINE_MARKDOWN_PROMPT,
     GENERATE_OUTLINE_PROMPT,
+    GENERATE_REWRITE_OUTLINE_PROMPT,
+    GENERATE_REWRITE_SECTION_INSTRUCTIONS_PROMPT,
     GENERATE_SECTION_INSTRUCTIONS_PROMPT,
     GENERATE_VISUAL_PLAN_PROMPT,
 )
@@ -18,6 +20,8 @@ from ..utils import (
     get_markdown_outline_targets,
     make_markdown_tool_result,
     parse_markdown_sections,
+    render_block_markdown,
+    render_document_markdown,
     to_prompt_json,
 )
 
@@ -25,6 +29,8 @@ from ..utils import (
 class WriterPlanningTools(WriterToolBase):
     __public_apis__ = [
         'generate_outline',
+        'generate_rewrite_outline',
+        'generate_rewrite_section_instructions',
         'generate_section_instructions',
     ]
 
@@ -102,6 +108,87 @@ class WriterPlanningTools(WriterToolBase):
             },
         )
         return result.model_dump()
+
+    def generate_rewrite_outline(
+        self,
+        task: Any,
+        source_document: Any,
+        context: Any,
+    ) -> dict:
+        writing_task = self._unified_model(task, WritingTask)
+        source = self._unified_document(source_document)
+        if not isinstance(source, WriterDocument):
+            raise TypeError('generate_rewrite_outline requires a WriterDocument source.')
+        writing_context = self._unified_model(context, WritingContext)
+        document_id = f'{writing_context.context_id}-rewrite-outline'
+        prompt = GENERATE_REWRITE_OUTLINE_PROMPT.format(
+            task_json=to_prompt_json(writing_task),
+            document_id=document_id,
+            context_json=to_prompt_json(writing_context),
+            source_document_json=render_document_markdown(source),
+        )
+        outline = self._call_llm_structured(prompt, WriterDocument)
+        outline.document_id = document_id
+        outline = self._normalize_outline(outline, writing_task, writing_context, [])
+        return self._save_artifacts(
+            {'outline': outline},
+            step_name='generate_rewrite_outline',
+            primary_key='outline',
+            context_key=None,
+            summary='Generated an internal outline for a complete document rewrite.',
+            counts={
+                'top_level_sections': len(outline.blocks),
+                'outline_nodes': len(list(outline.iter_blocks())),
+            },
+            extra={'representation': 'ir'},
+            artifact_meta={
+                'task_id': writing_task.task_id,
+                'context_id': writing_context.context_id,
+                'source_document_id': source.document_id,
+            },
+        ).model_dump()
+
+    def generate_rewrite_section_instructions(
+        self,
+        task: Any,
+        source_document: Any,
+        context: Any,
+    ) -> dict:
+        writing_task = self._unified_model(task, WritingTask)
+        source = self._unified_document(source_document)
+        writing_context = self._unified_model(context, WritingContext)
+        representation, source_title, source_sections = self._rewrite_source_sections(source)
+        prompt = GENERATE_REWRITE_SECTION_INSTRUCTIONS_PROMPT.format(
+            representation=representation,
+            task_json=to_prompt_json(writing_task),
+            source_title=source_title,
+            source_sections_json=to_prompt_json(source_sections),
+            context_json=to_prompt_json(writing_context),
+        )
+        instructions = self._call_llm_structured(prompt, SectionInstructionList)
+        instructions = self._normalize_rewrite_section_instructions(
+            instructions,
+            representation,
+            source_title,
+            source_sections,
+            writing_context,
+        )
+        return self._save_artifacts(
+            {'section_instructions': instructions},
+            step_name='generate_rewrite_section_instructions',
+            primary_key='section_instructions',
+            context_key=None,
+            summary='Generated section instructions for a complete document rewrite.',
+            counts={'section_instructions': len(instructions.instructions)},
+            extra={
+                'representation': representation,
+                'document_title': instructions.meta['document_title'],
+            },
+            artifact_meta={
+                'context_id': writing_context.context_id,
+                'source_document_id': source.document_id if isinstance(source, WriterDocument) else None,
+            },
+        ).model_dump()
 
     def generate_visual_plan(self, task: Any, outline: Any, context: Any) -> dict:
         writing_task = self._unified_model(task, WritingTask)
@@ -392,6 +479,154 @@ class WriterPlanningTools(WriterToolBase):
             'has_execution_results': execution_results is not None,
         })
         return instruction_list
+
+    @staticmethod
+    def _rewrite_source_sections(
+        source: WriterDocument | str,
+    ) -> tuple[str, str, List[Dict[str, Any]]]:
+        if isinstance(source, WriterDocument):
+            if not source.blocks:
+                raise ValueError('WriterDocument rewrite source must contain at least one block.')
+            grouped_blocks: List[List[WriterBlock]] = []
+            for block in source.blocks:
+                if block.type == 'heading' or not grouped_blocks:
+                    grouped_blocks.append([block])
+                else:
+                    grouped_blocks[-1].append(block)
+            return 'ir', source.title or 'Rewrite', [
+                {
+                    'source_ref': {'node_id': blocks[0].node_id},
+                    'section_title': (
+                        blocks[0].content or source.title or f'Section {index}'
+                    ),
+                    'content': '\n\n'.join(
+                        render_block_markdown(block, level=2).strip()
+                        for block in blocks
+                    ),
+                    'format': {
+                        'type': blocks[0].type,
+                        'numbering': blocks[0].numbering,
+                        'top_level_types': [block.type for block in blocks],
+                        'child_types': [
+                            child.type for block in blocks for child in block.children
+                        ],
+                    },
+                }
+                for index, blocks in enumerate(grouped_blocks, start=1)
+            ]
+
+        parsed = parse_markdown_sections(source)
+        title = next(
+            (heading_path[-1] for level, heading_path, _, _ in parsed if level == 1),
+            'Rewrite',
+        )
+        sections = [section for section in parsed if section[0] == 2]
+        if not sections:
+            return 'markdown', title, [{
+                'source_ref': {'document_root': True},
+                'section_title': title,
+                'content': source,
+                'format': {'heading_level': 2},
+            }]
+        return 'markdown', title, [
+            {
+                'source_ref': {
+                    'heading_path': heading_path,
+                    'occurrence': occurrence,
+                },
+                'section_title': heading_path[-1],
+                'content': body,
+                'format': {'heading_level': level},
+            }
+            for level, heading_path, occurrence, body in sections
+        ]
+
+    @classmethod
+    def _normalize_rewrite_section_instructions(
+        cls,
+        instruction_list: SectionInstructionList,
+        representation: str,
+        source_title: str,
+        source_sections: List[Dict[str, Any]],
+        context: WritingContext,
+    ) -> SectionInstructionList:
+        if not instruction_list.instructions:
+            raise ValueError('Rewrite section instructions must contain at least one section.')
+        document_title = str(instruction_list.meta.get('document_title') or source_title).strip()
+        if not document_title:
+            raise ValueError('Rewrite section instructions require a document title.')
+        source_by_ref = {
+            cls._rewrite_source_ref_key(section['source_ref']): section
+            for section in source_sections
+        }
+        seen_titles: Dict[str, int] = {}
+        for index, instruction in enumerate(instruction_list.instructions, start=1):
+            cls._validate_instruction(instruction, f'rewrite-section-{index}')
+            instruction.instruction_id = instruction.instruction_id.strip() or f'rewrite-instruction-{index}'
+            instruction.section_title = instruction.section_title.strip()
+            seen_titles[instruction.section_title] = seen_titles.get(instruction.section_title, 0) + 1
+            selected_sections = []
+            selected_refs = []
+            for reference in instruction.references:
+                source_section = source_by_ref.get(cls._rewrite_source_ref_key(reference))
+                if source_section is not None and source_section not in selected_sections:
+                    selected_sections.append(source_section)
+                    selected_refs.append(dict(source_section['source_ref']))
+            if not selected_sections:
+                source_section = source_sections[min(index - 1, len(source_sections) - 1)]
+                selected_sections = [source_section]
+                selected_refs = [dict(source_section['source_ref'])]
+            if representation == 'ir':
+                instruction.content_ref = ContentRef(node_id=f'rewrite-section-{index}')
+            else:
+                instruction.content_ref = ContentRef(
+                    heading_path=[document_title, instruction.section_title],
+                    occurrence=seen_titles[instruction.section_title],
+                )
+            instruction.references = []
+            if not context.facts:
+                instruction.fact_constraints = []
+            instruction.meta.update({
+                'representation': representation,
+                'rewrite': True,
+                'document_title': document_title,
+                'outline_title': document_title,
+                'source_content_refs': selected_refs,
+                'source_content': '\n\n'.join(
+                    str(section.get('content') or '').strip()
+                    for section in selected_sections
+                    if str(section.get('content') or '').strip()
+                ),
+                'source_format': [section.get('format') or {} for section in selected_sections],
+            })
+            if representation == 'markdown':
+                instruction.meta['outline_heading_level'] = 2
+            else:
+                instruction.meta['outline_node_level'] = 1
+        instruction_list.instruction_set_id = f'{context.context_id}-rewrite-section-instructions'
+        instruction_list.outline_id = None
+        instruction_list.meta.update({
+            'source': 'llm',
+            'representation': representation,
+            'rewrite': True,
+            'document_title': document_title,
+            'context_id': context.context_id,
+        })
+        return instruction_list
+
+    @staticmethod
+    def _rewrite_source_ref_key(reference: Dict[str, Any]) -> tuple[Any, ...]:
+        if reference.get('node_id'):
+            return 'node_id', str(reference['node_id'])
+        if reference.get('heading_path'):
+            return (
+                'heading_path',
+                tuple(reference['heading_path']),
+                int(reference.get('occurrence') or 1),
+            )
+        if reference.get('document_root'):
+            return 'document_root',
+        return 'invalid',
 
     def _normalize_ir_section_instruction(
         self,

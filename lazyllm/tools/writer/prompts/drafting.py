@@ -15,6 +15,9 @@ Requirements:
 - Do not generate short summary-like or placeholder-like blocks just to match the expected_blocks count.
 - If expected_blocks is too coarse, add additional content blocks for setup, transition, evidence/detail, consequence, or closing as appropriate.
 - Respect required_points, fact_constraints, style_constraints, and relation_constraints.
+- When section_instruction.meta.rewrite=true, treat meta.source_content as the authoritative
+  source material for this section and meta.source_format as formatting guidance. Rewrite it
+  according to the instruction without exposing source metadata in the result.
 - Use the facts and resources identified by references when relevant. Do not copy or rewrite references
   in the output; the system carries them from the section instruction.
 - Do not invent facts that conflict with the writing context.
@@ -53,6 +56,9 @@ Requirements:
 - Do not output the section title or its heading; the system adds the heading.
 - Follow the section instruction as a writing plan, not as a list of visible headings.
 - Respect required_points, fact_constraints, style_constraints, and relation_constraints.
+- When section_instruction.meta.rewrite=true, treat meta.source_content as the authoritative
+  source material for this section and meta.source_format as formatting guidance. Rewrite it
+  according to the instruction without exposing source metadata in the result.
 - Use references when relevant, but do not copy reference metadata into the document.
 - Do not invent facts that conflict with the writing context.
 - If previous Markdown is provided, maintain continuity and avoid repetition.

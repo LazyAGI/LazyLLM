@@ -5,6 +5,8 @@ import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
 
+from lazyllm.module.module import ModuleExecutionError
+
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.multimodal import MediaAssetLibrary
@@ -192,11 +194,13 @@ class WriterRevisionTools(WriterToolBase):
         self,
         source_document: Any,
         revised_document: Any,
+        media_assets: Any = None,
     ) -> dict:
         '''Build a deterministic PatchSet from a user-edited WriterDocument.'''
         source = self._unified_model(source_document, WriterDocument)
         revised = self._unified_model(revised_document, WriterDocument)
-        patch = self._diff_documents(source, revised)
+        media_library = self._unified_optional_model(media_assets, MediaAssetLibrary)
+        patch = self._diff_documents(source, revised, media_assets=media_library)
         result = self._save_artifacts(
             {'patch_set': patch},
             step_name='build_patch_set_from_documents',
@@ -244,7 +248,20 @@ class WriterRevisionTools(WriterToolBase):
             task_json=to_prompt_json(writing_task),
             document_content=to_prompt_json(candidates),
         )
-        locate_result = self._call_llm_structured(prompt, LocateResult)
+        try:
+            locate_result = self._call_llm_structured(prompt, LocateResult)
+        except (ModuleExecutionError, ValueError):
+            locate_result = self._call_llm_structured(
+                prompt + '''
+
+Your previous response could not be parsed.
+Return valid JSON only.
+For Writer IR, every content_ref must be exactly:
+{"node_id": "<node_id copied from a candidate>"}
+node_id must be a string. Do not include heading_path or nest objects inside node_id.
+''',
+                LocateResult,
+            )
         candidate_refs = {
             self._content_ref_key(candidate['content_ref'])
             for candidate in candidates
@@ -995,6 +1012,12 @@ class WriterRevisionTools(WriterToolBase):
             instruction_ids.add(instr.instruction_id)
             if instr.modify_type in {'create', 'move'} and instr.position is None:
                 raise ValueError(f'{instr.modify_type} instruction requires position.')
+            if instr.visual_instruction is not None:
+                # Canonicalize the linked fields after the parent instruction and
+                # content reference. Models commonly invent these IDs separately,
+                # but downstream media resolution requires one stable lookup key.
+                instr.visual_instruction.need_id = instr.instruction_id
+                instr.visual_instruction.content_ref = instr.content_ref.model_copy(deep=True)
             self._validate_modify_instruction(instr, document=document)
             if instr.modify_type == 'create' and normalized \
                     and normalized[-1].modify_type == 'create' \

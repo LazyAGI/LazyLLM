@@ -84,6 +84,75 @@ Execution results:
 '''
 
 
+GENERATE_REWRITE_OUTLINE_PROMPT = '''Generate a new writing outline for a complete rewrite of the source document.
+
+Requirements:
+- Return a WriterDocument object with stage="outline".
+- Set document_id to the exact document_id below.
+- Treat the user's requested end state as authoritative, including chapter count, section order,
+  compression, expansion, merging, splitting, and renamed sections.
+- Use top-level heading blocks only for sections that will appear in the rewritten document.
+- Preserve source facts, plot points, terminology, characters, and style unless the task asks to change them.
+- Include concise source-grounded descriptions and key points under each heading so drafting can recreate
+  the requested document without reading the source again.
+- Do not copy the source structure when it conflicts with the requested end state.
+- Do not add planning commentary or other sections that should not appear in the final document.
+- Put section titles in heading block.content and descriptions or key points in child paragraph or list_item blocks.
+- Fill node_id for every block with stable ids such as rewrite-section-1 and rewrite-section-1-1.
+- Use block.numbering.level for heading levels.
+- Omit spans, references, provider_binding and provider_payload; the system manages them.
+- Preserve the source title unless the task explicitly requests a new title.
+
+Writing task:
+{task_json}
+
+document_id: {document_id}
+
+Writing context:
+{context_json}
+
+Complete source document:
+{source_document_json}
+'''
+
+
+GENERATE_REWRITE_SECTION_INSTRUCTIONS_PROMPT = '''Generate the section-level writing instructions for a complete rewrite.
+
+Requirements:
+- Return a SectionInstructionList object. Do not return an outline or draft prose.
+- The user's requested end state is authoritative. You may preserve, rename, merge, split, reorder,
+  expand, or remove source sections as required by the task.
+- meta.document_title must be the title of the rewritten document. Preserve the source title unless
+  the task explicitly requests a new title.
+- Produce one SectionInstruction for every top-level section in the rewritten document, in final order.
+- instruction_id must be stable and unique. section_title and section_goal must be non-empty.
+- required_points must retain the source facts, plot points, terminology, and details needed by drafting.
+- expected_blocks must be a concise content plan, not visible headings.
+- references must contain only exact source_ref objects copied from source_sections. Use them to identify
+  which source sections inform each rewritten section; do not invent reference fields or values.
+- For representation="ir", content_ref must contain only a unique node_id such as rewrite-section-1.
+- For representation="markdown", content_ref must contain only heading_path=[document title, section title]
+  and occurrence=1.
+- Respect the writing context and do not invent facts that conflict with it.
+- Do not add source excerpts, paths, URLs, provider bindings, media assets, or planning commentary.
+
+Representation:
+{representation}
+
+Writing task:
+{task_json}
+
+Source title:
+{source_title}
+
+Source sections:
+{source_sections_json}
+
+Writing context:
+{context_json}
+'''
+
+
 GENERATE_VISUAL_PLAN_PROMPT = '''Generate a visual plan for this Writer IR outline.
 
 Requirements:

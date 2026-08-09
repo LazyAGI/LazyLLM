@@ -440,6 +440,39 @@ def test_modify_instruction_keeps_meta_with_explicit_image_instruction():
         )
 
 
+def test_normalize_image_plan_canonicalizes_linked_visual_identifiers():
+    canonical_ref = ContentRef(node_id='anchor')
+    plan = ModifyPlan(
+        scope='block',
+        instructions=[ModifyInstruction(
+            instruction_id='instr-image',
+            content_ref=ContentRef(node_id='anchor', heading_path=['stale heading']),
+            modify_type='create',
+            position='after',
+            instruction='新增配图',
+            visual_instruction=VisualInstruction(
+                need_id='model-invented-visual-id',
+                content_ref=ContentRef(node_id='anchor', heading_path=['other stale heading']),
+                visual_type='image',
+                purpose='补充说明',
+                preferred_strategy='image_generation',
+            ),
+        )],
+    )
+
+    normalized = WriterRevisionTools()._normalize_modify_plan(
+        plan,
+        WritingTask(query='新增配图', task_type='revise'),
+        [canonical_ref],
+        {WriterRevisionTools._content_ref_key(canonical_ref)},
+    )
+
+    instruction = normalized.instructions[0]
+    assert instruction.visual_instruction.need_id == instruction.instruction_id
+    assert instruction.visual_instruction.content_ref == instruction.content_ref
+    assert instruction.content_ref == canonical_ref
+
+
 def test_generate_patch_set_uses_instruction_content_ref():
     plan = ModifyPlan(
         scope='block',

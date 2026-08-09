@@ -339,7 +339,7 @@ class WriterDraftingTools(WriterToolBase):
             stage='draft',
             title=str(title) if title is not None else writing_outline.title if writing_outline else '',
             blocks=writer_blocks,
-            ui_editable=False,
+            ui_editable=True,
             metadata={
                 'source': 'generate_draft_document',
                 'context_id': context.context_id,

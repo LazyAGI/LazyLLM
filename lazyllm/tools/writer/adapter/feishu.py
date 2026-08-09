@@ -253,6 +253,9 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 refreshed = refreshed_by_block_id.get(created_id)
                 if isinstance(temporary_id, str) and refreshed is not None:
                     refreshed.node_id = temporary_id
+                    if patch is not None and patch.block is not None \
+                            and patch.block.node_id == temporary_id:
+                        refreshed.references = deepcopy(patch.block.references)
 
         if operation is not None and operation.operation in {'move', 'replace'}:
             relations = (
