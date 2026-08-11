@@ -98,6 +98,8 @@ _META_REQUIRED_FIELDS = {
     'description',
 }
 
+_SUPPORTED_SCRIPT_EXTENSIONS = {'.py', '.sh', '.bash'}
+
 
 class SkillManager(ModuleBase):
     def __init__(self, dir: Optional[str] = None, skills: Optional[Iterable[str]] = None,
@@ -622,13 +624,17 @@ class SkillManager(ModuleBase):
             normalized_rel_path = self._normalize_skill_rel_path(rel_path)
         except ValueError as exc:
             return {'status': 'error', 'name': name, 'error': str(exc)}
-        if not normalized_rel_path.startswith('scripts/'):
+        extension = posixpath.splitext(normalized_rel_path)[1].lower()
+        if extension not in _SUPPORTED_SCRIPT_EXTENSIONS:
             return {
                 'status': 'error',
                 'name': name,
                 'rel_path': normalized_rel_path,
-                'error_type': 'InvalidRelPath',
-                'error': 'run_script rel_path must be under scripts/.',
+                'error_type': 'UnsupportedScriptType',
+                'error': (
+                    'run_script only supports Python and shell scripts '
+                    f'({", ".join(sorted(_SUPPORTED_SCRIPT_EXTENSIONS))}).'
+                ),
             }
         base = info['path']
         temp_dir = None
