@@ -5,11 +5,12 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from ..utils.artifact import ArtifactModel
+from .writer_ir import ContentRef
 
 
 class SectionInstruction(BaseModel):
     instruction_id: str
-    outline_node_id: str
+    content_ref: ContentRef
     section_title: str
     section_goal: str
     required_points: List[str] = Field(default_factory=list)
@@ -22,7 +23,6 @@ class SectionInstruction(BaseModel):
     pending_subtasks: List[str] = Field(default_factory=list)
     revision_notes: List[str] = Field(default_factory=list)
     meta: Dict[str, Any] = Field(default_factory=dict)
-
 
 class SectionInstructionList(ArtifactModel):
     instruction_set_id: Optional[str] = None

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 from copy import deepcopy
+import json
 import re
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -567,13 +568,17 @@ class FeishuFSBase(LinkDocumentFSBase):
         document_revision_id: int = -1,
     ) -> Dict[str, Any]:
         url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{parent_block_id}/descendant'
+        api_descendants = deepcopy(descendants)
+        for descendant in api_descendants:
+            if isinstance(descendant, dict):
+                descendant.pop('_media', None)
         response = self._post(
             url,
             params={'document_revision_id': document_revision_id},
             json={
                 'index': index,
                 'children_id': children_id,
-                'descendants': descendants,
+                'descendants': api_descendants,
             },
         )
         return (response or {}).get('data') or {}
@@ -613,6 +618,92 @@ class FeishuFSBase(LinkDocumentFSBase):
         )
         return (response or {}).get('data') or {}
 
+    def _upload_docx_media(
+        self,
+        document_id: str,
+        image_block_id: str,
+        file_name: str,
+        local_path: str,
+    ) -> str:
+        with open(local_path, 'rb') as image_file:
+            image_data = image_file.read()
+        response = self._post(
+            f'{self._base_url}/drive/v1/medias/upload_all',
+            files={
+                'file_name': (None, file_name),
+                'parent_type': (None, 'docx_image'),
+                'parent_node': (None, image_block_id),
+                'size': (None, str(len(image_data))),
+                'extra': (None, json.dumps({'drive_route_token': document_id})),
+                'file': (file_name, image_data, 'application/octet-stream'),
+            },
+            headers={'Content-Type': None},
+        )
+        token = str(((response or {}).get('data') or {}).get('file_token') or '').strip()
+        if not token:
+            raise RuntimeError(f'Feishu media upload returned no file token for {image_block_id!r}.')
+        return token
+
+    def _bind_docx_images(
+        self,
+        document_id: str,
+        blocks: List[Dict[str, Any]],
+        created: Dict[str, Any],
+        document_revision_id: int = -1,
+        *,
+        raise_on_error: bool = False,
+        parent_block_id: Optional[str] = None,
+    ) -> int:
+        block_ids = {
+            relation.get('temporary_block_id'): relation.get('block_id')
+            for relation in created.get('block_id_relations') or []
+            if isinstance(relation, dict)
+        }
+        revision = document_revision_id
+        binding_errors: List[Exception] = []
+        for block in blocks:
+            media = block.get('_media')
+            if block.get('block_type') != 27 or not isinstance(media, dict):
+                continue
+            block_id = block_ids.get(block.get('block_id'))
+            if not block_id:
+                error = RuntimeError(
+                    f'Feishu did not return a block ID for image {block.get("block_id")!r}.')
+                binding_errors.append(error)
+                LOG.warning(str(error))
+                continue
+            try:
+                token = self._upload_docx_media(
+                    document_id, block_id, media['file_name'], media['local_path'])
+                image = deepcopy(block.get('image') or {})
+                image['token'] = token
+                updated = self._batch_update_blocks(
+                    document_id,
+                    [{'block_id': block_id, 'replace_image': image}],
+                    document_revision_id=revision,
+                )
+                revision = int(updated.get('document_revision_id', revision))
+            except Exception as exc:
+                binding_errors.append(exc)
+                LOG.warning(f'Failed to bind Feishu image {media.get("media_asset_id")!r}: {exc}')
+                parent_id = block_ids.get(
+                    block.get('parent_id'), parent_block_id or document_id)
+                children = self._get_docx_children(document_id, parent_id)
+                index = self._block_index(children, block_id)
+                if index is not None:
+                    try:
+                        deleted = self._batch_delete_child_blocks(
+                            document_id, parent_id, index, index + 1,
+                            document_revision_id=revision,
+                        )
+                        revision = int(deleted.get('document_revision_id', revision))
+                    except Exception as delete_exc:
+                        LOG.warning(f'Failed to remove empty Feishu image {block_id!r}: {delete_exc}')
+        if raise_on_error and binding_errors:
+            raise RuntimeError(
+                f'Failed to bind {len(binding_errors)} Feishu image block(s).') from binding_errors[0]
+        return revision
+
     def create_block(
         self,
         document_id: str,
@@ -623,7 +714,7 @@ class FeishuFSBase(LinkDocumentFSBase):
         *,
         document_revision_id: int = -1,
     ) -> Dict[str, Any]:
-        return self._create_descendant_blocks(
+        created = self._create_descendant_blocks(
             document_id,
             parent_block_id,
             index,
@@ -631,6 +722,20 @@ class FeishuFSBase(LinkDocumentFSBase):
             descendants,
             document_revision_id=document_revision_id,
         )
+        try:
+            initial_revision = int(created.get('document_revision_id', document_revision_id))
+        except (TypeError, ValueError):
+            initial_revision = document_revision_id
+        revision = self._bind_docx_images(
+            document_id,
+            descendants,
+            created,
+            document_revision_id=initial_revision,
+            raise_on_error=True,
+            parent_block_id=parent_block_id,
+        )
+        created['document_revision_id'] = revision
+        return created
 
     def update_block(
         self,
@@ -1036,12 +1141,13 @@ class FeishuFSBase(LinkDocumentFSBase):
             raise ValueError('blocks must not be empty.')
         children_id, descendants = self._prepare_docx_descendants(blocks)
         if descendants:
-            url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{document_id}/descendant'
-            self._post(url, json={
-                'index': -1,
-                'children_id': children_id,
-                'descendants': descendants,
-            })
+            created = self._create_descendant_blocks(
+                document_id, document_id, -1, children_id, descendants)
+            try:
+                document_revision_id = int(created.get('document_revision_id', -1))
+            except (TypeError, ValueError):
+                document_revision_id = -1
+            self._bind_docx_images(document_id, blocks, created, document_revision_id)
         return self._get_doc_blocks_raw(document_id, with_descendants=True)
 
     def replace_doc_blocks(
@@ -1071,6 +1177,8 @@ class FeishuFSBase(LinkDocumentFSBase):
                 document_revision_id = int(created.get('document_revision_id', -1))
             except (TypeError, ValueError):
                 document_revision_id = -1
+            document_revision_id = self._bind_docx_images(
+                document_id, blocks, created, document_revision_id)
 
         # Insert first so a failed write never destroys the existing document.
         if existing_count:

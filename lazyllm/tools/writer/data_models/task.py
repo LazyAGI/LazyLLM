@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 from ..utils.artifact import ArtifactModel
+from .writer_ir import ContentRef
 
 
 class InputResource(BaseModel):
@@ -26,7 +27,7 @@ class TargetDocument(BaseModel):
 
 
 class Selection(BaseModel):
-    block_ids: List[str] = Field(default_factory=list)
+    content_refs: List[ContentRef] = Field(default_factory=list)
     text: Optional[str] = None
     anchor_start: Optional[str] = None
     anchor_end: Optional[str] = None
