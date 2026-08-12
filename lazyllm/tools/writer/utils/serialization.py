@@ -10,7 +10,7 @@ from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterStage
 
 
 class MarkdownSelectionError(ValueError):
-    def __init__(self, code: str, message: str, **details: Any):
+    def __init__(self, code: str, message: str, **details: Any):  # noqa: B042
         super().__init__(message)
         self.error_code = code
         self.details = details
@@ -26,7 +26,7 @@ def to_prompt_json(value: Any) -> str:
 
 
 def locate_markdown_paragraph(markdown: str, selected_text: str) -> str:
-    """Return the unique source paragraph containing rendered selected text."""
+    '''Return the unique source paragraph containing rendered selected text.'''
     selected = _normalize_markdown_text(selected_text)
     if not selected:
         raise MarkdownSelectionError(

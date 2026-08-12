@@ -107,7 +107,7 @@ class WriterRevisionTools(WriterToolBase):
         selected_text: str,
         context: Any,
     ) -> Dict[str, Any]:
-        """Rewrite one deterministically located Markdown paragraph."""
+        '''Rewrite one deterministically located Markdown paragraph.'''
         source = self._unified_document(document)
         if isinstance(source, WriterDocument):
             raise TypeError('build_selected_markdown_replace_set requires Markdown input.')
@@ -968,6 +968,7 @@ node_id must be a string. Do not include heading_path or nest objects inside nod
             plan.title_instruction = None
 
         located_set = {self._content_ref_key(content_ref) for content_ref in located_refs}
+
         def canonical_ref(reference: ContentRef, candidates: List[ContentRef]) -> Optional[ContentRef]:
             exact_key = self._content_ref_key(reference)
             exact = [candidate for candidate in candidates

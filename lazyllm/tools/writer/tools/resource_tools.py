@@ -324,7 +324,7 @@ class WriterResourceTools(WriterToolBase):
 
         return document.model_copy(update={'blocks': copy_blocks(document.blocks)}), warnings
 
-    def apply_patch_to_document(
+    def apply_patch_to_document(  # noqa: C901
         self,
         patch_set: Any,
         source_document: Any,
