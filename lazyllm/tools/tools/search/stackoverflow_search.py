@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from lazyllm.common import QueryParamStrategy
 from lazyllm.thirdparty import httpx
 
-from .base import SearchBase, _html_to_text, _make_result
+from .base import SearchBase, _html_to_text, _make_content_result, _make_result
 
 
 class StackOverflowSearch(SearchBase):
@@ -18,7 +18,7 @@ class StackOverflowSearch(SearchBase):
         self._site = site
         self._timeout = timeout
 
-    def get_content(self, item: Dict[str, Any]) -> str:
+    def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
         url = item.get('url') or ''
         m = re.search(r'/questions/(\d+)', url) if url else None
         if not m:
@@ -42,7 +42,7 @@ class StackOverflowSearch(SearchBase):
         body = _html_to_text(raw)
         accepted_id = q.get('accepted_answer_id')
         if not accepted_id:
-            return body
+            return _make_content_result(item, body)
         ans_url = f'https://api.stackexchange.com/2.3/answers/{accepted_id}'
         try:
             ar = httpx.get(ans_url, params=params, timeout=self._timeout)
@@ -52,7 +52,7 @@ class StackOverflowSearch(SearchBase):
                 body = body + '\n\n--- Accepted Answer ---\n\n' + _html_to_text(ans_items[0]['body'])
         except Exception:
             pass
-        return body
+        return _make_content_result(item, body)
 
     def search(self, query: str, count: int = 10,
                sort: str = 'relevance') -> List[dict]:

@@ -5,7 +5,7 @@ from urllib.parse import quote
 import lazyllm
 from lazyllm.thirdparty import httpx
 
-from .base import SearchBase, _make_result
+from .base import SearchBase, _make_content_result, _make_result
 
 
 class WikipediaSearch(SearchBase):
@@ -21,7 +21,7 @@ class WikipediaSearch(SearchBase):
         self._timeout = timeout
         self._headers = {'User-Agent': self._UA}
 
-    def get_content(self, item: Dict[str, Any]) -> str:
+    def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
         extra = item.get('extra') or {}
         pageid = extra.get('pageid')
         if pageid is None:
@@ -42,7 +42,8 @@ class WikipediaSearch(SearchBase):
             return super().get_content(item)
         pages = data.get('query', {}).get('pages') or {}
         page = pages.get(str(pageid)) or {}
-        return (page.get('extract') or '').strip() or super().get_content(item)
+        content = (page.get('extract') or '').strip()
+        return _make_content_result(item, content) if content else super().get_content(item)
 
     def search(self, query: str, limit: int = 10) -> List[dict]:
         params = {

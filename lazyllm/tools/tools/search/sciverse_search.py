@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from lazyllm.thirdparty import httpx
 
-from .base import SearchBase, _make_result
+from .base import SearchBase, _make_content_result, _make_result
 
 
 _DEFAULT_META_FIELDS = [
@@ -51,7 +51,12 @@ class SciverseSearch(SearchBase):
         self._base_url = base_url.rstrip('/')
         self._timeout = timeout
 
-    def get_content(self, item: Dict[str, Any], offset: Optional[int] = None, limit: int = 700) -> str:
+    def get_content(
+        self,
+        item: Dict[str, Any],
+        offset: Optional[int] = None,
+        limit: int = 700,
+    ) -> Dict[str, Any]:
         extra = item.get('extra') or {}
         doc_id = item.get('doc_id') or extra.get('doc_id')
         if doc_id:
@@ -68,10 +73,11 @@ class SciverseSearch(SearchBase):
                 resp.raise_for_status()
                 data = resp.json()
                 if isinstance(data, dict) and data.get('text'):
-                    return data['text']
+                    return _make_content_result(item, data['text'])
             except Exception:
                 pass
-        return extra.get('content') or item.get('snippet') or super().get_content(item)
+        fallback = extra.get('content') or item.get('snippet')
+        return _make_content_result(item, fallback) if fallback else super().get_content(item)
 
     def search(self, query: str, topk: int = 5, include_content: bool = True,
                search_type: Literal['agentic', 'meta'] = 'agentic',

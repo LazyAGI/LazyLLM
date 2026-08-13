@@ -3,7 +3,7 @@ from typing import Any, Dict, List
 
 from lazyllm.thirdparty import httpx, xml
 
-from .base import SearchBase, _make_result
+from .base import SearchBase, _make_content_result, _make_result
 
 
 class ArxivSearch(SearchBase):
@@ -15,7 +15,7 @@ class ArxivSearch(SearchBase):
         self._url = base_url
         self._timeout = timeout
 
-    def get_content(self, item: Dict[str, Any]) -> str:
+    def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
         url = item.get('url') or ''
         m = re.search(r'/abs/([\d.]+(?:v\d+)?)', url) if url else None
         if not m:
@@ -39,7 +39,7 @@ class ArxivSearch(SearchBase):
         for entry in root.findall('atom:entry', ns):
             summary_el = entry.find('atom:summary', ns)
             if summary_el is not None and summary_el.text:
-                return summary_el.text.strip().replace('\n', ' ')
+                return _make_content_result(item, summary_el.text.strip().replace('\n', ' '))
         return super().get_content(item)
 
     def search(self, query: str, max_results: int = 10,

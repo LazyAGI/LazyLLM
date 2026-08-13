@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from lazyllm.common import ApiKeyHeaderStrategy
 
-from .base import SearchBase, _make_result
+from .base import SearchBase, _make_content_result, _make_result
 
 
 class SemanticScholarSearch(SearchBase):
@@ -16,21 +16,23 @@ class SemanticScholarSearch(SearchBase):
         self._timeout = timeout
         self._base = 'https://api.semanticscholar.org/graph/v1'
 
-    def get_content(self, item: Dict[str, Any]) -> str:
+    def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
         extra = item.get('extra') or {}
         paper_id = extra.get('paperId')
         if not paper_id:
             snippet = item.get('snippet', '')
             if snippet:
-                return snippet
+                return _make_content_result(item, snippet)
             return super().get_content(item)
         url = f'{self._base}/paper/{paper_id}'
         try:
             resp = self._request('GET', url, params={'fields': 'abstract'}, timeout=self._timeout)
             data = resp.json()
         except Exception:
-            return (item.get('snippet') or '') or super().get_content(item)
-        return (data.get('abstract') or '').strip() or (item.get('snippet') or '')
+            snippet = item.get('snippet') or ''
+            return _make_content_result(item, snippet) if snippet else super().get_content(item)
+        content = (data.get('abstract') or '').strip() or (item.get('snippet') or '')
+        return _make_content_result(item, content)
 
     def search(self, query: str, limit: int = 10,
                fields: Optional[str] = None) -> List[dict]:

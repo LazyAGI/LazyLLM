@@ -38,6 +38,18 @@ def _make_result(title: str, url: str, snippet: str = '', source: str = '', **ex
     return item
 
 
+def _make_content_result(item: Dict[str, Any], content: str) -> Dict[str, Any]:
+    extra = item.get(_EXTRA_KEY)
+    return {
+        _TITLE_KEY: str(item.get(_TITLE_KEY) or ''),
+        _URL_KEY: str(item.get(_URL_KEY) or item.get('link') or ''),
+        _SNIPPET_KEY: str(item.get(_SNIPPET_KEY) or ''),
+        _SOURCE_KEY: str(item.get(_SOURCE_KEY) or ''),
+        _EXTRA_KEY: dict(extra) if isinstance(extra, dict) else {},
+        'content': str(content or ''),
+    }
+
+
 # TODO: add tests after key is ready
 class SearchBase(ModuleBase, CredentialMixin):
     __public_apis__ = ['search', 'get_content', 'get_contents']
@@ -100,7 +112,7 @@ class SearchBase(ModuleBase, CredentialMixin):
     def forward(self, query: str, **kwargs) -> List[Dict[str, Any]]:
         return self.search(query, **kwargs)
 
-    def get_content(self, item: Dict[str, Any]) -> str:
+    def _fetch_content_text(self, item: Dict[str, Any]) -> str:
         url = item.get('url') or item.get('link') or ''
         if not url:
             return ''
@@ -112,5 +124,8 @@ class SearchBase(ModuleBase, CredentialMixin):
         except Exception:
             return ''
 
-    def get_contents(self, items: List[Dict[str, Any]]) -> List[str]:
+    def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        return _make_content_result(item, self._fetch_content_text(item))
+
+    def get_contents(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return [self.get_content(it) for it in items]
