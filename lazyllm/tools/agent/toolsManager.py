@@ -1,7 +1,7 @@
 import ast
 import copy
 from dataclasses import dataclass
-import json5 as json
+import json
 import lazyllm
 import docstring_parser
 import os
@@ -935,6 +935,22 @@ class ToolManager(ModuleBase):
         s = _re.sub(r'[,:\"\'\w\s]*$', '', s.rstrip())
         s = s + (']' * max(0, opens_sq)) + ('}' * max(0, opens))
         return json.loads(s)
+
+    @classmethod
+    def _normalize_tool_calls(cls, tool_calls):
+        calls = [tool_calls] if isinstance(tool_calls, dict) else tool_calls
+        for tool_call in calls or []:
+            function = tool_call.get('function') if isinstance(tool_call, dict) else None
+            if not isinstance(function, dict):
+                continue
+            arguments = function.get('arguments')
+            if isinstance(arguments, str):
+                arguments = cls._safe_parse_json(arguments)
+            if isinstance(arguments, dict):
+                function['arguments'] = json.dumps(
+                    arguments, ensure_ascii=False, separators=(',', ':'),
+                )
+        return tool_calls
 
     def _parse_tool_call(self, tc):
         func = tc.get('function') if isinstance(tc, dict) else None

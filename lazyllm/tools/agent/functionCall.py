@@ -175,6 +175,8 @@ class FunctionCall(ModuleBase):
                 except Exception: pass
         if tool_calls := llm_output.get('tool_calls'):
             if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
+            tool_calls = self._tools_manager._normalize_tool_calls(tool_calls)
+            llm_output['tool_calls'] = tool_calls
             if self._stream:
                 _write_agent_data('tool_calls', tool_calls=tool_calls)
             tool_calls_results = self._tools_manager(tool_calls)
