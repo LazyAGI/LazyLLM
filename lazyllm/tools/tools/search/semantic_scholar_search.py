@@ -35,7 +35,7 @@ class SemanticScholarSearch(SearchBase):
         return _make_content_result(item, content)
 
     def search(self, query: str, limit: int = 10,
-               fields: Optional[str] = None) -> List[dict]:
+               fields: Optional[str] = None) -> List[Dict[str, Any]]:
         url = f'{self._base}/paper/search'
         params = {
             'query': query,
