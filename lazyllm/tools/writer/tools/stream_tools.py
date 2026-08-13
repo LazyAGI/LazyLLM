@@ -1,21 +1,44 @@
 from __future__ import annotations
 
-from contextvars import copy_context
 import json
-from queue import Empty, Queue
 import re
 import time
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+from contextvars import copy_context
+from queue import Empty, Queue
+from typing import Any, Callable, Dict, Iterator, List, Literal, Optional, Tuple
 
 from lazyllm.common import ThreadPoolExecutor
 from lazyllm.configs import config
 
+from ..data_models.context import WritingContext
 from ..data_models.planning import SectionInstruction
-from ..data_models.writer_ir import WriterBlock
-from ..utils import render_block_markdown
+from ..data_models.resource import ResourceProfile
+from ..data_models.task import WritingTask
+from ..data_models.writer_ir import WriterBlock, WriterDocument
+from ..prompts import GENERATE_OUTLINE_MARKDOWN_PROMPT, GENERATE_OUTLINE_PROMPT
+from ..utils import (
+    get_markdown_outline_targets,
+    make_markdown_tool_result,
+    parse_markdown_sections,
+    render_block_markdown,
+    render_document_markdown,
+    to_prompt_json,
+)
+
+_WRITER_STREAM_EXECUTOR = ThreadPoolExecutor(max_workers=config['thread_pool_worker_num'])
 
 
-_DRAFT_STREAM_EXECUTOR = ThreadPoolExecutor(max_workers=config['thread_pool_worker_num'])
+def resolve_stream_idle_timeout(llm: Any, idle_timeout: Optional[float]) -> float:
+    value: Any = idle_timeout
+    if value is None:
+        value = getattr(llm, '_timeout', None)
+    if isinstance(value, (tuple, list)):
+        value = value[-1] if value else None
+    if value is None:
+        value = 180.0
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        raise ValueError('idle_timeout must be a positive number.')
+    return float(value)
 
 
 class MarkdownStreamNormalizer:
@@ -112,7 +135,7 @@ class DraftPreviewStream(Iterator[str]):
         self._result: Optional[dict] = None
         self._error: Optional[BaseException] = None
         context = copy_context()
-        self._future = _DRAFT_STREAM_EXECUTOR.submit(context.run, call, self._sink)
+        self._future = _WRITER_STREAM_EXECUTOR.submit(context.run, call, self._sink)
         self._iterator = self._iterate()
 
     def __iter__(self) -> 'DraftPreviewStream':
@@ -194,6 +217,8 @@ class DraftMarkdownStream(DraftPreviewStream):
         finalize: Callable[[str], dict],
         prefix: str,
         idle_timeout: float,
+        *,
+        label: str = 'Draft Markdown',
     ):
         normalizer = MarkdownStreamNormalizer()
 
@@ -206,7 +231,9 @@ class DraftMarkdownStream(DraftPreviewStream):
             body = str(response).strip()
             deltas = normalizer.finish()
             if normalizer.body != body:
-                raise ValueError('Streamed Markdown body does not match the normalized LLM response.')
+                raise ValueError(
+                    f'Streamed {label} content does not match the normalized LLM response.'
+                )
             return [*deltas, '\n'], finalize(body)
 
         super().__init__(
@@ -214,8 +241,8 @@ class DraftMarkdownStream(DraftPreviewStream):
             consume=consume,
             finalize=finish,
             idle_timeout=idle_timeout,
-            initial_deltas=[prefix],
-            label='Draft Markdown',
+            initial_deltas=[prefix] if prefix else None,
+            label=label,
         )
 
 
@@ -224,6 +251,13 @@ class IRPreviewOutput:
         self.prefix = prefix
         self._emit = emit
         self._has_body = False
+
+    @property
+    def has_body(self) -> bool:
+        return self._has_body
+
+    def mark_body(self) -> None:
+        self._has_body = True
 
     def start_item(self) -> None:
         if self._has_body:
@@ -358,7 +392,7 @@ class IRBlockStreamState:
 
 
 class IRJSONMarkdownParser:
-    '''Incrementally expose safe WriterBlock content from streamed JSON.'''
+    '''Incrementally expose safe WriterBlock or WriterDocument content as Markdown.'''
 
     STREAMABLE_TYPES = frozenset({
         'paragraph', 'quote', 'code', 'heading', 'list_item',
@@ -369,10 +403,23 @@ class IRJSONMarkdownParser:
         'b': '\b', 'f': '\f', 'n': '\n', 'r': '\r', 't': '\t',
     }
 
-    def __init__(self, instruction: SectionInstruction):
-        self.prefix = f'## {instruction.section_title.strip()}\n\n'
+    def __init__(
+        self,
+        instruction: Optional[SectionInstruction] = None,
+        *,
+        document: bool = False,
+        preview_title: Optional[str] = None,
+    ):
+        if document == (instruction is not None):
+            raise ValueError('Provide either an instruction or document=True.')
+        self._document = document
+        self._root_level = 1 if document else 2
+        self._root_collection_key = 'blocks' if document else 'children'
+        self.prefix = '' if document else f'## {instruction.section_title.strip()}\n\n'
         self._delta_parts: List[str] = []
-        self._emitted_parts: List[str] = [self.prefix]
+        self._emitted_parts: List[str] = [self.prefix] if self.prefix else []
+        self._preview_ready = not document
+        self._pending_parts: List[str] = []
         self.output = IRPreviewOutput(self.prefix, self.emit)
         self.raw_json = ''
         self._started = False
@@ -387,9 +434,16 @@ class IRJSONMarkdownParser:
         self._unicode_digits: Optional[str] = None
         self._pending_high_surrogate: Optional[int] = None
         self._primitive = False
+        if document and preview_title:
+            self._activate_document_preview(preview_title)
+        self.initial_deltas = list(self._delta_parts) if document else [self.prefix]
+        self._delta_parts = []
 
     def emit(self, text: str) -> None:
         if not text:
+            return
+        if not self._preview_ready:
+            self._pending_parts.append(text)
             return
         self._delta_parts.append(text)
         self._emitted_parts.append(text)
@@ -401,14 +455,40 @@ class IRJSONMarkdownParser:
         return [''.join(self._delta_parts)] if self._delta_parts else []
 
     def finish(self, block: WriterBlock) -> List[str]:
-        self._delta_parts = []
         final_markdown = render_block_markdown(block, level=2).rstrip() + '\n'
+        return self._finish_rendered(final_markdown, 'WriterBlock')
+
+    def finish_document(self, document: WriterDocument) -> List[str]:
+        if not self._preview_ready:
+            self._activate_document_preview(document.title)
+        return self._finish_rendered(render_document_markdown(document), 'WriterDocument')
+
+    def _finish_rendered(self, final_markdown: str, value_type: str) -> List[str]:
+        self._delta_parts = []
         emitted = ''.join(self._emitted_parts)
         if final_markdown.startswith(emitted):
             self.emit(final_markdown[len(emitted):])
         elif final_markdown.rstrip() != emitted.rstrip():
-            raise ValueError('Streamed IR Markdown does not match the validated WriterBlock.')
+            raise ValueError(
+                f'Streamed IR Markdown does not match the validated {value_type}.'
+            )
         return [''.join(self._delta_parts)] if self._delta_parts else []
+
+    def _activate_document_preview(self, title: str) -> None:
+        if self._preview_ready:
+            return
+        pending = ''.join(self._pending_parts)
+        self._pending_parts = []
+        self._preview_ready = True
+        clean_title = title.strip()
+        if clean_title:
+            self.emit(f'# {clean_title}')
+            if self.output.has_body and pending:
+                self.emit('\n\n')
+            elif not self.output.has_body:
+                self.output.mark_body()
+        if pending:
+            self.emit(pending)
 
     def _feed_char(self, char: str) -> None:  # noqa: C901
         if self._done:
@@ -418,7 +498,9 @@ class IRJSONMarkdownParser:
                 return
             self._started = True
             self.raw_json = '{'
-            root = IRBlockStreamState(self, start_index=0, level=2, root=True)
+            root = IRBlockStreamState(
+                self, start_index=0, level=self._root_level, root=True,
+            )
             self._stack.append({
                 'kind': 'object', 'expect': 'key_or_end', 'key': None,
                 'block': root,
@@ -516,11 +598,20 @@ class IRJSONMarkdownParser:
         self._emit_string_text(chr(codepoint))
 
     def _emit_string_text(self, text: str) -> None:
-        if self._string_kind == 'key' or self._string_key == 'type':
-            self._string_parts.append(text)
-            return
         context = self._string_context
         block = context.get('block') if context else None
+        if (
+            self._string_kind == 'key'
+            or self._string_key == 'type'
+            or (
+                self._document
+                and self._string_key == 'title'
+                and block is not None
+                and block.root
+            )
+        ):
+            self._string_parts.append(text)
+            return
         if self._string_key == 'content' and block is not None:
             block.feed_content(text)
 
@@ -529,11 +620,18 @@ class IRJSONMarkdownParser:
             raise ValueError('Incomplete surrogate pair in streamed WriterBlock JSON.')
         context = self._string_context
         value = ''.join(self._string_parts)
+        block = context.get('block') if context else None
+        is_document_title = (
+            self._document
+            and self._string_kind == 'value'
+            and self._string_key == 'title'
+            and block is not None
+            and block.root
+        )
         if self._string_kind == 'key' and context is not None:
             context['key'] = value
             context['expect'] = 'colon'
         elif context is not None and context['kind'] == 'object':
-            block = context.get('block')
             if block is not None and self._string_key == 'type':
                 block.set_type(value)
             elif block is not None and self._string_key == 'content':
@@ -543,13 +641,19 @@ class IRJSONMarkdownParser:
         self._string_context = None
         self._string_key = None
         self._string_parts = []
+        if is_document_title:
+            self._activate_document_preview(value)
 
     def _start_object(self) -> None:
         parent = self._stack[-1] if self._stack else None
         role, owner, suppressed = self._value_context(parent)
         self._mark_value_started()
         block = None
-        if parent and parent['kind'] == 'array' and role == 'children' and owner is not None:
+        if (
+            parent
+            and parent['kind'] == 'array'
+            and self._is_block_collection(role, owner)
+        ):
             block = IRBlockStreamState(
                 self,
                 start_index=len(self.raw_json) - 1,
@@ -568,12 +672,22 @@ class IRJSONMarkdownParser:
         parent = self._stack[-1] if self._stack else None
         role, owner, suppressed = self._value_context(parent)
         self._mark_value_started()
-        if role == 'children' and owner is not None:
+        if self._is_block_collection(role, owner):
             suppressed = suppressed or owner.prepare_children()
         self._stack.append({
             'kind': 'array', 'expect': 'value_or_end', 'role': role,
             'owner': owner, 'suppressed': suppressed,
         })
+
+    def _is_block_collection(
+        self,
+        role: Optional[str],
+        owner: Optional[IRBlockStreamState],
+    ) -> bool:
+        return owner is not None and (
+            role == 'children'
+            or (owner.root and role == self._root_collection_key)
+        )
 
     @staticmethod
     def _value_context(
@@ -621,7 +735,42 @@ class IRJSONMarkdownParser:
             self._done = True
 
 
-class DraftIRStream(DraftPreviewStream):
+class IRPreviewStream(DraftPreviewStream):
+    def __init__(
+        self,
+        call: Callable[[Callable[[Dict[str, Any]], None]], Any],
+        parser: IRJSONMarkdownParser,
+        validate: Callable[[Any], Any],
+        normalize: Callable[[Any], Any],
+        finalize: Callable[[Any], dict],
+        finish_preview: Callable[[Any], List[str]],
+        idle_timeout: float,
+        label: str,
+    ):
+        def consume(payload: Dict[str, Any]) -> List[str]:
+            if payload.get('tag') != 'text':
+                return []
+            return parser.feed(str(payload.get('delta') or ''))
+
+        def finish(response: Any) -> Tuple[List[str], dict]:
+            value = normalize(validate(response))
+            return finish_preview(value), finalize(value)
+
+        super().__init__(
+            call=call,
+            consume=consume,
+            finalize=finish,
+            idle_timeout=idle_timeout,
+            initial_deltas=parser.initial_deltas,
+            label=label,
+        )
+
+
+def _validate_stream_model(response: Any, model: Any) -> Any:
+    return response if isinstance(response, model) else model.model_validate(response)
+
+
+class DraftIRStream(IRPreviewStream):
     def __init__(
         self,
         call: Callable[[Callable[[Dict[str, Any]], None]], WriterBlock],
@@ -631,23 +780,140 @@ class DraftIRStream(DraftPreviewStream):
         idle_timeout: float,
     ):
         parser = IRJSONMarkdownParser(instruction)
-
-        def consume(payload: Dict[str, Any]) -> List[str]:
-            if payload.get('tag') != 'text':
-                return []
-            return parser.feed(str(payload.get('delta') or ''))
-
-        def finish(response: Any) -> Tuple[List[str], dict]:
-            if not isinstance(response, WriterBlock):
-                response = WriterBlock.model_validate(response)
-            block = normalize(response)
-            return parser.finish(block), finalize(block)
-
         super().__init__(
             call=call,
-            consume=consume,
-            finalize=finish,
+            parser=parser,
+            validate=lambda response: _validate_stream_model(response, WriterBlock),
+            normalize=normalize,
+            finalize=finalize,
+            finish_preview=parser.finish,
             idle_timeout=idle_timeout,
-            initial_deltas=[parser.prefix],
             label='Draft IR',
         )
+
+
+class OutlineIRStream(IRPreviewStream):
+    def __init__(
+        self,
+        call: Callable[[Callable[[Dict[str, Any]], None]], WriterDocument],
+        normalize: Callable[[WriterDocument], WriterDocument],
+        finalize: Callable[[WriterDocument], dict],
+        idle_timeout: float,
+        preview_title: Optional[str] = None,
+    ):
+        parser = IRJSONMarkdownParser(document=True, preview_title=preview_title)
+        super().__init__(
+            call=call,
+            parser=parser,
+            validate=lambda response: _validate_stream_model(response, WriterDocument),
+            normalize=normalize,
+            finalize=finalize,
+            finish_preview=parser.finish_document,
+            idle_timeout=idle_timeout,
+            label='Outline IR',
+        )
+
+
+def build_outline_stream(
+    tools: Any,
+    task: Any,
+    context: Any,
+    resource_profiles: Any = None,
+    execution_results: Any = None,
+    representation: Optional[Literal['ir', 'markdown']] = None,
+    *,
+    idle_timeout: Optional[float] = None,
+) -> DraftPreviewStream:
+    writing_task = tools._unified_model(task, WritingTask)
+    writing_context = tools._unified_model(context, WritingContext)
+    profiles = tools._unified_models(resource_profiles, ResourceProfile)
+    execution_data = tools._unified_raw_data(execution_results)
+    resolved_representation = tools._resolve_representation(writing_task, representation)
+    timeout = resolve_stream_idle_timeout(tools.llm, idle_timeout)
+    artifact_meta = {
+        'task_id': writing_task.task_id,
+        'context_id': writing_context.context_id,
+        'resource_profile_count': len(profiles),
+        'has_execution_results': execution_data is not None,
+    }
+
+    if resolved_representation == 'markdown':
+        prompt = GENERATE_OUTLINE_MARKDOWN_PROMPT.format(
+            task_json=to_prompt_json(writing_task),
+            context_json=to_prompt_json(writing_context),
+            resource_profiles_json=to_prompt_json(profiles),
+            execution_results_json=to_prompt_json(execution_data),
+        )
+
+        def finalize_markdown(outline: str) -> dict:
+            outline = outline.strip() + '\n'
+            _, targets = get_markdown_outline_targets(outline)
+            path = tools._write_markdown_artifact('outline.md', outline)
+            return make_markdown_tool_result(
+                path=path,
+                step_name='generate_outline',
+                artifact_key='outline',
+                summary='Generated writing outline as Markdown.',
+                counts={
+                    'top_level_sections': len(targets),
+                    'outline_nodes': len(parse_markdown_sections(outline)),
+                    'characters': len(outline),
+                },
+                extra={'representation': 'markdown', **artifact_meta},
+            ).model_dump()
+
+        return DraftMarkdownStream(
+            call=lambda sink: tools._call_llm_text(
+                prompt,
+                stream_output={'_stream_sink': sink},
+            ),
+            finalize=finalize_markdown,
+            prefix='',
+            idle_timeout=timeout,
+            label='Outline Markdown',
+        )
+
+    document_id = f'{writing_context.context_id}-outline'
+    prompt = GENERATE_OUTLINE_PROMPT.format(
+        task_json=to_prompt_json(writing_task),
+        document_id=document_id,
+        context_json=to_prompt_json(writing_context),
+        resource_profiles_json=to_prompt_json(profiles),
+        execution_results_json=to_prompt_json(execution_data),
+    )
+    preview_title = (
+        writing_task.target_document.title
+        if writing_task.target_document and writing_task.target_document.title
+        else None
+    )
+
+    def normalize_ir(outline: WriterDocument) -> WriterDocument:
+        outline.document_id = document_id
+        return tools._normalize_outline(outline, writing_task, writing_context, profiles)
+
+    def finalize_ir(outline: WriterDocument) -> dict:
+        return tools._save_artifacts(
+            {'outline': outline},
+            step_name='generate_outline',
+            primary_key='outline',
+            context_key=None,
+            summary='Generated writing outline.',
+            counts={
+                'top_level_sections': len(outline.blocks),
+                'outline_nodes': len(list(outline.iter_blocks())),
+            },
+            extra={'representation': 'ir'},
+            artifact_meta=artifact_meta,
+        ).model_dump()
+
+    return OutlineIRStream(
+        call=lambda sink: tools._call_llm_structured(
+            prompt,
+            WriterDocument,
+            stream_output={'_stream_sink': sink},
+        ),
+        normalize=normalize_ir,
+        finalize=finalize_ir,
+        idle_timeout=timeout,
+        preview_title=preview_title,
+    )

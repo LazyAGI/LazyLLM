@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Literal
 
 from .base import WriterToolBase
+from .stream_tools import DraftPreviewStream, build_outline_stream
 from ..data_models.context import WritingContext
 from ..data_models.multimodal import VisualPlan, _VISUAL_STRATEGY_ORDER
 from ..data_models.resource import ResourceProfile
@@ -108,6 +109,26 @@ class WriterPlanningTools(WriterToolBase):
             },
         )
         return result.model_dump()
+
+    def stream_outline(
+        self,
+        task: Any,
+        context: Any,
+        resource_profiles: Any = None,
+        execution_results: Any = None,
+        representation: Literal['ir', 'markdown'] | None = None,
+        *,
+        idle_timeout: float | None = None,
+    ) -> DraftPreviewStream:
+        return build_outline_stream(
+            self,
+            task,
+            context,
+            resource_profiles,
+            execution_results,
+            representation,
+            idle_timeout=idle_timeout,
+        )
 
     def generate_rewrite_outline(
         self,
