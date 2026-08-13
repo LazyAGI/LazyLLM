@@ -17,7 +17,6 @@ class SemanticScholarSearch(SearchBase):
         self._base = 'https://api.semanticscholar.org/graph/v1'
 
     def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        '''Fetch a paper abstract and return it with the result identity.'''
         extra = item.get('extra') or {}
         paper_id = extra.get('paperId')
         if not paper_id:
