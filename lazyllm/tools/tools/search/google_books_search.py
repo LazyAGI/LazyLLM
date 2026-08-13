@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from lazyllm.common import QueryParamStrategy
 from lazyllm.thirdparty import httpx
@@ -17,7 +17,7 @@ class GoogleBooksSearch(SearchBase):
         self._timeout = timeout
         self._url = 'https://www.googleapis.com/books/v1/volumes'
 
-    def search(self, query: str, max_results: int = 10) -> List[dict]:
+    def search(self, query: str, max_results: int = 10) -> List[Dict[str, Any]]:
         params = self.inject_auth_params({'q': query, 'maxResults': min(max_results, 40)})
         resp = httpx.get(self._url, params=params, timeout=self._timeout)
         resp.raise_for_status()

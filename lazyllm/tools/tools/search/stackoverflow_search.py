@@ -55,7 +55,7 @@ class StackOverflowSearch(SearchBase):
         return _make_content_result(item, body)
 
     def search(self, query: str, count: int = 10,
-               sort: str = 'relevance') -> List[dict]:
+               sort: str = 'relevance') -> List[Dict[str, Any]]:
         url = 'https://api.stackexchange.com/2.3/search/advanced'
         params = self.inject_auth_params({
             'order': 'desc',
