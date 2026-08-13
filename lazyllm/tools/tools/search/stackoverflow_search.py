@@ -19,7 +19,7 @@ class StackOverflowSearch(SearchBase):
         self._timeout = timeout
 
     def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """Fetch a question and accepted answer with the result identity."""
+        '''Fetch a question and accepted answer with the result identity.'''
         url = item.get('url') or ''
         m = re.search(r'/questions/(\d+)', url) if url else None
         if not m:

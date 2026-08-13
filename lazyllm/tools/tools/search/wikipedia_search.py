@@ -22,7 +22,7 @@ class WikipediaSearch(SearchBase):
         self._headers = {'User-Agent': self._UA}
 
     def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """Fetch a Wikipedia extract and return it with the result identity."""
+        '''Fetch a Wikipedia extract and return it with the result identity.'''
         extra = item.get('extra') or {}
         pageid = extra.get('pageid')
         if pageid is None:

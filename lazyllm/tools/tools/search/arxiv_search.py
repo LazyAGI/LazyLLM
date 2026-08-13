@@ -16,7 +16,7 @@ class ArxivSearch(SearchBase):
         self._timeout = timeout
 
     def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """Fetch an arXiv abstract and return it with the result identity."""
+        '''Fetch an arXiv abstract and return it with the result identity.'''
         url = item.get('url') or ''
         m = re.search(r'/abs/([\d.]+(?:v\d+)?)', url) if url else None
         if not m:

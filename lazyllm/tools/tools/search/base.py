@@ -39,7 +39,7 @@ def _make_result(title: str, url: str, snippet: str = '', source: str = '', **ex
 
 
 def _make_content_result(item: Dict[str, Any], content: str) -> Dict[str, Any]:
-    """Return fetched content with the stable SearchBase source identity."""
+    '''Return fetched content with the stable SearchBase source identity.'''
     extra = item.get(_EXTRA_KEY)
     return {
         _TITLE_KEY: str(item.get(_TITLE_KEY) or ''),
@@ -92,7 +92,7 @@ class SearchBase(ModuleBase, CredentialMixin):
         return self._source_name
 
     def search(self, query: str, **kwargs: Any) -> List[Dict[str, Any]]:
-        """Search the provider and return ranked structured result items."""
+        '''Search the provider and return ranked structured result items.'''
         raise NotImplementedError('Subclass must implement search')
 
     def _handle_error(self, err: Exception, *, raise_on_error: bool) -> List[Dict[str, Any]]:
@@ -127,9 +127,9 @@ class SearchBase(ModuleBase, CredentialMixin):
             return ''
 
     def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """Fetch one result and return its source identity together with content."""
+        '''Fetch one result and return its source identity together with content.'''
         return _make_content_result(item, self._fetch_content_text(item))
 
     def get_contents(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Fetch result items in input order and preserve each source identity."""
+        '''Fetch result items in input order and preserve each source identity.'''
         return [self.get_content(it) for it in items]
