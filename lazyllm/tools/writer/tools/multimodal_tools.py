@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
-import shutil
+import socket
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import unquote, urljoin, urlparse
+
+import requests
 
 from pydantic import BaseModel, Field
 
+from lazyllm import config
 from lazyllm.components.formatter import encode_query_with_filepaths
-from lazyllm.thirdparty import PIL
+from lazyllm.thirdparty import PIL, mistune
 
 from .base import WriterToolBase
 from ..data_models.multimodal import (
@@ -20,11 +25,13 @@ from ..data_models.multimodal import (
     _VISUAL_STRATEGY_ORDER,
 )
 from ..data_models.task import InputResource, WritingTask
+from ..data_models.writer_ir import WriterDocument
 from ..prompts import RESOLVE_VISUAL_NEEDS_PROMPT, VISION_SUMMARY_PROMPT
 
 
 _MAX_IMAGE_BYTES = 20 * 1024 * 1024
 _IMAGE_SUFFIXES = {'.bmp', '.gif', '.jpeg', '.jpg', '.png', '.tif', '.tiff', '.webp'}
+_MAX_REDIRECTS = 5
 
 
 class _MediaSelections(BaseModel):
@@ -34,8 +41,13 @@ class _MediaSelections(BaseModel):
 class WriterMultimodalTools(WriterToolBase):
     __public_apis__ = ['collect_available_media']
 
-    def collect_available_media(self, task: Any, input_resources: Any = None) -> dict:
-        '''Collect local images already available to this writing task.'''
+    def collect_available_media(  # noqa: C901
+        self,
+        task: Any,
+        input_resources: Any = None,
+        source_document: Any = None,
+    ) -> dict:
+        '''Collect user-provided and source-document images into the local media library.'''
         writing_task = self._unified_model(task, WritingTask)
         resources = [
             resource.model_copy(deep=True)
@@ -43,27 +55,37 @@ class WriterMultimodalTools(WriterToolBase):
         ]
         library = MediaAssetLibrary(library_id=f'media-library-{writing_task.task_id or "task"}')
         warnings: List[str] = []
+        pre_materialized_resource_ids: set[str] = set()
+
+        if source_document is not None:
+            try:
+                document = self._unified_document(source_document)
+                if isinstance(document, str):
+                    embedded = self._markdown_image_resources(
+                        document,
+                        source_label=(
+                            str(source_document) if isinstance(source_document, str) else 'source_document'
+                        ),
+                    )
+                    self._extend_unique_resources(resources, embedded)
+                else:
+                    document_media, document_warnings = self._materialize_document_images(document)
+                    warnings.extend(document_warnings)
+                    for resource, asset in document_media:
+                        self._register_asset(resource, asset, library, warnings)
+                        if resource.resource_id:
+                            pre_materialized_resource_ids.add(resource.resource_id)
+                        self._extend_unique_resources(resources, [resource])
+            except Exception as exc:
+                warnings.append(f'Failed to collect source document images: {type(exc).__name__}: {exc}')
 
         for resource in resources:
-            if not self._is_image_resource(resource):
+            if resource.resource_id in pre_materialized_resource_ids or not self._is_image_resource(resource):
                 continue
             label = resource.resource_id or resource.title or resource.uri or 'image resource'
             try:
                 asset = self._materialize_input_resource(resource)
-                asset = library.assets.setdefault(asset.media_asset_id, asset)
-                if asset.meta.get('semantic_status') != 'ready' and self.llm is not None:
-                    try:
-                        asset.summary = self._describe_image(asset.local_path or '')
-                        asset.meta.update(summary_source='vision_model', semantic_status='ready')
-                    except Exception as exc:
-                        warnings.append(f'Failed to understand {label!r}: {type(exc).__name__}: {exc}')
-                resource.resource_type = 'image'
-                resource.mime_type = asset.meta.get('mime_type') or resource.mime_type
-                resource.summary = asset.summary
-                resource.meta.update(
-                    summary_source=asset.meta.get('summary_source'),
-                    semantic_status=asset.meta.get('semantic_status'),
-                )
+                self._register_asset(resource, asset, library, warnings)
             except Exception as exc:
                 resource.resource_type = 'image'
                 resource.meta['semantic_status'] = 'unknown'
@@ -205,20 +227,39 @@ class WriterMultimodalTools(WriterToolBase):
     def _materialize_input_resource(self, resource: InputResource) -> MediaAsset:
         uri = str(resource.uri or '').strip()
         parsed = urlparse(uri)
-        if not uri or parsed.scheme not in {'', 'file'}:
-            raise ValueError('MVP image inputs must use a local file path.')
-        source = Path(parsed.path if parsed.scheme == 'file' else uri).expanduser().resolve()
+        if not uri:
+            raise ValueError('image resource URI is required.')
+        if parsed.scheme in {'http', 'https'}:
+            return self._materialize_image_bytes(
+                self._download_external_image(uri),
+                resource,
+                suffix_hint=Path(parsed.path).suffix,
+            )
+        if parsed.scheme not in {'', 'file'}:
+            raise ValueError('image inputs must use a local file path or an HTTP(S) URL.')
+        source = Path(unquote(parsed.path) if parsed.scheme == 'file' else uri).expanduser().resolve()
         if not source.is_file():
             raise FileNotFoundError(f'image file does not exist: {source}')
-        size = source.stat().st_size
+        if not 0 < source.stat().st_size <= _MAX_IMAGE_BYTES:
+            raise ValueError('image file must be between 1 byte and 20 MB.')
+        return self._materialize_image_bytes(source.read_bytes(), resource, suffix_hint=source.suffix)
+
+    def _materialize_image_bytes(
+        self,
+        data: bytes,
+        resource: InputResource,
+        *,
+        suffix_hint: str = '',
+    ) -> MediaAsset:
+        size = len(data)
         if not 0 < size <= _MAX_IMAGE_BYTES:
             raise ValueError('image file must be between 1 byte and 20 MB.')
-        image_format, width, height = self._inspect_image(source)
-        digest = hashlib.sha256(source.read_bytes()).hexdigest()
-        suffix = source.suffix.lower() or f'.{image_format.lower()}'
+        image_format, width, height = self._inspect_image_bytes(data)
+        digest = hashlib.sha256(data).hexdigest()
+        suffix = self._image_suffix(suffix_hint, image_format)
         destination = self._assets_dir() / f'{digest}{suffix}'
         if not destination.exists():
-            shutil.copyfile(source, destination)
+            destination.write_bytes(data)
 
         caption = str(resource.meta.get('caption') or '').strip() or None
         summary = str(resource.summary or '').strip()
@@ -226,18 +267,24 @@ class WriterMultimodalTools(WriterToolBase):
         if not summary:
             summary = (
                 caption or resource.title
-                or f'Image file {source.name!r}; image content has not been analyzed.'
+                or f'Image {resource.uri!r}; image content has not been analyzed.'
             )
         source_type = str(resource.meta.get('source_type') or 'input_resource')
+        source_meta = {
+            key: resource.meta[key]
+            for key in ('origin', 'provider', 'provider_block_id')
+            if resource.meta.get(key) not in (None, '')
+        }
         return MediaAsset(
             media_asset_id=f'asset-{digest}',
             asset_type='generated_image' if source_type == 'image_generation' else 'image',
             source_type=source_type,
-            uri=uri,
+            uri=resource.uri,
             local_path=str(destination),
             caption=caption,
             summary=summary,
             meta={
+                **source_meta,
                 'sha256': digest,
                 'mime_type': PIL.Image.MIME.get(image_format),
                 'byte_size': size,
@@ -249,6 +296,216 @@ class WriterMultimodalTools(WriterToolBase):
                 ),
             },
         )
+
+    def _register_asset(
+        self,
+        resource: InputResource,
+        asset: MediaAsset,
+        library: MediaAssetLibrary,
+        warnings: List[str],
+    ) -> MediaAsset:
+        label = resource.resource_id or resource.title or resource.uri or 'image resource'
+        asset = library.assets.setdefault(asset.media_asset_id, asset)
+        if asset.meta.get('semantic_status') != 'ready' and self.llm is not None:
+            try:
+                asset.summary = self._describe_image(asset.local_path or '')
+                asset.meta.update(summary_source='vision_model', semantic_status='ready')
+            except Exception as exc:
+                warnings.append(f'Failed to understand {label!r}: {type(exc).__name__}: {exc}')
+        resource.resource_type = 'image'
+        resource.mime_type = asset.meta.get('mime_type') or resource.mime_type
+        resource.summary = asset.summary
+        resource.meta.update(
+            summary_source=asset.meta.get('summary_source'),
+            semantic_status=asset.meta.get('semantic_status'),
+        )
+        return asset
+
+    def _materialize_document_images(
+        self,
+        document: WriterDocument,
+    ) -> tuple[List[tuple[InputResource, MediaAsset]], List[str]]:
+        provider = str(document.provider_binding.get('provider') or '').lower()
+        image_blocks = [block for block in document.iter_blocks() if block.type == 'image']
+        if not image_blocks or provider != 'feishu':
+            return [], []
+
+        locator = str(
+            document.provider_binding.get('uri')
+            or ((document.metadata.get('source') or {}).get('uri') if isinstance(
+                document.metadata.get('source'), dict) else '')
+            or f'feishu:/~docx/{document.provider_binding.get("document_id") or ""}'
+        ).strip()
+        import lazyllm.tools.fs.client as _fs_client
+        protocol, space_id, real_path = _fs_client.FS._parse(locator)
+        fs = _fs_client.FS._get_or_create_fs(protocol, space_id, real_path)
+        download_media = getattr(fs, 'download_media', None)
+        if not callable(download_media):
+            return [], [f'{type(fs).__name__} does not support Feishu media downloads.']
+
+        collected: List[tuple[InputResource, MediaAsset]] = []
+        warnings: List[str] = []
+        for block in image_blocks:
+            raw = block.provider_payload.get('raw_block') or {}
+            image = raw.get('image') if isinstance(raw, dict) else None
+            token = str((image or {}).get('token') or '').strip()
+            block_id = str(block.provider_binding.get('block_id') or block.node_id)
+            if not token:
+                warnings.append(f'Feishu image block {block_id!r} has no media token.')
+                continue
+            resource = InputResource(
+                resource_id=f'feishu-image-{block_id}',
+                resource_type='image',
+                uri=f'{locator}#image={block_id}',
+                title=block.content or f'Feishu image {block_id}',
+                summary=block.content or None,
+                meta={
+                    'provider': 'feishu',
+                    'provider_block_id': block_id,
+                    'source_type': 'input_resource',
+                    'origin': 'source_document',
+                    'caption': block.content or None,
+                },
+            )
+            try:
+                asset = self._materialize_image_bytes(download_media(token), resource)
+                collected.append((resource, asset))
+            except Exception as exc:
+                warnings.append(
+                    f'Failed to download Feishu image {block_id!r}: '
+                    f'{type(exc).__name__}: {exc}'
+                )
+        return collected, warnings
+
+    @staticmethod
+    def _markdown_image_resources(
+        markdown: str,
+        *,
+        source_label: str,
+    ) -> List[InputResource]:
+        parser = mistune.create_markdown(renderer='ast')
+        references: List[tuple[str, str, str]] = []
+
+        def text_content(node: Dict[str, Any]) -> str:
+            return str(node.get('raw') or '') + ''.join(
+                text_content(child) for child in node.get('children') or []
+                if isinstance(child, dict)
+            )
+
+        def walk(node: Dict[str, Any]) -> None:
+            if node.get('type') == 'image':
+                attrs = node.get('attrs') or {}
+                url = str(attrs.get('url') or '').strip()
+                if url:
+                    references.append((url, text_content(node).strip(), str(attrs.get('title') or '').strip()))
+            for child in node.get('children') or []:
+                if isinstance(child, dict):
+                    walk(child)
+
+        for token in parser(markdown or ''):
+            if isinstance(token, dict):
+                walk(token)
+
+        resources: List[InputResource] = []
+        seen: set[str] = set()
+        for raw_url, alt, title in references:
+            uri = f'https:{raw_url}' if raw_url.startswith('//') else raw_url
+            if urlparse(uri).scheme not in {'http', 'https'}:
+                continue
+            if uri in seen:
+                continue
+            seen.add(uri)
+            digest = hashlib.sha256(f'{source_label}\0{uri}'.encode('utf-8')).hexdigest()[:16]
+            resources.append(InputResource(
+                resource_id=f'markdown-image-{digest}',
+                resource_type='image',
+                uri=uri,
+                title=title or alt or Path(urlparse(uri).path).name or None,
+                summary=alt or None,
+                meta={
+                    'caption': alt or None,
+                    'source_type': 'input_resource',
+                    'origin': 'markdown',
+                },
+            ))
+        return resources
+
+    @staticmethod
+    def _extend_unique_resources(resources: List[InputResource], additions: List[InputResource]) -> None:
+        known = {(resource.resource_id, resource.uri) for resource in resources}
+        known_image_uris = {
+            resource.uri for resource in resources
+            if resource.resource_type == 'image' and resource.uri
+        }
+        for resource in additions:
+            key = (resource.resource_id, resource.uri)
+            if key not in known and not (
+                resource.resource_type == 'image' and resource.uri in known_image_uris
+            ):
+                resources.append(resource)
+                known.add(key)
+                if resource.resource_type == 'image' and resource.uri:
+                    known_image_uris.add(resource.uri)
+
+    def _download_external_image(self, url: str) -> bytes:
+        current = url
+        for redirect_count in range(_MAX_REDIRECTS + 1):
+            self._validate_remote_url(current)
+            response = requests.get(
+                current,
+                timeout=(5, 30),
+                stream=True,
+                allow_redirects=False,
+                headers={'Accept': 'image/*', 'User-Agent': 'LazyLLM-Writer/1.0'},
+            )
+            try:
+                if response.status_code in {301, 302, 303, 307, 308}:
+                    location = response.headers.get('Location')
+                    if not location or redirect_count == _MAX_REDIRECTS:
+                        raise ValueError(f'image URL exceeded {_MAX_REDIRECTS} redirects.')
+                    current = urljoin(current, location)
+                    continue
+                response.raise_for_status()
+                content_type = str(response.headers.get('Content-Type') or '').split(';', 1)[0].strip().lower()
+                if content_type and not content_type.startswith('image/'):
+                    raise ValueError(f'external image URL returned content type {content_type!r}.')
+                content_length = response.headers.get('Content-Length')
+                if content_length and int(content_length) > _MAX_IMAGE_BYTES:
+                    raise ValueError('external image exceeds the 20 MB limit.')
+                chunks: List[bytes] = []
+                size = 0
+                for chunk in response.iter_content(chunk_size=64 * 1024):
+                    if not chunk:
+                        continue
+                    size += len(chunk)
+                    if size > _MAX_IMAGE_BYTES:
+                        raise ValueError('external image exceeds the 20 MB limit.')
+                    chunks.append(chunk)
+                return b''.join(chunks)
+            finally:
+                response.close()
+        raise ValueError(f'image URL exceeded {_MAX_REDIRECTS} redirects.')
+
+    @staticmethod
+    def _validate_remote_url(url: str) -> None:
+        parsed = urlparse(url)
+        if parsed.scheme not in {'http', 'https'} or not parsed.hostname:
+            raise ValueError('external image URL must use HTTP or HTTPS.')
+        if config['allow_internal_network']:
+            return
+        try:
+            addresses = {
+                item[4][0]
+                for item in socket.getaddrinfo(
+                    parsed.hostname,
+                    parsed.port or (443 if parsed.scheme == 'https' else 80),
+                    type=socket.SOCK_STREAM,
+                )
+            }
+        except OSError as exc:
+            raise ValueError(f'cannot resolve external image host {parsed.hostname!r}.') from exc
+        if not addresses or any(not ipaddress.ip_address(address).is_global for address in addresses):
+            raise ValueError(f'access to non-public image host {parsed.hostname!r} is not allowed.')
 
     def _describe_image(self, local_path: str) -> str:
         output = self.llm(
@@ -284,13 +541,27 @@ class WriterMultimodalTools(WriterToolBase):
 
     @staticmethod
     def _inspect_image(path: Path) -> tuple[str, int, int]:
+        return WriterMultimodalTools._inspect_image_bytes(path.read_bytes())
+
+    @staticmethod
+    def _inspect_image_bytes(data: bytes) -> tuple[str, int, int]:
         try:
-            with PIL.Image.open(path) as image:
+            with PIL.Image.open(BytesIO(data)) as image:
                 image_format = str(image.format or '').upper()
                 width, height = image.size
                 image.verify()
         except Exception as exc:
-            raise ValueError(f'file is not a valid image: {path}') from exc
+            raise ValueError('image data is not a valid image.') from exc
         if not image_format:
-            raise ValueError(f'image format cannot be detected: {path}')
+            raise ValueError('image format cannot be detected.')
         return image_format, width, height
+
+    @staticmethod
+    def _image_suffix(suffix_hint: str, image_format: str) -> str:
+        suffix = str(suffix_hint or '').lower()
+        if suffix in _IMAGE_SUFFIXES:
+            return suffix
+        return {
+            'JPEG': '.jpg',
+            'TIFF': '.tif',
+        }.get(image_format, f'.{image_format.lower()}')

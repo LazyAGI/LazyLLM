@@ -4,7 +4,7 @@ import json
 import re
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from urllib.parse import urlencode, urlparse
+from urllib.parse import quote, urlencode, urlparse
 
 import requests
 
@@ -643,6 +643,19 @@ class FeishuFSBase(LinkDocumentFSBase):
         if not token:
             raise RuntimeError(f'Feishu media upload returned no file token for {image_block_id!r}.')
         return token
+
+    def download_media(self, file_token: str) -> bytes:
+        token = str(file_token or '').strip()
+        if not token:
+            raise ValueError('Feishu media file_token is required.')
+        response = self._request(
+            'GET',
+            f'{self._base_url}/drive/v1/medias/{quote(token, safe="")}/download',
+        )
+        content = getattr(response, 'content', b'')
+        if not content:
+            raise RuntimeError(f'Feishu media download returned empty content for {token!r}.')
+        return bytes(content)
 
     def _bind_docx_images(
         self,
