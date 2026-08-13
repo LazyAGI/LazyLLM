@@ -105,47 +105,47 @@ Calls search(query, **kwargs) and returns the result. Arguments are passed throu
 ''')
 
 add_chinese_doc('SearchBase.get_content', '''
-根据单条搜索结果（search/forward 返回的 item）获取正文文本。
+根据单条搜索结果（search/forward 返回的 item）获取正文，并保留来源身份。
 
-默认行为：请求 item 的 url，将响应 HTML 转为纯文本返回。子类可重写以使用 API 获取正文（如 Wikipedia 词条全文、arXiv 摘要、Stack Overflow 问答正文等）。
+默认行为：请求 item 的 url，将响应 HTML 转为纯文本并写入 content。子类可重写以使用 API 获取正文（如 Wikipedia 词条全文、arXiv 摘要、Stack Overflow 问答正文等）。
 
 Args:
     item (Dict[str, Any]): 至少包含 url 的搜索结果项（_make_result 格式）。
 
 Returns:
-    str: 正文文本；失败或无 url 时返回空字符串。
+    Dict[str, Any]: 包含 title、url、snippet、source、extra 和 content；正文获取失败时 content 为空字符串。
 ''')
 
 add_english_doc('SearchBase.get_content', '''
-Fetch full body text for a single search result item (as returned by search/forward).
+Fetch full body text for a single search result item while preserving its source identity.
 
-Default: GET the item url and convert response HTML to plain text. Subclasses may override to use APIs (e.g. Wikipedia full page, arXiv abstract, Stack Overflow Q&A body).
+Default: GET the item URL, convert response HTML to plain text, and store it in content. Subclasses may override to use APIs (e.g. Wikipedia full page, arXiv abstract, Stack Overflow Q&A body).
 
 Args:
     item (Dict[str, Any]): Search result item with at least url (_make_result format).
 
 Returns:
-    str: Body text; empty string on failure or when url is missing.
+    Dict[str, Any]: title, url, snippet, source, extra, and content. content is empty on fetch failure.
 ''')
 
 add_chinese_doc('SearchBase.get_contents', '''
-根据多条搜索结果批量获取正文文本。
+根据多条搜索结果批量获取正文并保留每条来源身份。
 
 Args:
     items (List[Dict[str, Any]]): 搜索结果列表（_make_result 格式）。
 
 Returns:
-    List[str]: 与 items 一一对应的正文文本列表。
+    List[Dict[str, Any]]: 与 items 一一对应的结构化正文结果列表。
 ''')
 
 add_english_doc('SearchBase.get_contents', '''
-Fetch full body text for multiple search result items.
+Fetch full body text for multiple search result items while preserving source identity.
 
 Args:
     items (List[Dict[str, Any]]): List of search result items (_make_result format).
 
 Returns:
-    List[str]: List of body texts, one per item.
+    List[Dict[str, Any]]: Structured content results in input order.
 ''')
 
 add_example('SearchBase.get_content', '''
@@ -153,14 +153,16 @@ from lazyllm.tools.tools import ArxivSearch
 engine = ArxivSearch()
 results = engine('transformer')
 if results:
-    text = engine.get_content(results[0])
+    result = engine.get_content(results[0])
+    text = result['content']
 ''')
 
 add_example('SearchBase.get_contents', '''
 from lazyllm.tools.tools import WikipediaSearch
 wiki = WikipediaSearch()
 items = wiki('machine learning')
-texts = wiki.get_contents(items[:3])
+contents = wiki.get_contents(items[:3])
+texts = [item['content'] for item in contents]
 ''')
 
 add_chinese_doc('GoogleSearch', '''
