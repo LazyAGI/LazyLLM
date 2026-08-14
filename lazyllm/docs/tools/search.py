@@ -775,7 +775,7 @@ Args:
     limit (int): 单次读取字符数，默认 700；仅 offset 非空时传给接口。
 
 Returns:
-    str: 原文文本、片段文本或空字符串。
+    Dict[str, Any]: 包含 title、url、snippet、source、extra 和 content；正文获取失败时 content 为空字符串。
 ''')
 
 add_english_doc('SciverseSearch.get_content', '''
@@ -789,7 +789,7 @@ Args:
     limit (int): Number of characters to read, default 700; sent only when offset is provided.
 
 Returns:
-    str: Full text, passage text, or an empty string.
+    Dict[str, Any]: title, url, snippet, source, extra, and content. content is empty on fetch failure.
 ''')
 
 add_chinese_doc('SciverseSearch.meta_search', '''
