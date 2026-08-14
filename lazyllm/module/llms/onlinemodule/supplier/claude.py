@@ -13,6 +13,7 @@ class ClaudeChat(OnlineChatModuleBase):
     _ANTHROPIC_VERSION = '2023-06-01'
     _DEFAULT_MAX_TOKENS = 4096
     _message_format = 'anthropic'
+    _openai_compatible_response = False
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
