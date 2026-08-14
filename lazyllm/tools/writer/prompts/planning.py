@@ -20,6 +20,10 @@ Requirements:
 - For non-fiction, reports, and articles, use H2 only for sections that should appear in
   the final document.
 - Keep the outline concise but concrete enough to guide drafting.
+- Treat task.constraints.target_chars and task.constraints.max_chars as limits for the
+  entire final document, not for each section.
+- When max_chars is at most 1200 and the user did not explicitly request multiple
+  chapters or sections, prefer one H2 section and merge the essential material into it.
 - Use resource profiles and execution results as constraints, not as text to copy blindly.
 - Do not invent facts that conflict with the writing context.
 
@@ -42,7 +46,12 @@ GENERATE_OUTLINE_PROMPT = '''Generate a writing outline from the given writing t
 Requirements:
 - Return a WriterDocument object with stage="outline".
 - Set document_id to the exact document_id below.
-- Generate at least 3 top-level blocks unless the task explicitly asks for fewer.
+- Generate at least 3 top-level blocks unless the task asks for a short document or
+  explicitly asks for fewer.
+- Treat task.constraints.target_chars and task.constraints.max_chars as limits for the
+  entire final document, not for each section.
+- When max_chars is at most 1200 and the user did not explicitly request multiple
+  chapters or sections, generate one top-level block and merge the essential material into it.
 - Each top-level block is a section. Use type="heading" for section blocks.
 - Treat the outline as the exact structural skeleton of the final deliverable: every
   top-level heading block will become a visible section in the drafted document.
@@ -125,9 +134,17 @@ Requirements:
 - meta.document_title must be the title of the rewritten document. Preserve the source title unless
   the task explicitly requests a new title.
 - Produce one SectionInstruction for every top-level section in the rewritten document, in final order.
+- Treat task.constraints.target_chars and task.constraints.max_chars as limits for the
+  entire final document, not for each section.
+- When max_chars is at most 1200 and the user did not explicitly request multiple
+  chapters or sections, normally produce one SectionInstruction and merge source sections.
+- When multiple sections are necessary, set each SectionInstruction.meta.target_chars to
+  a positive relative length budget based on its narrative or explanatory importance.
+  Do not divide the budget evenly unless the sections are genuinely equally important.
 - instruction_id must be stable and unique. section_title and section_goal must be non-empty.
 - required_points must retain the source facts, plot points, terminology, and details needed by drafting.
 - expected_blocks must be a concise content plan, not visible headings.
+- Keep required_points and expected_blocks selective enough to fit the final length budget.
 - references must contain only exact source_ref objects copied from source_sections. Use them to identify
   which source sections inform each rewritten section; do not invent reference fields or values.
 - For representation="ir", content_ref must contain only a unique node_id such as rewrite-section-1.
@@ -181,6 +198,10 @@ GENERATE_SECTION_INSTRUCTIONS_PROMPT = '''Generate section-level writing instruc
 Requirements:
 - Return a SectionInstructionList object.
 - Generate exactly one SectionInstruction for every item listed in target_outline_blocks.
+- Treat writing_task.constraints.target_chars and writing_task.constraints.max_chars as
+  limits for the entire final document, not for each section.
+- Set each SectionInstruction.meta.target_chars to a positive relative length budget based
+  on the section's importance. Do not divide evenly unless the sections are genuinely equal.
 - Copy each target's content_ref exactly. For Writer IR this contains node_id; for Markdown it
   contains heading_path and occurrence. Do not mix locator types.
 - section_title MUST equal the corresponding target's section_title.
@@ -197,9 +218,13 @@ Requirements:
   the same section. Do not copy visual needs into SectionInstruction or generate asset IDs, paths,
   placeholders, captions, or acquisition instructions.
 - expected_blocks should be a concise block-level content plan for the draft tool.
-- For a normal section, expected_blocks should usually contain 3 to 6 planned content blocks unless the section is explicitly very short.
+- For a normal-length section, expected_blocks should usually contain 3 to 6 planned content
+  blocks. Use fewer and merge coverage cues when the total document budget is short.
 - expected_blocks are planning labels for coverage and ordering, not visible headings that must appear in final text.
 - Do not invent facts that conflict with writing context.
+
+Writing task:
+{task_json}
 
 Outline (authoritative structure):
 {outline_json}

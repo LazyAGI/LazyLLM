@@ -913,6 +913,55 @@ def test_generate_rewrite_section_instructions_supports_markdown():
     assert instructions.meta['representation'] == 'markdown'
 
 
+def test_section_length_budgets_preserve_planner_proportions():
+    task = WritingTask(
+        task_id='task-budget', query='写800字', task_type='write',
+        constraints={'target_chars': 800, 'max_chars': 880},
+    )
+    instructions = SectionInstructionList(instructions=[
+        SectionInstruction(
+            instruction_id=f'section-{index}',
+            content_ref=ContentRef(node_id=f'section-{index}'),
+            section_title=f'第{index}章', section_goal='写作',
+            meta={'target_chars': weight},
+        )
+        for index, weight in enumerate((2, 5, 3), start=1)
+    ])
+
+    WriterPlanningTools._normalize_section_length_budgets(instructions, task)
+
+    assert [item.meta for item in instructions.instructions] == [
+        {'target_chars': 160, 'max_chars': 176},
+        {'target_chars': 400, 'max_chars': 440},
+        {'target_chars': 240, 'max_chars': 264},
+    ]
+    assert instructions.meta == {'target_chars': 800, 'max_chars': 880}
+
+
+def test_overlong_ir_and_markdown_drafts_are_condensed_once():
+    tool = WriterDraftingTools()
+    instruction = SectionInstruction(
+        instruction_id='section-1', content_ref=ContentRef(node_id='section-1'),
+        section_title='第一章', section_goal='写作', meta={'max_chars': 10},
+    )
+    def block(text):
+        return WriterBlock(
+            node_id='section-1', type='heading', content='第一章',
+            children=[WriterBlock(node_id='p-1', type='paragraph', content=text)],
+        )
+
+    with patch.object(tool, '_call_llm_structured', return_value=block('压缩后。')) as ir_call:
+        condensed_ir = tool._condense_ir_section_if_needed(block('这是明显超过上限的初稿。'), instruction)
+    with patch.object(tool, '_call_llm_text', return_value='简短正文。') as md_call:
+        condensed_md = tool._condense_markdown_section_if_needed(
+            '这是明显超过上限的 Markdown 初稿。', instruction,
+        )
+
+    assert condensed_ir.children[0].content == '压缩后。'
+    assert condensed_md == '简短正文。'
+    assert ir_call.call_count == md_call.call_count == 1
+
+
 def test_generate_ir_draft_document_is_ui_editable_without_outline():
     context = WritingContext(context_id='ctx-rewrite-draft')
     block = WriterBlock(

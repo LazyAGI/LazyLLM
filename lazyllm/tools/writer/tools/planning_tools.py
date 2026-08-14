@@ -193,6 +193,7 @@ class WriterPlanningTools(WriterToolBase):
             source_title,
             source_sections,
             writing_context,
+            writing_task,
         )
         return self._save_artifacts(
             {'section_instructions': instructions},
@@ -240,9 +241,11 @@ class WriterPlanningTools(WriterToolBase):
         context: Any,
         visual_plan: Any = None,
         execution_results: Any = None,
+        task: Any = None,
     ) -> dict:
         writing_outline = self._unified_document(outline)
         writing_context = self._unified_model(context, WritingContext)
+        writing_task = self._unified_model(task, WritingTask) if task is not None else None
         execution_data = self._unified_raw_data(execution_results)
         writing_visual_plan = self._unified_optional_model(visual_plan, VisualPlan) or VisualPlan()
 
@@ -276,6 +279,7 @@ class WriterPlanningTools(WriterToolBase):
             representation = 'markdown'
 
         prompt = GENERATE_SECTION_INSTRUCTIONS_PROMPT.format(
+            task_json=to_prompt_json(writing_task),
             outline_json=to_prompt_json(outline_payload),
             target_outline_blocks_json=to_prompt_json(target_payload),
             context_json=to_prompt_json(writing_context),
@@ -290,6 +294,7 @@ class WriterPlanningTools(WriterToolBase):
                 target_blocks,
                 writing_context,
                 execution_data,
+                writing_task,
             )
             outline_id = writing_outline.document_id
         else:
@@ -298,6 +303,7 @@ class WriterPlanningTools(WriterToolBase):
                 targets,
                 writing_context,
                 execution_data,
+                writing_task,
             )
             outline_id = instruction_list.outline_id
 
@@ -393,6 +399,7 @@ class WriterPlanningTools(WriterToolBase):
         target_blocks: List[WriterBlock],
         context: WritingContext,
         execution_results: Any,
+        task: WritingTask | None,
     ) -> SectionInstructionList:
         target_by_id = {block.node_id: block for block in target_blocks}
         instruction_by_node_id: Dict[str, SectionInstruction] = {}
@@ -437,7 +444,7 @@ class WriterPlanningTools(WriterToolBase):
             'context_id': context.context_id,
             'has_execution_results': execution_results is not None,
         })
-        return instruction_list
+        return self._normalize_section_length_budgets(instruction_list, task)
 
     def _normalize_markdown_section_instructions(
         self,
@@ -445,6 +452,7 @@ class WriterPlanningTools(WriterToolBase):
         targets: List[tuple[int, List[str], int, str]],
         context: WritingContext,
         execution_results: Any,
+        task: WritingTask | None,
     ) -> SectionInstructionList:
         target_by_ref = {
             (tuple(heading_path), occurrence): (level, heading_path)
@@ -499,7 +507,7 @@ class WriterPlanningTools(WriterToolBase):
             'context_id': context.context_id,
             'has_execution_results': execution_results is not None,
         })
-        return instruction_list
+        return self._normalize_section_length_budgets(instruction_list, task)
 
     @staticmethod
     def _rewrite_source_sections(
@@ -570,6 +578,7 @@ class WriterPlanningTools(WriterToolBase):
         source_title: str,
         source_sections: List[Dict[str, Any]],
         context: WritingContext,
+        task: WritingTask,
     ) -> SectionInstructionList:
         if not instruction_list.instructions:
             raise ValueError('Rewrite section instructions must contain at least one section.')
@@ -633,7 +642,60 @@ class WriterPlanningTools(WriterToolBase):
             'document_title': document_title,
             'context_id': context.context_id,
         })
+        return cls._normalize_section_length_budgets(instruction_list, task)
+
+    @classmethod
+    def _normalize_section_length_budgets(
+        cls,
+        instruction_list: SectionInstructionList,
+        task: WritingTask | None,
+    ) -> SectionInstructionList:
+        if task is None:
+            return instruction_list
+        target_chars = task.constraints.get('target_chars')
+        max_chars = task.constraints.get('max_chars')
+        if not isinstance(target_chars, int) or not isinstance(max_chars, int):
+            return instruction_list
+
+        weights = []
+        for instruction in instruction_list.instructions:
+            value = instruction.meta.get('target_chars')
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+                raise ValueError(
+                    'Every section instruction must provide a positive meta.target_chars '
+                    'when the writing task has a document length budget.'
+                )
+            weights.append(float(value))
+
+        targets = cls._allocate_by_weight(target_chars, weights)
+        headroom = cls._allocate_by_weight(max_chars - target_chars, weights)
+        for instruction, target, extra in zip(
+            instruction_list.instructions, targets, headroom,
+        ):
+            instruction.meta['target_chars'] = target
+            instruction.meta['max_chars'] = target + extra
+        instruction_list.meta.update({
+            'target_chars': target_chars,
+            'max_chars': max_chars,
+        })
         return instruction_list
+
+    @staticmethod
+    def _allocate_by_weight(total: int, weights: List[float]) -> List[int]:
+        if total <= 0:
+            return [0] * len(weights)
+        weight_sum = sum(weights)
+        raw = [total * weight / weight_sum for weight in weights]
+        allocated = [int(value) for value in raw]
+        remainder = total - sum(allocated)
+        order = sorted(
+            range(len(weights)),
+            key=lambda index: raw[index] - allocated[index],
+            reverse=True,
+        )
+        for index in order[:remainder]:
+            allocated[index] += 1
+        return allocated
 
     @staticmethod
     def _rewrite_source_ref_key(reference: Dict[str, Any]) -> tuple[Any, ...]:

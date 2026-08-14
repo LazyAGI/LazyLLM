@@ -10,7 +10,12 @@ from ..data_models.multimodal import MediaAssetLibrary, VisualPlan
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import WriterBlock, WriterDocument
 from ..data_models.planning import SectionInstruction
-from ..prompts import GENERATE_DRAFT_SECTION_MARKDOWN_PROMPT, GENERATE_DRAFT_SECTION_PROMPT
+from ..prompts import (
+    CONDENSE_DRAFT_SECTION_MARKDOWN_PROMPT,
+    CONDENSE_DRAFT_SECTION_PROMPT,
+    GENERATE_DRAFT_SECTION_MARKDOWN_PROMPT,
+    GENERATE_DRAFT_SECTION_PROMPT,
+)
 from ..utils import (
     get_markdown_outline_targets,
     make_markdown_tool_result,
@@ -155,6 +160,7 @@ class WriterDraftingTools(WriterToolBase):
             self._call_llm_structured(prompt, WriterBlock),
             instruction,
         )
+        block = self._condense_ir_section_if_needed(block, instruction)
         return self._save_ir_draft_section(block, result_extra)
 
     def _ir_draft_prompt(
@@ -222,7 +228,58 @@ class WriterDraftingTools(WriterToolBase):
     ) -> dict:
         prompt = self._markdown_draft_prompt(task, instruction, context, previous_blocks)
         body = self._call_llm_text(prompt)
+        body = self._condense_markdown_section_if_needed(body, instruction)
         return self._finalize_markdown_draft_section(body, instruction, result_extra)
+
+    def _condense_ir_section_if_needed(
+        self,
+        block: WriterBlock,
+        instruction: SectionInstruction,
+    ) -> WriterBlock:
+        max_chars = instruction.meta.get('max_chars')
+        if not isinstance(max_chars, int) or self._ir_prose_chars(block) <= max_chars:
+            return block
+        prompt = CONDENSE_DRAFT_SECTION_PROMPT.format(
+            max_chars=max_chars,
+            section_instruction_json=to_prompt_json(instruction),
+            draft_section_json=to_prompt_json(block),
+        )
+        condensed = self._normalize_draft_block(
+            self._call_llm_structured(prompt, WriterBlock),
+            instruction,
+        )
+        if self._ir_prose_chars(condensed) > max_chars:
+            raise ValueError(f'Condensed draft section still exceeds max_chars={max_chars}.')
+        return condensed
+
+    def _condense_markdown_section_if_needed(
+        self,
+        body: str,
+        instruction: SectionInstruction,
+    ) -> str:
+        max_chars = instruction.meta.get('max_chars')
+        if not isinstance(max_chars, int) or self._text_chars(body) <= max_chars:
+            return body
+        condensed = self._call_llm_text(CONDENSE_DRAFT_SECTION_MARKDOWN_PROMPT.format(
+            max_chars=max_chars,
+            section_instruction_json=to_prompt_json(instruction),
+            draft_body=body,
+        )).strip()
+        if self._text_chars(condensed) > max_chars:
+            raise ValueError(f'Condensed draft section still exceeds max_chars={max_chars}.')
+        return condensed
+
+    @classmethod
+    def _ir_prose_chars(cls, block: WriterBlock) -> int:
+        return sum(
+            cls._text_chars(item.content)
+            for item in block.iter_blocks()
+            if item is not block and item.type != 'heading'
+        )
+
+    @staticmethod
+    def _text_chars(text: str) -> int:
+        return len(re.sub(r'\s+', '', text))
 
     def _markdown_draft_prompt(
         self,

@@ -8,12 +8,15 @@ Requirements:
 - A paragraph child usually represents one substantial paragraph or paragraph group.
 - The section instruction is a writing plan, not a list of visible headings.
 - Use expected_blocks to guide coverage and ordering, but do not copy them verbatim as headings.
-- expected_blocks are minimum coverage cues, not a maximum block count. Expand them when needed.
+- Treat expected_blocks as priorities, not minimum paragraph counts. Combine or omit
+  secondary cues when necessary to fit the section budget.
 - Choose a reasonable number of paragraph children based on section complexity, expected_blocks, and required_points.
 - Each paragraph child's content must contain complete prose with multiple meaningful sentences unless the block is intentionally non-textual.
 - Keep text blocks substantial enough to carry their intended idea.
-- Do not generate short summary-like or placeholder-like blocks just to match the expected_blocks count.
-- If expected_blocks is too coarse, add additional content blocks for setup, transition, evidence/detail, consequence, or closing as appropriate.
+- Do not generate placeholder-like blocks just to match the expected_blocks count.
+- section_instruction.meta.target_chars is the preferred prose length and
+  section_instruction.meta.max_chars is a hard prose limit when present.
+- The length limit takes precedence over exhaustive source coverage or prose expansion.
 - Respect required_points, fact_constraints, style_constraints, and relation_constraints.
 - When section_instruction.meta.rewrite=true, treat meta.source_content as the authoritative
   source material for this section and meta.source_format as formatting guidance. Rewrite it
@@ -55,6 +58,11 @@ Requirements:
 - Do not output reasoning, analysis, review notes, or <think> tags.
 - Do not output the section title or its heading; the system adds the heading.
 - Follow the section instruction as a writing plan, not as a list of visible headings.
+- Treat expected_blocks as coverage priorities, not minimum paragraph counts. Combine or
+  omit secondary cues when necessary to fit the section budget.
+- section_instruction.meta.target_chars is the preferred prose length and
+  section_instruction.meta.max_chars is a hard prose limit when present.
+- The length limit takes precedence over exhaustive source coverage or prose expansion.
 - Respect required_points, fact_constraints, style_constraints, and relation_constraints.
 - When section_instruction.meta.rewrite=true, treat meta.source_content as the authoritative
   source material for this section and meta.source_format as formatting guidance. Rewrite it
@@ -81,4 +89,34 @@ Current section instruction:
 Write only the body of the current section now. Begin directly with its finished
 prose and follow the current section instruction, even when the previous Markdown
 covers a different section.
+'''
+
+
+CONDENSE_DRAFT_SECTION_PROMPT = '''Condense this WriterBlock draft section.
+
+Requirements:
+- Return one WriterBlock with the same root node_id, heading, and stage="draft".
+- Keep the main plot or argument, ending, point of view, tone, and required non-text blocks.
+- Do not add new facts, scenes, claims, headings, or planning notes.
+- The combined non-whitespace prose in the returned block's descendants must not exceed {max_chars} characters.
+
+Section instruction:
+{section_instruction_json}
+
+Draft section:
+{draft_section_json}
+'''
+
+
+CONDENSE_DRAFT_SECTION_MARKDOWN_PROMPT = '''Condense this Markdown section body to at most {max_chars} non-whitespace characters.
+
+Preserve the main plot or argument, ending, point of view, tone, and essential Markdown.
+Do not add new content, a section heading, reasoning, or planning notes.
+Return only the condensed section body.
+
+Section instruction:
+{section_instruction_json}
+
+Draft body:
+{draft_body}
 '''
