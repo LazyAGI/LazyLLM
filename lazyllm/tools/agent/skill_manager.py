@@ -98,6 +98,38 @@ _META_REQUIRED_FIELDS = {
     'description',
 }
 
+_CREDENTIAL_SECTION_TITLE_RE = re.compile(
+    r'(?i)(?:'
+    r'\bauthenticat(?:e|ion|or)?\b|'
+    r'\bauthoriz(?:e|ation)?\b|'
+    r'\bcredentials?\b|'
+    r'\bapi[\s_-]*keys?\b|'
+    r'\benvironment\b|'
+    r'\benv(?:ironment)?\s*vars?\b|'
+    r'\benvs?\b|'
+    r'鉴权|凭证|密钥|环境变量|'
+    r'配置\s*(?:api\s*)?keys?'
+    r')'
+)
+_ENV_NAME_PATTERN = r'[A-Z][A-Z0-9_]{2,}'
+_EXPLICIT_ENV_RE = re.compile(
+    r'(?:'
+    r'(?:export|set)\s+(' + _ENV_NAME_PATTERN + r')\s*='
+    r'|os\.environ\[\s*[\'"](' + _ENV_NAME_PATTERN + r')[\'"]\s*\]'
+    r'|os\.getenv\(\s*[\'"](' + _ENV_NAME_PATTERN + r')[\'"]'
+    r'|(?:环境变量|env(?:ironment)?\s*variables?)\s*[：: ]?\s*(' + _ENV_NAME_PATTERN + r')'
+    r')'
+)
+_ALLCAPS_NAME_RE = re.compile(r'\b(' + _ENV_NAME_PATTERN + r')\b')
+_URL_RE = re.compile(r'https?://\S+')
+_CREDENTIAL_NAME_PARTS = {'KEY', 'TOKEN', 'SECRET', 'CREDENTIAL', 'PASSWORD', 'AUTH'}
+_GENERIC_CREDENTIAL_NAMES = {
+    'KEY', 'API_KEY', 'TOKEN', 'SECRET', 'CREDENTIAL', 'PASSWORD',
+    'ACCESS_TOKEN', 'ACCESS_KEY', 'SECRET_KEY', 'API_TOKEN',
+    'AUTH_TOKEN', 'AUTH_KEY', 'APIKEY', 'API_SECRET',
+}
+_URL_SEARCH_WINDOW = 400
+
 
 class SkillManager(ModuleBase):
     def __init__(self, dir: Optional[str] = None, skills: Optional[Iterable[str]] = None,
@@ -601,15 +633,224 @@ class SkillManager(ModuleBase):
             extra['timeout'] = exc.timeout
         else:
             message = f'run_script execution failed: {exc}'
-        return {
+        result = {
             'status': 'error',
             'name': name,
             'rel_path': rel_path,
-            'cwd': error_cwd,
             'error_type': exc.__class__.__name__,
             'error': message,
             **extra,
         }
+        if error_cwd not in (None, ''):
+            result['cwd'] = error_cwd
+        return result
+
+    def _missing_skill_doc_env(self, info: Optional[dict]) -> List[Dict[str, str]]:
+        if not info:
+            return []
+        missing = []
+        for entry in self._credential_entries_from_skill_doc(info):
+            if not str(os.getenv(entry['name']) or '').strip():
+                missing.append(entry)
+        return missing
+
+    @staticmethod
+    def _credential_guidance_fields(skill_name: str, entries: List[Dict[str, str]]) -> Dict[str, object]:
+        names = ', '.join(entry['name'] for entry in entries)
+        urls = list(dict.fromkeys(entry['url'] for entry in entries if entry.get('url')))
+        setup_commands = SkillManager._credential_setup_commands(entries)
+        error = f'Missing {names} required by skill {skill_name}.'
+        if urls:
+            error = f'{error} Get it from: {", ".join(urls)}'
+        hint_parts = [f'Configure {names} before retrying this skill.']
+        hint_parts.extend(
+            f'Get {entry["name"]} from {entry["url"]}'
+            for entry in entries if entry.get('url')
+        )
+        if setup_commands:
+            hint_parts.append(f'Set it with: {"; ".join(setup_commands)}')
+        hint_parts.extend(entry['hint'] for entry in entries if entry.get('hint'))
+        result = {
+            'error_type': 'MissingCredential',
+            'error': error,
+            'hint': ' '.join(hint_parts),
+            'missing_env': [entry['name'] for entry in entries],
+            'credential_labels': [entry.get('label') or entry['name'] for entry in entries],
+        }
+        if setup_commands:
+            result['setup_commands'] = setup_commands
+        if urls:
+            result['api_key_url'] = urls[0]
+        return result
+
+    @classmethod
+    def _apply_credential_guidance(cls, result: Dict, skill_name: str,
+                                   entries: List[Dict[str, str]]) -> None:
+        original_error = str(result.get('error') or '')
+        fields = cls._credential_guidance_fields(skill_name, entries)
+        result.update(fields)
+        if original_error and original_error not in result['error']:
+            result['error'] = f'{result["error"]} {original_error}'.strip()
+
+    @staticmethod
+    def _credential_setup_commands(entries: List[Dict[str, str]]) -> List[str]:
+        return [
+            f'export {entry["name"]}="<your {entry["name"]}>"'
+            for entry in entries
+            if entry.get('name')
+        ]
+
+    @staticmethod
+    def _script_failure_message(result: Dict) -> str:
+        for key in ('stderr', 'error', 'message', 'stdout'):
+            value = result.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return ''
+
+    @staticmethod
+    def _script_failure_missing_credential(message: str) -> bool:
+        return bool(re.search(
+            r'(api[-_ ]?key|token|secret|credential|env(?:ironment)?\s*variable|环境变量|密钥|鉴权)',
+            message,
+            re.IGNORECASE,
+        ))
+
+    @staticmethod
+    def _looks_like_credential_name(name: str) -> bool:
+        return any(part in _CREDENTIAL_NAME_PARTS for part in name.split('_'))
+
+    @staticmethod
+    def _nearest_url(text: str, position: int) -> str:
+        line_start = text.rfind('\n', 0, position) + 1
+        line_end = text.find('\n', position)
+        if line_end < 0:
+            line_end = len(text)
+        line_matches = list(_URL_RE.finditer(text, line_start, line_end))
+        if line_matches:
+            return line_matches[0].group(0).rstrip('.,，。)')
+        start = max(0, position - _URL_SEARCH_WINDOW)
+        end = min(len(text), position + _URL_SEARCH_WINDOW)
+        matches = list(_URL_RE.finditer(text, start, end))
+        if not matches:
+            return ''
+        nearby = min(matches, key=lambda item: abs(item.start() - position))
+        return nearby.group(0).rstrip('.,，。)')
+
+    @classmethod
+    def _credential_entries_from_message(cls, message: str) -> List[Dict[str, str]]:
+        if not message:
+            return []
+        found: List[Tuple[str, int]] = []
+        seen: set[str] = set()
+
+        def _add(name: str, pos: int) -> None:
+            if name in seen:
+                return
+            seen.add(name)
+            found.append((name, pos))
+
+        for match in _EXPLICIT_ENV_RE.finditer(message):
+            name = next((group for group in match.groups() if group), '')
+            if name:
+                _add(name, match.start())
+        for match in _ALLCAPS_NAME_RE.finditer(message):
+            name = match.group(1)
+            if cls._looks_like_credential_name(name):
+                _add(name, match.start())
+
+        credential_like = [
+            item for item in found if cls._looks_like_credential_name(item[0])
+        ]
+        if not credential_like:
+            return []
+        specific = [
+            item for item in credential_like if item[0] not in _GENERIC_CREDENTIAL_NAMES
+        ]
+        selected = specific or credential_like
+        return [
+            {
+                'name': name,
+                'label': name,
+                'url': cls._nearest_url(message, pos),
+                'hint': '',
+            }
+            for name, pos in selected
+        ]
+
+    @staticmethod
+    def _credential_sections_from_skill_doc(content: str) -> str:
+        lines = content.replace('\r\n', '\n').splitlines()
+        selected: List[str] = []
+        capture = False
+        in_fence = False
+        for line in lines:
+            if line.strip().startswith('```'):
+                in_fence = not in_fence
+                if capture:
+                    selected.append(line)
+                continue
+            if in_fence:
+                if capture:
+                    selected.append(line)
+                continue
+            header = re.match(r'^(#{1,6})\s+(.+?)\s*$', line)
+            if header:
+                capture = bool(_CREDENTIAL_SECTION_TITLE_RE.search(header.group(2)))
+                if capture:
+                    selected.append(line)
+                continue
+            if capture:
+                selected.append(line)
+        return '\n'.join(selected)
+
+    def _credential_entries_from_skill_doc(self, info: Optional[dict]) -> List[Dict[str, str]]:
+        if not info:
+            return []
+        skill_md = info.get('skill_md')
+        if not skill_md:
+            return []
+        try:
+            content = self._fs_read(skill_md)
+        except Exception:
+            return []
+        return self._credential_entries_from_message(self._credential_sections_from_skill_doc(content))
+
+    @classmethod
+    def _public_cwd(cls, base: Optional[str], cwd: Optional[str]) -> Optional[str]:
+        if cwd is None:
+            return None
+        raw = str(cwd).strip()
+        if not raw:
+            return None
+        if not os.path.isabs(raw) and '\\' not in raw and not re.match(r'^[A-Za-z]:[/\\]', raw):
+            try:
+                normalized = cls._normalize_skill_rel_path(raw, label='cwd')
+            except ValueError:
+                return None
+            return None if normalized in ('', '.') else normalized
+        if not base:
+            return None
+        base_real = os.path.realpath(os.path.abspath(base))
+        target = os.path.realpath(os.path.abspath(raw))
+        try:
+            if os.path.commonpath([base_real, target]) != base_real:
+                return None
+        except ValueError:
+            return None
+        rel = os.path.relpath(target, base_real).replace('\\', '/')
+        return None if rel in ('.', '') else rel
+
+    @classmethod
+    def _sanitize_result_cwd(cls, result: Dict, base: Optional[str]) -> Dict:
+        if not isinstance(result, dict) or 'cwd' not in result:
+            return result
+        public = cls._public_cwd(base, result.get('cwd'))
+        if public is None:
+            result.pop('cwd', None)
+        else:
+            result['cwd'] = public
+        return result
 
     def run_script(self, name: str, rel_path: str, args: Optional[List[str]] = None,
                    allow_unsafe: bool = False, cwd: Optional[str] = None) -> Dict[str, str]:
@@ -630,7 +871,16 @@ class SkillManager(ModuleBase):
                 'error_type': 'InvalidRelPath',
                 'error': 'run_script rel_path must be under scripts/.',
             }
-        base = info['path']
+        missing_env = self._missing_skill_doc_env(info)
+        if missing_env:
+            return {
+                'status': 'failed',
+                'name': name,
+                'rel_path': normalized_rel_path,
+                **self._credential_guidance_fields(name, missing_env),
+            }
+        skill_base = info['path']
+        base = skill_base
         temp_dir = None
         run_cwd = None
         try:
@@ -657,9 +907,22 @@ class SkillManager(ModuleBase):
             )
             if result.get('status') == 'ok' and result.get('exit_code', 0) != 0:
                 result['status'] = 'failed'
-            return result
+            if result.get('status') in ('failed', 'error'):
+                message = self._script_failure_message(result)
+                if message:
+                    result.setdefault('error', message)
+                    result.setdefault('error_type', 'ScriptFailed')
+                guidance = self._missing_skill_doc_env(info)
+                if not guidance and self._script_failure_missing_credential(message):
+                    guidance = self._credential_entries_from_message(message)
+                if guidance:
+                    self._apply_credential_guidance(result, name, guidance)
+            return self._sanitize_result_cwd(result, skill_base)
         except Exception as exc:
-            return self._run_script_exception(name, normalized_rel_path, cwd, run_cwd, exc)
+            return self._sanitize_result_cwd(
+                self._run_script_exception(name, normalized_rel_path, cwd, run_cwd, exc),
+                skill_base,
+            )
         finally:
             if temp_dir is not None:
                 temp_dir.cleanup()
@@ -697,12 +960,21 @@ class SkillManager(ModuleBase):
                        allow_unsafe: bool = False, cwd: Optional[str] = None) -> dict:
             '''Run a script within a skill directory.
 
+            Missing credentials are reported as status=failed with
+            error_type=MissingCredential. Tell the user the exact names in
+            missing_env, plus setup_commands, hint, and api_key_url from the
+            result. Never replace a concrete variable such as REDFOX_API_KEY
+            with a generic KEY or API_KEY.
+
             Args:
                 name (str): Skill name.
                 rel_path (str): Relative script path inside the skill directory.
                 args (list[str], optional): Script arguments.
                 allow_unsafe (bool, optional): Allow execution. Defaults to False.
-                cwd (str, optional): Working directory.
+                cwd (str, optional): Relative working directory inside the skill directory only.
+                    Omit this unless SKILL.md explicitly asks for it. Do not pass workspace,
+                    temp, artifact, or absolute paths as cwd; pass those locations as ordinary
+                    script arguments instead.
             '''
             return self.run_script(name=name, rel_path=rel_path, args=args,
                                    allow_unsafe=allow_unsafe, cwd=cwd)

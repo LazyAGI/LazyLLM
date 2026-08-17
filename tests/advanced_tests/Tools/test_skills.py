@@ -278,6 +278,207 @@ class TestSkills(object):
             assert fail_result['exit_code'] == 7
             assert 'bad' in fail_result['stdout']
 
+    def test_run_script_extracts_missing_env_guidance_from_stderr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'stderr-skill', 'stderr-skill')
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            script = os.path.join(scripts_dir, 'needs_key.py')
+            with open(script, 'w', encoding='utf-8') as f:
+                f.write(
+                    'import sys\n'
+                    'sys.stderr.write("缺少 API_KEY，请设置环境变量 REDFOX_API_KEY。"\n'
+                    '                 "获取方式：https://redfox.hk/settings/api-keys?source=workbuddy")\n'
+                    'sys.exit(1)\n'
+                )
+
+            manager = SkillManager(dir=tmp)
+            result = manager.run_script('stderr-skill', 'scripts/needs_key.py', allow_unsafe=True)
+
+            assert result['status'] == 'failed'
+            assert result['error_type'] == 'MissingCredential'
+            assert result['missing_env'] == ['REDFOX_API_KEY']
+            assert result['api_key_url'] == 'https://redfox.hk/settings/api-keys?source=workbuddy'
+            assert result['setup_commands'] == ['export REDFOX_API_KEY="<your REDFOX_API_KEY>"']
+            assert 'REDFOX_API_KEY' in result['hint']
+            assert 'generic KEY' not in result['hint']
+            assert 'Missing REDFOX_API_KEY required by skill stderr-skill.' in result['error']
+            assert 'REDFOX_API_KEY (' not in result['error']
+
+    def test_run_script_extracts_missing_env_guidance_from_skill_md_body(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'body-skill', 'body-skill')
+            with open(os.path.join(skill_dir, 'SKILL.md'), 'a', encoding='utf-8') as f:
+                f.write(
+                    '\n## 鉴权\n'
+                    '请前往 https://example.test/body-key 获取 API Key。\n'
+                    '然后执行 export BODY_API_KEY="ak_xxx" 后再运行技能。\n'
+                )
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            script = os.path.join(scripts_dir, 'needs_key.py')
+            with open(script, 'w', encoding='utf-8') as f:
+                f.write('print("should not run")\n')
+
+            previous = os.environ.pop('BODY_API_KEY', None)
+            try:
+                manager = SkillManager(dir=tmp)
+                result = manager.run_script('body-skill', 'scripts/needs_key.py', allow_unsafe=True)
+            finally:
+                if previous is None:
+                    os.environ.pop('BODY_API_KEY', None)
+                else:
+                    os.environ['BODY_API_KEY'] = previous
+
+            assert result['status'] == 'failed'
+            assert result['error_type'] == 'MissingCredential'
+            assert result['missing_env'] == ['BODY_API_KEY']
+            assert result['api_key_url'] == 'https://example.test/body-key'
+            assert result['setup_commands'] == ['export BODY_API_KEY="<your BODY_API_KEY>"']
+            assert 'generic KEY' not in result['hint']
+
+    def test_run_script_extracts_missing_env_from_fenced_skill_md(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'fence-skill', 'fence-skill')
+            with open(os.path.join(skill_dir, 'SKILL.md'), 'a', encoding='utf-8') as f:
+                f.write(
+                    '\n## 鉴权\n'
+                    '```bash\n'
+                    'export FENCE_API_KEY="ak_xxx"\n'
+                    '```\n'
+                    '获取方式：https://example.test/fence-key\n'
+                )
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            script = os.path.join(scripts_dir, 'needs_key.py')
+            with open(script, 'w', encoding='utf-8') as f:
+                f.write('print("should not run")\n')
+
+            previous = os.environ.pop('FENCE_API_KEY', None)
+            try:
+                manager = SkillManager(dir=tmp)
+                result = manager.run_script('fence-skill', 'scripts/needs_key.py', allow_unsafe=True)
+            finally:
+                if previous is None:
+                    os.environ.pop('FENCE_API_KEY', None)
+                else:
+                    os.environ['FENCE_API_KEY'] = previous
+
+            assert result['status'] == 'failed'
+            assert result['error_type'] == 'MissingCredential'
+            assert result['missing_env'] == ['FENCE_API_KEY']
+            assert result['api_key_url'] == 'https://example.test/fence-key'
+            assert result['setup_commands'] == ['export FENCE_API_KEY="<your FENCE_API_KEY>"']
+
+    def test_run_script_runs_when_required_env_is_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'ready-skill', 'ready-skill')
+            with open(os.path.join(skill_dir, 'SKILL.md'), 'a', encoding='utf-8') as f:
+                f.write(
+                    '\n## 鉴权\n'
+                    'export READY_API_KEY="ak_xxx"\n'
+                )
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            script = os.path.join(scripts_dir, 'ok.py')
+            with open(script, 'w', encoding='utf-8') as f:
+                f.write('print("ok")\n')
+
+            previous = os.environ.get('READY_API_KEY')
+            os.environ['READY_API_KEY'] = 'present'
+            try:
+                manager = SkillManager(dir=tmp)
+                result = manager.run_script('ready-skill', 'scripts/ok.py', allow_unsafe=True)
+            finally:
+                if previous is None:
+                    os.environ.pop('READY_API_KEY', None)
+                else:
+                    os.environ['READY_API_KEY'] = previous
+
+            assert result['status'] == 'ok'
+            assert result['stdout'].strip() == 'ok'
+
+    def test_run_script_does_not_treat_unrelated_api_key_mention_as_required(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'note-skill', 'note-skill')
+            with open(os.path.join(skill_dir, 'SKILL.md'), 'a', encoding='utf-8') as f:
+                f.write(
+                    '\n## Examples\n'
+                    'This document may mention SAMPLE_API_KEY in an example, but the skill does not require it.\n'
+                )
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            script = os.path.join(scripts_dir, 'ok.py')
+            with open(script, 'w', encoding='utf-8') as f:
+                f.write('print("ok")\n')
+
+            previous = os.environ.pop('SAMPLE_API_KEY', None)
+            try:
+                manager = SkillManager(dir=tmp)
+                result = manager.run_script('note-skill', 'scripts/ok.py', allow_unsafe=True)
+            finally:
+                if previous is None:
+                    os.environ.pop('SAMPLE_API_KEY', None)
+                else:
+                    os.environ['SAMPLE_API_KEY'] = previous
+
+            assert result['status'] == 'ok'
+            assert result['stdout'].strip() == 'ok'
+
+    def test_credential_sections_ignore_code_fences_and_unrelated_headings(self):
+        selected = SkillManager._credential_sections_from_skill_doc(
+            '# Skill\n'
+            '```\n'
+            '# Include authoritative source hints\n'
+            'export SAMPLE_API_KEY=x\n'
+            '```\n'
+            '## Development\n'
+            'export DEV_API_KEY=x\n'
+            '## 配置\n'
+            'export PAGE_SIZE=20\n'
+            '### 配置 API Key\n'
+            'export BODY_API_KEY=x\n'
+            'https://example.test/body-key\n'
+        )
+        assert 'BODY_API_KEY' in selected
+        assert 'https://example.test/body-key' in selected
+        assert 'SAMPLE_API_KEY' not in selected
+        assert 'DEV_API_KEY' not in selected
+        assert 'PAGE_SIZE' not in selected
+
+    def test_credential_sections_keep_fenced_export_in_auth_section(self):
+        selected = SkillManager._credential_sections_from_skill_doc(
+            '# Skill\n'
+            '## 鉴权\n'
+            '```bash\n'
+            'export REDFOX_API_KEY=x\n'
+            '```\n'
+            'https://redfox.hk/settings/api-keys\n'
+        )
+        assert 'REDFOX_API_KEY' in selected
+        assert 'https://redfox.hk/settings/api-keys' in selected
+
+    def test_credential_entries_prefer_specific_over_generic_names(self):
+        entries = SkillManager._credential_entries_from_message(
+            'Set API_KEY or REDFOX_API_KEY. Get it from https://redfox.hk/keys\n'
+            'export PAGE_SIZE=20\n'
+        )
+        names = [entry['name'] for entry in entries]
+        assert names == ['REDFOX_API_KEY']
+        assert entries[0]['url'] == 'https://redfox.hk/keys'
+
+    def test_credential_entries_keep_generic_name_when_it_is_the_only_hint(self):
+        entries = SkillManager._credential_entries_from_message('Missing API_KEY')
+        assert [entry['name'] for entry in entries] == ['API_KEY']
+
+    def test_run_script_docstring_mentions_missing_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _make_skill(tmp, 'doc-skill', 'doc-skill')
+            manager = SkillManager(dir=tmp)
+            run_script = next(tool for tool in manager.get_skill_tools() if tool.__name__ == 'run_script')
+            assert 'missing_env' in run_script.__doc__
+            assert 'Never replace a concrete variable' in run_script.__doc__
+
     def test_run_script_reports_missing_cwd_as_tool_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             skill_dir = _make_skill(tmp, 'cwd-skill', 'cwd-skill')
@@ -293,8 +494,23 @@ class TestSkills(object):
             assert result['status'] == 'error'
             assert result['error_type'] == 'FileNotFoundError'
             assert result['rel_path'] == 'scripts/ok.py'
-            assert result['cwd'].endswith(os.path.join('cwd-skill', 'missing'))
+            assert result.get('cwd') == 'missing'
             assert 'cwd not found' in result['error']
+
+    def test_run_script_failure_omits_sandbox_cwd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'cwd-skill', 'cwd-skill')
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            script = os.path.join(scripts_dir, 'fail.py')
+            with open(script, 'w', encoding='utf-8') as f:
+                f.write('import sys\nsys.exit(1)\n')
+
+            manager = SkillManager(dir=tmp)
+            result = manager.run_script('cwd-skill', 'scripts/fail.py', allow_unsafe=True)
+
+            assert result['status'] == 'failed'
+            assert 'cwd' not in result or not os.path.isabs(str(result['cwd']))
 
     def test_materialize_dir_preserves_paths_when_root_is_empty(self):
         fs = _MemoryCloudFS(
