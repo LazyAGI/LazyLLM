@@ -5,6 +5,7 @@ import requests
 import re
 import random
 import time
+import uuid
 from typing import Tuple, List, Dict, Union, Any, Optional
 from urllib.parse import urljoin
 from operator import itemgetter as itemget
@@ -14,25 +15,9 @@ from lazyllm import globals, pipeline, config
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ....servermodule import LLMBase, StaticParams
+from .model_call_runner import ModelAttemptState, ModelCallRunner
+from .model_outcome import ModelFailure, ModelFailureOrigin, ModelFinish, ModelResponseError
 from .utils import LazyLLMOnlineBase, resolve_online_params
-
-
-def _is_input_inspection_failure(exc: Exception) -> bool:
-    detail = str(exc).lower()
-    return 'data_inspection_failed' in detail or 'input data may contain inappropriate content' in detail
-
-
-def _remove_prior_tool_traces(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    '''Drop untrusted tool payloads from older turns while preserving conversational history.'''
-    last_user_index = max(
-        (index for index, message in enumerate(messages) if message.get('role') == 'user'),
-        default=len(messages),
-    )
-    return [
-        message for index, message in enumerate(messages)
-        if index >= last_user_index
-        or (message.get('role') != 'tool' and not message.get('tool_calls'))
-    ]
 
 
 class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
@@ -97,28 +82,142 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         return data
 
     def _str_to_json(self, msg: str, stream_output: bool):
-        if isinstance(msg, bytes):
-            msg = msg.decode('utf-8')
-        content = re.sub(r'^data:\s*', '', msg.strip())
-        if not content or content == '[DONE]':
-            return ''
+        content = self._extract_sse_payload(msg)
+        if content is None or content == '[DONE]': return ''
         try:
-            message = self._convert_msg_format(json.loads(content))
-            if not stream_output: return message
-            color = stream_output.get('color') if isinstance(stream_output, dict) else None
-            for item in message.get('choices', []):
-                delta = item.get('message', item.get('delta', {}))
-                if delta.get('reasoning_content') and delta.get('content'):
-                    lazyllm.LOG.warning('stream delta contains both reasoning_content and content')
-                if (reasoning_content := delta.get('reasoning_content', '')):
-                    self._stream_output(reasoning_content, color, cls='think')
-                if (content := delta.get('content', '')) and not delta.get('tool_calls'):
-                    self._stream_output(content, color)
-            lazyllm.LOG.debug(f'message: {message}')
-            return message
-        except Exception:
-            lazyllm.LOG.warning(f'Failed to parse message: {msg}')
-            return ''
+            raw_message = json.loads(content)
+        except (TypeError, ValueError) as exc:
+            raise self._response_error('Provider returned an invalid JSON frame.', ModelFailureOrigin.PROTOCOL) from exc
+        if not isinstance(raw_message, dict):
+            raise self._response_error('Provider returned a non-object JSON frame.', ModelFailureOrigin.PROTOCOL)
+        if raw_message.get('error') is not None:
+            code = self._provider_error_code(raw_message)
+            raise self._response_error('Provider returned an error frame.', ModelFailureOrigin.PROTOCOL, code)
+        try:
+            message = self._convert_msg_format(raw_message)
+        except Exception as exc:
+            raise self._response_error('Provider response conversion failed.', ModelFailureOrigin.PROTOCOL) from exc
+        if not isinstance(message, dict):
+            if message in ('', None): return ''
+            raise self._response_error('Provider response conversion returned an invalid frame.',
+                                       ModelFailureOrigin.PROTOCOL)
+        if stream_output: self._emit_message_content(message, stream_output)
+        lazyllm.LOG.debug(f'message: {message}')
+        return message
+
+    @staticmethod
+    def _extract_sse_payload(msg: Union[str, bytes]) -> Optional[str]:
+        if isinstance(msg, bytes):
+            try:
+                msg = msg.decode('utf-8')
+            except UnicodeDecodeError as exc:
+                failure = ModelFailure(origin=ModelFailureOrigin.PROTOCOL, diagnostic_id=uuid.uuid4().hex)
+                raise ModelResponseError('Provider returned a non-UTF-8 frame.', failure) from exc
+        content = msg.strip()
+        if not content or content.startswith(':') or re.match(r'^(event|id|retry):', content): return None
+        return re.sub(r'^data:\s?', '', content)
+
+    def _emit_message_content(self, message: Dict[str, Any], stream_output: Union[bool, Dict]):
+        color = stream_output.get('color') if isinstance(stream_output, dict) else None
+        for item in message.get('choices', []):
+            if not isinstance(item, dict): continue
+            delta = item.get('message', item.get('delta', {}))
+            if not isinstance(delta, dict): continue
+            if delta.get('reasoning_content') and delta.get('content'):
+                lazyllm.LOG.warning('stream delta contains both reasoning_content and content')
+            if (reasoning_content := delta.get('reasoning_content', '')):
+                self._stream_output(reasoning_content, color, cls='think')
+            if (content := delta.get('content', '')) and not delta.get('tool_calls'):
+                self._stream_output(content, color)
+
+    @staticmethod
+    def _provider_error_code(message: Dict[str, Any]) -> Optional[str]:
+        error = message.get('error')
+        if not isinstance(error, dict): return None
+        value = error.get('code') or error.get('type')
+        return str(value) if value is not None else None
+
+    @staticmethod
+    def _response_error(message: str, origin: ModelFailureOrigin,
+                        provider_error_code: Optional[str] = None) -> ModelResponseError:
+        return ModelResponseError(message, ModelFailure(
+            origin=origin,
+            provider_error_code=provider_error_code,
+            diagnostic_id=uuid.uuid4().hex,
+        ))
+
+    @staticmethod
+    def _map_finish_reason(raw_finish_reason: Any) -> ModelFinish:
+        if raw_finish_reason == 'stop': return ModelFinish.STOP
+        if raw_finish_reason in ('tool_calls', 'function_call'): return ModelFinish.TOOL_CALLS
+        if raw_finish_reason == 'length': return ModelFinish.LENGTH
+        if raw_finish_reason == 'content_filter': return ModelFinish.CONTENT_FILTER
+        return ModelFinish.UNKNOWN
+
+    def _update_attempt_state(self, message: Dict[str, Any], state: ModelAttemptState):
+        choices = message.get('choices')
+        if choices is None:
+            return
+        if not isinstance(choices, list):
+            raise self._response_error('Provider response has an invalid choices field.', ModelFailureOrigin.PROTOCOL)
+        for choice in choices:
+            if not isinstance(choice, dict):
+                raise self._response_error('Provider response contains an invalid choice.',
+                                           ModelFailureOrigin.PROTOCOL)
+            output = choice.get('message') or choice.get('delta') or {}
+            if not isinstance(output, dict):
+                raise self._response_error('Provider response contains an invalid choice payload.',
+                                           ModelFailureOrigin.PROTOCOL)
+            if (output.get('content') or output.get('reasoning_content')
+                    or output.get('tool_calls') or output.get('function_call')):
+                state.semantic_output = True
+            raw_finish_reason = choice.get('finish_reason')
+            if raw_finish_reason not in (None, ''):
+                state.raw_finish_reason = str(raw_finish_reason)
+                state.finish = self._map_finish_reason(raw_finish_reason)
+
+    def _emit_runtime_event(self, stream_output: Union[bool, Dict], event_type: str, data: Dict[str, Any]):
+        if not stream_output: return
+        payload = {
+            'tag': 'runtime_event',
+            'runtime_event': {
+                'schema_version': 1,
+                'event_id': uuid.uuid4().hex,
+                'type': event_type,
+                'data': data,
+            },
+        }
+        stream_sink = stream_output.get('_stream_sink') if isinstance(stream_output, dict) \
+            else getattr(self, '_stream_sink', None)
+        if stream_sink is not None:
+            stream_sink(payload)
+        else:
+            lazyllm.FileSystemQueue().enqueue(json.dumps(payload, ensure_ascii=False))
+
+    @staticmethod
+    def _exception_chain(exc: Exception):
+        seen = set()
+        while exc is not None and id(exc) not in seen:
+            seen.add(id(exc))
+            yield exc
+            exc = exc.__cause__ or exc.__context__
+
+    @classmethod
+    def _is_retryable_transport_error(cls, exc: Exception) -> bool:
+        chain = tuple(cls._exception_chain(exc))
+        if any(isinstance(item, (requests.exceptions.SSLError, requests.exceptions.ProxyError)) for item in chain):
+            return False
+        retryable_types = (
+            requests.exceptions.ConnectTimeout,
+            requests.exceptions.ReadTimeout,
+            requests.exceptions.ChunkedEncodingError,
+            requests.exceptions.ConnectionError,
+            ConnectionResetError,
+            ConnectionAbortedError,
+            BrokenPipeError,
+        )
+        retryable_names = {'RemoteDisconnected', 'IncompleteRead', 'ProtocolError'}
+        return any(isinstance(item, retryable_types) or type(item).__name__ in retryable_names for item in chain)
 
     def _extract_specified_key_fields(self, response: Dict[str, Any]):
         if not ('choices' in response and isinstance(response['choices'], list)):
@@ -171,21 +270,51 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             return ''
 
     def _forward_impl(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
-                      proxies: Optional[Dict], request_timeout: Optional[Union[float, Tuple[float, float]]]
+                      proxies: Optional[Dict], request_timeout: Optional[Union[float, Tuple[float, float]]],
+                      state: Optional[ModelAttemptState] = None,
                       ) -> List[Dict[str, Any]]:
         with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,
                            proxies=proxies, timeout=request_timeout) as r:
             if r.status_code != 200:
-                err_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]) \
-                    if stream_output else r.text
-                raise requests.RequestException(f'{r.status_code}: {err_msg}')
+                try:
+                    error_message = r.json()
+                except (TypeError, ValueError):
+                    error_message = {}
+                code = self._provider_error_code(error_message) if isinstance(error_message, dict) else None
+                raise self._response_error(f'Provider returned HTTP status {r.status_code}.',
+                                           ModelFailureOrigin.HTTP, code)
 
             with self.stream_output(stream_output):
-                msg_json = list(filter(lambda x: x, (
-                    [self._str_to_json(line, stream_output) for line in r.iter_lines() if len(line)]
-                    if stream_output
-                    else [self._str_to_json(r.text, stream_output)]
-                )))
+                if self._message_format != 'openai':
+                    return list(filter(lambda x: x, (
+                        [self._str_to_json(line, stream_output) for line in r.iter_lines() if len(line)]
+                        if stream_output else [self._str_to_json(r.text, stream_output)]
+                    )))
+                msg_json = []
+                frames = r.iter_lines() if stream_output else [r.text]
+                try:
+                    for raw_frame in frames:
+                        if raw_frame in (b'', ''): continue
+                        content = self._extract_sse_payload(raw_frame)
+                        if content is None: continue
+                        if content == '[DONE]':
+                            if state is None or state.finish is None:
+                                raise self._response_error('Provider stream ended without a finish_reason.',
+                                                           ModelFailureOrigin.PROTOCOL)
+                            break
+                        message = self._str_to_json(content, stream_output)
+                        if not message: continue
+                        msg_json.append(message)
+                        if state is not None: self._update_attempt_state(message, state)
+                except Exception:
+                    # A valid OpenAI-compatible finish_reason is the semantic terminal.
+                    # Transport failure after that terminal must not discard the outcome
+                    # or trigger another paid attempt.
+                    if state is None or state.finish is None:
+                        raise
+                if state is None or state.finish is None:
+                    raise self._response_error('Provider response ended without a finish_reason.',
+                                               ModelFailureOrigin.PROTOCOL)
         return msg_json
 
     def _request_timeout(self, data: Dict[str, Any],
@@ -209,62 +338,26 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     def _forward_with_retry(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
                             proxies: Optional[Dict], max_retries: int,
                             request_timeout: Optional[Union[float, Tuple[float, float]]]) -> List[Dict[str, Any]]:
-        _RETRY_DELAYS = [3, 10, 30]
-        _CONTINUATION_PROMPT = (
-            'Your previous response was interrupted. '
-            'Please continue your response exactly from where it left off. '
-            'Do NOT repeat any content that was already provided. '
-            'Do NOT add any transitional phrases like "Continuing..." or "As I was saying...". '
-            'Just seamlessly continue the response. '
-            'Keep the same language as your previous response.'
+        if self._message_format != 'openai':
+            return self._forward_impl(data, runtime_url=runtime_url, stream_output=stream_output,
+                                      proxies=proxies, request_timeout=request_timeout)
+        runner = ModelCallRunner(
+            emit_event=lambda event_type, event_data: self._emit_runtime_event(
+                stream_output, event_type, event_data,
+            ),
+            is_retryable_transport_error=self._is_retryable_transport_error,
         )
-        msg_json = []
-        partial_content = ''
-        for attempt in range(max_retries):
-            if attempt > 0 and partial_content:
-                # If the stream was cut mid-tool-call, the partial assistant message contains
-                # a truncated tool_calls block with malformed JSON arguments.  Appending it
-                # back into the history causes a 400 from providers that validate
-                # function.arguments.  In that case, skip the continuation injection and
-                # retry with the original messages so the model can restart the tool call.
-                last_msg = data['messages'][-1] if data['messages'] else {}
-                stream_cut_in_tool_call = (
-                    last_msg.get('role') == 'assistant' and last_msg.get('tool_calls')
-                )
-                if not stream_cut_in_tool_call:
-                    data['messages'].append({'role': 'assistant', 'content': partial_content})
-                    data['messages'].append({'role': 'user', 'content': _CONTINUATION_PROMPT})
-                else:
-                    lazyllm.LOG.warning('Stream interrupted mid-tool-call; retrying without continuation injection.')
-                partial_content = ''
-            try:
-                msg_json = self._forward_impl(data, runtime_url=runtime_url,
-                                              stream_output=stream_output, proxies=proxies,
-                                              request_timeout=request_timeout)
-            except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError):
-                if attempt < max_retries - 1:
-                    partial_content = self._extract_partial_content(msg_json)
-                    lazyllm.LOG.warning(f'Stream interrupted (attempt {attempt + 1}), retrying...')
-                    time.sleep(_RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)])
-                    continue
-                raise
-            except requests.RequestException as exc:
-                if _is_input_inspection_failure(exc) and attempt < max_retries - 1:
-                    sanitized = _remove_prior_tool_traces(data.get('messages') or [])
-                    if len(sanitized) < len(data.get('messages') or []):
-                        data['messages'] = sanitized
-                        lazyllm.LOG.warning(
-                            'Provider rejected model input during content inspection; retrying without '
-                            'tool calls/results from prior turns while preserving conversation messages.'
-                        )
-                        continue
-                if attempt < max_retries - 1:
-                    lazyllm.LOG.warning(f'Request failed (attempt {attempt + 1}), retrying...')
-                    time.sleep(_RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)])
-                    continue
-                raise
-            break
-        return msg_json
+        return runner.run(
+            lambda state: self._forward_impl(
+                data,
+                runtime_url=runtime_url,
+                stream_output=stream_output,
+                proxies=proxies,
+                request_timeout=request_timeout,
+                state=state,
+            ),
+            max_attempts=max_retries,
+        )
 
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
                 tools: List[Dict[str, Any]] = None, stream_output: bool = None, stream: bool = None,

@@ -1,4 +1,12 @@
 from .onlineChatModuleBase import OnlineChatModuleBase
+from .model_outcome import (
+    ModelCallFailed,
+    ModelCallInterrupted,
+    ModelCallTerminal,
+    ModelFailure,
+    ModelFailureOrigin,
+    ModelFinish,
+)
 from .onlineEmbeddingModuleBase import (
     OnlineEmbeddingModuleBase, LazyLLMOnlineEmbedModuleBase,
     LazyLLMOnlineMultimodalEmbedModuleBase, LazyLLMOnlineRerankModuleBase
@@ -12,6 +20,12 @@ from .onlineMultiModalBase import (
 
 __all__ = [
     'OnlineChatModuleBase',
+    'ModelCallFailed',
+    'ModelCallInterrupted',
+    'ModelCallTerminal',
+    'ModelFailure',
+    'ModelFailureOrigin',
+    'ModelFinish',
     'OnlineEmbeddingModuleBase',
     'LazyLLMOnlineEmbedModuleBase',
     'LazyLLMOnlineMultimodalEmbedModuleBase',
