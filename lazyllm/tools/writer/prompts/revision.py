@@ -65,10 +65,15 @@ Plan semantics:
 - For move, content_ref identifies the content being moved, while destination_ref and
   position identify its destination. Move must provide both destination_ref and position.
 - instruction describes the complete visible result of the operation.
+- Preserve existing cross-reference links. Do not plan to remove or rewrite an
+  internal reference unless the user explicitly asks to change that reference.
 - Preserve every explicit structural constraint from task.query in instruction itself,
   including paragraph count, list-item count, heading level, and ordering. Render distinct
   Markdown paragraphs with blank lines and render lists/headings with their Markdown syntax;
   do not record required structure only in meta.
+- When task.query requires inserted or updated content to reference an existing section or
+  image, keep that requirement in instruction; the content writer emits an internal_ref span
+  for the existing target.
 - For an image create, describe one image block and its final caption in instruction;
   do not invent media_asset IDs, file paths, URLs, or provider identifiers.
 - instruction_id is unique, and instructions follow execution order.
@@ -104,6 +109,8 @@ Output semantics:
   counts/order. In particular, distinct paragraphs are separated by a blank line; do not
   collapse them into sentences in one paragraph even if replacement meta describes them.
 - Replacements are returned in application order and preserve unaffected Markdown exactly.
+- Preserve existing <a id="block-..."></a> anchors and [](#block-...) links exactly.
+  Do not rename or drop them unless the instruction explicitly targets that reference.
 - Image handling:
   - When an instruction creates an image, put exactly `![<caption>](media-placeholder://<need_id>)`
     in new_string at the insertion position. Use the need_id from that create instruction's
@@ -133,6 +140,7 @@ Return one StringReplace. Copy the selected block exactly into old_string and
 return the complete replacement paragraph in new_string. Set content_ref to
 document_root=true.
 Preserve unaffected inline formatting.
+Preserve existing [](#block-...) links and any inline formatting inside the selected block.
 Do not return surrounding document content or explanations.
 
 Instruction:
@@ -162,6 +170,14 @@ Output semantics:
 - For an image create, return exactly one new block with type="image". Its content is
   the final caption. Do not invent references or asset IDs; the system adds the single
   resolved media_asset reference after generation.
+- Preserve existing internal_ref spans in updated text blocks. Do not invent new
+  target_node_id values; to reference an existing heading or image block, copy its exact
+  node_id from the visible document into an internal_ref span with empty text. The system
+  renders the reference and assigns created targets.
+- A paragraph that references an existing block uses one empty internal_ref span between
+  its text spans. content equals the concatenation of the text spans; an internal_ref
+  span keeps text empty, so do not include the target title in content. The system inserts
+  the rendered reference. Example: spans=[{{"text":"详见"}},{{"text":"","style":{{"link":{{"type":"internal_ref","target_node_id":"sec-related"}}}}}},{{"text":"中的定义。"}}] with content="详见中的定义。" renders as "详见第2章中的定义。".
 
 Visible document:
 {document_json}

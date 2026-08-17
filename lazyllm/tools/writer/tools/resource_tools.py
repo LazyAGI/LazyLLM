@@ -11,11 +11,20 @@ from ..adapter.base import NativePatchOperation, WriterAdapterBase
 from ..adapter.feishu import FeishuWriterAdapter
 from ..data_models.resource import MaterialStyle, ResourceProfile
 from ..data_models.multimodal import MediaAssetLibrary
-from ..data_models.revision import PatchResult, PatchSet
+from ..data_models.revision import PatchHunk, PatchResult, PatchSet
 from ..data_models.task import InputResource, TargetDocument, WritingTask
-from ..data_models.writer_ir import WriterDocument, WriterStage
+from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterStage
+from ..numbering import (
+    build_numbering_view_from_ir,
+    compute_numbering,
+    format_target_number,
+    format_reference,
+    materialize_ir,
+    materialize_feishu_links,
+)
 from ..prompts.profile_resources import RESOURCE_PROFILE_PROMPT
-from ..utils import parse_document_markdown
+from ..tools.revision_tools import apply_patch_to_ir
+from ..utils import parse_document_markdown, strip_heading_numbering
 
 _WRITER_STAGE_ADAPTER = TypeAdapter(WriterStage)
 
@@ -273,13 +282,22 @@ class WriterResourceTools(WriterToolBase):
         document = source_document or parse_document_markdown(
             source, document_id=adapter.make_document_id(document_id), stage='final',
         )
+        if not document.provider_binding.get('document_id'):
+            document.provider_binding = {
+                **(document.provider_binding or {}),
+                'provider': protocol,
+                'document_id': document_id,
+            }
         media_library = (
             self._unified_optional_model(media_assets, MediaAssetLibrary)
             if source_document is not None else None
         )
         warnings: List[str] = []
         if source_document is not None:
-            document, warnings = self._omit_unavailable_images(document, media_library)
+            self._validate_available_images(document, media_library)
+            numbering = compute_numbering(build_numbering_view_from_ir(document))
+            document = materialize_ir(document, numbering)
+            document = materialize_feishu_links(document, document_id)
         method_name = 'replace_doc_blocks' if mode == 'replace' else 'write_doc_blocks'
         write_blocks = getattr(fs, method_name, None)
         if not callable(write_blocks):
@@ -289,40 +307,30 @@ class WriterResourceTools(WriterToolBase):
         if document.title:
             self._update_document_title(fs, document_id, document.title, document.revision)
         if not native_blocks:
-            warnings.append('No publishable blocks remain after media filtering.')
+            warnings.append('Document has no publishable blocks.')
             return self._save_write_result(document_id, protocol, locator, 0, warnings)
         write_blocks(document_id, native_blocks)
         return self._save_write_result(document_id, protocol, locator, len(native_blocks), warnings)
 
-    def _omit_unavailable_images(
-        self,
+    @staticmethod
+    def _validate_available_images(
         document: WriterDocument,
         media_assets: Optional[MediaAssetLibrary],
-    ) -> Tuple[WriterDocument, List[str]]:
-        warnings: List[str] = []
-
-        def copy_blocks(blocks):
-            copied = []
-            for block in blocks:
-                if block.type == 'image':
-                    references = [
-                        ref.get('id') for ref in block.references
-                        if ref.get('type') == 'media_asset' and ref.get('id')
-                    ]
-                    if len(references) != 1:
-                        warnings.append(f'Skipped image block {block.node_id!r}: invalid media reference.')
-                        continue
-                    asset_id = references[0]
-                    asset = media_assets.assets.get(asset_id) if media_assets else None
-                    if asset is None or not asset.local_path or not Path(asset.local_path).is_file():
-                        warnings.append(f'Skipped image block {block.node_id!r}: media is unavailable.')
-                        continue
-                copied_block = block.model_copy(deep=True)
-                copied_block.children = copy_blocks(copied_block.children)
-                copied.append(copied_block)
-            return copied
-
-        return document.model_copy(update={'blocks': copy_blocks(document.blocks)}), warnings
+    ) -> None:
+        for block in document.iter_blocks():
+            if block.type != 'image':
+                continue
+            references = [
+                ref.get('id') for ref in block.references
+                if ref.get('type') == 'media_asset' and ref.get('id')
+            ]
+            if len(references) != 1:
+                raise ValueError(
+                    f'Image block {block.node_id!r} requires exactly one media_asset reference.'
+                )
+            asset = media_assets.assets.get(references[0]) if media_assets else None
+            if asset is None or not asset.local_path or not Path(asset.local_path).is_file():
+                raise ValueError(f'Image block {block.node_id!r} media is unavailable.')
 
     def apply_patch_to_document(  # noqa: C901
         self,
@@ -346,6 +354,13 @@ class WriterResourceTools(WriterToolBase):
         target = self._unified_optional_model(target_document, TargetDocument) or TargetDocument()
         protocol, real_path, fs, adapter, locator, document_id = \
             self._resolve_document_target(target, source_document=source)
+        source_numbering = compute_numbering(build_numbering_view_from_ir(source))
+        revised_document, _ = apply_patch_to_ir(source, patch, media_assets=media_library)
+        final_numbering = compute_numbering(build_numbering_view_from_ir(revised_document))
+        block_id_by_node_id = {
+            block.node_id: block.provider_binding.get('block_id')
+            for block in revised_document.iter_blocks()
+        }
 
         def refresh(previous: WriterDocument, result: Any = None, **merge_kwargs) -> WriterDocument:
             revision = result.get('document_revision_id') if isinstance(result, dict) else None
@@ -365,6 +380,12 @@ class WriterResourceTools(WriterToolBase):
         title_updated = patch.new_title is not None and patch.new_title != source.title
         normalized_fields: Dict[str, List[str]] = {}
         for hunk in patch.hunks:
+            hunk = self._materialize_hunk_feishu_links(
+                hunk,
+                block_id_by_node_id=block_id_by_node_id,
+                numbering=final_numbering,
+                document_id=document_id,
+            )
             operation = adapter.patch_to_operation(
                 hunk, persisted_document, media_assets=media_library)
             try:
@@ -407,6 +428,47 @@ class WriterResourceTools(WriterToolBase):
         elif not patch.hunks:
             persisted_document = refresh(persisted_document)
 
+        for heading in revised_document.iter_blocks():
+            if heading.type != 'heading':
+                continue
+            entry = final_numbering.get(heading.node_id)
+            if entry is None:
+                continue
+            expected = (
+                f'{format_target_number(entry)} '
+                f'{strip_heading_numbering(heading.content)}'
+            ).strip()
+            current = persisted_document.block_by_id(heading.node_id)
+            if current is None or current.content == expected:
+                continue
+            sync_hunk = PatchHunk(
+                hunk_id=f'heading-sync-{heading.node_id}',
+                target_node_id=heading.node_id,
+                modify_type='update',
+                block=WriterBlock(
+                    node_id=heading.node_id,
+                    type='heading',
+                    content=expected,
+                    stage='draft',
+                    numbering={'level': current.numbering.get('level', 1)},
+                ),
+            )
+            sync_hunk = self._materialize_hunk_feishu_links(
+                sync_hunk,
+                block_id_by_node_id=block_id_by_node_id,
+                numbering=final_numbering,
+                document_id=document_id,
+            )
+            operation = adapter.patch_to_operation(
+                sync_hunk, persisted_document, media_assets=media_library)
+            operation_result = self._execute_native_operation(
+                fs, document_id, operation, persisted_document.revision)
+            applied_hunks.append(sync_hunk.hunk_id)
+            persisted_document = refresh(
+                persisted_document.model_copy(update={'title': expected_title}),
+                operation_result, patch=sync_hunk, operation=operation,
+            )
+
         patch_result = PatchResult(
             patch_id=patch.patch_id,
             success=True,
@@ -435,6 +497,46 @@ class WriterResourceTools(WriterToolBase):
                 'document_id': document_id,
             },
         ).model_dump()
+
+    @staticmethod
+    def _materialize_hunk_feishu_links(
+        hunk: PatchHunk,
+        *,
+        block_id_by_node_id: Dict[str, Any],
+        numbering: Dict[str, Any],
+        document_id: str,
+    ) -> PatchHunk:
+        if hunk.block is None:
+            return hunk
+        hunk = hunk.model_copy(deep=True)
+        block = hunk.block
+        for item in block.iter_blocks():
+            if item.type == 'heading':
+                entry = numbering.get(item.node_id)
+                if entry is not None:
+                    item.content = (
+                        f'{format_target_number(entry)} '
+                        f'{strip_heading_numbering(item.content)}'
+                    ).strip()
+                    item.spans = []
+            for span in item.spans:
+                link = span.style.get('link')
+                if not isinstance(link, dict) or link.get('type') != 'internal_ref':
+                    continue
+                target_id = link.get('target_node_id')
+                target_block_id = block_id_by_node_id.get(target_id)
+                if not target_block_id:
+                    span.text = ''
+                    continue
+                span.style['link'] = {
+                    'url': f'https://feishu.cn/docx/{document_id}#{target_block_id}',
+                }
+                entry = numbering.get(target_id)
+                if entry is not None:
+                    span.text = format_reference(entry)
+            if item.spans:
+                item.content = ''.join(span.text for span in item.spans)
+        return hunk
 
     @staticmethod
     def _update_document_title(

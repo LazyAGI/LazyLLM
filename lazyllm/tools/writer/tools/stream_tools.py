@@ -7,6 +7,7 @@ from contextvars import copy_context
 from queue import Empty, Queue
 from typing import Any, Callable, Dict, Iterator, List, Literal, Optional, Tuple
 
+from lazyllm import LOG
 from lazyllm.common import ThreadPoolExecutor
 from lazyllm.configs import config
 
@@ -469,8 +470,10 @@ class IRJSONMarkdownParser:
         if final_markdown.startswith(emitted):
             self.emit(final_markdown[len(emitted):])
         elif final_markdown.rstrip() != emitted.rstrip():
-            raise ValueError(
-                f'Streamed IR Markdown does not match the validated {value_type}.'
+            LOG.warning(
+                'Streamed IR Markdown preview diverged from validated %s; '
+                'persisting the validated artifact.',
+                value_type,
             )
         return [''.join(self._delta_parts)] if self._delta_parts else []
 

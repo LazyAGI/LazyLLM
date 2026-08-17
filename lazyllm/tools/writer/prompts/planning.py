@@ -8,6 +8,7 @@ Requirements:
 - Add at least one H2 section directly under the H1 title.
 - Every H2 section title must be unique.
 - Use H3-H6 only for optional subsection planning under an H2 section.
+- Write titles and section titles without visible numbering; the system renders numbers.
 - Treat the outline as the exact structural skeleton of the final deliverable: every H2
   will become a visible section in the drafted document.
 - Do not create meta-planning H2 sections such as background and setting, character
@@ -74,6 +75,7 @@ Requirements:
 - Fill node_id for every block. Use stable ids such as section-1, section-2, section-1-1.
 - Use block.numbering.level for the heading level: 1 for top-level sections, incrementing for children.
   Put child sections under block.children as heading blocks alongside any visible description blocks.
+- Write titles and section titles without visible numbering; the system renders numbers.
 - block.references holds identifiers for facts or resources the section depends on.
 - Each element of block.references is an object with at least an "id" field. The id must match a
   DocumentFact.fact_id or ResourceProfile.resource_id present in the input.
@@ -244,14 +246,28 @@ Requirements:
 - fact_constraints MUST only contain factual statements actually present in the writing context.
 - references are owned by the authoritative outline. Omit references; the system normalizes them.
 - style_constraints should include tone, pov, audience, and style requirements when applicable.
-- relation_constraints should describe dependencies on previous or later sections when useful.
+- relation_constraints should describe ordinary continuity with neighboring sections;
+  the drafting model expresses that continuity in prose.
 - Use the visual plan to shape section goals, ordering, and transitions when its content_ref targets
-  the same section. Do not copy visual needs into SectionInstruction or generate asset IDs, paths,
-  placeholders, captions, or acquisition instructions.
+  the same section. Keep acquisition details out of SectionInstruction; the system binds every
+  planned visual need to its created-image cross-reference target.
 - expected_blocks should be a concise block-level content plan for the draft tool.
 - For a normal-length section, expected_blocks should usually contain 3 to 6 planned content
   blocks. Use fewer and merge coverage cues when the total document budget is short.
 - expected_blocks are planning labels for coverage and ordering, not visible headings that must appear in final text.
+- Plan a section cross-reference when this section's text will point readers to
+   another section for a specific definition, result, or method - for example a
+   conclusion citing the experiments it summarizes. This is expected when the writing
+   task asks for cross-references; in that case include at least one section reference.
+   Background continuity readers are assumed to know
+   (such as narrative chapters building on earlier events) belongs in relation_constraints.
+   For Writer IR, target_ref is {{"node_id": "..."}} copied from the outline.
+   For Markdown, target_ref is the target section's {{"heading_path": [...], "occurrence": 1}}.
+   Its guidance names the information the reader needs from that target.
+- Visual plan needs own created images. Do not add must_create image objects; the system adds them.
+   To reference a planned image in this or another section, use
+   target_ref: {{"node_id": "<that visual need_id>"}} with must_create=false and kind="image".
+- Describe references naturally; the system renders their numbers.
 - Do not invent facts that conflict with writing context.
 
 Writing task:

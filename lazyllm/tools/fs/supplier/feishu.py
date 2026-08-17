@@ -717,6 +717,76 @@ class FeishuFSBase(LinkDocumentFSBase):
                 f'Failed to bind {len(binding_errors)} Feishu image block(s).') from binding_errors[0]
         return revision
 
+    def _bind_docx_links(
+        self,
+        document_id: str,
+        blocks: List[Dict[str, Any]],
+        created: Dict[str, Any],
+        document_revision_id: int = -1,
+    ) -> int:
+        temporary_to_created = {
+            relation.get('temporary_block_id'): relation.get('block_id')
+            for relation in created.get('block_id_relations') or []
+            if isinstance(relation, dict)
+            and isinstance(relation.get('temporary_block_id'), str)
+            and isinstance(relation.get('block_id'), str)
+        }
+        if not temporary_to_created:
+            return document_revision_id
+
+        requests: List[Dict[str, Any]] = []
+        for block in blocks:
+            created_block_id = temporary_to_created.get(block.get('block_id'))
+            if not created_block_id and block.get('block_id') in temporary_to_created.values():
+                created_block_id = block.get('block_id')
+            if not created_block_id:
+                continue
+            content_field = DOCX_BLOCK_TYPE_FIELDS.get(block.get('block_type'))
+            if not content_field:
+                continue
+            content = block.get(content_field) or {}
+            elements = content.get('elements') or []
+            if not isinstance(elements, list):
+                continue
+
+            updated_elements: List[Dict[str, Any]] = []
+            changed = False
+            for element in elements:
+                text_run = element.get('text_run') if isinstance(element, dict) else None
+                style = (text_run or {}).get('text_element_style') if isinstance(text_run, dict) else None
+                link = (style or {}).get('link') if isinstance(style, dict) else None
+                if not isinstance(link, dict) or not link.get('url'):
+                    updated_elements.append(element)
+                    continue
+                url = str(link['url'])
+                fragment = urlparse(url).fragment
+                target_created = temporary_to_created.get(fragment)
+                if not target_created:
+                    updated_elements.append(element)
+                    continue
+                new_element = deepcopy(element)
+                new_element['text_run']['text_element_style']['link']['url'] = (
+                    url.split('#', 1)[0] + '#' + target_created
+                )
+                updated_elements.append(new_element)
+                changed = True
+
+            if changed:
+                requests.append({
+                    'block_id': created_block_id,
+                    'update_text_elements': {'elements': updated_elements},
+                })
+
+        if not requests:
+            return document_revision_id
+        updated = self._batch_update_blocks(
+            document_id, requests, document_revision_id=document_revision_id,
+        )
+        try:
+            return int(updated.get('document_revision_id', document_revision_id))
+        except (TypeError, ValueError):
+            return document_revision_id
+
     def create_block(
         self,
         document_id: str,
@@ -747,6 +817,8 @@ class FeishuFSBase(LinkDocumentFSBase):
             raise_on_error=True,
             parent_block_id=parent_block_id,
         )
+        revision = self._bind_docx_links(
+            document_id, descendants, created, document_revision_id=revision)
         created['document_revision_id'] = revision
         return created
 
@@ -1160,7 +1232,10 @@ class FeishuFSBase(LinkDocumentFSBase):
                 document_revision_id = int(created.get('document_revision_id', -1))
             except (TypeError, ValueError):
                 document_revision_id = -1
-            self._bind_docx_images(document_id, blocks, created, document_revision_id)
+            document_revision_id = self._bind_docx_images(
+                document_id, blocks, created, document_revision_id)
+            document_revision_id = self._bind_docx_links(
+                document_id, blocks, created, document_revision_id)
         return self._get_doc_blocks_raw(document_id, with_descendants=True)
 
     def replace_doc_blocks(
@@ -1191,6 +1266,8 @@ class FeishuFSBase(LinkDocumentFSBase):
             except (TypeError, ValueError):
                 document_revision_id = -1
             document_revision_id = self._bind_docx_images(
+                document_id, blocks, created, document_revision_id)
+            document_revision_id = self._bind_docx_links(
                 document_id, blocks, created, document_revision_id)
 
         # Insert first so a failed write never destroys the existing document.

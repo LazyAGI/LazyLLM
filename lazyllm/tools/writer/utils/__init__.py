@@ -15,6 +15,8 @@ from .serialization import (
     parse_markdown_sections,
     render_block_markdown,
     render_document_markdown,
+    strip_caption_numbering,
+    strip_heading_numbering,
     to_prompt_json,
     validate_markdown_paragraph,
 )
@@ -36,4 +38,6 @@ __all__ = [
     'MarkdownSelectionError',
     'locate_markdown_paragraph',
     'validate_markdown_paragraph',
+    'strip_heading_numbering',
+    'strip_caption_numbering',
 ]

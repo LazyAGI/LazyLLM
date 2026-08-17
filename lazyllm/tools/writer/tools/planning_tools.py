@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Literal
+import re
+from typing import Any, Dict, List, Literal, Optional
 
 from .base import WriterToolBase
 from .stream_tools import DraftPreviewStream, build_outline_stream
@@ -24,6 +25,7 @@ from ..utils import (
     parse_markdown_sections,
     render_block_markdown,
     render_document_markdown,
+    strip_heading_numbering,
     to_prompt_json,
 )
 
@@ -58,6 +60,7 @@ class WriterPlanningTools(WriterToolBase):
                 execution_results_json=to_prompt_json(execution_data),
             )
             outline = self._call_llm_text(prompt).strip() + '\n'
+            outline = self._normalize_markdown_outline(outline)
             _, targets = get_markdown_outline_targets(outline)
             path = self._write_markdown_artifact('outline.md', outline)
             return make_markdown_tool_result(
@@ -314,6 +317,7 @@ class WriterPlanningTools(WriterToolBase):
                 writing_context,
                 execution_data,
                 writing_task,
+                writing_visual_plan,
             )
             outline_id = writing_outline.document_id
         else:
@@ -323,6 +327,7 @@ class WriterPlanningTools(WriterToolBase):
                 writing_context,
                 execution_data,
                 writing_task,
+                writing_visual_plan,
             )
             outline_id = instruction_list.outline_id
 
@@ -348,6 +353,7 @@ class WriterPlanningTools(WriterToolBase):
     @staticmethod
     def _normalize_visual_plan(visual_plan: VisualPlan, outline: WriterDocument) -> VisualPlan:
         node_ids = {block.node_id for block in outline.blocks if block.type == 'heading'}
+        canonical_ids = WriterPlanningTools._ir_outline_node_ids_from_outline(outline)
         counts: Dict[str, int] = {}
         for need in visual_plan.instructions:
             ref = need.content_ref
@@ -361,8 +367,10 @@ class WriterPlanningTools(WriterToolBase):
                 raise ValueError(f'Visual need for {node_id!r} has an empty purpose.')
             if need.preferred_strategy is None:
                 need.preferred_strategy = _VISUAL_STRATEGY_ORDER[need.visual_type][0]
-            counts[node_id] = counts.get(node_id, 0) + 1
-            need.need_id = f'visual-{node_id}-{counts[node_id]}'
+            canonical_id = canonical_ids[node_id]
+            counts[canonical_id] = counts.get(canonical_id, 0) + 1
+            need.need_id = f'visual-{canonical_id}-{counts[canonical_id]}'
+            need.content_ref.node_id = canonical_id
         return visual_plan
 
     @staticmethod
@@ -402,6 +410,31 @@ class WriterPlanningTools(WriterToolBase):
             raise ValueError("representation must be 'ir' or 'markdown'.")
         return resolved
 
+    @staticmethod
+    def _normalize_markdown_outline(outline: str) -> str:
+        lines: List[str] = []
+        fence: Optional[str] = None
+        for line in outline.splitlines():
+            fence_match = re.match(r'^\s*(```+|~~~+)', line)
+            if fence_match:
+                marker = fence_match.group(1)[0]
+                if fence is None:
+                    fence = marker
+                elif fence == marker:
+                    fence = None
+                lines.append(line)
+                continue
+            if fence is not None:
+                lines.append(line)
+                continue
+            heading = re.match(r'^(#{1,6})\s+(.+?)\s*$', line)
+            if heading:
+                title = strip_heading_numbering(heading.group(2))
+                lines.append(f'{heading.group(1)} {title}')
+                continue
+            lines.append(line)
+        return '\n'.join(lines).rstrip() + '\n'
+
     def _normalize_outline(
         self,
         outline: WriterDocument,
@@ -425,6 +458,8 @@ class WriterPlanningTools(WriterToolBase):
             block, level = pending.pop()
             block.stage = 'outline'
             block.numbering['level'] = level
+            if block.type == 'heading':
+                block.content = strip_heading_numbering(block.content)
             block.references = [
                 reference
                 for reference in block.references
@@ -446,8 +481,10 @@ class WriterPlanningTools(WriterToolBase):
         context: WritingContext,
         execution_results: Any,
         task: WritingTask | None,
+        visual_plan: VisualPlan | None = None,
     ) -> SectionInstructionList:
         target_by_id = {block.node_id: block for block in target_blocks}
+        node_id_by_original = self._ir_outline_node_ids_from_outline(outline)
         instruction_by_node_id: Dict[str, SectionInstruction] = {}
 
         for instruction in instruction_list.instructions:
@@ -471,6 +508,14 @@ class WriterPlanningTools(WriterToolBase):
                 + ', '.join(missing_node_ids)
             )
 
+        needs_by_section: Dict[str, List[Any]] = {}
+        for need in (visual_plan or VisualPlan()).instructions:
+            needs_by_section.setdefault(need.content_ref.node_id, []).append(need)
+        visual_targets = {
+            need.need_id
+            for needs in needs_by_section.values()
+            for need in needs
+        }
         instruction_list.outline_id = outline.document_id
         instruction_list.instruction_set_id = f'{outline.document_id}-section-instructions'
         instruction_list.instructions = [
@@ -479,6 +524,10 @@ class WriterPlanningTools(WriterToolBase):
                 block,
                 outline,
                 bool(context.facts),
+                node_id_by_original,
+                node_id_by_original[block.node_id],
+                visual_targets,
+                needs_by_section.get(node_id_by_original[block.node_id], []),
             )
             for block in target_blocks
         ]
@@ -489,6 +538,10 @@ class WriterPlanningTools(WriterToolBase):
             'outline_title': outline.title,
             'context_id': context.context_id,
             'has_execution_results': execution_results is not None,
+            'cross_reference_count': sum(
+                len(instruction.meta.get('cross_references') or [])
+                for instruction in instruction_list.instructions
+            ),
         })
         return self._normalize_section_length_budgets(instruction_list, task)
 
@@ -499,6 +552,7 @@ class WriterPlanningTools(WriterToolBase):
         context: WritingContext,
         execution_results: Any,
         task: WritingTask | None,
+        visual_plan: VisualPlan,
     ) -> SectionInstructionList:
         target_by_ref = {
             (tuple(heading_path), occurrence): (level, heading_path)
@@ -525,12 +579,19 @@ class WriterPlanningTools(WriterToolBase):
             raise ValueError(f'Missing section instructions for Markdown headings: {missing_refs!r}.')
 
         outline_id = f'{context.context_id}-outline-markdown'
+        node_id_by_ref = self._markdown_outline_node_ids(targets)
+        needs_by_ref = self._markdown_visual_needs_by_ref(visual_plan)
+        visual_targets = {
+            need.need_id
+            for needs in needs_by_ref.values()
+            for need in needs
+        }
         normalized = []
         for level, heading_path, occurrence, _ in targets:
             key = (tuple(heading_path), occurrence)
             instruction = instruction_by_ref[key]
             self._validate_instruction(instruction, '/'.join(heading_path))
-            instruction.section_title = heading_path[-1]
+            instruction.section_title = strip_heading_numbering(heading_path[-1])
             instruction.references = []
             if not context.facts:
                 instruction.fact_constraints = []
@@ -539,7 +600,13 @@ class WriterPlanningTools(WriterToolBase):
                 'outline_heading_level': level,
                 'outline_id': outline_id,
                 'outline_title': heading_path[0],
+                'outline_node_id': node_id_by_ref[key],
             })
+            instruction.visual_needs = []
+            self._normalize_cross_references(
+                instruction, node_id_by_ref, visual_targets,
+            )
+            self._bind_visual_references(instruction, needs_by_ref[key])
             normalized.append(instruction)
 
         instruction_list.outline_id = outline_id
@@ -552,8 +619,125 @@ class WriterPlanningTools(WriterToolBase):
             'outline_title': targets[0][1][0],
             'context_id': context.context_id,
             'has_execution_results': execution_results is not None,
+            'cross_reference_count': sum(
+                len(instruction.meta.get('cross_references') or [])
+                for instruction in instruction_list.instructions
+            ),
         })
         return self._normalize_section_length_budgets(instruction_list, task)
+
+    @staticmethod
+    def _markdown_outline_node_ids(
+        targets: List[tuple[int, List[str], int, str]],
+    ) -> Dict[tuple[tuple[str, ...], int], str]:
+        ids: Dict[tuple[tuple[str, ...], int], str] = {}
+        counters: List[int] = []
+        for level, heading_path, occurrence, _ in targets:
+            depth = level - 1
+            counters = counters[:depth]
+            counters.extend([0] * (depth - len(counters)))
+            counters[-1] += 1
+            node_id = 'sec-' + '-'.join(f'{value:03d}' for value in counters)
+            ids[(tuple(heading_path), occurrence)] = node_id
+        return ids
+
+    @staticmethod
+    def _markdown_visual_needs_by_ref(
+        visual_plan: VisualPlan,
+    ) -> Dict[tuple[tuple[str, ...], int], List[Any]]:
+        needs: Dict[tuple[tuple[str, ...], int], List[Any]] = {}
+        for need in visual_plan.instructions:
+            key = (tuple(need.content_ref.heading_path), need.content_ref.occurrence)
+            needs.setdefault(key, []).append(need)
+        return needs
+
+    @staticmethod
+    def _bind_visual_references(
+        instruction: SectionInstruction,
+        needs: List[Any],
+    ) -> None:
+        references = [
+            item for item in instruction.meta.get('cross_references') or []
+            if isinstance(item, dict) and not item.get('must_create')
+        ]
+        for need in needs:
+            references.append({
+                'target': need.need_id,
+                'kind': 'image',
+                'required': need.required,
+                'must_create': True,
+                'caption': need.purpose or instruction.section_title,
+                'guidance': need.purpose,
+            })
+        instruction.meta['cross_references'] = references
+
+    @classmethod
+    def _normalize_cross_references(
+        cls,
+        instruction: SectionInstruction,
+        section_ids: Dict[tuple[tuple[str, ...], int], str] | Dict[str, str],
+        visual_targets: set[str] | None = None,
+    ) -> None:
+        raw_references = instruction.meta.get('cross_references')
+        if raw_references is None:
+            instruction.meta['cross_references'] = []
+            return
+        if not isinstance(raw_references, list):
+            raise ValueError(
+                f'Section instruction {instruction.instruction_id!r} '
+                'cross_references must be a list.'
+            )
+
+        normalized: List[Dict[str, Any]] = []
+        for item in raw_references:
+            if not isinstance(item, dict):
+                raise ValueError('Each cross-reference must be an object.')
+            must_create = bool(item.get('must_create'))
+            if must_create:
+                raise ValueError('Created image cross-references are owned by the visual plan.')
+            target_ref = item.get('target_ref')
+            target = cls._resolve_cross_reference_target(
+                target_ref, section_ids, visual_targets or set(),
+            )
+            kind = (
+                'image'
+                if target in (visual_targets or set())
+                else str(item.get('kind') or 'section')
+            )
+            if kind not in {'section', 'image'}:
+                raise ValueError(f'Unsupported cross-reference kind {kind!r}.')
+
+            normalized.append({
+                'target': target,
+                'kind': kind,
+                'required': bool(item.get('required', True)),
+                'must_create': False,
+                'caption': str(item.get('caption') or '').strip(),
+                'guidance': str(item.get('guidance') or '').strip(),
+            })
+        instruction.meta['cross_references'] = normalized
+
+    @staticmethod
+    def _resolve_cross_reference_target(
+        target_ref: Any,
+        section_ids: Dict[tuple[tuple[str, ...], int], str] | Dict[str, str],
+        visual_targets: set[str],
+    ) -> str:
+        if isinstance(target_ref, dict) and isinstance(section_ids, dict):
+            node_id = target_ref.get('node_id')
+            if isinstance(node_id, str):
+                mapped = section_ids.get(node_id)
+                if mapped is not None:
+                    return mapped
+                if node_id in visual_targets:
+                    return node_id
+            heading_path = target_ref.get('heading_path')
+            occurrence = int(target_ref.get('occurrence') or 1)
+            if isinstance(heading_path, list):
+                target = section_ids.get((tuple(heading_path), occurrence))
+                if target is not None:
+                    return target
+        raise ValueError(f'Unknown cross-reference target: {target_ref!r}')
 
     @staticmethod
     def _rewrite_source_sections(
@@ -763,9 +947,14 @@ class WriterPlanningTools(WriterToolBase):
         block: WriterBlock,
         outline: WriterDocument,
         has_available_facts: bool,
+        node_id_by_original: Dict[str, str],
+        outline_node_id: str,
+        visual_targets: set[str],
+        section_needs: List[Any],
     ) -> SectionInstruction:
         self._validate_instruction(instruction, block.node_id)
         instruction.section_title = block.content
+        instruction.content_ref.node_id = outline_node_id
         instruction.references = [dict(reference) for reference in block.references]
         instruction.visual_needs = []
         if not has_available_facts:
@@ -775,8 +964,36 @@ class WriterPlanningTools(WriterToolBase):
             'outline_node_level': block.numbering.get('level'),
             'outline_id': outline.document_id,
             'outline_title': outline.title,
+            'outline_node_id': outline_node_id,
         })
+        self._normalize_cross_references(
+            instruction, node_id_by_original, visual_targets,
+        )
+        self._bind_visual_references(instruction, section_needs)
         return instruction
+
+    @staticmethod
+    def _ir_outline_node_ids_from_outline(outline: WriterDocument) -> Dict[str, str]:
+        ids: Dict[str, str] = {}
+
+        def walk(blocks: List[WriterBlock], counters: List[int]) -> None:
+            for block in blocks:
+                if block.type == 'heading':
+                    level = int(block.numbering.get('level') or 1)
+                    del counters[level:]
+                    if len(counters) < level:
+                        counters.extend([0] * (level - len(counters)))
+                    counters[level - 1] += 1
+                    node_id = 'sec-' + '-'.join(
+                        f'{value:03d}' for value in counters
+                    )
+                    ids[block.node_id] = node_id
+                    walk(block.children, counters)
+                else:
+                    walk(block.children, counters)
+
+        walk(outline.blocks, [])
+        return ids
 
     @staticmethod
     def _validate_instruction(instruction: SectionInstruction, target: str) -> None:

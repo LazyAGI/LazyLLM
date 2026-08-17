@@ -7,6 +7,7 @@ Requirements:
 - The section's actual prose lives in the block's children. Use paragraph blocks for prose.
 - A paragraph child usually represents one substantial paragraph or paragraph group.
 - The section instruction is a writing plan, not a list of visible headings.
+- Write headings without visible numbering; the system renders numbers.
 - Use expected_blocks to guide coverage and ordering, but do not copy them verbatim as headings.
 - Treat expected_blocks as priorities, not minimum paragraph counts. Combine or omit
   secondary cues when necessary to fit the section budget.
@@ -31,7 +32,18 @@ Requirements:
   Its content is the final Chinese caption and references must contain exactly one
   {{"type": "media_asset", "id": "..."}} entry from section_media. Do not invent asset IDs,
   paths, URLs, tokens, placeholders, or image blocks for unresolved needs.
+  The image block node_id is both the visual need_id and cross-reference target; its
+  media_asset id is separate and must be copied from section_media.
 - Omit spans, provider_binding and provider_payload; the system manages them.
+- Use section_instruction.meta.cross_references as the authoritative cross-reference plan.
+  For each item, the normalized "target" is the exact node_id to use.
+  If must_create=true, create one child WriterBlock with type="image",
+  node_id=target, and content=caption.
+  To reference a target, add an internal_ref span with target_node_id=target and text="".
+  Example: {{"text":"","style":{{"link":{{"type":"internal_ref","target_node_id":"sec-2"}}}}}}.
+  Include each required target exactly once, and use no references beyond this plan.
+  Leave internal reference display text empty; the system renders it.
+  Do not invent target_node_id values outside this plan.
 - Emit WriterBlock fields in schema order. In particular, emit numbering and references before content.
 
 Writing task:
@@ -63,6 +75,7 @@ Requirements:
 - section_instruction.meta.target_chars is the preferred prose length and
   section_instruction.meta.max_chars is a hard prose limit when present.
 - The length limit takes precedence over exhaustive source coverage or prose expansion.
+- Write headings without visible numbering; the system renders numbers.
 - Respect required_points, fact_constraints, style_constraints, and relation_constraints.
 - When section_instruction.meta.rewrite=true, treat meta.source_content as the authoritative
   source material for this section and meta.source_format as formatting guidance. Rewrite it
@@ -72,14 +85,17 @@ Requirements:
 - If previous Markdown is provided, maintain continuity and avoid repetition.
 - Use ordinary Markdown paragraphs, lists, quotes, fenced code, tables, images, and
   subheadings only when they help the requested content.
+- Use section_instruction.meta.cross_references as the authoritative cross-reference plan.
+  Each item's "target" is the exact system key; an image target equals its visual need_id.
+  For a required target, emit exactly [](#block-<target>) once in natural prose.
+  Do not invent target keys outside this plan.
 - Return substantial finished prose, not a summary, placeholder, or planning notes.
 - section_visual_needs lists the visual needs planned for this section. It is independent
   of whether media resolution succeeds. When a required visual need is listed, place its
   image at the most appropriate reading position using exactly:
   ![short caption](media-placeholder://<need_id>).
-  This is the only permitted image syntax: never use Obsidian/wiki syntax such as
-  ![[...]], a local filename/path, a raw URL, or extra brackets.
-  Use only the need_id values listed in section_visual_needs; never invent or modify an id.
+  Use the shared need_id/target from the must_create cross-reference. Emit each planned image
+  exactly once; the system inserts its numbering anchor.
 - Do not output image markup for anything outside this section's section_visual_needs list.
 
 Writing task:
