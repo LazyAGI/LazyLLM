@@ -3,9 +3,11 @@ from .artifact import (
     Artifact,
     ArtifactModel,
     ToolResult,
+    deserialize_artifact_json,
     load_artifact_json,
     make_markdown_tool_result,
     save_artifact_json,
+    serialize_artifact_json,
 )
 from .serialization import (
     MarkdownSelectionError,
@@ -20,15 +22,26 @@ from .serialization import (
     to_prompt_json,
     validate_markdown_paragraph,
 )
+from .conversion import (
+    WriterSourceFormat,
+    WriterTargetFormat,
+    convert_writer_content,
+    writer_document_from_lmd,
+    writer_document_from_markdown,
+    writer_document_to_lmd,
+    writer_document_to_markdown,
+)
 
 __all__ = [
     'SCHEMA_VERSION',
     'Artifact',
     'ArtifactModel',
     'ToolResult',
+    'deserialize_artifact_json',
     'load_artifact_json',
     'make_markdown_tool_result',
     'save_artifact_json',
+    'serialize_artifact_json',
     'render_block_markdown',
     'render_document_markdown',
     'get_markdown_outline_targets',
@@ -38,6 +51,13 @@ __all__ = [
     'MarkdownSelectionError',
     'locate_markdown_paragraph',
     'validate_markdown_paragraph',
+    'WriterSourceFormat',
+    'WriterTargetFormat',
+    'convert_writer_content',
+    'writer_document_from_lmd',
+    'writer_document_from_markdown',
+    'writer_document_to_lmd',
+    'writer_document_to_markdown',
     'strip_heading_numbering',
     'strip_caption_numbering',
 ]
