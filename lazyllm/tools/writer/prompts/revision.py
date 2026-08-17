@@ -52,7 +52,7 @@ Plan semantics:
     equal the create instruction's content_ref.
   - visual_instruction.visual_type must be "image" for this revision workflow.
   - visual_instruction.purpose is the semantic image requirement used to match an
-    uploaded asset or request image generation. required must be true.
+    uploaded asset or acquire a new image. required must be true.
   - visual_instruction.preferred_strategy must be null or "image_generation"
     for a revision image create.
   - A delete instruction targeting an existing image must not include visual_instruction.
@@ -104,6 +104,17 @@ Output semantics:
   counts/order. In particular, distinct paragraphs are separated by a blank line; do not
   collapse them into sentences in one paragraph even if replacement meta describes them.
 - Replacements are returned in application order and preserve unaffected Markdown exactly.
+- Image handling:
+  - When an instruction creates an image, put exactly `![<caption>](media-placeholder://<need_id>)`
+    in new_string at the insertion position. Use the need_id from that create instruction's
+    visual_instruction; do not reuse a need_id from a different instruction.
+    Never use Obsidian/wiki syntax such as `![[...]]`, a local filename/path, a raw URL,
+    or any other image syntax.
+  - When an instruction deletes an image, old_string must be the complete image line
+    (a line beginning with `![` and ending with `)`, including its complete image target/path). Identify
+    the intended image line by caption or document order when the request references
+    "first"/"second"/a caption.
+  - Never invent need_id values, asset IDs, paths, or URLs.
 
 Markdown document:
 {document_content}

@@ -73,6 +73,14 @@ Requirements:
 - Use ordinary Markdown paragraphs, lists, quotes, fenced code, tables, images, and
   subheadings only when they help the requested content.
 - Return substantial finished prose, not a summary, placeholder, or planning notes.
+- section_visual_needs lists the visual needs planned for this section. It is independent
+  of whether media resolution succeeds. When a required visual need is listed, place its
+  image at the most appropriate reading position using exactly:
+  ![short caption](media-placeholder://<need_id>).
+  This is the only permitted image syntax: never use Obsidian/wiki syntax such as
+  ![[...]], a local filename/path, a raw URL, or extra brackets.
+  Use only the need_id values listed in section_visual_needs; never invent or modify an id.
+- Do not output image markup for anything outside this section's section_visual_needs list.
 
 Writing task:
 {task_json}
@@ -85,6 +93,9 @@ Previously drafted Markdown (context only; do not review, summarize, or continue
 
 Current section instruction:
 {section_instruction_json}
+
+Planned section visual needs:
+{section_visual_needs_json}
 
 Write only the body of the current section now. Begin directly with its finished
 prose and follow the current section instruction, even when the previous Markdown

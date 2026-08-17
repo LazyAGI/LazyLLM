@@ -473,6 +473,7 @@ node_id must be a string. Do not include heading_path or nest objects inside nod
             )
             for index, replacement in enumerate(replace_set.replacements, start=1):
                 replacement.replacement_id = replacement.replacement_id or f'replace-{index}'
+            self._validate_string_replace_images(replace_set, source)
 
         return self._save_artifacts(
             {'string_replace_set': replace_set},
@@ -484,6 +485,42 @@ node_id must be a string. Do not include heading_path or nest objects inside nod
             artifact_meta={'context_id': writing_context.context_id},
             artifact_filenames={'string_replace_set': 'string_replace_set.json'},
         ).model_dump()
+
+    def _validate_string_replace_images(
+        self,
+        replace_set: StringReplaceSet,
+        source: str,
+    ) -> None:
+        image_line = re.compile(r'!\[[^\]]*\]\([^)]*\)')
+        for replacement in replace_set.replacements:
+            old = (replacement.old_string or '').strip()
+            if not old.startswith('!['):
+                continue
+            if not image_line.fullmatch(old):
+                raise ValueError(
+                    f'Image replacement {replacement.replacement_id!r} old_string '
+                    'must be a complete image line.'
+                )
+            if replacement.content_ref is None or replacement.content_ref.document_root:
+                if replacement.old_string not in source:
+                    raise ValueError(
+                        f'Image old_string is absent for {replacement.replacement_id!r}.'
+                    )
+                continue
+            if not replacement.content_ref.heading_path:
+                raise ValueError('Markdown content_ref requires heading_path or document_root.')
+            try:
+                start, end = self._markdown_section_range(source, replacement.content_ref)
+                if replacement.old_string in source[start:end]:
+                    continue
+            except ValueError:
+                pass
+            if source.count(replacement.old_string) == 1:
+                replacement.content_ref = ContentRef(document_root=True)
+                continue
+            raise ValueError(
+                f'Image old_string is absent in section for {replacement.replacement_id!r}.'
+            )
 
     def _compile_generated_revision(
         self,

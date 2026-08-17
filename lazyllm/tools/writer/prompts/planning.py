@@ -19,6 +19,8 @@ Requirements:
   them as standalone planning sections.
 - For non-fiction, reports, and articles, use H2 only for sections that should appear in
   the final document.
+- Do not create image-annotation headings such as "图片：..." or "Image: ..." at any level.
+  Image needs are planned by the visual plan step; the outline must stay pure text structure.
 - Keep the outline concise but concrete enough to guide drafting.
 - Treat task.constraints.target_chars and task.constraints.max_chars as limits for the
   entire final document, not for each section.
@@ -64,6 +66,8 @@ Requirements:
   character, setting, theme, and style requirements into the relevant chapters.
 - For non-fiction, reports, and articles, use top-level heading blocks only for sections
   that should appear in the final document.
+- Do not create heading blocks named "图片：..." or "Image: ..." for image planning; visual
+  needs are handled by the visual plan step, not by outline headings.
 - All user-visible outline text MUST use the same document tree contract as draft and final content:
   put section titles in heading block.content, and put section descriptions and key points in
   paragraph or list_item blocks under block.children.
@@ -190,6 +194,33 @@ Writing context:
 
 Outline:
 {outline_json}
+'''
+
+
+GENERATE_VISUAL_PLAN_MARKDOWN_PROMPT = '''Generate a visual plan for this Markdown outline.
+
+Requirements:
+- Return a VisualPlan object.
+- Create a visual only when the user explicitly requires it or it materially improves the section.
+- Each content_ref must target exactly one H2 section from target_sections: use its exact
+  heading_path and occurrence. Do not use node_id or document_root.
+- Use the most appropriate visual_type. preferred_strategy is optional; if omitted, the system
+  derives it from visual_type. Do not use image_generation for chart or table.
+- purpose must state what the visual communicates for its section.
+- Set required=true only when the user explicitly requires the visual.
+- Do not change the outline. Do not generate asset IDs, paths, URLs, captions, placeholders, or upload details.
+
+Writing task:
+{task_json}
+
+Writing context:
+{context_json}
+
+Outline:
+{outline_json}
+
+Target H2 sections:
+{target_sections_json}
 '''
 
 
