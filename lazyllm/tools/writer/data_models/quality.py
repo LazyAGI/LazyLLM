@@ -2,12 +2,13 @@ from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 from ..utils.artifact import ArtifactModel
+from .writer_ir import ContentRef
 
 
 class AuditIssue(BaseModel):
     severity: Literal['high', 'medium', 'low']
     category: Literal['format', 'coverage', 'relevance', 'evidence', 'style']
-    location: Optional[str] = None
+    content_ref: Optional[ContentRef] = None
     description: str
     suggestion: str
 

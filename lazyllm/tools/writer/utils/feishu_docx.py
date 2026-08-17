@@ -8,6 +8,7 @@ DOCX_BLOCK_TYPE_FIELDS: Dict[int, str] = {
     7: 'heading5', 8: 'heading6', 9: 'heading7', 10: 'heading8', 11: 'heading9',
     12: 'bullet', 13: 'ordered', 14: 'code', 15: 'quote', 17: 'todo',
     19: 'callout', 22: 'divider', 24: 'grid', 25: 'grid_column',
+    27: 'image',
     31: 'table', 32: 'table_cell', 34: 'quote_container',
 }
 
@@ -193,6 +194,8 @@ def prepare_docx_clone_descendants(  # noqa: C901
     for source_id in ordered_ids:
         raw = raw_by_id[source_id]
         block_type = raw.get('block_type')
+        if block_type == 27:
+            raise ValueError('Feishu image move is not supported.')
         content_key = DOCX_BLOCK_TYPE_FIELDS.get(block_type)
         if content_key is None:
             raise ValueError(

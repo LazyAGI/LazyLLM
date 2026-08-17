@@ -1,16 +1,21 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
-from .writer_ir import WriterBlock, WriterSpan
+from .writer_ir import ContentRef, WriterBlock, WriterSpan
+from .multimodal import VisualInstruction
 from ..utils.artifact import ArtifactModel
+
+
+class LocatedContent(BaseModel):
+    content_ref: ContentRef
+    reason: str = ''
 
 
 class LocateResult(ArtifactModel):
     task_id: Optional[str] = None
     doc_id: Optional[str] = None
     target_title: bool
-    target_node_ids: List[str]
-    target_reasons: Dict[str, str]
+    targets: List[LocatedContent] = Field(default_factory=list)
     summary: Optional[str] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
 
@@ -21,18 +26,18 @@ PatchPosition = Literal['before', 'after']
 
 class ModifyInstruction(BaseModel):
     instruction_id: Optional[str] = None
-    target_node_id: str
+    content_ref: ContentRef
+    destination_ref: Optional[ContentRef] = None
     modify_type: ModifyType
-    anchor_node_id: Optional[str] = None
     position: Optional[PatchPosition] = None
     instruction: str
     meta: Dict[str, Any] = Field(default_factory=dict)
+    visual_instruction: Optional[VisualInstruction] = None
 
     @model_validator(mode='after')
-    def validate_anchor(self) -> 'ModifyInstruction':
-        if self.modify_type in {'create', 'move'} \
-                and (not self.anchor_node_id or not self.position):
-            raise ValueError(f'{self.modify_type} requires anchor_node_id and position')
+    def validate_visual_instruction(self) -> 'ModifyInstruction':
+        if self.visual_instruction is not None and self.modify_type != 'create':
+            raise ValueError('visual_instruction is only valid for create instructions.')
         return self
 
 
@@ -41,7 +46,6 @@ class ModifyPlan(BaseModel):
     task_id: Optional[str] = None
     scope: Literal['document', 'section', 'block', 'span']
     title_instruction: Optional[str] = None
-    target_node_ids: List[str] = Field(default_factory=list)
     instructions: List[ModifyInstruction] = Field(default_factory=list)
     summary: Optional[str] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
@@ -72,6 +76,18 @@ RevisionBlockContent.model_rebuild()
 class GeneratedRevision(BaseModel):
     new_title: Optional[str] = None
     changes: Dict[str, List[RevisionBlockContent]] = Field(default_factory=dict)
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_single_block_changes(cls, value: Any) -> Any:
+        if not isinstance(value, dict) or not isinstance(value.get('changes'), dict):
+            return value
+        normalized = dict(value)
+        normalized['changes'] = {
+            instruction_id: [blocks] if isinstance(blocks, dict) else blocks
+            for instruction_id, blocks in value['changes'].items()
+        }
+        return normalized
 
 
 class PatchHunk(BaseModel):
@@ -114,5 +130,36 @@ class PatchResult(BaseModel):
     success: bool
     applied_hunks: List[str] = Field(default_factory=list)
     failed_hunks: List[str] = Field(default_factory=list)
+    message: Optional[str] = None
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class StringReplace(BaseModel):
+    replacement_id: Optional[str] = None
+    old_string: str
+    new_string: str
+    content_ref: Optional[ContentRef] = None
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode='after')
+    def validate_replacement(self) -> 'StringReplace':
+        if not self.old_string:
+            raise ValueError('old_string must not be empty')
+        if self.old_string == self.new_string:
+            raise ValueError('old_string and new_string must differ')
+        return self
+
+
+class StringReplaceSet(ArtifactModel):
+    replace_set_id: Optional[str] = None
+    replacements: List[StringReplace] = Field(default_factory=list)
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class StringReplaceResult(BaseModel):
+    replace_set_id: Optional[str] = None
+    success: bool
+    applied_replacements: List[str] = Field(default_factory=list)
+    failed_replacements: List[str] = Field(default_factory=list)
     message: Optional[str] = None
     meta: Dict[str, Any] = Field(default_factory=dict)

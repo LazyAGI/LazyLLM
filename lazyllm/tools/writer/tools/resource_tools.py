@@ -1,5 +1,6 @@
 from __future__ import annotations
 from copy import deepcopy
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from lazyllm import LOG
@@ -9,10 +10,12 @@ from .base import WriterToolBase
 from ..adapter.base import NativePatchOperation, WriterAdapterBase
 from ..adapter.feishu import FeishuWriterAdapter
 from ..data_models.resource import MaterialStyle, ResourceProfile
+from ..data_models.multimodal import MediaAssetLibrary
 from ..data_models.revision import PatchResult, PatchSet
 from ..data_models.task import InputResource, TargetDocument, WritingTask
 from ..data_models.writer_ir import WriterDocument, WriterStage
 from ..prompts.profile_resources import RESOURCE_PROFILE_PROMPT
+from ..utils import parse_document_markdown
 
 _WRITER_STAGE_ADAPTER = TypeAdapter(WriterStage)
 
@@ -232,30 +235,30 @@ class WriterResourceTools(WriterToolBase):
             },
         ).model_dump()
 
-    def write_to_document(self, content: Any, target_document: Any) -> dict:
+    def write_to_document(self, content: Any, target_document: Any, media_assets: Any = None) -> dict:
         '''Backward-compatible alias for append_to_document().'''
-        return self.append_to_document(content, target_document)
+        return self.append_to_document(content, target_document, media_assets)
 
-    def append_to_document(self, content: Any, target_document: Any) -> dict:
-        '''Append a final WriterDocument to an existing provider document.'''
-        return self._write_document(content, target_document, mode='append')
+    def append_to_document(self, content: Any, target_document: Any, media_assets: Any = None) -> dict:
+        '''Append Writer IR or Markdown to an existing provider document.'''
+        return self._write_document(content, target_document, media_assets=media_assets, mode='append')
 
-    def replace_document(self, content: Any, target_document: Any) -> dict:
-        '''Replace an existing provider document with a final WriterDocument.'''
-        return self._write_document(content, target_document, mode='replace')
+    def replace_document(self, content: Any, target_document: Any, media_assets: Any = None) -> dict:
+        '''Replace an existing provider document with Writer IR or Markdown.'''
+        return self._write_document(content, target_document, media_assets=media_assets, mode='replace')
 
     def _write_document(
         self,
         content: Any,
         target_document: Any,
+        media_assets: Any = None,
         *,
         mode: str,
     ) -> dict:
-        document = self._unified_model(content, WriterDocument)
-        if document.stage != 'final':
-            raise ValueError(f'content must have stage="final", got {document.stage!r}')
+        source = self._unified_document(content)
+        source_document = source if isinstance(source, WriterDocument) else None
         target = self._unified_optional_model(target_document, TargetDocument) or TargetDocument()
-        locator = self._target_locator(target, document)
+        locator = self._target_locator(target, source_document)
 
         if not locator:
             LOG.warning(
@@ -266,26 +269,72 @@ class WriterResourceTools(WriterToolBase):
             return self._save_write_result('', '', '', 0)
 
         protocol, real_path, fs, adapter, locator, document_id = \
-            self._resolve_document_target(target, source_document=document)
+            self._resolve_document_target(target, source_document=source_document)
+        document = source_document or parse_document_markdown(
+            source, document_id=adapter.make_document_id(document_id), stage='final',
+        )
+        media_library = (
+            self._unified_optional_model(media_assets, MediaAssetLibrary)
+            if source_document is not None else None
+        )
+        warnings: List[str] = []
+        if source_document is not None:
+            document, warnings = self._omit_unavailable_images(document, media_library)
         method_name = 'replace_doc_blocks' if mode == 'replace' else 'write_doc_blocks'
         write_blocks = getattr(fs, method_name, None)
         if not callable(write_blocks):
             raise TypeError(f'{type(fs).__name__} does not support {method_name}().')
+        native_blocks = adapter.ir_to_blocks(
+            document, media_assets=media_library if source_document is not None else None)
         if document.title:
             self._update_document_title(fs, document_id, document.title, document.revision)
-        native_blocks = adapter.ir_to_blocks(document)
+        if not native_blocks:
+            warnings.append('No publishable blocks remain after media filtering.')
+            return self._save_write_result(document_id, protocol, locator, 0, warnings)
         write_blocks(document_id, native_blocks)
-        return self._save_write_result(document_id, protocol, locator, len(native_blocks))
+        return self._save_write_result(document_id, protocol, locator, len(native_blocks), warnings)
 
-    def apply_patch_to_document(
+    def _omit_unavailable_images(
+        self,
+        document: WriterDocument,
+        media_assets: Optional[MediaAssetLibrary],
+    ) -> Tuple[WriterDocument, List[str]]:
+        warnings: List[str] = []
+
+        def copy_blocks(blocks):
+            copied = []
+            for block in blocks:
+                if block.type == 'image':
+                    references = [
+                        ref.get('id') for ref in block.references
+                        if ref.get('type') == 'media_asset' and ref.get('id')
+                    ]
+                    if len(references) != 1:
+                        warnings.append(f'Skipped image block {block.node_id!r}: invalid media reference.')
+                        continue
+                    asset_id = references[0]
+                    asset = media_assets.assets.get(asset_id) if media_assets else None
+                    if asset is None or not asset.local_path or not Path(asset.local_path).is_file():
+                        warnings.append(f'Skipped image block {block.node_id!r}: media is unavailable.')
+                        continue
+                copied_block = block.model_copy(deep=True)
+                copied_block.children = copy_blocks(copied_block.children)
+                copied.append(copied_block)
+            return copied
+
+        return document.model_copy(update={'blocks': copy_blocks(document.blocks)}), warnings
+
+    def apply_patch_to_document(  # noqa: C901
         self,
         patch_set: Any,
         source_document: Any,
         target_document: Any = None,
+        media_assets: Any = None,
     ) -> dict:
         '''Translate a PatchSet into native block operations and persist it.'''
         patch = self._unified_model(patch_set, PatchSet)
         source = self._unified_model(source_document, WriterDocument)
+        media_library = self._unified_optional_model(media_assets, MediaAssetLibrary)
         if patch.target_doc_id != source.document_id:
             raise ValueError(
                 f'patch target_doc_id {patch.target_doc_id!r} does not match '
@@ -316,9 +365,28 @@ class WriterResourceTools(WriterToolBase):
         title_updated = patch.new_title is not None and patch.new_title != source.title
         normalized_fields: Dict[str, List[str]] = {}
         for hunk in patch.hunks:
-            operation = adapter.patch_to_operation(hunk, persisted_document)
-            operation_result = self._execute_native_operation(
-                fs, document_id, operation, persisted_document.revision)
+            operation = adapter.patch_to_operation(
+                hunk, persisted_document, media_assets=media_library)
+            try:
+                operation_result = self._execute_native_operation(
+                    fs, document_id, operation, persisted_document.revision)
+            except Exception as exc:
+                block_id = operation.params.get('block_id')
+                if block_id is None:
+                    requests = operation.params.get('requests')
+                    if isinstance(requests, list) and requests and isinstance(requests[0], dict):
+                        block_id = requests[0].get('block_id')
+                hunk_id = hunk.hunk_id or hunk.target_node_id
+                LOG.error(
+                    'Writer provider patch failed: operation=%s hunk_id=%s block_id=%s '
+                    'revision=%s error=%s',
+                    operation.operation, hunk_id, block_id,
+                    persisted_document.revision, exc,
+                )
+                raise RuntimeError(
+                    f'provider {operation.operation} failed for block {block_id or "unknown"!r} '
+                    f'at revision {persisted_document.revision!r}: {exc}'
+                ) from exc
             if isinstance(operation_result, dict) \
                     and isinstance(operation_result.get('normalized_fields'), list):
                 normalized_fields[hunk.hunk_id or hunk.target_node_id] = \
@@ -507,6 +575,7 @@ class WriterResourceTools(WriterToolBase):
         adapter: str,
         locator: str,
         block_count: int,
+        warnings: Optional[List[str]] = None,
     ) -> dict:
         return self._save_artifacts(
             {'write_result': {
@@ -519,6 +588,7 @@ class WriterResourceTools(WriterToolBase):
             primary_key='write_result',
             summary='Wrote content to target document.' if document_id else 'No target document was provided.',
             counts={'blocks': block_count},
+            warnings=warnings,
             extra={
                 'adapter': adapter,
                 'document_id': document_id,

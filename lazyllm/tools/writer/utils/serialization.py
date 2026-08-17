@@ -1,11 +1,19 @@
 from __future__ import annotations
 import json
+import re
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
 from lazyllm.thirdparty import mistune
 
 from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterStage
+
+
+class MarkdownSelectionError(ValueError):
+    def __init__(self, code: str, message: str, **details: Any):  # noqa: B042
+        super().__init__(message)
+        self.error_code = code
+        self.details = details
 
 
 def to_prompt_json(value: Any) -> str:
@@ -17,6 +25,91 @@ def to_prompt_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2, default=default)
 
 
+def locate_markdown_paragraph(markdown: str, selected_text: str) -> str:
+    '''Return the unique source paragraph containing rendered selected text.'''
+    selected = _normalize_markdown_text(selected_text)
+    if not selected:
+        raise MarkdownSelectionError(
+            'SELECTION_UNSUPPORTED', 'selected_text must not be empty.',
+        )
+    parser = mistune.create_markdown(renderer='ast', plugins=['table'])
+    matches: List[str] = []
+    for block in _markdown_source_blocks(markdown):
+        tokens = [token for token in parser(block) if token.get('type') != 'blank_line']
+        visible = _normalize_markdown_text(' '.join(
+            _markdown_visible_text(token) for token in tokens
+        ))
+        if selected in visible or selected in _normalize_markdown_text(block):
+            if len(tokens) != 1 or tokens[0].get('type') != 'paragraph':
+                raise MarkdownSelectionError(
+                    'SELECTION_UNSUPPORTED',
+                    'Only Markdown paragraphs can be rewritten.',
+                )
+            matches.append(block)
+    if not matches:
+        raise MarkdownSelectionError(
+            'SELECTION_STALE',
+            'The selected text no longer identifies a Markdown paragraph.',
+        )
+    if len(matches) > 1:
+        raise MarkdownSelectionError(
+            'SELECTION_AMBIGUOUS',
+            f'The selected text matches {len(matches)} Markdown paragraphs.',
+            match_count=len(matches),
+        )
+    return matches[0]
+
+
+def validate_markdown_paragraph(markdown: str) -> str:
+    candidate = (markdown or '').strip()
+    parser = mistune.create_markdown(renderer='ast', plugins=['table'])
+    tokens = [token for token in parser(candidate) if token.get('type') != 'blank_line']
+    if len(tokens) != 1 or tokens[0].get('type') != 'paragraph':
+        raise MarkdownSelectionError(
+            'INVALID_GENERATED_BLOCK',
+            'The generated Markdown must contain exactly one paragraph.',
+        )
+    return candidate
+
+
+def _markdown_source_blocks(markdown: str) -> List[str]:
+    blocks: List[str] = []
+    start: Optional[int] = None
+    fence: Optional[str] = None
+    for match in re.finditer(r'.*(?:\n|$)', markdown):
+        line = match.group(0)
+        if not line and match.start() == len(markdown):
+            continue
+        fence_match = re.match(r'^\s*(```+|~~~+)', line)
+        if fence is not None:
+            if fence_match and fence_match.group(1)[0] == fence[0]:
+                fence = None
+            continue
+        if fence_match:
+            fence = fence_match.group(1)
+        if line.strip():
+            start = match.start() if start is None else start
+            continue
+        if start is not None:
+            blocks.append(markdown[start:match.start()].rstrip('\r\n'))
+            start = None
+    if start is not None:
+        blocks.append(markdown[start:].rstrip('\r\n'))
+    return [block for block in blocks if block.strip()]
+
+
+def _normalize_markdown_text(value: str) -> str:
+    return re.sub(r'\s+', ' ', (value or '').replace('\u00a0', ' ')).strip()
+
+
+def _markdown_visible_text(token: Dict[str, Any]) -> str:
+    if token.get('type') in {'text', 'codespan'}:
+        return str(token.get('raw') or '')
+    if token.get('type') in {'softbreak', 'linebreak'}:
+        return ' '
+    return ''.join(_markdown_visible_text(child) for child in token.get('children') or [])
+
+
 def render_document_markdown(document: WriterDocument) -> str:
     parts: List[str] = []
     if document.title:
@@ -24,6 +117,58 @@ def render_document_markdown(document: WriterDocument) -> str:
     for block in document.blocks:
         parts.extend(_render_block_markdown(block, level=2))
     return '\n\n'.join(part for part in parts if part).strip() + '\n'
+
+
+def render_block_markdown(block: WriterBlock, level: int = 2) -> str:
+    return '\n\n'.join(
+        part for part in _render_block_markdown(block, level=level) if part
+    ).strip()
+
+
+def parse_markdown_sections(markdown: str) -> List[tuple[int, List[str], int, str]]:
+    sections: List[tuple[int, List[str], int, str]] = []
+    heading_path: List[str] = []
+    occurrences: dict[tuple[str, ...], int] = {}
+    current: Optional[tuple[int, List[str], int, List[str]]] = None
+
+    for line in markdown.splitlines():
+        match = re.match(r'^(#{1,6})\s+(.+?)\s*$', line)
+        if not match:
+            if current is not None:
+                current[3].append(line)
+            continue
+        if current is not None:
+            sections.append((current[0], current[1], current[2], '\n'.join(current[3]).strip()))
+        level = len(match.group(1))
+        title = match.group(2)
+        heading_path = heading_path[:level - 1]
+        heading_path.append(title)
+        path_key = tuple(heading_path)
+        occurrence = occurrences.get(path_key, 0) + 1
+        occurrences[path_key] = occurrence
+        current = (level, list(heading_path), occurrence, [])
+
+    if current is not None:
+        sections.append((current[0], current[1], current[2], '\n'.join(current[3]).strip()))
+    return sections
+
+
+def get_markdown_outline_targets(
+    markdown: str,
+) -> tuple[str, List[tuple[int, List[str], int, str]]]:
+    sections = parse_markdown_sections(markdown)
+    titles = [heading_path[-1] for level, heading_path, _, _ in sections if level == 1]
+    if len(titles) != 1:
+        raise ValueError('Markdown outline must contain exactly one H1 title.')
+
+    title = titles[0]
+    targets = [section for section in sections if section[0] == 2]
+    if not targets:
+        raise ValueError('Markdown outline must contain at least one H2 section.')
+    if any(len(heading_path) < 2 or heading_path[0] != title
+           for _, heading_path, _, _ in targets):
+        raise ValueError('Markdown outline H2 sections must appear under the H1 title.')
+    return title, targets
 
 
 def parse_document_markdown(  # noqa: C901

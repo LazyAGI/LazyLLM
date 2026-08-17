@@ -1,4 +1,42 @@
 # flake8: noqa
+GENERATE_OUTLINE_MARKDOWN_PROMPT = '''Generate a writing outline in Markdown from the given task and context.
+
+Requirements:
+- Output Markdown only. Do not wrap the response in an outer code fence.
+- Do not output reasoning, analysis, review notes, or <think> tags.
+- Start with exactly one H1 document title.
+- Add at least one H2 section directly under the H1 title.
+- Every H2 section title must be unique.
+- Use H3-H6 only for optional subsection planning under an H2 section.
+- Treat the outline as the exact structural skeleton of the final deliverable: every H2
+  will become a visible section in the drafted document.
+- Do not create meta-planning H2 sections such as background and setting, character
+  profiles, themes and symbols, writing style, chapter-plan commentary, or writing plan,
+  unless the user explicitly requested those sections in the final deliverable.
+- For fiction and other narrative writing, use H2 only for actual chapter titles and use
+  H3-H6 for scenes, plot beats, or events within that chapter. Distribute character,
+  setting, theme, and style requirements into the relevant chapters instead of exposing
+  them as standalone planning sections.
+- For non-fiction, reports, and articles, use H2 only for sections that should appear in
+  the final document.
+- Keep the outline concise but concrete enough to guide drafting.
+- Use resource profiles and execution results as constraints, not as text to copy blindly.
+- Do not invent facts that conflict with the writing context.
+
+Writing task:
+{task_json}
+
+Writing context:
+{context_json}
+
+Resource profiles:
+{resource_profiles_json}
+
+Execution results:
+{execution_results_json}
+'''
+
+
 GENERATE_OUTLINE_PROMPT = '''Generate a writing outline from the given writing task and context.
 
 Requirements:
@@ -6,6 +44,17 @@ Requirements:
 - Set document_id to the exact document_id below.
 - Generate at least 3 top-level blocks unless the task explicitly asks for fewer.
 - Each top-level block is a section. Use type="heading" for section blocks.
+- Treat the outline as the exact structural skeleton of the final deliverable: every
+  top-level heading block will become a visible section in the drafted document.
+- Do not create meta-planning top-level sections such as background and setting,
+  character profiles, themes and symbols, writing style, chapter-plan commentary, or
+  writing plan, unless the user explicitly requested those sections in the final
+  deliverable.
+- For fiction and other narrative writing, use top-level heading blocks only for actual
+  chapter titles. Put scenes, plot beats, and events in child blocks, and distribute
+  character, setting, theme, and style requirements into the relevant chapters.
+- For non-fiction, reports, and articles, use top-level heading blocks only for sections
+  that should appear in the final document.
 - All user-visible outline text MUST use the same document tree contract as draft and final content:
   put section titles in heading block.content, and put section descriptions and key points in
   paragraph or list_item blocks under block.children.
@@ -35,23 +84,118 @@ Execution results:
 '''
 
 
+GENERATE_REWRITE_OUTLINE_PROMPT = '''Generate a new writing outline for a complete rewrite of the source document.
+
+Requirements:
+- Return a WriterDocument object with stage="outline".
+- Set document_id to the exact document_id below.
+- Treat the user's requested end state as authoritative, including chapter count, section order,
+  compression, expansion, merging, splitting, and renamed sections.
+- Use top-level heading blocks only for sections that will appear in the rewritten document.
+- Preserve source facts, plot points, terminology, characters, and style unless the task asks to change them.
+- Include concise source-grounded descriptions and key points under each heading so drafting can recreate
+  the requested document without reading the source again.
+- Do not copy the source structure when it conflicts with the requested end state.
+- Do not add planning commentary or other sections that should not appear in the final document.
+- Put section titles in heading block.content and descriptions or key points in child paragraph or list_item blocks.
+- Fill node_id for every block with stable ids such as rewrite-section-1 and rewrite-section-1-1.
+- Use block.numbering.level for heading levels.
+- Omit spans, references, provider_binding and provider_payload; the system manages them.
+- Preserve the source title unless the task explicitly requests a new title.
+
+Writing task:
+{task_json}
+
+document_id: {document_id}
+
+Writing context:
+{context_json}
+
+Complete source document:
+{source_document_json}
+'''
+
+
+GENERATE_REWRITE_SECTION_INSTRUCTIONS_PROMPT = '''Generate the section-level writing instructions for a complete rewrite.
+
+Requirements:
+- Return a SectionInstructionList object. Do not return an outline or draft prose.
+- The user's requested end state is authoritative. You may preserve, rename, merge, split, reorder,
+  expand, or remove source sections as required by the task.
+- meta.document_title must be the title of the rewritten document. Preserve the source title unless
+  the task explicitly requests a new title.
+- Produce one SectionInstruction for every top-level section in the rewritten document, in final order.
+- instruction_id must be stable and unique. section_title and section_goal must be non-empty.
+- required_points must retain the source facts, plot points, terminology, and details needed by drafting.
+- expected_blocks must be a concise content plan, not visible headings.
+- references must contain only exact source_ref objects copied from source_sections. Use them to identify
+  which source sections inform each rewritten section; do not invent reference fields or values.
+- For representation="ir", content_ref must contain only a unique node_id such as rewrite-section-1.
+- For representation="markdown", content_ref must contain only heading_path=[document title, section title]
+  and occurrence=1.
+- Respect the writing context and do not invent facts that conflict with it.
+- Do not add source excerpts, paths, URLs, provider bindings, media assets, or planning commentary.
+
+Representation:
+{representation}
+
+Writing task:
+{task_json}
+
+Source title:
+{source_title}
+
+Source sections:
+{source_sections_json}
+
+Writing context:
+{context_json}
+'''
+
+
+GENERATE_VISUAL_PLAN_PROMPT = '''Generate a visual plan for this Writer IR outline.
+
+Requirements:
+- Return a VisualPlan object.
+- Create a visual only when the user explicitly requires it or it materially improves the section.
+- Each content_ref must contain only node_id for one top-level heading in the outline.
+- Use the most appropriate visual_type. preferred_strategy is optional; if omitted, the system
+  derives it from visual_type. Do not use image_generation for chart or table.
+- purpose must state what the visual communicates for its section.
+- Set required=true only when the user explicitly requires the visual.
+- Do not change the outline. Do not generate asset IDs, paths, URLs, captions, placeholders, or upload details.
+
+Writing task:
+{task_json}
+
+Writing context:
+{context_json}
+
+Outline:
+{outline_json}
+'''
+
+
 GENERATE_SECTION_INSTRUCTIONS_PROMPT = '''Generate section-level writing instructions from the outline and writing context.
 
 Requirements:
 - Return a SectionInstructionList object.
-- Generate exactly one SectionInstruction for every top-level block listed in target_outline_blocks.
-- Each instruction's outline_node_id MUST equal the corresponding outline block's node_id.
-- section_title MUST equal the corresponding outline block's content.
+- Generate exactly one SectionInstruction for every item listed in target_outline_blocks.
+- Copy each target's content_ref exactly. For Writer IR this contains node_id; for Markdown it
+  contains heading_path and occurrence. Do not mix locator types.
+- section_title MUST equal the corresponding target's section_title.
 - instruction_id should be stable, such as instruction-section-1 or instruction-ch01.
 - section_goal should be concrete and actionable.
 - required_points should contain the key content that must appear in the section.
 - fact_constraints should preserve the literal text of locked facts and important context facts
   relevant to this section. It must not contain fact IDs or resource IDs.
 - fact_constraints MUST only contain factual statements actually present in the writing context.
-- references are owned by the authoritative outline. Omit references; the system copies them from
-  the matching outline block.
+- references are owned by the authoritative outline. Omit references; the system normalizes them.
 - style_constraints should include tone, pov, audience, and style requirements when applicable.
 - relation_constraints should describe dependencies on previous or later sections when useful.
+- Use the visual plan to shape section goals, ordering, and transitions when its content_ref targets
+  the same section. Do not copy visual needs into SectionInstruction or generate asset IDs, paths,
+  placeholders, captions, or acquisition instructions.
 - expected_blocks should be a concise block-level content plan for the draft tool.
 - For a normal section, expected_blocks should usually contain 3 to 6 planned content blocks unless the section is explicitly very short.
 - expected_blocks are planning labels for coverage and ordering, not visible headings that must appear in final text.
@@ -68,4 +212,7 @@ Writing context:
 
 Execution results:
 {execution_results_json}
+
+Visual plan:
+{visual_plan_json}
 '''

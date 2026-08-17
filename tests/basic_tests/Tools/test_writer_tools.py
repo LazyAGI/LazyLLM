@@ -1,11 +1,17 @@
 import os
 import tempfile
+import time
 from contextlib import contextmanager
+from copy import copy
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from lazyllm.common import FileSystemQueue
+from lazyllm.module.module import ModuleBase
 from lazyllm.tools.writer.data_models import (
+    ContentRef,
     DocumentSummary,
     MaterialStyle,
     ResourceProfile,
@@ -20,6 +26,8 @@ from lazyllm.tools.writer.data_models.revision import (
     PatchHunk,
     PatchResult,
     PatchSet,
+    StringReplace,
+    StringReplaceSet,
 )
 from lazyllm.tools.writer.data_models.task import InputResource
 from lazyllm.tools.writer.data_models.planning import (
@@ -32,7 +40,53 @@ from lazyllm.tools.writer.tools.base import WriterToolBase
 from lazyllm.tools.writer.tools.planning_tools import WriterPlanningTools
 from lazyllm.tools.writer.tools.quality_tools import WriterQualityTools
 from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
-from lazyllm.tools.writer.utils import load_artifact_json, save_artifact_json
+from lazyllm.tools.writer.utils import (
+    get_markdown_outline_targets,
+    load_artifact_json,
+    save_artifact_json,
+)
+
+
+class _StreamingTextLLM(ModuleBase):
+    def __init__(self, chunks, *, response=None, start_delay=0.0, error=None):
+        super().__init__()
+        self._chunks = chunks
+        self._response = response
+        self._start_delay = start_delay
+        self._error = error
+        self._stream = False
+
+    def share(self, stream=None):
+        shared = copy(self)
+        if stream is not None:
+            shared._stream = stream
+        return shared
+
+    def forward(self, prompt):
+        if self._start_delay:
+            time.sleep(self._start_delay)
+        with self.stream_output(self._stream):
+            for tag, delta in self._chunks:
+                self._stream_output(delta, cls=tag)
+        if self._error is not None:
+            raise self._error
+        if self._response is not None:
+            return self._response
+        return ''.join(delta for tag, delta in self._chunks if tag == 'text')
+
+
+def _markdown_draft_inputs():
+    return (
+        WritingTask(task_id='task-md-stream', query='写测试文档', task_type='write'),
+        SectionInstruction(
+            instruction_id='instruction-section-1',
+            content_ref=ContentRef(heading_path=['测试文档', '第一章']),
+            section_title='第一章',
+            section_goal='说明方案',
+            meta={'outline_heading_level': 2},
+        ),
+        WritingContext(context_id='ctx-md-stream'),
+    )
 
 
 def test_structured_response_selects_one_schema_valid_candidate():
@@ -60,6 +114,124 @@ def test_text_response_strips_provider_think_block():
     tool = WriterToolBase(llm=lambda _: '<think>internal reasoning</think>\n\n正文')
 
     assert tool._call_llm_text('prompt') == '正文'
+
+
+def test_stream_markdown_draft_is_isolated_and_returns_tool_result():
+    chunks = [
+        ('think', 'provider reasoning'),
+        ('text', '  <thi'),
+        ('text', 'nk>inline reasoning</think>\n\n  第一段。'),
+        ('text', '\n\n'),
+        ('text', '- 要点一   '),
+    ]
+    task, instruction, context = _markdown_draft_inputs()
+    queue = FileSystemQueue()
+    queue.clear()
+
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterDraftingTools(
+            llm=_StreamingTextLLM(chunks),
+            artifact_store=directory,
+        )
+        with tool.stream_draft_section(
+            task=task,
+            section_instruction=instruction,
+            context=context,
+            idle_timeout=1,
+        ) as stream:
+            markdown = ''.join(stream)
+            result = stream.result()
+
+        artifact = Path(result['artifact_path']).read_text(encoding='utf-8')
+
+    assert markdown == '## 第一章\n\n第一段。\n\n- 要点一\n'
+    assert artifact == markdown
+    assert result['metadata']['extra']['representation'] == 'markdown'
+    assert queue.dequeue() == []
+
+
+def test_stream_markdown_draft_rejects_ir_instruction():
+    task, _, context = _markdown_draft_inputs()
+    instruction = SectionInstruction(
+        instruction_id='instruction-ir',
+        content_ref=ContentRef(node_id='section-1'),
+        section_title='第一章',
+        section_goal='说明方案',
+    )
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterDraftingTools(
+            llm=_StreamingTextLLM([('text', '正文')]),
+            artifact_store=directory,
+        )
+        with pytest.raises(ValueError, match='only supports Markdown'):
+            tool.stream_draft_section(task, instruction, context)
+
+
+def test_stream_markdown_draft_propagates_model_error():
+    task, instruction, context = _markdown_draft_inputs()
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterDraftingTools(
+            llm=_StreamingTextLLM(
+                [('text', '部分正文')],
+                error=RuntimeError('draft stream failed'),
+            ),
+            artifact_store=directory,
+        )
+        stream = tool.stream_draft_section(
+            task, instruction, context, idle_timeout=1,
+        )
+        with pytest.raises(Exception, match='draft stream failed'):
+            list(stream)
+        with pytest.raises(Exception, match='draft stream failed'):
+            stream.result()
+
+
+def test_stream_markdown_draft_idle_timeout():
+    task, instruction, context = _markdown_draft_inputs()
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterDraftingTools(
+            llm=_StreamingTextLLM([('text', '正文')], start_delay=0.2),
+            artifact_store=directory,
+        )
+        stream = tool.stream_draft_section(
+            task, instruction, context, idle_timeout=0.02,
+        )
+        assert next(stream) == '## 第一章\n\n'
+        with pytest.raises(TimeoutError, match='idle'):
+            next(stream)
+        stream.close()
+
+
+def test_writer_document_compatibility_contract_models():
+    assert ContentRef(node_id='section-1').node_id == 'section-1'
+    assert ContentRef(heading_path=['第一章', '背景']).heading_path == ['第一章', '背景']
+    assert ContentRef(placeholder_id='visual-1').placeholder_id == 'visual-1'
+    assert ContentRef(document_root=True).document_root is True
+
+
+def test_section_instruction_and_markdown_revision_contracts():
+    ir_instruction = SectionInstruction(
+        instruction_id='section-ir',
+        content_ref=ContentRef(node_id='node-1'),
+        section_title='引言',
+        section_goal='介绍背景',
+    )
+    markdown_instruction = SectionInstruction(
+        instruction_id='section-md',
+        content_ref=ContentRef(heading_path=['第一章', '引言']),
+        section_title='引言',
+        section_goal='介绍背景',
+    )
+    replace_set = StringReplaceSet(replacements=[StringReplace(
+        replacement_id='replace-1',
+        content_ref=markdown_instruction.content_ref,
+        old_string='原始段落',
+        new_string='扩写后的完整段落',
+    )])
+
+    assert ir_instruction.content_ref == ContentRef(node_id='node-1')
+    assert markdown_instruction.content_ref.heading_path == ['第一章', '引言']
+    assert replace_set.replacements[0].old_string == '原始段落'
 
 
 def _make_doc_adapter():
@@ -160,7 +332,7 @@ def _make_section_instruction_list():
         instructions=[
             SectionInstruction(
                 instruction_id='si-prologue',
-                outline_node_id='prologue',
+                content_ref=ContentRef(node_id='prologue'),
                 section_title='楔子 · 星辰陨落',
                 section_goal='建立世界观的宏大感和宿命基调。',
                 required_points=['太古星辰大帝的实力层级'],
@@ -425,8 +597,22 @@ def test_create_writing_context_tool_result():
         assert '# 背景分析' in context.document_summary.structure_summary
         assert len(context.block_summaries) == 3  # 2 headings + 1 paragraph all have text
         assert context.facts[0].value == '市场增长20%'
-        assert context.outline is None
-        assert context.draft_document is None
+
+
+def test_writing_context_supports_markdown():
+    task = WritingTask(task_id='t-md', query='扩写文稿', task_type='revise')
+    markdown = '# 第一章\n\n章节摘要\n\n## 背景\n\n背景正文'
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterContextTools(artifact_store=d)
+        result = tool.create_writing_context(task=task, document=markdown)
+        context = load_artifact_json(result['context_path'], WritingContext)
+
+        assert [summary.content_ref.heading_path for summary in context.block_summaries] == [
+            ['第一章'],
+            ['第一章', '背景'],
+        ]
+        assert context.block_summaries[1].summary == '背景正文'
 
 
 def test_create_context_multiple_profiles():
@@ -484,7 +670,6 @@ def test_update_context_first_update():
         assert updated.document_summary is not None
         assert updated.document_summary.summary == '第一章 这是第一章的内容。'
         assert len(updated.meta.get('context_updates', [])) >= 1
-        assert updated.draft_document == writer_ir
 
 
 def test_update_context_second_update():
@@ -543,7 +728,6 @@ def test_update_context_writer_ir_as_pydantic():
 
         updated = load_artifact_json(result['context_path'], WritingContext)
         assert updated.document_summary.summary == '终稿 最终输出内容'
-        assert updated.draft_document is None
 
 
 def test_update_context_routes_outline_writer_document():
@@ -570,7 +754,8 @@ def test_update_context_routes_outline_writer_document():
         )
         updated = load_artifact_json(result['context_path'], WritingContext)
 
-    assert updated.outline == outline
+    assert updated.document_summary.summary == '文档大纲 第一章'
+    assert updated.block_summaries[0].content_ref.node_id == 'outline-1'
 
 
 def test_update_context_routes_draft_writer_block_from_artifact_path():
@@ -599,8 +784,8 @@ def test_update_context_routes_draft_writer_block_from_artifact_path():
         )
         updated = load_artifact_json(result['context_path'], WritingContext)
 
-    assert updated.draft_sections == [draft_section]
     assert updated.document_summary.summary == '第一章 章节正文。'
+    assert updated.block_summaries[0].content_ref.node_id == 'section-1'
 
 
 def test_generate_section_instructions_preserves_outline_references():
@@ -624,7 +809,7 @@ def test_generate_section_instructions_preserves_outline_references():
         instructions=[
             SectionInstruction(
                 instruction_id='instruction-section-1',
-                outline_node_id='section-1',
+                content_ref=ContentRef(node_id='section-1'),
                 section_title='第一节',
                 section_goal='写第一节',
                 references=[{'id': 'llm-invented-reference'}],
@@ -644,6 +829,132 @@ def test_generate_section_instructions_preserves_outline_references():
         instruction = instructions.instructions[0]
         assert instruction.references == references
         assert instruction.fact_constraints == []
+
+
+def test_generate_rewrite_section_instructions_ir_uses_existing_meta_for_source_refs():
+    task = WritingTask(task_id='task-rewrite-ir', query='全文重写', task_type='revise')
+    context = WritingContext(context_id='ctx-rewrite-ir')
+    source = WriterDocument(
+        document_id='source-ir',
+        stage='draft',
+        title='原文标题',
+        blocks=[WriterBlock(
+            node_id='source-section-1',
+            type='heading',
+            content='原第一章',
+            stage='draft',
+            children=[WriterBlock(
+                node_id='source-paragraph-1',
+                type='paragraph',
+                content='需要被重写的原文。',
+                stage='draft',
+            )],
+        )],
+    )
+    llm_result = SectionInstructionList(
+        instructions=[SectionInstruction(
+            instruction_id='rewrite-1',
+            content_ref=ContentRef(node_id='model-generated-id'),
+            section_title='新第一章',
+            section_goal='重写第一章',
+            references=[{'node_id': 'source-section-1'}],
+        )],
+        meta={'document_title': '新文档'},
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterPlanningTools(artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=llm_result):
+            result = tool.generate_rewrite_section_instructions(task, source, context)
+        instructions = load_artifact_json(result['artifact_path'], SectionInstructionList)
+
+    instruction = instructions.instructions[0]
+    assert instruction.content_ref == ContentRef(node_id='rewrite-section-1')
+    assert instruction.references == []
+    assert instruction.meta['source_content_refs'] == [{'node_id': 'source-section-1'}]
+    assert '需要被重写的原文。' in instruction.meta['source_content']
+    assert instructions.meta['representation'] == 'ir'
+    assert instructions.meta['document_title'] == '新文档'
+
+
+def test_generate_rewrite_section_instructions_supports_markdown():
+    task = WritingTask(task_id='task-rewrite-md', query='全文重写', task_type='revise')
+    context = WritingContext(context_id='ctx-rewrite-md')
+    source = '# 原文标题\n\n## 原第一章\n\n需要被重写的 Markdown 原文。\n'
+    llm_result = SectionInstructionList(
+        instructions=[SectionInstruction(
+            instruction_id='rewrite-md-1',
+            content_ref=ContentRef(heading_path=['ignored', 'ignored']),
+            section_title='新第一章',
+            section_goal='重写第一章',
+            references=[{
+                'heading_path': ['原文标题', '原第一章'],
+                'occurrence': 1,
+            }],
+        )],
+        meta={'document_title': '新 Markdown 文档'},
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterPlanningTools(artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=llm_result):
+            result = tool.generate_rewrite_section_instructions(task, source, context)
+        instructions = load_artifact_json(result['artifact_path'], SectionInstructionList)
+
+    instruction = instructions.instructions[0]
+    assert instruction.content_ref == ContentRef(
+        heading_path=['新 Markdown 文档', '新第一章'], occurrence=1,
+    )
+    assert instruction.meta['source_content_refs'] == [{
+        'heading_path': ['原文标题', '原第一章'],
+        'occurrence': 1,
+    }]
+    assert 'Markdown 原文' in instruction.meta['source_content']
+    assert instructions.meta['representation'] == 'markdown'
+
+
+def test_generate_ir_draft_document_is_ui_editable_without_outline():
+    context = WritingContext(context_id='ctx-rewrite-draft')
+    block = WriterBlock(
+        node_id='rewrite-section-1',
+        type='heading',
+        content='重写章节',
+        stage='draft',
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        result = WriterDraftingTools(artifact_store=d).generate_draft_document(
+            draft_blocks=[block],
+            context=context,
+            title='重写后文档',
+        )
+        document = load_artifact_json(result['artifact_path'], WriterDocument)
+
+    assert document.title == '重写后文档'
+    assert document.ui_editable is True
+
+
+def test_normalized_outline_is_not_ui_editable():
+    task = WritingTask(task_id='task-outline-ui', query='生成大纲', task_type='write')
+    context = WritingContext(context_id='ctx-outline-ui')
+    outline = WriterDocument(
+        document_id='outline-ui',
+        stage='outline',
+        title='大纲',
+        blocks=[WriterBlock(
+            node_id='outline-section-1',
+            type='heading',
+            content='第一章',
+            stage='outline',
+        )],
+        ui_editable=True,
+    )
+
+    normalized = WriterPlanningTools()._normalize_outline(
+        outline, task, context, [],
+    )
+
+    assert normalized.ui_editable is False
 
 
 def test_generate_final_document_writes_markdown_file():
@@ -691,49 +1002,77 @@ def test_generate_final_document_writes_markdown_file():
         assert '这是第一章正文。' in markdown
 
 
-def test_generate_markdown_draft_then_convert_once_to_ir():
+def test_generate_markdown_draft_without_ir_conversion():
     task = WritingTask(task_id='task-md', query='写测试文档', task_type='write')
     context = WritingContext(context_id='ctx-md')
     instruction = SectionInstruction(
         instruction_id='instruction-section-1',
-        outline_node_id='section-1',
+        content_ref=ContentRef(heading_path=['测试文档', '第一章']),
         section_title='第一章',
         section_goal='说明方案',
-        meta={'outline_node_level': 1},
+        meta={'outline_heading_level': 2},
     )
-    outline = WriterDocument(
-        document_id='outline-md',
-        stage='outline',
-        title='测试文档',
-        blocks=[WriterBlock(
-            node_id='section-1',
-            type='heading',
-            content='第一章',
-            stage='outline',
-        )],
-    )
+    outline = '# 测试文档\n\n## 第一章\n\n- 说明方案\n'
 
     with tempfile.TemporaryDirectory() as d:
         tool = WriterDraftingTools(artifact_store=d)
         with patch.object(tool, '_call_llm_text', return_value='这是正文。\n\n- 要点一'):
-            section_result = tool.generate_draft_section_markdown(
+            section_result = tool.generate_draft_section(
                 task=task,
                 section_instruction=instruction,
                 context=context,
             )
-        draft_result = tool.generate_draft_document_markdown(
-            draft_sections=[section_result['artifact_path']],
+        draft_result = tool.generate_draft_document(
+            draft_blocks=[section_result['artifact_path']],
             context=context,
             outline=outline,
         )
-        draft = load_artifact_json(draft_result['artifact_path'], WriterDocument)
+        final_result = tool.generate_final_document(
+            draft=draft_result['artifact_path'],
+            context=context,
+        )
+        section = Path(section_result['artifact_path']).read_text(encoding='utf-8')
+        draft = Path(draft_result['artifact_path']).read_text(encoding='utf-8')
+        final = Path(final_result['artifact_path']).read_text(encoding='utf-8')
 
     assert section_result['artifact_path'].endswith('.md')
-    assert draft_result['artifact_path'].endswith('_ir.lmd')
-    assert draft_result['draft_document_md'].endswith('.md')
-    assert draft.title == '测试文档'
-    assert draft.blocks[0].node_id == 'section-1'
-    assert [child.type for child in draft.blocks[0].children] == ['paragraph', 'list_item']
+    assert draft_result['artifact_path'].endswith('.md')
+    assert final_result['artifact_path'].endswith('.md')
+    assert section.startswith('## 第一章\n')
+    assert draft.startswith('# 测试文档\n\n## 第一章\n')
+    assert final == draft
+
+
+def test_markdown_outline_requires_title_and_section():
+    with pytest.raises(ValueError, match='exactly one H1'):
+        get_markdown_outline_targets('## 第一章\n')
+    with pytest.raises(ValueError, match='at least one H2'):
+        get_markdown_outline_targets('# 测试文档\n')
+
+
+def test_generate_markdown_draft_document_preserves_repeated_heading_order():
+    context = WritingContext(context_id='ctx-md-repeated')
+    outline = '# 测试文档\n\n## 第一章\n\n## 第二章\n\n## 第一章\n'
+    sections = [
+        '## 第一章\n\n第一次出现。\n',
+        '## 第二章\n\n中间章节。\n',
+        '## 第一章\n\n第二次出现。\n',
+    ]
+
+    with tempfile.TemporaryDirectory() as d:
+        result = WriterDraftingTools(artifact_store=d).generate_draft_document(
+            draft_blocks=sections,
+            context=context,
+            outline=outline,
+        )
+        draft = Path(result['artifact_path']).read_text(encoding='utf-8')
+
+    assert draft.count('## 第一章') == 2
+    assert draft.index('第一次出现。') < draft.index('第二章') < draft.index('第二次出现。')
+    assert result['metadata']['extra']['content_refs'][-1] == {
+        'heading_path': ['测试文档', '第一章'],
+        'occurrence': 2,
+    }
 
 
 def test_document_to_docir():
@@ -763,8 +1102,12 @@ def test_document_write_modes(public_method, provider_method):
 
     with tempfile.TemporaryDirectory() as d:
         with _route_doc_fs(fs, '/write-test.md'):
+            content = _make_final_writer_document(content='world', title='Hello')
+            content.stage = 'draft'
+            for block in content.iter_blocks():
+                block.stage = 'draft'
             getattr(WriterResourceTools(artifact_store=d), public_method)(
-                content=_make_final_writer_document(content='world', title='Hello'),
+                content=content,
                 target_document={'uri': 'feishu:///write-test.md', 'adapter': 'feishu'},
             )
 
@@ -935,7 +1278,8 @@ def test_validate_section_happy_path():
         assert report.result.is_passed is True
         assert report.target == 'prologue'
         assert report.meta['instruction_id'] == 'si-prologue'
-        assert report.meta['outline_node_id'] == 'prologue'
+        assert report.meta['content_ref'] == {'node_id': 'prologue', 'heading_path': [],
+                                              'occurrence': 1}
 
 
 def test_validate_draft_document_happy_path():
@@ -959,6 +1303,36 @@ def test_validate_draft_document_happy_path():
         assert report.result.is_passed is True
         assert report.target == 'draft-test-001'
         assert report.meta['draft_block_count'] == 2
+
+
+def test_validate_markdown_section_and_document():
+    markdown = '# 第一章\n\n## 引言\n\n这是引言正文。'
+    instructions = SectionInstructionList(instructions=[SectionInstruction(
+        instruction_id='si-introduction',
+        content_ref=ContentRef(heading_path=['第一章', '引言']),
+        section_title='引言',
+        section_goal='介绍背景。',
+    )])
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()):
+            section_result = tool.validate_section(
+                draft_block='## 引言\n\n这是引言正文。\n\n### 背景\n\n这是背景正文。',
+                section_instruction=instructions,
+                context=_make_context(),
+            )
+            document_result = tool.validate_draft_document(
+                draft_document=markdown,
+                context=_make_context(),
+            )
+
+        section_report = load_artifact_json(section_result['artifact_path'], ReviewReport)
+        document_report = load_artifact_json(document_result['artifact_path'], ReviewReport)
+        assert section_report.meta['content_ref']['heading_path'] == ['第一章', '引言']
+        assert document_report.target is None
+        assert document_report.meta['draft_title'] == '第一章'
+        assert document_report.meta['draft_block_count'] == 2
 
 
 def _make_patch_set(hunks=None):
@@ -1077,6 +1451,38 @@ def test_validate_patch_set_failing():
         assert audit.is_passed is False
         assert audit.score == 70
         assert len(audit.issues) == 1
+
+
+def test_validate_string_replace_set():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        replace_set = StringReplaceSet(
+            replace_set_id='replace-1',
+            replacements=[StringReplace(
+                replacement_id='replacement-1',
+                old_string='旧内容',
+                new_string='新内容',
+                content_ref=ContentRef(heading_path=['引言']),
+            )],
+        )
+        with patch.object(
+            tool,
+            '_call_llm_structured',
+            return_value=_make_passing_audit(),
+        ) as mock_llm:
+            result = tool.validate_string_replace_set(
+                replace_set=replace_set,
+                document='# 引言\n\n旧内容',
+                context=_make_context(),
+                task=_make_task(),
+            )
+
+        audit = load_artifact_json(result['artifact_path'], AuditResult)
+        assert audit.is_passed is True
+        assert result['metadata']['counts']['total_replacements'] == 1
+        prompt = mock_llm.call_args.args[0]
+        assert '旧内容' in prompt
+        assert '新内容' in prompt
 
 
 # --- Scenario 5: Hunk without matching ModifyInstruction ---

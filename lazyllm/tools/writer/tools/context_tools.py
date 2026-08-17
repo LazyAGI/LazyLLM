@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
 from typing import Any, List, Optional
 
 from lazyllm import LOG
@@ -15,8 +16,9 @@ from ..data_models.context import (
 )
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
-from ..data_models.writer_ir import WriterBlock, WriterDocument
+from ..data_models.writer_ir import ContentRef, WriterBlock, WriterDocument
 from ..prompts.context import CONTENT_SUMMARY_PROMPT
+from ..utils import parse_markdown_sections
 
 
 class WriterContextTools(WriterToolBase):
@@ -31,16 +33,17 @@ class WriterContextTools(WriterToolBase):
         resource_profiles: Any = None,
         document: Any = None,
     ) -> dict:
-        '''Create a WritingContext whose optional content document uses Writer IR.'''
+        '''Create a WritingContext from optional Writer IR or Markdown content.'''
         writing_task = self._unified_model(task, WritingTask)
         profiles = self._unified_models(resource_profiles, ResourceProfile)
-        source_doc = self._unified_optional_model(document, WriterDocument)
+        source_content = self._unified_context_content(document)
+        source_doc = source_content if isinstance(source_content, WriterDocument) else None
 
         context = WritingContext(
             context_id=writing_task.task_id or 'writer-context',
             doc_id=source_doc.document_id if source_doc else None,
-            document_summary=self._build_document_summary(writing_task, profiles, source_doc),
-            block_summaries=self._build_block_summaries(source_doc),
+            document_summary=self._build_document_summary(writing_task, profiles, source_content),
+            block_summaries=self._build_block_summaries(source_content),
             facts=self._build_facts(profiles),
             style_profile=self._build_style_profile(profiles),
             query=writing_task.query,
@@ -74,7 +77,7 @@ class WriterContextTools(WriterToolBase):
         artifacts: Any = None,
         context: Any = None,
     ) -> dict:
-        '''Update a WritingContext from WriterDocument or WriterBlock artifacts.'''
+        '''Update a WritingContext from Writer IR or Markdown artifacts.'''
         source_context = self._unified_model(context, WritingContext)
         writing_context = source_context.model_copy(deep=True)
 
@@ -92,15 +95,25 @@ class WriterContextTools(WriterToolBase):
 
         content_kind: Optional[str] = None
         for artifact in artifacts:
-            raw = self._unified_raw_data(artifact)
-            kind = self._resolve_artifact_kind(artifact, raw)
+            raw = self._unified_context_content(artifact)
 
-            if kind == 'WriterBlock':
-                block = self._unified_model(raw, WriterBlock)
+            if isinstance(raw, str):
+                summary = self._ensure_document_summary(writing_context, raw)
+                writing_context.block_summaries = self._build_block_summaries(raw)
+                self._append_context_update(
+                    writing_context,
+                    summary,
+                    content_kind='Markdown',
+                )
+                content_kind = 'Markdown'
+                continue
+
+            if isinstance(raw, WriterBlock):
+                block = raw
                 if block.stage != 'draft':
-                    raise ValueError('WritingContext.draft_sections only accepts draft-stage WriterBlock')
+                    raise ValueError('context updates only accept draft-stage WriterBlock')
                 summary = self._ensure_document_summary(writing_context, block)
-                writing_context.draft_sections.append(block)
+                writing_context.block_summaries = self._build_block_summaries(block)
                 self._append_context_update(
                     writing_context,
                     summary,
@@ -109,33 +122,22 @@ class WriterContextTools(WriterToolBase):
                 content_kind = 'WriterBlock:draft'
                 continue
 
-            if kind != 'WriterDocument':
+            if not isinstance(raw, WriterDocument):
                 raise TypeError(
-                    'artifacts must contain WriterDocument or WriterBlock values, '
-                    f'got {kind or type(artifact).__name__}.'
+                    'artifacts must contain WriterDocument, WriterBlock, or Markdown values, '
+                    f'got {type(artifact).__name__}.'
                 )
 
-            writer_document = self._unified_model(raw, WriterDocument)
+            writer_document = raw
             stage_kind = f'WriterDocument:{writer_document.stage}'
-            if writer_document.stage == 'outline':
-                writing_context.outline = writer_document
-            elif writer_document.stage == 'draft':
-                summary = self._ensure_document_summary(writing_context, writer_document)
-                writing_context.draft_document = writer_document
-                self._append_context_update(
-                    writing_context,
-                    summary,
-                    content_kind=stage_kind,
-                    document=writer_document,
-                )
-            else:
-                summary = self._ensure_document_summary(writing_context, writer_document)
-                self._append_context_update(
-                    writing_context,
-                    summary,
-                    content_kind=stage_kind,
-                    document=writer_document,
-                )
+            summary = self._ensure_document_summary(writing_context, writer_document)
+            writing_context.block_summaries = self._build_block_summaries(writer_document)
+            self._append_context_update(
+                writing_context,
+                summary,
+                content_kind=stage_kind,
+                document=writer_document,
+            )
 
             content_kind = stage_kind
 
@@ -156,17 +158,18 @@ class WriterContextTools(WriterToolBase):
                 'context_id': writing_context.context_id,
                 'doc_id': writing_context.doc_id,
                 'last_updated_from': content_kind or 'none',
-                'has_outline': writing_context.outline is not None,
-                'has_draft_document': writing_context.draft_document is not None,
             },
         ).model_dump()
 
     def _ensure_document_summary(
         self,
         writing_context: WritingContext,
-        content: WriterDocument | WriterBlock,
+        content: WriterDocument | WriterBlock | str,
     ) -> str:
-        if isinstance(content, WriterDocument):
+        if isinstance(content, str):
+            text = content
+            structure_summary = self._build_structure_summary(content)
+        elif isinstance(content, WriterDocument):
             text = self._document_text(content)
             structure_summary = self._build_structure_summary(content)
         else:
@@ -185,7 +188,7 @@ class WriterContextTools(WriterToolBase):
             )
         else:
             writing_context.document_summary.summary = content_summary
-            if isinstance(content, WriterDocument):
+            if isinstance(content, (WriterDocument, str)):
                 writing_context.document_summary.structure_summary = structure_summary
         return content_summary
 
@@ -204,32 +207,36 @@ class WriterContextTools(WriterToolBase):
             'timestamp': datetime.now().astimezone().isoformat(),
         })
 
-    def _resolve_artifact_kind(self, artifact: Any, raw: Any = None) -> Optional[str]:
-        if isinstance(artifact, WriterDocument):
-            return 'WriterDocument'
-        if isinstance(artifact, WriterBlock):
-            return 'WriterBlock'
-
-        candidate = raw if raw is not None else artifact
-        if isinstance(candidate, dict):
-            if 'document_id' in candidate:
-                return 'WriterDocument'
-            if 'node_id' in candidate and 'type' in candidate:
-                return 'WriterBlock'
-        return None
+    def _unified_context_content(self, value: Any) -> Optional[WriterDocument | WriterBlock | str]:
+        if value is None or isinstance(value, (WriterDocument, WriterBlock)):
+            return value
+        if isinstance(value, str):
+            if os.path.isfile(value) and value.lower().endswith(('.md', '.markdown')):
+                with open(value, 'r', encoding='utf-8') as stream:
+                    return stream.read()
+            if not os.path.isfile(value):
+                return value
+        raw = self._unified_raw_data(value)
+        if isinstance(raw, dict) and 'document_id' in raw:
+            return self._unified_model(raw, WriterDocument)
+        if isinstance(raw, dict) and 'node_id' in raw and 'type' in raw:
+            return self._unified_model(raw, WriterBlock)
+        raise TypeError(
+            'content must be WriterDocument, WriterBlock, Markdown text, or a Markdown path.'
+        )
 
     def _build_document_summary(
         self,
         task: WritingTask,
         profiles: List[ResourceProfile],
-        writer_document: Optional[WriterDocument],
+        content: Optional[WriterDocument | str],
     ) -> DocumentSummary:
         key_points = [profile.summary for profile in profiles if profile.summary]
-        structure_summary = self._build_structure_summary(writer_document)
+        structure_summary = self._build_structure_summary(content)
 
         summary = task.query
-        if writer_document:
-            text = self._document_text(writer_document)
+        if content:
+            text = content if isinstance(content, str) else self._document_text(content)
             if text.strip():
                 summary = self._summarize_content_data(text)
 
@@ -241,13 +248,25 @@ class WriterContextTools(WriterToolBase):
 
     def _build_structure_summary(
         self,
-        writer_document: Optional[WriterDocument],
+        content: Optional[WriterDocument | str],
     ) -> Optional[str]:
-        if not writer_document or not writer_document.blocks:
+        if not content:
+            return None
+
+        if isinstance(content, str):
+            sections = parse_markdown_sections(content)
+            if not sections:
+                return None
+            return '文档结构: ' + ' > '.join(
+                f'{"#" * level} {heading_path[-1]}'
+                for level, heading_path, _, _ in sections
+            )
+
+        if not content.blocks:
             return None
 
         headings = [
-            block for block in writer_document.iter_blocks()
+            block for block in content.iter_blocks()
             if block.type == 'heading' and block.content.strip()
         ]
         if headings:
@@ -259,21 +278,34 @@ class WriterContextTools(WriterToolBase):
                 parts.append(f'{"#" * level} {block.content.strip()}')
             return '文档结构: ' + ' > '.join(parts)
 
-        return f'由 {len(writer_document.blocks)} 个顶层块组成'
+        return f'由 {len(content.blocks)} 个顶层块组成'
 
     def _build_block_summaries(
         self,
-        writer_document: Optional[WriterDocument],
+        content: Optional[WriterDocument | WriterBlock | str],
     ) -> List[BlockSummary]:
-        if not writer_document:
+        if not content:
             return []
+        if isinstance(content, str):
+            return [
+                BlockSummary(
+                    content_ref=ContentRef(
+                        heading_path=heading_path,
+                        occurrence=occurrence,
+                    ),
+                    summary=self._shorten(body or heading_path[-1]),
+                    key_points=[],
+                )
+                for _, heading_path, occurrence, body in parse_markdown_sections(content)
+            ]
+        blocks = content.iter_blocks()
         return [
             BlockSummary(
-                block_id=block.node_id,
+                content_ref=ContentRef(node_id=block.node_id),
                 summary=self._shorten(block.content),
                 key_points=[],
             )
-            for block in writer_document.iter_blocks()
+            for block in blocks
             if block.content.strip()
         ]
 

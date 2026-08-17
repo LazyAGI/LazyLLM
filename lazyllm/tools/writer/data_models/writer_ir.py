@@ -13,6 +13,16 @@ WRITER_BLOCK_MUTABLE_FIELDS = ('type', 'content', 'spans', 'stage', 'numbering',
 WRITER_BLOCK_PROVIDER_MANAGED_FIELDS = ('provider_binding', 'provider_payload', 'editable')
 
 
+class ContentRef(BaseModel):
+    '''A content locator for either Writer IR or Markdown.'''
+
+    node_id: Optional[str] = None
+    heading_path: List[str] = Field(default_factory=list)
+    placeholder_id: Optional[str] = None
+    document_root: bool = False
+    occurrence: int = Field(default=1, ge=1)
+
+
 class WriterSpan(BaseModel):
     text: str = ''
     style: Dict[str, Any] = Field(default_factory=dict)
@@ -25,12 +35,12 @@ class WriterBlock(BaseModel):
     # identifiers belong in provider_binding (for example provider_binding.block_id).
     node_id: str
     type: str
+    numbering: Dict[str, Any] = Field(default_factory=dict)
+    references: List[Dict[str, Any]] = Field(default_factory=list)
     content: str = ''
     spans: List[WriterSpan] = Field(default_factory=list)
     children: List['WriterBlock'] = Field(default_factory=list)
     stage: WriterStage = 'draft'
-    numbering: Dict[str, Any] = Field(default_factory=dict)
-    references: List[Dict[str, Any]] = Field(default_factory=list)
     # Provider-neutral binding contract. Common keys are provider, uri, document_id,
     # block_id, parent_block_id and revision. IDs here belong to the external system.
     provider_binding: Dict[str, Any] = Field(default_factory=dict)
@@ -79,7 +89,7 @@ WriterDocument.model_rebuild()
 
 
 __all__ = [
-    'WriterDocument', 'WriterBlock', 'WriterSpan', 'WriterStage',
+    'ContentRef', 'WriterDocument', 'WriterBlock', 'WriterSpan', 'WriterStage',
     'WRITER_IR_FILE_EXTENSION', 'WRITER_IR_CONTENT_TYPE',
     'WRITER_BLOCK_MUTABLE_FIELDS', 'WRITER_BLOCK_PROVIDER_MANAGED_FIELDS',
 ]

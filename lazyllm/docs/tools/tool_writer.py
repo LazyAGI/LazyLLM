@@ -15,6 +15,20 @@ add_writer_revision_models_english_doc = functools.partial(
 )
 add_writer_adapter_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.feishu'))
 add_writer_adapter_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.feishu'))
+add_writer_stream_chinese_doc = functools.partial(
+    utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.tools.stream_tools'))
+add_writer_stream_english_doc = functools.partial(
+    utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.tools.stream_tools'))
+add_writer_serialization_chinese_doc = functools.partial(
+    utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.utils.serialization'))
+add_writer_serialization_english_doc = functools.partial(
+    utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.utils.serialization'))
+
+
+def _add_bilingual_docs(chinese_adder, english_adder, entries):
+    for target, chinese, english in entries:
+        chinese_adder(target, chinese)
+        english_adder(target, english)
 
 add_writer_chinese_doc('WriterToolBase', '''
 写作工具基类，封装共享的模型、适配器和产物存储。
@@ -22,14 +36,6 @@ add_writer_chinese_doc('WriterToolBase', '''
 
 add_writer_english_doc('WriterToolBase', '''
 Base class for writer tools with shared model, adapter, and artifact storage support.
-''')
-
-add_writer_models_chinese_doc('ModifyInstruction.validate_anchor', '''
-校验移动指令所需的锚点和位置。
-''')
-
-add_writer_models_english_doc('ModifyInstruction.validate_anchor', '''
-Validate the anchor and position required by a move instruction.
 ''')
 
 add_writer_revision_models_chinese_doc('RevisionBlockContent.validate_spans', '''
@@ -41,11 +47,11 @@ Validate that revision text matches its rich-text spans.
 ''')
 
 add_writer_chinese_doc('WriterPlanningTools.generate_outline', '''
-根据写作任务和上下文生成结构化大纲。
+根据写作任务和上下文生成 Writer IR 或 Markdown 大纲。
 ''')
 
 add_writer_english_doc('WriterPlanningTools.generate_outline', '''
-Generate a structured outline from a writing task and context.
+Generate a Writer IR or Markdown outline from a writing task and context.
 ''')
 
 add_writer_chinese_doc('WriterPlanningTools.generate_section_instructions', '''
@@ -144,6 +150,14 @@ add_writer_english_doc('WriterQualityTools.validate_patch_set', '''
 Validate a patch set against its revision task.
 ''')
 
+add_writer_chinese_doc('WriterQualityTools.validate_string_replace_set', '''
+根据修订任务校验 Markdown 字符串替换集。
+''')
+
+add_writer_english_doc('WriterQualityTools.validate_string_replace_set', '''
+Validate a Markdown string replacement set against its revision task.
+''')
+
 add_writer_models_chinese_doc('PatchHunk.validate_operation', '''
 校验各补丁操作所需的字段。
 ''')
@@ -209,35 +223,19 @@ Apply a patch set to a writer document.
 ''')
 
 add_writer_chinese_doc('WriterDraftingTools.generate_draft_section', '''
-为单个章节生成草稿内容块。
+为单个章节生成 Writer IR 或 Markdown 草稿。
 ''')
 
 add_writer_english_doc('WriterDraftingTools.generate_draft_section', '''
-Generate a draft block for one section.
-''')
-
-add_writer_chinese_doc('WriterDraftingTools.generate_draft_section_markdown', '''
-为单个章节生成 Markdown 草稿。
-''')
-
-add_writer_english_doc('WriterDraftingTools.generate_draft_section_markdown', '''
-Generate a Markdown draft for one section.
+Generate a Writer IR or Markdown draft for one section.
 ''')
 
 add_writer_chinese_doc('WriterDraftingTools.generate_draft_document', '''
-将草稿内容块组装为草稿文档。
+将 Writer IR 内容块或 Markdown 章节组装为草稿文档。
 ''')
 
 add_writer_english_doc('WriterDraftingTools.generate_draft_document', '''
-Assemble draft blocks into a draft document.
-''')
-
-add_writer_chinese_doc('WriterDraftingTools.generate_draft_document_markdown', '''
-将 Markdown 章节组装为完整草稿，并生成结构化写作文档。
-''')
-
-add_writer_english_doc('WriterDraftingTools.generate_draft_document_markdown', '''
-Assemble Markdown sections into a complete draft and structured writer document.
+Assemble Writer IR blocks or Markdown sections into a draft document.
 ''')
 
 add_writer_chinese_doc('WriterDraftingTools.generate_final_document', '''
@@ -246,4 +244,96 @@ add_writer_chinese_doc('WriterDraftingTools.generate_final_document', '''
 
 add_writer_english_doc('WriterDraftingTools.generate_final_document', '''
 Render a draft as a final document.
+''')
+
+_add_bilingual_docs(
+    add_writer_revision_models_chinese_doc,
+    add_writer_revision_models_english_doc,
+    [
+        ('ModifyInstruction.validate_visual_instruction', '校验可视化指令仅用于创建操作。',
+         'Validate that visual instructions are used only for create operations.'),
+        ('GeneratedRevision.normalize_single_block_changes', '将单内容块修订规范化为内容块列表。',
+         'Normalize single-block revision changes into block lists.'),
+        ('StringReplace.validate_replacement', '校验 Markdown 字符串替换内容。',
+         'Validate a Markdown string replacement.'),
+    ],
+)
+
+_add_bilingual_docs(
+    add_writer_chinese_doc,
+    add_writer_english_doc,
+    [
+        ('WriterDraftingTools.stream_draft_section', '流式生成 Markdown 章节草稿。',
+         'Stream a Markdown section draft.'),
+        ('WriterDraftingTools.stream_draft_section_ir', '流式生成 Writer IR 章节草稿的 Markdown 预览。',
+         'Stream a Markdown preview of a Writer IR section draft.'),
+        ('WriterPlanningTools.generate_rewrite_outline', '为完整文档重写生成新大纲。',
+         'Generate a new outline for a complete document rewrite.'),
+        ('WriterPlanningTools.generate_rewrite_section_instructions', '为完整文档重写生成章节指令。',
+         'Generate section instructions for a complete document rewrite.'),
+        ('WriterPlanningTools.generate_visual_plan', '根据写作大纲生成可视化规划。',
+         'Generate a visual plan from a writing outline.'),
+        ('WriterQualityTools.validate_revision_set', '根据文档类型校验修订集。',
+         'Validate a revision set for its document representation.'),
+        ('WriterRevisionTools.generate_revision_set', '根据文档类型生成修订集。',
+         'Generate a revision set for its document representation.'),
+        ('WriterRevisionTools.generate_string_replace_set', '根据修改计划生成 Markdown 字符串替换集。',
+         'Generate Markdown string replacements from a modification plan.'),
+        ('WriterRevisionTools.apply_revision', '根据文档类型应用修订集。',
+         'Apply a revision set for its document representation.'),
+        ('WriterRevisionTools.apply_string_replace', '将字符串替换集应用到 Markdown 文档。',
+         'Apply a string replacement set to a Markdown document.'),
+    ],
+)
+
+_add_bilingual_docs(
+    add_writer_stream_chinese_doc,
+    add_writer_stream_english_doc,
+    [
+        ('IRPreviewOutput', '管理 Writer IR 流式预览的输出。', 'Manage streamed Writer IR preview output.'),
+        ('IRPreviewOutput.start_item', '开始输出新的预览项。', 'Start a new preview item.'),
+        ('IRPreviewOutput.append_complete', '追加完整的 Markdown 预览项。',
+         'Append a complete Markdown preview item.'),
+        ('DraftPreviewStream', '在后台生成草稿并流式输出预览。',
+         'Generate a draft in the background and stream its preview.'),
+        ('DraftPreviewStream.result', '返回已完整消费的流式结果。',
+         'Return the result of a fully consumed stream.'),
+        ('DraftPreviewStream.close', '关闭预览流并取消未完成任务。',
+         'Close the preview stream and cancel unfinished work.'),
+        ('MarkdownStreamNormalizer', '规范化模型的 Markdown 流式输出。',
+         'Normalize streamed Markdown model output.'),
+        ('MarkdownStreamNormalizer.feed', '接收并规范化一段流式文本。',
+         'Consume and normalize a streamed text fragment.'),
+        ('MarkdownStreamNormalizer.finish', '完成流式规范化并返回剩余内容。',
+         'Finish normalization and return remaining content.'),
+        ('IRBlockStreamState', '跟踪单个 Writer IR 内容块的流式解析状态。',
+         'Track streaming parse state for one Writer IR block.'),
+        ('IRBlockStreamState.set_type', '设置当前内容块类型。', 'Set the current block type.'),
+        ('IRBlockStreamState.set_numbering', '设置当前内容块编号信息。',
+         'Set numbering metadata for the current block.'),
+        ('IRBlockStreamState.feed_content', '追加当前内容块的流式文本。',
+         'Append streamed text for the current block.'),
+        ('IRBlockStreamState.finish_content', '完成当前内容块的文本输出。',
+         'Finish text output for the current block.'),
+        ('IRBlockStreamState.prepare_children', '准备解析当前内容块的子节点。',
+         'Prepare to parse child blocks.'),
+        ('IRBlockStreamState.finish', '完成当前内容块的流式解析。',
+         'Finish streaming parsing for the current block.'),
+        ('IRJSONMarkdownParser.emit', '输出一段 Markdown 预览内容。',
+         'Emit a Markdown preview fragment.'),
+        ('IRJSONMarkdownParser.feed', '接收并解析一段 Writer IR JSON。',
+         'Consume and parse a Writer IR JSON fragment.'),
+        ('IRJSONMarkdownParser.finish', '完成解析并与最终 WriterBlock 校验一致性。',
+         'Finish parsing and validate against the final WriterBlock.'),
+        ('DraftMarkdownStream', '流式输出 Markdown 草稿。', 'Stream a Markdown draft.'),
+        ('DraftIRStream', '将 Writer IR 草稿流式输出为 Markdown 预览。',
+         'Stream a Writer IR draft as a Markdown preview.'),
+    ],
+)
+
+add_writer_serialization_chinese_doc('MarkdownSelectionError', '''
+表示 Markdown 选区无法被唯一、安全定位。
+''')
+add_writer_serialization_english_doc('MarkdownSelectionError', '''
+Indicate that a Markdown selection cannot be located uniquely and safely.
 ''')

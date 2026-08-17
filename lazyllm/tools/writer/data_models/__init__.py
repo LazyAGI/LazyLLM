@@ -9,16 +9,28 @@ from .context import (
     WritingContext,
 )
 from .planning import SectionInstruction, SectionInstructionList
-from .revision import LocateResult, ModifyInstruction, ModifyPlan, PatchHunk, PatchResult, PatchSet
-from .multimodal import MediaAsset, MediaAssetLibrary, VisualInstruction
+from .revision import (
+    LocatedContent,
+    LocateResult,
+    ModifyInstruction,
+    ModifyPlan,
+    PatchHunk,
+    PatchResult,
+    PatchSet,
+    StringReplace,
+    StringReplaceResult,
+    StringReplaceSet,
+)
+from .multimodal import MediaAsset, MediaAssetLibrary, VisualInstruction, VisualPlan
 from .quality import AuditIssue, AuditResult, ReviewReport
-from .writer_ir import WriterBlock, WriterDocument, WriterSpan, WriterStage
+from .writer_ir import ContentRef, WriterBlock, WriterDocument, WriterSpan, WriterStage
 
 __all__ = [
     'InputResource',
     'Selection',
     'TargetDocument',
     'WritingTask',
+    'ContentRef',
     'MaterialStyle',
     'ResourceProfile',
     'BlockRelationGraph',
@@ -31,13 +43,18 @@ __all__ = [
     'SectionInstructionList',
     'ModifyInstruction',
     'ModifyPlan',
+    'LocatedContent',
     'PatchHunk',
     'PatchResult',
     'PatchSet',
+    'StringReplace',
+    'StringReplaceResult',
+    'StringReplaceSet',
     'LocateResult',
     'MediaAsset',
     'MediaAssetLibrary',
     'VisualInstruction',
+    'VisualPlan',
     'AuditIssue',
     'AuditResult',
     'ReviewReport',

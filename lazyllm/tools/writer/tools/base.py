@@ -14,6 +14,25 @@ from ..utils.artifact import ToolResult, load_artifact_json, save_artifact_json
 T = TypeVar('T', bound=BaseModel)
 
 
+def _strip_leading_think_blocks(text: str) -> str:
+    cleaned = text
+    pattern = re.compile(r'^\s*<think\b[^>]*>.*?</think>\s*', re.IGNORECASE | re.DOTALL)
+    while True:
+        stripped = pattern.sub('', cleaned, count=1)
+        if stripped == cleaned:
+            return cleaned
+        cleaned = stripped
+
+
+class _WriterJsonFormatter(JsonFormatter):
+    def _load(self, msg: str):
+        cleaned = _strip_leading_think_blocks(msg)
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            return super()._load(cleaned)
+
+
 class WriterToolBase(ModuleBase):
     def __init__(
         self,
@@ -58,6 +77,34 @@ class WriterToolBase(ModuleBase):
             return None
         return self._unified_model(value, model_class)
 
+    def _unified_section(self, value: Any) -> WriterBlock | str:
+        if isinstance(value, WriterBlock):
+            return value
+        if isinstance(value, dict):
+            return WriterBlock.model_validate(value)
+        if isinstance(value, str):
+            if os.path.isfile(value):
+                if value.lower().endswith(('.md', '.markdown')):
+                    with open(value, 'r', encoding='utf-8') as stream:
+                        return stream.read()
+                return self._unified_model(value, WriterBlock)
+            return value
+        raise TypeError('value must be WriterBlock, Markdown text, or an artifact path.')
+
+    def _unified_document(self, value: Any) -> WriterDocument | str:
+        if isinstance(value, WriterDocument):
+            return value
+        if isinstance(value, dict):
+            return WriterDocument.model_validate(value)
+        if isinstance(value, str):
+            if os.path.isfile(value):
+                if value.lower().endswith(('.md', '.markdown')):
+                    with open(value, 'r', encoding='utf-8') as stream:
+                        return stream.read()
+                return self._unified_model(value, WriterDocument)
+            return value
+        raise TypeError('value must be WriterDocument, Markdown text, or an artifact path.')
+
     def _unified_models(self, value: Any, model_class: Type[T]) -> List[T]:
         if value is None:
             return []
@@ -95,6 +142,15 @@ class WriterToolBase(ModuleBase):
             created_by=type(self).__name__,
             extra_meta=extra_meta,
         )
+
+    def _write_markdown_artifact(self, filename: str, content: str) -> str:
+        if not self.artifact_store:
+            raise ValueError('artifact_store is not set')
+        path = os.path.join(self.artifact_store, filename)
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as stream:
+            stream.write(content)
+        return os.path.abspath(path)
 
     def _save_artifacts(
         self,
@@ -179,24 +235,33 @@ class WriterToolBase(ModuleBase):
         module = cls.__module__ or ''
         return f'{module}.{cls.__qualname__}'
 
-    def _call_llm_structured(self, prompt: str, schema: Type[T]) -> T:
+    def _call_llm_structured(
+        self,
+        prompt: str,
+        schema: Type[T],
+        stream_output: Any = False,
+    ) -> T:
         if self.llm is None:
             raise ValueError('llm is not set')
 
         system_prompt = self._structured_output_prompt(schema)
-        model = self._build_structured_llm(system_prompt)
+        model = self._build_structured_llm(system_prompt, stream_output=stream_output)
         response = model(prompt)
         return self._validate_structured_response(response, schema)
 
-    def _call_llm_text(self, prompt: str) -> str:
+    def _call_llm_text(self, prompt: str, stream_output: Any = False) -> str:
         if self.llm is None:
             raise ValueError('llm is not set')
         model = self.llm
         if hasattr(model, 'share'):
             try:
-                model = model.share(stream=False)
-            except TypeError:
+                model = model.share(stream=stream_output)
+            except TypeError as exc:
+                if stream_output:
+                    raise TypeError('llm.share() must accept stream for text streaming.') from exc
                 model = model.share()
+        elif stream_output:
+            raise TypeError('llm must support share(stream=...) for text streaming.')
         response = model(prompt)
         text = response if isinstance(response, str) else str(response)
         return self._strip_leading_think_blocks(text)
@@ -204,29 +269,31 @@ class WriterToolBase(ModuleBase):
     @staticmethod
     def _strip_leading_think_blocks(text: str) -> str:
         '''Remove provider reasoning blocks without touching document content.'''
-        cleaned = text
-        pattern = re.compile(r'^\s*<think\b[^>]*>.*?</think>\s*', re.IGNORECASE | re.DOTALL)
-        while True:
-            stripped = pattern.sub('', cleaned, count=1)
-            if stripped == cleaned:
-                return cleaned
-            cleaned = stripped
+        return _strip_leading_think_blocks(text)
 
     def _structured_output_prompt(self, schema: Type[BaseModel]) -> str:
         schema_json = json.dumps(schema.model_json_schema(), ensure_ascii=False, indent=2)
         return STRUCTURED_OUTPUT_SYSTEM_PROMPT.format(schema_name=schema.__name__, schema_json=schema_json)
 
-    def _build_structured_llm(self, system_prompt: str) -> Any:
+    def _build_structured_llm(
+        self,
+        system_prompt: str,
+        stream_output: Any = False,
+    ) -> Any:
         model = self.llm
         if hasattr(model, 'share'):
             try:
-                model = model.share(stream=False)
-            except TypeError:
+                model = model.share(stream=stream_output)
+            except TypeError as exc:
+                if stream_output:
+                    raise TypeError('llm.share() must accept stream for structured streaming.') from exc
                 model = model.share()
+        elif stream_output:
+            raise TypeError('llm must support share(stream=...) for structured streaming.')
         if hasattr(model, 'prompt'):
             model = model.prompt(system_prompt)
         if hasattr(model, 'formatter'):
-            model = model.formatter(JsonFormatter())
+            model = model.formatter(_WriterJsonFormatter())
         return model
 
     @classmethod
@@ -255,7 +322,7 @@ class WriterToolBase(ModuleBase):
         if not isinstance(response, str):
             return response
         try:
-            return JsonFormatter()(response)
+            return _WriterJsonFormatter()(response)
         except Exception as exc:
             raise ValueError(
                 f'Failed to parse LLM output as JSON for {schema.__name__}. '
