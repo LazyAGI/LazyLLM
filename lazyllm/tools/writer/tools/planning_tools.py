@@ -300,15 +300,23 @@ class WriterPlanningTools(WriterToolBase):
             outline_payload = writing_outline
             representation = 'markdown'
 
-        prompt = GENERATE_SECTION_INSTRUCTIONS_PROMPT.format(
-            task_json=to_prompt_json(writing_task),
-            outline_json=to_prompt_json(outline_payload),
-            target_outline_blocks_json=to_prompt_json(target_payload),
-            context_json=to_prompt_json(writing_context),
-            execution_results_json=to_prompt_json(execution_data),
-            visual_plan_json=to_prompt_json(writing_visual_plan),
+        deterministic = self._use_deterministic_short_instructions(
+            writing_task, len(target_payload),
         )
-        instruction_list = self._call_llm_structured(prompt, SectionInstructionList)
+        if deterministic:
+            instruction_list = self._build_deterministic_section_instructions(
+                target_payload, writing_context, writing_task,
+            )
+        else:
+            prompt = GENERATE_SECTION_INSTRUCTIONS_PROMPT.format(
+                task_json=to_prompt_json(writing_task),
+                outline_json=to_prompt_json(outline_payload),
+                target_outline_blocks_json=to_prompt_json(target_payload),
+                context_json=to_prompt_json(writing_context),
+                execution_results_json=to_prompt_json(execution_data),
+                visual_plan_json=to_prompt_json(writing_visual_plan),
+            )
+            instruction_list = self._call_llm_structured(prompt, SectionInstructionList)
         if isinstance(writing_outline, WriterDocument):
             instruction_list = self._normalize_ir_section_instructions(
                 instruction_list,
@@ -330,6 +338,8 @@ class WriterPlanningTools(WriterToolBase):
                 writing_visual_plan,
             )
             outline_id = instruction_list.outline_id
+        if deterministic:
+            instruction_list.meta['source'] = 'deterministic_short'
 
         result = self._save_artifacts(
             {'section_instructions': instruction_list},
@@ -349,6 +359,114 @@ class WriterPlanningTools(WriterToolBase):
             },
         )
         return result.model_dump()
+
+    @staticmethod
+    def _use_deterministic_short_instructions(
+        task: WritingTask | None,
+        section_count: int,
+    ) -> bool:
+        if task is None or task.task_type != 'write' or section_count <= 0:
+            return False
+        target_chars = task.constraints.get('target_chars')
+        max_chars = task.constraints.get('max_chars')
+        limits = [
+            value for value in (target_chars, max_chars)
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0
+        ]
+        return bool(limits) and max(limits) <= 1200
+
+    @classmethod
+    def _build_deterministic_section_instructions(
+        cls,
+        targets: List[Dict[str, Any]],
+        context: WritingContext,
+        task: WritingTask,
+    ) -> SectionInstructionList:
+        fact_constraints = [
+            f'{fact.key}: {fact.value}'
+            for fact in context.facts
+            if str(fact.key).strip() and str(fact.value).strip()
+        ]
+        style_constraints: List[str] = []
+        if context.style_profile is not None:
+            for label, value in (
+                ('tone', context.style_profile.tone),
+                ('formality', context.style_profile.formality),
+                ('audience', context.style_profile.audience),
+            ):
+                if str(value or '').strip():
+                    style_constraints.append(f'{label}: {value}')
+            style_constraints.extend(
+                str(note).strip() for note in context.style_profile.notes
+                if str(note).strip()
+            )
+
+        instructions = []
+        titles = [str(target.get('section_title') or '').strip() for target in targets]
+        for index, target in enumerate(targets):
+            title = titles[index] or f'Section {index + 1}'
+            points = cls._deterministic_outline_points(target)
+            relations = []
+            if index > 0:
+                relations.append(f'承接上一节“{titles[index - 1]}”，避免重复其主体内容。')
+            if index + 1 < len(targets):
+                relations.append(f'为下一节“{titles[index + 1]}”保留清晰衔接。')
+            instructions.append(SectionInstruction(
+                instruction_id=f'short-section-{index + 1}',
+                content_ref=ContentRef.model_validate(target['content_ref']),
+                section_title=title,
+                section_goal=(
+                    f'围绕“{title}”完成本节，覆盖大纲要点并遵守全文约束。'
+                ),
+                required_points=points,
+                fact_constraints=list(fact_constraints),
+                style_constraints=list(style_constraints),
+                relation_constraints=relations,
+                expected_blocks=points,
+                meta={
+                    'target_chars': max(1, cls._deterministic_target_weight(target, points)),
+                    'cross_references': [],
+                },
+            ))
+        return SectionInstructionList(
+            instructions=instructions,
+            meta={'source': 'deterministic_short', 'task_id': task.task_id},
+        )
+
+    @staticmethod
+    def _deterministic_outline_points(target: Dict[str, Any]) -> List[str]:
+        body = target.get('outline_body')
+        if body is None:
+            outline_content = target.get('outline_content')
+            if isinstance(outline_content, dict):
+                values = []
+                pending = list(outline_content.get('children') or [])
+                while pending:
+                    block = pending.pop(0)
+                    if not isinstance(block, dict):
+                        continue
+                    content = str(block.get('content') or '').strip()
+                    if content:
+                        values.append(content)
+                    pending[0:0] = list(block.get('children') or [])
+                return values
+            return []
+        points = []
+        for line in str(body).splitlines():
+            value = re.sub(r'^\s*(?:#{3,6}\s+|[-*+]\s+|\d+[.)]\s+)', '', line).strip()
+            if value:
+                points.append(value)
+        return points
+
+    @staticmethod
+    def _deterministic_target_weight(
+        target: Dict[str, Any],
+        points: List[str],
+    ) -> int:
+        body = target.get('outline_body')
+        if body is not None:
+            return len(re.sub(r'\s+', '', str(body))) or len(points) or 1
+        return sum(len(re.sub(r'\s+', '', point)) for point in points) or 1
 
     @staticmethod
     def _normalize_visual_plan(visual_plan: VisualPlan, outline: WriterDocument) -> VisualPlan:
