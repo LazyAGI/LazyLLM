@@ -1,4 +1,6 @@
 import ast
+import json
+import mimetypes
 import os
 import shutil
 import subprocess
@@ -13,6 +15,10 @@ from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, _SandboxResul
 
 class DummySandbox(LazyLLMSandboxBase):
     SUPPORTED_LANGUAGES: List[str] = ['python']
+    _PASSTHROUGH_ENV = (
+        'LANG', 'LC_ALL', 'LC_CTYPE', 'PATH', 'SYSTEMROOT', 'TZ', 'WINDIR',
+    )
+    _OUTPUT_ARGUMENTS = {'--output', '--output-dir', '--out', '-o'}
 
     def __init__(self, timeout: int = 30, return_trace: bool = False, project_dir: Optional[str] = None,
                  return_sandbox_result: bool = False):
@@ -39,7 +45,7 @@ class DummySandbox(LazyLLMSandboxBase):
         proc = subprocess.Popen(
             [sys.executable, '-u', script_path],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            cwd=cwd, env=env or os.environ.copy(), text=True, bufsize=1,
+            cwd=cwd, env=env or self._subprocess_env(cwd), text=True, bufsize=1,
         )
         try:
             stdout, stderr = proc.communicate(timeout=self._timeout)
@@ -68,11 +74,13 @@ class DummySandbox(LazyLLMSandboxBase):
             if not os.path.isdir(run_cwd):
                 raise FileNotFoundError(f'cwd not found: {run_cwd}')
             ext = os.path.splitext(script_path)[1].lower()
-            runner = sys.executable if ext == '.py' else 'bash' if ext in ('.sh', '.bash') else 'sh'
+            command = self._script_command(
+                script_path, list(args or []), sandbox_root, run_cwd, ext,
+            )
             completed = subprocess.run(
-                [runner, script_path, *(args or [])],
+                command,
                 cwd=run_cwd,
-                env=os.environ.copy(),
+                env=self._subprocess_env(sandbox_root),
                 text=True,
                 capture_output=True,
                 timeout=self._timeout,
@@ -86,6 +94,117 @@ class DummySandbox(LazyLLMSandboxBase):
             }
         finally:
             self._cleanup_context(context)
+
+    @classmethod
+    def _subprocess_env(cls, sandbox_root: str) -> Dict[str, str]:
+        env = {
+            key: os.environ[key]
+            for key in cls._PASSTHROUGH_ENV
+            if key in os.environ
+        }
+        env.update({
+            'HOME': sandbox_root,
+            'TMPDIR': sandbox_root,
+            'TEMP': sandbox_root,
+            'TMP': sandbox_root,
+            'PYTHONNOUSERSITE': '1',
+        })
+        python_path = [path for path in sys.path if path and os.path.isdir(path)]
+        if python_path:
+            env['PYTHONPATH'] = os.pathsep.join(python_path)
+        return env
+
+    def _script_command(self, script_path: str, args: List[str], sandbox_root: str,
+                        run_cwd: str, extension: str) -> List[str]:
+        if extension != '.py':
+            runner = 'bash' if extension in ('.sh', '.bash') else 'sh'
+            return [runner, script_path, *args]
+
+        read_paths = {sandbox_root, script_path}
+        write_paths = {sandbox_root}
+        for index, arg in enumerate(args):
+            raw = str(arg or '').strip()
+            if not raw or raw.startswith('-'):
+                continue
+            resolved = os.path.realpath(raw if os.path.isabs(raw) else os.path.join(run_cwd, raw))
+            if index > 0 and args[index - 1] in self._OUTPUT_ARGUMENTS:
+                write_paths.add(resolved)
+            elif os.path.exists(resolved):
+                read_paths.add(resolved)
+        read_paths.update(path for path in sys.path if path and os.path.exists(path))
+        read_paths.update(path for path in mimetypes.knownfiles if os.path.isfile(path))
+        if os.path.exists(os.devnull):
+            read_paths.add(os.devnull)
+            write_paths.add(os.devnull)
+
+        policy = {
+            'read': sorted(os.path.realpath(path) for path in read_paths),
+            'write': sorted(os.path.realpath(path) for path in write_paths),
+        }
+        bootstrap_path = os.path.join(sandbox_root, '_lazyllm_skill_bootstrap.py')
+        with open(bootstrap_path, 'w', encoding='utf-8') as bootstrap:
+            bootstrap.write(self._python_audit_bootstrap(policy, script_path, args, run_cwd))
+        return [sys.executable, '-I', '-u', bootstrap_path]
+
+    @staticmethod
+    def _python_audit_bootstrap(policy: Dict[str, List[str]], script_path: str,
+                                args: List[str], run_cwd: str) -> str:
+        return f'''import ctypes
+import os
+import sys
+
+POLICY = {json.dumps(policy)!r}
+POLICY = __import__('json').loads(POLICY)
+SCRIPT = {script_path!r}
+ARGS = {args!r}
+CWD = {run_cwd!r}
+
+def _inside(path, roots):
+    if isinstance(path, int):
+        return True
+    candidate = os.path.realpath(os.path.abspath(os.fspath(path)))
+    for root in roots:
+        try:
+            if os.path.commonpath((root, candidate)) == root:
+                return True
+        except ValueError:
+            pass
+    return False
+
+def _audit(event, event_args):
+    if event == 'open':
+        path = event_args[0]
+        mode = event_args[1] if len(event_args) > 1 else 'r'
+        flags = event_args[2] if len(event_args) > 2 else 0
+        writing = (isinstance(mode, str) and any(char in mode for char in 'wax+')) or (
+            isinstance(flags, int) and flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND)
+        )
+        roots = POLICY['write'] if writing else POLICY['read'] + POLICY['write']
+        if not _inside(path, roots):
+            raise PermissionError(f'sandbox denied file access: {{path}}')
+    elif event in ('os.listdir', 'os.scandir', 'os.chdir') and event_args:
+        if not _inside(event_args[0], POLICY['read'] + POLICY['write']):
+            raise PermissionError(f'sandbox denied filesystem access: {{event_args[0]}}')
+    elif event in ('os.remove', 'os.rmdir', 'os.mkdir') and event_args:
+        if not _inside(event_args[0], POLICY['write']):
+            raise PermissionError(f'sandbox denied filesystem write: {{event_args[0]}}')
+    elif event in ('os.rename', 'os.replace') and len(event_args) >= 2:
+        if not all(_inside(path, POLICY['write']) for path in event_args[:2]):
+            raise PermissionError('sandbox denied filesystem rename')
+    elif event.startswith('socket.') or event in (
+        'subprocess.Popen', 'os.system', 'os.posix_spawn', 'os.spawn',
+        'ctypes.dlopen', 'ctypes.dlsym', 'ctypes.call_function',
+    ):
+        raise PermissionError(f'sandbox denied process or network access: {{event}}')
+
+sys.addaudithook(_audit)
+os.chdir(CWD)
+sys.argv = [SCRIPT, *ARGS]
+with open(SCRIPT, 'rb') as source_file:
+    source = source_file.read()
+scope = {{'__name__': '__main__', '__file__': SCRIPT, '__package__': None, '__cached__': None}}
+exec(compile(source, SCRIPT, 'exec'), scope, scope)
+'''
 
     @staticmethod
     def _resolve_child(root: str, rel_path: str, label: str) -> str:

@@ -104,6 +104,43 @@ class TestDummySandbox:
         assert result['success']
         assert result['stdout'].strip() == 'registry_ok'
 
+    def test_execute_script_does_not_inherit_sensitive_environment(self, tmp_path, monkeypatch):
+        monkeypatch.setenv('LAZYLLM_REVIEW_SECRET', 'must-not-leak')
+        (tmp_path / 'check.py').write_text(
+            'import os\nprint(os.environ.get("LAZYLLM_REVIEW_SECRET", "missing"))\n',
+            encoding='utf-8',
+        )
+
+        result = DummySandbox(timeout=5).execute_script(str(tmp_path), 'check.py')
+
+        assert result['status'] == 'ok'
+        assert result['stdout'] == 'missing\n'
+
+    def test_execute_script_restricts_host_files_and_network(self, tmp_path):
+        secret = tmp_path.parent / 'host-secret.txt'
+        secret.write_text('host-secret', encoding='utf-8')
+        (tmp_path / 'check.py').write_text(
+            'import pathlib, socket, sys\n'
+            'pathlib.Path(sys.argv[1]).read_text()\n'
+            'socket.create_connection(("127.0.0.1", 9), timeout=0.1)\n',
+            encoding='utf-8',
+        )
+
+        result = DummySandbox(timeout=5).execute_script(
+            str(tmp_path), 'check.py', [str(secret)],
+        )
+
+        assert result['status'] == 'failed'
+        assert 'sandbox denied process or network access' in result['stderr']
+
+        (tmp_path / 'check.py').write_text(
+            'import pathlib\npathlib.Path("../host-secret.txt").read_text()\n',
+            encoding='utf-8',
+        )
+        denied = DummySandbox(timeout=5).execute_script(str(tmp_path), 'check.py')
+        assert denied['status'] == 'failed'
+        assert 'sandbox denied file access' in denied['stderr']
+
     def test_execute_basic(self):
         sandbox = DummySandbox(timeout=5, return_sandbox_result=True)
         result = sandbox(code="print('hello')")

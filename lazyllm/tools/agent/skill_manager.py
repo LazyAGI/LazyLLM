@@ -266,6 +266,18 @@ class SkillManager(ModuleBase):
             raise ValueError('cwd must stay inside the skill directory.')
         return target
 
+    def _is_declared_script(self, info: Dict, rel_path: str) -> bool:
+        # Keep the historical scripts/ convention, while requiring unconventional
+        # executable locations to be explicitly documented by the skill author.
+        if rel_path.startswith('scripts/'):
+            return True
+        try:
+            skill_md = self._fs_read(info['skill_md'])
+        except Exception:
+            return False
+        candidates = {rel_path, f'./{rel_path}'}
+        return any(candidate in skill_md for candidate in candidates)
+
     def _iter_skill_files(self) -> Iterable[Tuple[str, str]]:
         for base_dir in self._skills_dir:
             stack = [base_dir]
@@ -634,6 +646,17 @@ class SkillManager(ModuleBase):
                 'error': (
                     'run_script only supports Python and shell scripts '
                     f'({", ".join(sorted(_SUPPORTED_SCRIPT_EXTENSIONS))}).'
+                ),
+            }
+        if not self._is_declared_script(info, normalized_rel_path):
+            return {
+                'status': 'error',
+                'name': name,
+                'rel_path': normalized_rel_path,
+                'error_type': 'UndeclaredScript',
+                'error': (
+                    'Scripts outside scripts/ must be explicitly referenced '
+                    'by their relative path in SKILL.md.'
                 ),
             }
         base = info['path']
