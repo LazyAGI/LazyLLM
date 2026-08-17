@@ -972,6 +972,8 @@ class WriterDraftingTools(WriterToolBase):
                         + output[media_lines[target]][start:]
                     )
                     found_anchors.add(f'block-{target}')
+                if item.get('kind') == 'image':
+                    found_targets.add(target)
             if item.get('required', True) and target not in found_targets:
                 raise ValueError(f'Missing required cross-reference {target!r}.')
         return '\n'.join(output).strip()

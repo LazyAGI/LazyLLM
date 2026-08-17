@@ -41,6 +41,19 @@ class StreamResponse():
 _COMPACTION_TRUNCATE_LEN = 200  # chars kept per old tool result
 
 
+def _tool_result_stop_text(result: Any) -> Optional[str]:
+    value = _unwrap_tool_result(result)
+    if not isinstance(value, dict):
+        return None
+    control = value.get('_agent_control')
+    if not isinstance(control, dict) or control.get('stop') is not True:
+        return None
+    final_text = control.get('final_text')
+    if not isinstance(final_text, str) or not final_text.strip():
+        return None
+    return final_text.strip()
+
+
 def _compact_chat_history(history: List[Dict[str, Any]], keep_full_turns: int) -> List[Dict[str, Any]]:
     # identify tool-result message indices (role == 'tool'), from oldest to newest
     tool_indices = [i for i, m in enumerate(history) if m.get('role') == 'tool']
@@ -188,6 +201,12 @@ class FunctionCall(ModuleBase):
                 {**tool_call, 'tool_call_result': tool_result}
                 for tool_call, tool_result in zip(tool_calls, tool_calls_results)
             ]
+            controlled_stop_texts = [
+                text for result in tool_calls_results
+                if (text := _tool_result_stop_text(result)) is not None
+            ]
+            if controlled_stop_texts:
+                return '\n'.join(controlled_stop_texts)
             if self._stop_tools:
                 called_names = {(tc.get('function') or {}).get('name') for tc in tool_calls if isinstance(tc, dict)}
                 if called_names & self._stop_tools:
