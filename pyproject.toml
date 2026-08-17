@@ -90,6 +90,7 @@ sentence-transformers = { version = "^3.0.1", optional = true }
 modelscope = {version = "==1.27.1", optional = true}
 pytest = { version = "^8.3.3", optional = true }
 pymilvus = { version = ">=2.4.11, <2.5.0", optional = true }
+qdrant-client = { version = ">=1.16.0,<2.0.0", optional = true }
 rapidfuzz = { version = "^3.12.2", optional = true }
 redis = { version = ">=5.0.4", optional = true }
 huggingface-hub = { version = ">=0.23.1", optional = true }
@@ -472,6 +473,7 @@ rag-advanced = [
     "pymongo",
     "pymysql",
     "pytesseract",
+    "qdrant-client",
     "rank-bm25",
     "rapidfuzz",
     "redis",

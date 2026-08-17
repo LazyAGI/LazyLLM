@@ -25,7 +25,7 @@ Transform (text splitting)
   ↓ list of DocNodes
 Store (storage)
   ├── segment_store (text storage: MapStore / Elasticsearch / OpenSearch)
-  └── vector_store (vector storage: Milvus / Chroma / in-memory)
+  └── vector_store (vector storage: Milvus / Chroma / Qdrant / in-memory)
   ↓
 Retriever (retrieval)
   ↓ list of DocNodes
@@ -110,9 +110,9 @@ The `manager` parameter controls how the document service is deployed:
 | `DocServer(port=8080, parser_url='...')` | Starts a new DocServer and connects to it | Single-machine with custom port |
 | `DocumentProcessor(url='...')` | Connects to a parsing service only, without DocServer | Parsing capability only |
 
-**Auto-trigger rule:** When `manager=False` but `store_conf` is a persistent store (e.g. Milvus/Chroma) and `dataset_path` is a directory, `manager` is automatically set to `True` (to prevent multi-process race conditions).
+**Auto-trigger rule:** When `manager=False` but `store_conf` is a persistent store (e.g. Milvus/Chroma/Qdrant) and `dataset_path` is a directory, `manager` is automatically set to `True` (to prevent multi-process race conditions).
 
-**Important constraint:** When using `manager=True` or connecting to a DocServer, `store_conf` must point to a network endpoint (Milvus/Chroma, etc.); embedded (filesystem-bound) vector stores are not supported.
+**Important constraint:** When using `manager=True` or connecting to a DocServer, `store_conf` must point to a network endpoint (Milvus/Chroma/Qdrant, etc.); embedded (filesystem-bound) vector stores are not supported.
 
 ### Distributed Deployment (Offline Parsing + Online Retrieval Separated)
 
@@ -172,7 +172,7 @@ retriever = Retriever(doc, 'CoarseChunk', 'cosine', topk=3)
 **Notes:**
 - `DocServer` and `DocumentProcessor` share the same DB (SQLite file must be shared, or use MySQL/PostgreSQL)
 - `parser_url` is a required parameter for `DocServer`; there is no longer a built-in mock parsing server
-- Distributed deployments must use network-endpoint vector stores (Milvus/Chroma, etc.)
+- Distributed deployments must use network-endpoint vector stores (Milvus/Chroma/Qdrant, etc.)
 
 ### DocImpl
 
@@ -253,7 +253,7 @@ class MyTransform(NodeTransform):
 | Store type | Responsibility | Implementations |
 |------------|---------------|----------------|
 | `segment_store` | Stores text content and metadata | `MapStore` (in-memory) / `ElasticsearchStore` / `OpenSearchStore` |
-| `vector_store` | Stores vectors; supports vector retrieval | In-memory / Milvus / Chroma |
+| `vector_store` | Stores vectors; supports vector retrieval | In-memory / Milvus / Chroma / Qdrant |
 
 `MapStore` is the default in-memory implementation and serves as both `segment_store` and `vector_store`.
 
@@ -273,6 +273,12 @@ store_conf = {
 store_conf = {
     'type': 'chroma',
     'kwargs': {'host': 'localhost', 'port': 8000}
+}
+
+# Qdrant
+store_conf = {
+    'type': 'qdrant',
+    'kwargs': {'uri': 'http://localhost:6333', 'api_key': '...'}
 }
 ```
 

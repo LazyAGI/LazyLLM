@@ -197,6 +197,30 @@ store_conf = {
 
 Milvus 支持的字段详细参考: [Store 与数据源参考](store_external_refs.md)
 
+#### QdrantStore
+
+基于 Qdrant 的向量存储实现，支持向量写入、删除、相似度检索（含标量过滤），同时支持稠密向量与稀疏向量。仅支持远程 Qdrant 服务，地址必须是 `http(s)://host:port` 形式的 URL。
+
+store_conf配置:
+
+```python
+store_conf = {
+    'type': 'qdrant',
+    'kwargs': {
+        'uri': 'http://localhost:6333',
+        'api_key': '...',
+        'index_kwargs': [
+            {
+                'embed_key': 'vec1',
+                'distance': 'COSINE',
+            },
+        ]
+    },
+}
+```
+
+注意：当距离度量使用 `COSINE` 时，Qdrant 会将稠密向量归一化为单位长度，通过 get() 读回的向量可能与写入值不同。Qdrant 支持的字段详细参考: [Store 与数据源参考](store_external_refs.md)
+
 ## 基础使用
 
 ###配置单一存储的store_conf
