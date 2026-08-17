@@ -54,6 +54,9 @@ class WriterMultimodalTools(WriterToolBase):
             for resource in [*writing_task.inputs, *self._unified_models(input_resources, InputResource)]
         ]
         library = MediaAssetLibrary(library_id=f'media-library-{writing_task.task_id or "task"}')
+        visual_policy = writing_task.constraints.get('visual_policy')
+        if isinstance(visual_policy, dict) and visual_policy:
+            library.meta['visual_policy'] = dict(visual_policy)
         warnings: List[str] = []
         pre_materialized_resource_ids: set[str] = set()
 
@@ -91,6 +94,14 @@ class WriterMultimodalTools(WriterToolBase):
                 resource.meta['semantic_status'] = 'unknown'
                 warnings.append(f'Failed to collect {label!r}: {type(exc).__name__}: {exc}')
 
+        if library.meta.get('visual_policy', {}).get('require_input_image_reuse'):
+            library.meta['required_input_asset_ids'] = [
+                asset.media_asset_id
+                for asset in library.assets.values()
+                if asset.source_type == 'input_resource'
+                and asset.meta.get('origin') == 'user_upload'
+            ]
+
         return self._save_artifacts(
             {'media_assets': library, 'profile_input_resources': resources},
             step_name='collect_available_media',
@@ -110,6 +121,21 @@ class WriterMultimodalTools(WriterToolBase):
         plan = self._unified_model(visual_plan, VisualPlan)
         library = self._unified_model(media_assets, MediaAssetLibrary).model_copy(deep=True)
         needs = {need.need_id: need for need in plan.instructions}
+        visual_policy = library.meta.get('visual_policy') or {}
+        if visual_policy.get('require_input_image_reuse'):
+            asset_ids = [
+                asset_id for asset_id in library.meta.get('required_input_asset_ids', [])
+                if asset_id in library.assets and self._asset_is_available(library.assets[asset_id])
+            ]
+            target_needs = [need.need_id for need in plan.instructions if need.required]
+            if not target_needs and len(needs) == 1:
+                target_needs = list(needs)
+            if len(asset_ids) != 1 or len(target_needs) != 1:
+                raise ValueError(
+                    'Required uploaded image reuse needs exactly one available uploaded image '
+                    'and exactly one unambiguous visual instruction.'
+                )
+            library.visual_need_asset_ids[target_needs[0]] = asset_ids
         unresolved = []
         for need_id in needs:
             asset_ids = [
@@ -143,6 +169,8 @@ class WriterMultimodalTools(WriterToolBase):
                 continue
             need = needs[need_id]
             strategies = self._visual_strategies(need, allowed_strategies)
+            if visual_policy.get('allow_image_generation') is False:
+                strategies = [strategy for strategy in strategies if strategy != 'image_generation']
             if not strategies:
                 warnings.append(f'Visual need {need_id!r} has no MVP acquisition strategy.')
                 continue
