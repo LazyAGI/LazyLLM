@@ -606,7 +606,7 @@ class WriterPlanningTools(WriterToolBase):
             self._normalize_cross_references(
                 instruction, node_id_by_ref, visual_targets,
             )
-            self._bind_visual_references(instruction, needs_by_ref[key])
+            self._bind_visual_references(instruction, needs_by_ref.get(key, []))
             normalized.append(instruction)
 
         instruction_list.outline_id = outline_id
