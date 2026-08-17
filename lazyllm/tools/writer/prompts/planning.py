@@ -259,6 +259,8 @@ Requirements:
    another section for a specific definition, result, or method - for example a
    conclusion citing the experiments it summarizes. This is expected when the writing
    task asks for cross-references; in that case include at least one section reference.
+   Represent every planned reference in SectionInstruction.meta.cross_references as
+   an object with target_ref, kind, required, and guidance.
    Background continuity readers are assumed to know
    (such as narrative chapters building on earlier events) belongs in relation_constraints.
    For Writer IR, target_ref is {{"node_id": "..."}} copied from the outline.

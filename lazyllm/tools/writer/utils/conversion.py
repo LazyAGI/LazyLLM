@@ -9,11 +9,13 @@ from typing import Any, Dict, Iterable, List, Literal, Optional
 from lazyllm.thirdparty import mistune
 
 from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterSpan
+from ..numbering import MARKDOWN_ANCHOR_RE
 from .artifact import deserialize_artifact_json, serialize_artifact_json
 
 
 WriterSourceFormat = Literal['markdown', 'lmd', 'writer_document']
 WriterTargetFormat = Literal['markdown', 'lmd']
+
 
 @dataclass
 class _InlineContent:
@@ -97,6 +99,18 @@ def _inline_content(
             _append_span(output, str(token.get('raw') or ''), {**inherited, 'inline_code': True})
             continue
         if token_type == 'link':
+            url = str((token.get('attrs') or {}).get('url') or '')
+            if url.startswith('#block-'):
+                output.spans.append(WriterSpan(
+                    text='',
+                    style={
+                        'link': {
+                            'type': 'internal_ref',
+                            'target_node_id': url.removeprefix('#block-'),
+                        },
+                    },
+                ))
+                continue
             start = len(output.content)
             _inline_content(children, inherited, output)
             attrs = token.get('attrs') or {}
@@ -170,6 +184,8 @@ class _MarkdownParser:
         self.markdown = (markdown or '').replace('\r\n', '\n').replace('\r', '\n')
         self.document_id = _normalize_document_id(document_id)
         self.sequence = 0
+        self.used_ids: set[str] = set()
+        self.pending_anchor_ids: List[str] = []
         self.title = ''
         self.emitted = False
         self.parser = mistune.create_markdown(
@@ -177,9 +193,30 @@ class _MarkdownParser:
         )
 
     def next_id(self, block_type: str) -> str:
-        self.sequence += 1
-        safe_type = re.sub(r'[^a-zA-Z0-9_-]+', '-', block_type).strip('-') or 'block'
-        return f'{self.document_id}-{safe_type}-{self.sequence}'
+        if self.pending_anchor_ids:
+            candidate = self.pending_anchor_ids.pop(0)
+        else:
+            self.sequence += 1
+            safe_type = re.sub(r'[^a-zA-Z0-9_-]+', '-', block_type).strip('-') or 'block'
+            candidate = f'{self.document_id}-{safe_type}-{self.sequence}'
+        if candidate in self.used_ids:
+            raise ValueError(f'duplicate Markdown anchor target: {candidate!r}')
+        self.used_ids.add(candidate)
+        return candidate
+
+    @staticmethod
+    def leading_anchors(
+        tokens: List[Dict[str, Any]],
+    ) -> tuple[List[str], List[Dict[str, Any]]]:
+        index = 0
+        raw = ''
+        while index < len(tokens) and tokens[index].get('type') in {'inline_html', 'html_inline'}:
+            raw += str(tokens[index].get('raw') or '')
+            index += 1
+        anchors = [target.removeprefix('block-') for target in MARKDOWN_ANCHOR_RE.findall(raw)]
+        if anchors and not MARKDOWN_ANCHOR_RE.sub('', raw).strip():
+            return anchors, tokens[index:]
+        return [], tokens
 
     def block(
         self,
@@ -246,12 +283,16 @@ class _MarkdownParser:
                 else:
                     blocks.append(self.block(
                         'heading', rich.content, spans=rich.spans,
-                        references=rich.references, numbering={'level': level},
+                        references=rich.references,
+                        numbering={'level': max(level - 1, 1)},
                     ))
                 self.emitted = True
                 continue
             if token_type in {'paragraph', 'block_text'}:
-                children = token.get('children') or []
+                anchors, children = self.leading_anchors(list(token.get('children') or []))
+                self.pending_anchor_ids.extend(anchors)
+                if not children:
+                    continue
                 rich = _inline_content(children)
                 visible = [item for item in children if item.get('type') not in {'softbreak', 'linebreak'}]
                 if len(visible) == 1 and visible[0].get('type') == 'image':
@@ -492,11 +533,34 @@ def _render_inline(block: WriterBlock) -> str:
         if url:
             title_value = str(media.get('title') or '')
             title = f' "{title_value.replace(chr(34), chr(92) + chr(34))}"' if title_value else ''
-            return f'![{_escape_markdown_text(str(media.get("alt") or content))}]({url}{title})'
+            alt = content or str(media.get('alt') or '')
+            return f'![{_escape_markdown_text(alt)}]({url}{title})'
+
+    references = list(block.references)
+    if ''.join(span.text for span in block.spans) == content:
+        offset = 0
+        for span in block.spans:
+            style = _span_style(span)
+            link = style.get('link')
+            if isinstance(link, dict):
+                target = str(link.get('target_node_id') or '')
+                url = ''
+                if link.get('type') == 'internal_ref' and target:
+                    url = f'#block-{target.removeprefix("block-")}'
+                elif isinstance(link.get('url'), str):
+                    url = link['url']
+                if url:
+                    reference = {
+                        'type': 'link', 'url': url,
+                        'start': offset, 'end': offset + len(span.text),
+                    }
+                    if reference not in references:
+                        references.append(reference)
+            offset += len(span.text)
 
     references = sorted(
         (
-            item for item in block.references
+            item for item in references
             if item.get('type') in {'link', 'markdown_image'}
             and isinstance(item.get('start'), (int, float))
             and isinstance(item.get('end'), (int, float))
@@ -586,8 +650,13 @@ def _render_block(block: WriterBlock, depth: int, allow_raw: bool) -> str:
             return raw
     if block.type == 'document':
         return _render_block_sequence(block.children, depth, allow_raw)
+    anchor = (
+        f'<a id="block-{block.node_id}"></a>'
+        if block.type in {'heading', 'image', 'table', 'code'}
+        else ''
+    )
     if block.type == 'heading':
-        level = max(1, min(6, int(block.numbering.get('level') or 2)))
+        level = min(max(int(block.numbering.get('level') or 1) + 1, 2), 6)
         current = f'{"#" * level} {_render_inline(block)}'
     elif block.type == 'paragraph':
         current = _render_inline(block)
@@ -613,6 +682,7 @@ def _render_block(block: WriterBlock, depth: int, allow_raw: bool) -> str:
         current = _render_inline(block)
     else:
         current = block.content
+    current = '\n'.join(filter(None, [anchor, current]))
     children = _render_block_sequence(block.children, depth, allow_raw)
     return '\n\n'.join(filter(None, [current, children]))
 
@@ -645,7 +715,15 @@ def _render_block_sequence(
     return '\n\n'.join(parts)
 
 
-def writer_document_to_markdown(document: WriterDocument) -> str:
+def render_block_markdown(block: WriterBlock, level: int = 2) -> str:
+    if block.type == 'heading':
+        block = block.model_copy(update={
+            'numbering': {**block.numbering, 'level': max(level - 1, 1)},
+        })
+    return _render_block(block, 0, allow_raw=True).strip()
+
+
+def render_document_markdown(document: WriterDocument) -> str:
     source = document.metadata.get('markdown_source')
     signature = document.metadata.get('markdown_signature')
     if isinstance(source, str) and signature == _document_signature(document):
@@ -654,6 +732,13 @@ def writer_document_to_markdown(document: WriterDocument) -> str:
     body = _render_block_sequence(document.blocks)
     rendered = '\n\n'.join(filter(None, [title, body])).rstrip()
     return f'{rendered}\n' if rendered else ''
+
+
+def writer_document_to_markdown(document: WriterDocument) -> str:
+    from ..numbering import build_numbering_view_from_ir, compute_numbering, materialize_ir
+
+    numbering = compute_numbering(build_numbering_view_from_ir(document))
+    return render_document_markdown(materialize_ir(document, numbering))
 
 
 def writer_document_to_lmd(document: WriterDocument) -> str:
@@ -690,6 +775,8 @@ __all__ = [
     'WriterSourceFormat',
     'WriterTargetFormat',
     'convert_writer_content',
+    'render_block_markdown',
+    'render_document_markdown',
     'writer_document_from_lmd',
     'writer_document_from_markdown',
     'writer_document_to_lmd',

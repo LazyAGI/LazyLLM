@@ -279,8 +279,10 @@ class WriterResourceTools(WriterToolBase):
 
         protocol, real_path, fs, adapter, locator, document_id = \
             self._resolve_document_target(target, source_document=source_document)
+        media_library = self._unified_optional_model(media_assets, MediaAssetLibrary)
         document = source_document or parse_document_markdown(
             source, document_id=adapter.make_document_id(document_id), stage='final',
+            media_assets=media_library,
         )
         if not document.provider_binding.get('document_id'):
             document.provider_binding = {
@@ -288,22 +290,15 @@ class WriterResourceTools(WriterToolBase):
                 'provider': protocol,
                 'document_id': document_id,
             }
-        media_library = (
-            self._unified_optional_model(media_assets, MediaAssetLibrary)
-            if source_document is not None else None
-        )
         warnings: List[str] = []
-        if source_document is not None:
-            self._validate_available_images(document, media_library)
-            numbering = compute_numbering(build_numbering_view_from_ir(document))
-            document = materialize_ir(document, numbering)
-            document = materialize_feishu_links(document, document_id)
+        self._validate_available_images(document, media_library)
+        numbering = compute_numbering(build_numbering_view_from_ir(document))
+        document = materialize_ir(document, numbering)
         method_name = 'replace_doc_blocks' if mode == 'replace' else 'write_doc_blocks'
         write_blocks = getattr(fs, method_name, None)
         if not callable(write_blocks):
             raise TypeError(f'{type(fs).__name__} does not support {method_name}().')
-        native_blocks = adapter.ir_to_blocks(
-            document, media_assets=media_library if source_document is not None else None)
+        native_blocks = adapter.ir_to_blocks(document, media_assets=media_library)
         if document.title:
             self._update_document_title(fs, document_id, document.title, document.revision)
         if not native_blocks:

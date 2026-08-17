@@ -6,7 +6,9 @@ from typing import Any, Dict, List, Optional
 
 from lazyllm.thirdparty import mistune
 
+from ..data_models.multimodal import MediaAssetLibrary
 from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterSpan, WriterStage
+from ..numbering import MARKDOWN_ANCHOR_RE
 
 
 class MarkdownSelectionError(ValueError):
@@ -24,7 +26,6 @@ _NUMBERED_HEADING_RE = re.compile(
 _NUMBERED_CAPTION_RE = re.compile(
     r'^\s*(?:图|表|代码)\s*\d+(?:\.\d+)*\s*[：:.\s]?\s*'
 )
-_ANCHOR_TAG_RE = re.compile(r'<a\s+id="((?:block-)?[^"]+)"\s*>\s*</a>', re.IGNORECASE)
 _INTERNAL_LINK_URL_RE = re.compile(r'^#(?:block-)?[A-Za-z0-9_.:-]+$')
 
 
@@ -136,28 +137,28 @@ def _markdown_visible_text(token: Dict[str, Any]) -> str:
     return ''.join(_markdown_visible_text(child) for child in token.get('children') or [])
 
 
-def render_document_markdown(document: WriterDocument) -> str:
-    parts: List[str] = []
-    if document.title:
-        parts.append(f'# {document.title.strip()}')
-    for block in document.blocks:
-        parts.extend(_render_block_markdown(block, level=2))
-    return '\n\n'.join(part for part in parts if part).strip() + '\n'
-
-
-def render_block_markdown(block: WriterBlock, level: int = 2) -> str:
-    return '\n\n'.join(
-        part for part in _render_block_markdown(block, level=level) if part
-    ).strip()
-
-
 def parse_markdown_sections(markdown: str) -> List[tuple[int, List[str], int, str]]:
     sections: List[tuple[int, List[str], int, str]] = []
     heading_path: List[str] = []
     occurrences: dict[tuple[str, ...], int] = {}
     current: Optional[tuple[int, List[str], int, List[str]]] = None
+    fence: Optional[str] = None
 
     for line in markdown.splitlines():
+        fence_match = re.match(r'^\s*(```+|~~~+)', line)
+        if fence_match:
+            marker = fence_match.group(1)[0]
+            if fence is None:
+                fence = marker
+            elif fence == marker:
+                fence = None
+            if current is not None:
+                current[3].append(line)
+            continue
+        if fence is not None:
+            if current is not None:
+                current[3].append(line)
+            continue
         match = re.match(r'^(#{1,6})\s+(.+?)\s*$', line)
         if not match:
             if current is not None:
@@ -202,6 +203,7 @@ def parse_document_markdown(  # noqa: C901
     document_id: str,
     stage: WriterStage = 'draft',
     outline: Optional[WriterDocument] = None,
+    media_assets: Optional[MediaAssetLibrary] = None,
 ) -> WriterDocument:
     '''Convert the drafting Markdown subset into the existing WriterDocument IR.'''
     tokens = mistune.create_markdown(renderer='ast', plugins=['table'])(markdown or '')
@@ -297,8 +299,45 @@ def parse_document_markdown(  # noqa: C901
             continue
 
         if token_type == 'paragraph':
+            children = token.get('children') or []
+            visible = [
+                child for child in children
+                if child.get('type') not in {'softbreak', 'linebreak', 'inline_html'}
+            ]
+            if len(visible) == 1 and visible[0].get('type') == 'image':
+                image = visible[0]
+                attrs = image.get('attrs') or {}
+                url = str(attrs.get('url') or '')
+                anchor_match = MARKDOWN_ANCHOR_RE.search(''.join(
+                    str(child.get('raw') or '')
+                    for child in children if child.get('type') == 'inline_html'
+                ))
+                if anchor_match:
+                    node_id = normalize_anchor_target(anchor_match.group(1))
+                    if node_id in used_ids:
+                        raise ValueError(f'duplicate Markdown anchor target: {node_id!r}')
+                    used_ids.add(node_id)
+                else:
+                    node_id = take_pending_node_id('image')
+                asset_id = next(
+                    (
+                        key for key, asset in (media_assets.assets if media_assets else {}).items()
+                        if url in {str(asset.local_path or ''), str(asset.uri or '')}
+                    ),
+                    '',
+                )
+                alt = _markdown_token_text(image).removeprefix('![').split('](', 1)[0]
+                block = WriterBlock(
+                    node_id=node_id,
+                    type='image',
+                    content=alt,
+                    references=([{'type': 'media_asset', 'id': asset_id}] if asset_id else []),
+                    stage=stage,
+                )
+                append_block(block)
+                continue
             raw_paragraph = _markdown_token_text(token).strip()
-            anchor_matches = list(_ANCHOR_TAG_RE.finditer(raw_paragraph))
+            anchor_matches = list(MARKDOWN_ANCHOR_RE.finditer(raw_paragraph))
             anchor_ids = [
                 normalize_anchor_target(match.group(1))
                 for match in anchor_matches
@@ -446,22 +485,3 @@ def _markdown_block_content(token: Dict[str, Any]) -> tuple[str, str]:
     if token_type == 'thematic_break':
         return '---', 'divider'
     return _markdown_token_text(token), 'paragraph'
-
-
-def _render_block_markdown(block: WriterBlock, level: int) -> List[str]:
-    parts: List[str] = []
-    heading_level = min(max(level, 1), 6)
-    if block.type == 'heading':
-        if block.content.strip():
-            parts.append(f'{"#" * heading_level} {block.content.strip()}')
-    elif block.type == 'list_item':
-        if block.content.strip():
-            marker = '1.' if block.numbering.get('ordered') else '-'
-            parts.append(f'{marker} {block.content.strip()}')
-    else:
-        content = block.content.strip()
-        if content:
-            parts.append(content)
-    for child in block.children:
-        parts.extend(_render_block_markdown(child, heading_level + 1))
-    return parts

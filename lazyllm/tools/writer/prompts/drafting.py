@@ -40,10 +40,12 @@ Requirements:
   If must_create=true, create one child WriterBlock with type="image",
   node_id=target, and content=caption.
   To reference a target, add an internal_ref span with target_node_id=target and text="".
+  Use the item's guidance to place that span inside a complete natural sentence.
   Example: {{"text":"","style":{{"link":{{"type":"internal_ref","target_node_id":"sec-2"}}}}}}.
+  A required image item produces both its image child block and one internal_ref span in prose.
   Include each required target exactly once, and use no references beyond this plan.
   Leave internal reference display text empty; the system renders it.
-  Do not invent target_node_id values outside this plan.
+  Do not use target_node_id values outside section_instruction.meta.cross_reference_targets.
 - Emit WriterBlock fields in schema order. In particular, emit numbering and references before content.
 
 Writing task:
@@ -87,16 +89,11 @@ Requirements:
   subheadings only when they help the requested content.
 - Use section_instruction.meta.cross_references as the authoritative cross-reference plan.
   Each item's "target" is the exact system key; an image target equals its visual need_id.
-  For a required target, emit exactly [](#block-<target>) once in natural prose.
-  Do not invent target keys outside this plan.
+  For a required target, use its guidance to emit exactly [](#block-<target>) once
+  inside a complete natural sentence.
+  Do not use target keys outside section_instruction.meta.cross_reference_targets.
 - Return substantial finished prose, not a summary, placeholder, or planning notes.
-- section_visual_needs lists the visual needs planned for this section. It is independent
-  of whether media resolution succeeds. When a required visual need is listed, place its
-  image at the most appropriate reading position using exactly:
-  ![short caption](media-placeholder://<need_id>).
-  Use the shared need_id/target from the must_create cross-reference. Emit each planned image
-  exactly once; the system inserts its numbering anchor.
-- Do not output image markup for anything outside this section's section_visual_needs list.
+- The system places planned images after the prose link. Do not output image markup.
 
 Writing task:
 {task_json}
@@ -110,11 +107,8 @@ Previously drafted Markdown (context only; do not review, summarize, or continue
 Current section instruction:
 {section_instruction_json}
 
-Planned section visual needs:
-{section_visual_needs_json}
-
 Write only the body of the current section now. Begin directly with its finished
-prose and follow the current section instruction, even when the previous Markdown
+prose and follow the current section instruction even when the previous Markdown
 covers a different section.
 '''
 

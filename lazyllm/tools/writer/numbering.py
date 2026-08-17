@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from .data_models import WriterBlock, WriterDocument
+from .data_models.writer_ir import WriterBlock, WriterDocument
 
 
 NumberingKind = Literal['section', 'figure', 'table', 'code']
@@ -51,7 +51,10 @@ _LABEL_BY_KIND = {
     'table': '表',
     'code': '代码',
 }
-_ANCHOR_RE = re.compile(r'<a id="(block-[^"]+)"></a>')
+MARKDOWN_ANCHOR_RE = re.compile(
+    r'<a\s+id="((?:block-)?[^"]+)"\s*(?:/\s*>|>\s*</a\s*>)',
+    re.IGNORECASE,
+)
 _HEADING_RE = re.compile(r'^(#{2,6})\s+(.+?)\s*$')
 _IMAGE_RE = re.compile(r'!\[([^\]]*)\]\([^)]*\)')
 _INTERNAL_LINK_RE = re.compile(r'\[([^\]]*)\]\(#(block-[^)]+)\)')
@@ -92,7 +95,10 @@ def _markdown_semantic_items(markdown: str):
             continue
         if fence is not None:
             continue
-        pending_anchors.extend(match.group(1) for match in _ANCHOR_RE.finditer(line))
+        pending_anchors.extend(
+            match.group(1) for match in MARKDOWN_ANCHOR_RE.finditer(line)
+            if match.group(1).startswith('block-')
+        )
         heading = _HEADING_RE.match(line)
         if heading:
             yield index, line, 'heading', heading.group(2).strip(), pending_anchors
@@ -218,15 +224,14 @@ def compute_numbering(view: NumberingView) -> NumberingMap:
 
 def format_target_number(entry: NumberingEntry) -> str:
     if entry.kind == 'section':
-        return '.'.join(str(part) for part in entry.number_parts)
+        return f'{".".join(str(part) for part in entry.number_parts)}.'
     return f'{_LABEL_BY_KIND[entry.kind]}{entry.number_parts[0]}'
 
 
 def format_reference(entry: NumberingEntry) -> str:
-    number = format_target_number(entry)
     if entry.kind == 'section':
-        return f'第{number}章'
-    return number
+        return f'第{".".join(str(part) for part in entry.number_parts)}章'
+    return format_target_number(entry)
 
 
 def materialize_ir(document: WriterDocument, numbering: NumberingMap) -> WriterDocument:
@@ -462,6 +467,7 @@ __all__ = [
     'NumberingTarget',
     'NumberingView',
     'ReferenceOccurrence',
+    'MARKDOWN_ANCHOR_RE',
     'build_numbering_view_from_ir',
     'build_numbering_view_from_markdown',
     'compute_numbering',
