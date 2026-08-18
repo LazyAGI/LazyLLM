@@ -21,6 +21,230 @@ from typing import *  # noqa F403, to import all types for compile_func(), do no
 
 _TOOL_CONCURRENCY_ATTR = '__lazyllm_tool_concurrency__'
 _FILE_RESOURCE_NAMESPACE = 'file'
+_TRANSIENT_ERROR_NAMES = {
+    'ConnectTimeout', 'ConnectTimeoutError', 'ConnectionError', 'ConnectionResetError',
+    'ReadTimeout', 'ReadTimeoutError', 'Timeout', 'TimeoutError',
+}
+_TOOL_ERROR_CATEGORIES = {
+    'UNKNOWN_TOOL', 'INVALID_ARGS', 'TRANSIENT_ERROR', 'PERMISSION_ERROR', 'DOMAIN_FAILURE',
+}
+
+
+def _tool_failure(category, code, tool_name, message, retryable=False,
+                  recovery_attempts_remaining=0, details=None):
+    error = {
+        'category': category,
+        'code': code,
+        'tool': tool_name,
+        'message': message,
+        'retryable': bool(retryable),
+        'recovery_attempts_remaining': max(0, int(recovery_attempts_remaining)),
+        'details': details or {},
+    }
+    return {'ok': False, 'value': None, 'error': error, 'msg': message}
+
+
+def _json_type(value):
+    if value is None:
+        return 'null'
+    if isinstance(value, bool):
+        return 'boolean'
+    if isinstance(value, str):
+        return 'string'
+    if isinstance(value, int):
+        return 'integer'
+    if isinstance(value, float):
+        return 'number'
+    if isinstance(value, list):
+        return 'array'
+    if isinstance(value, dict):
+        return 'object'
+    return type(value).__name__
+
+
+def _resolve_schema_ref(root, schema):
+    ref = schema.get('$ref') if isinstance(schema, dict) else None
+    if not isinstance(ref, str) or not ref.startswith('#/'):
+        return schema if isinstance(schema, dict) else {}
+    resolved = root
+    for part in ref[2:].split('/'):
+        if not isinstance(resolved, dict):
+            return {}
+        resolved = resolved.get(part.replace('~1', '/').replace('~0', '~'))
+    return resolved if isinstance(resolved, dict) else {}
+
+
+def _schema_at_path(root, path):
+    schema = root
+    for part in path:
+        schema = _resolve_schema_ref(root, schema)
+        if isinstance(part, int):
+            schema = schema.get('items', {})
+        else:
+            properties = schema.get('properties') or {}
+            schema = properties.get(str(part), schema.get('additionalProperties', {}))
+    return _resolve_schema_ref(root, schema)
+
+
+def _schema_expectation(schema):
+    if not isinstance(schema, dict):
+        return None
+    if 'enum' in schema:
+        return {'enum': schema['enum']}
+    if 'const' in schema:
+        return {'enum': [schema['const']]}
+    if isinstance(schema.get('type'), str):
+        return schema['type']
+    alternatives = schema.get('anyOf') or schema.get('oneOf') or []
+    expected = [item.get('type') for item in alternatives
+                if isinstance(item, dict) and isinstance(item.get('type'), str)]
+    return expected or None
+
+
+def _violation_type(error_type):
+    if error_type == 'missing':
+        return 'missing'
+    if error_type in {'literal_error', 'enum'}:
+        return 'enum_error'
+    if error_type == 'extra_forbidden':
+        return 'extra_forbidden'
+    if any(token in error_type for token in ('greater_than', 'less_than', 'multiple_of')):
+        return 'range_error'
+    if any(token in error_type for token in ('pattern', 'url', 'uuid', 'date', 'time', 'format')):
+        return 'format_error'
+    if error_type.endswith(('_type', '_parsing')):
+        return 'type_error'
+    return 'validation_error'
+
+
+def _levenshtein(left, right):
+    left, right = left.lower(), right.lower()
+    if len(left) < len(right):
+        left, right = right, left
+    previous = list(range(len(right) + 1))
+    for index, left_char in enumerate(left, 1):
+        current = [index]
+        for offset, right_char in enumerate(right, 1):
+            current.append(min(
+                current[-1] + 1,
+                previous[offset] + 1,
+                previous[offset - 1] + (left_char != right_char),
+            ))
+        previous = current
+    return previous[-1]
+
+
+def _closest_tool_name(requested, available):
+    ranked = sorted((_levenshtein(requested, name), name) for name in set(available))
+    if not ranked:
+        return None, None
+    distance, name = ranked[0]
+    threshold = min(3, max(1, len(requested) // 3))
+    return (name, distance) if distance <= threshold else (None, None)
+
+
+def _exception_failure(tool, error):
+    tool_name = tool.name
+    causes = []
+    current = error
+    while current is not None and current not in causes:
+        causes.append(current)
+        current = current.__cause__ or current.__context__
+    error_names = {type(item).__name__ for item in causes}
+    error_text = str(causes[-1]) if causes else str(error)
+    status_codes = set()
+    for item in causes:
+        status_code = getattr(item, 'status_code', None)
+        response = getattr(item, 'response', None)
+        status_code = status_code or getattr(response, 'status_code', None)
+        if isinstance(status_code, int):
+            status_codes.add(status_code)
+    if any(isinstance(item, PermissionError) for item in causes) or any(
+        'Permission' in name or 'Forbidden' in name for name in error_names
+    ) or bool(status_codes & {401, 403}):
+        details = {'status_code': min(status_codes)} if status_codes else {}
+        if 401 in status_codes:
+            details['authorization_required'] = True
+        return _tool_failure(
+            'PERMISSION_ERROR', 'PERMISSION_DENIED', tool_name,
+            f'{tool_name} is not permitted: {error_text}',
+            details=details,
+        )
+    if any(isinstance(item, (TimeoutError, ConnectionError)) for item in causes) or \
+            bool(error_names & _TRANSIENT_ERROR_NAMES) or bool(status_codes & {408, 429, 502, 503, 504}):
+        details = {'status_code': min(status_codes)} if status_codes else {}
+        return _tool_failure(
+            'TRANSIENT_ERROR', 'TEMPORARY_TOOL_FAILURE', tool_name,
+            f'{tool_name} failed temporarily: {error_text}', details=details,
+        )
+    return _tool_failure(
+        'DOMAIN_FAILURE', 'TOOL_EXECUTION_FAILED', tool_name,
+        f'{tool_name} failed: {error_text}',
+    )
+
+
+def _reported_error(value, tool_name):
+    if not isinstance(value, dict):
+        return None, None
+    error = value.get('error') if isinstance(value.get('error'), dict) else {}
+    if value.get('ok') is False:
+        message = str(error.get('message') or error.get('reason') or value.get('msg') or f'{tool_name} failed.')
+        return error, message
+    if value.get('success') is False:
+        message = str(error.get('message') or error.get('reason') or error.get('detail') or f'{tool_name} failed.')
+        return error, message
+    payload = value.get('result')
+    if value.get('success') is True and isinstance(payload, dict) and payload.get('status') == 'error':
+        message = str(payload.get('message') or payload.get('reason') or f'{tool_name} failed.')
+        return payload, message
+    return None, None
+
+
+def _reported_failure_category(error, reported_retryable):
+    category = str(error.get('category') or '')
+    if category in _TOOL_ERROR_CATEGORIES:
+        return category
+    error_type = str(error.get('type') or '')
+    if 'Permission' in error_type or 'Forbidden' in error_type:
+        return 'PERMISSION_ERROR'
+    if error_type in _TRANSIENT_ERROR_NAMES or reported_retryable is True:
+        return 'TRANSIENT_ERROR'
+    return 'DOMAIN_FAILURE'
+
+
+def _reported_failure_details(error, value):
+    details = dict(error.get('details') or {}) if isinstance(error.get('details'), dict) else {}
+    if isinstance(error.get('detail'), dict):
+        for key, item in error['detail'].items():
+            details.setdefault(key, item)
+    if error_type := str(error.get('type') or ''):
+        details.setdefault('error_type', error_type)
+    meta = value.get('meta') if isinstance(value.get('meta'), dict) else {}
+    for key in ('required_capability', 'authorization_required', 'resource_type'):
+        source = error if key in error else meta
+        if key in source:
+            details.setdefault(key, source[key])
+    return details
+
+
+def _reported_failure(tool, value):
+    error, message = _reported_error(value, tool.name)
+    if error is None:
+        return None
+
+    reported_retryable = error.get('retryable', value.get('retryable'))
+    category = _reported_failure_category(error, reported_retryable)
+    default_code = {
+        'PERMISSION_ERROR': 'PERMISSION_DENIED',
+        'TRANSIENT_ERROR': 'TEMPORARY_TOOL_FAILURE',
+    }.get(category, 'TOOL_REPORTED_FAILURE')
+    retryable = bool(reported_retryable) if reported_retryable is not None else False
+    remaining = error.get('recovery_attempts_remaining', 1 if retryable else 0)
+    return _tool_failure(
+        category, str(error.get('code') or default_code), tool.name, message,
+        retryable=retryable, recovery_attempts_remaining=remaining,
+        details=_reported_failure_details(error, value),
+    )
 
 
 def _normalize_resource_key(key: Any):
@@ -166,7 +390,6 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self._output_files = []
         self._concurrency_spec = _get_tool_concurrency_spec(
             metadata_func or schema_func or apply_func or self.__class__.apply)
-
         self._params_schema = self._load_function_schema(schema_func or self.__class__.apply)
 
     @staticmethod
@@ -788,12 +1011,14 @@ def _load_tool_by_name(name: str) -> 'ModuleTool':
 
 class ToolManager(ModuleBase):
 
-    def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None):
+    def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None,
+                 enforce_visible_tools: bool = False):
         super().__init__(return_trace=return_trace)
         self._tools = [_build_tool_from_element(element) for element in tools]
         self._format_tools()
         self._tools_desc = self._transform_to_openai_function()
         self._sandbox = sandbox
+        self._enforce_visible_tools = enforce_visible_tools
 
     @property
     def all_tools(self) -> List[ModuleTool]:
@@ -806,9 +1031,15 @@ class ToolManager(ModuleBase):
         except Exception:
             workspace = {}
         active_groups = set(workspace.get('_active_groups', []))
-        return [x for item in self._tools_desc
-                for x in (item.get_description(active_groups=active_groups)
-                          if isinstance(item, ToolContainer) else item() if callable(item) else [item])]
+        descriptions = [x for item in self._tools_desc
+                        for x in (item.get_description(active_groups=active_groups)
+                                  if isinstance(item, ToolContainer) else item() if callable(item) else [item])]
+        if self._enforce_visible_tools and isinstance(workspace, dict):
+            workspace['_visible_tool_names'] = [
+                item.get('function', {}).get('name') for item in descriptions
+                if item.get('function', {}).get('name')
+            ]
+        return descriptions
 
     @property
     def tools_info(self):
@@ -856,13 +1087,33 @@ class ToolManager(ModuleBase):
         entry = self._tool_call.get(tool_name)
         if not entry:
             LOG.error(f'cannot find tool named [{tool_name}]')
-            return None
-        if len(entry.required_args.difference(set(tool_arguments.keys()))) != 0:
-            return None
+            return None, None
         try:
-            return entry._validate_input(tool_arguments)
-        except ValidationError:
-            return None
+            return entry._validate_input(tool_arguments), None
+        except ValidationError as error:
+            schema = entry.params_schema.model_json_schema()
+            violations = []
+            summaries = []
+            for item in error.errors(include_url=False, include_context=False, include_input=True):
+                path = tuple(item.get('loc') or ())
+                path_text = '.'.join(str(part) for part in path) or '$'
+                error_type = str(item.get('type') or 'validation_error')
+                violation = {
+                    'path': path_text,
+                    'type': _violation_type(error_type),
+                    'actual': 'missing' if error_type == 'missing' else _json_type(item.get('input')),
+                }
+                expected = _schema_expectation(_schema_at_path(schema, path))
+                if expected is not None:
+                    violation['expected'] = expected
+                violations.append(violation)
+                summaries.append(f'{path_text}: {item.get("msg") or "Invalid value"}')
+            message = 'Invalid arguments: ' + '; '.join(summaries)
+            return None, _tool_failure(
+                'INVALID_ARGS', 'SCHEMA_VALIDATION_FAILED', tool_name, message,
+                retryable=True, recovery_attempts_remaining=1,
+                details={'violations': violations},
+            )
 
     def _format_tools(self):
         if isinstance(self._tools, List):
@@ -939,42 +1190,91 @@ class ToolManager(ModuleBase):
     def _parse_tool_call(self, tc):
         func = tc.get('function') if isinstance(tc, dict) else None
         if not func or 'name' not in func or 'arguments' not in func:
-            return None, f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}', None
+            tool_name = str(func.get('name') or '') if isinstance(func, dict) else ''
+            failure = _tool_failure(
+                'INVALID_ARGS', 'TOOL_CALL_FORMAT_INVALID', tool_name,
+                f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}',
+                retryable=True, recovery_attempts_remaining=1,
+            )
+            return None, failure, None
         name = func['name']
         raw_args = func['arguments']
-        arguments = ToolManager._safe_parse_json(raw_args) if isinstance(raw_args, str) else raw_args
+        workspace = lazyllm_locals.get('_lazyllm_agent', {}).get('workspace', {})
+        visible_names = workspace.get('_visible_tool_names') if self._enforce_visible_tools else None
+        if self._enforce_visible_tools and visible_names is None:
+            visible_names = [item.get('function', {}).get('name') for item in self.tools_description]
+        if not self._enforce_visible_tools:
+            visible_names = list(self._tool_call)
+        visible_names = [item for item in visible_names if item]
+        if name not in visible_names:
+            suggested_tool, distance = _closest_tool_name(name, visible_names)
+            details = {'suggested_tool': suggested_tool}
+            if distance is not None:
+                details['edit_distance'] = distance
+            message = f'Tool [{name}] was not exposed in this turn.'
+            if suggested_tool:
+                message += f' Did you mean [{suggested_tool}]? Call it explicitly.'
+            failure = _tool_failure(
+                'UNKNOWN_TOOL', 'TOOL_NOT_EXPOSED', name, message,
+                retryable=True, recovery_attempts_remaining=1, details=details,
+            )
+            lazyllm.LOG.warning(
+                f'[ToolManager] tool {name!r} was not exposed. Visible: {visible_names}'
+            )
+            return None, failure, None
+        try:
+            arguments = ToolManager._safe_parse_json(raw_args) if isinstance(raw_args, str) else raw_args
+        except (TypeError, ValueError):
+            failure = _tool_failure(
+                'INVALID_ARGS', 'ARGUMENTS_JSON_INVALID', name,
+                'Invalid arguments: arguments must be valid JSON.',
+                retryable=True, recovery_attempts_remaining=1,
+                details={'violations': [{
+                    'path': '$', 'type': 'format_error',
+                    'expected': 'object', 'actual': 'invalid_json',
+                }]},
+            )
+            return None, failure, None
         if not isinstance(arguments, dict):
-            return None, f'Tool [{name}] arguments format error.', None
+            failure = _tool_failure(
+                'INVALID_ARGS', 'ARGUMENTS_NOT_OBJECT', name,
+                f'Invalid arguments: Tool [{name}] arguments must be a JSON object.',
+                retryable=True, recovery_attempts_remaining=1,
+                details={'violations': [{
+                    'path': '$', 'type': 'type_error',
+                    'expected': 'object', 'actual': _json_type(arguments),
+                }]},
+            )
+            return None, failure, None
         tool = self._tool_call.get(name)
         if tool is None:
-            lazyllm.LOG.warning(
-                f'[ToolManager] tool {name!r} not found. '
-                f'Available: {list(self._tool_call.keys())}'
+            failure = _tool_failure(
+                'UNKNOWN_TOOL', 'TOOL_NOT_REGISTERED', name,
+                f'Tool [{name}] is no longer registered.',
             )
-            return None, f'Tool [{name}] is not available. Please choose from the available tools.', None
-        validated_arguments = self._validate_tool(name, arguments)
+            return None, failure, None
+        validated_arguments, validation_failure = self._validate_tool(name, arguments)
         if validated_arguments is None:
-            return None, f'Tool [{name}] parameters error.', None
+            return None, validation_failure, None
         return tool, arguments, validated_arguments
 
     @staticmethod
     def _call_tool(tool, arguments):
         try:
-            return {'ok': True, 'value': tool(arguments)}
+            value = tool(arguments)
+            if failure := _reported_failure(tool, value):
+                return failure
+            return {'ok': True, 'value': value}
         except Exception as error:
             lazyllm.LOG.warning(
                 f'[ToolCall] tool={tool.name!r} raised: {type(error).__name__}: {error}')
-            return {
-                'ok': False,
-                'value': None,
-                'msg': f'[Tool Error] {type(error).__name__}: {error}',
-            }
+            return _exception_failure(tool, error)
 
     def _build_tool_invocation(self, tool_call):
         tool, arguments, validated_arguments = self._parse_tool_call(tool_call)
         if tool is None:
             return (
-                lambda *_, _e=arguments: {'ok': False, 'value': None, 'msg': _e},
+                lambda *_, _failure=arguments: _failure,
                 {},
                 _ConcurrencyAccess(),
             )

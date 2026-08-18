@@ -35,8 +35,19 @@ def _unwrap_tool_result(result: Any) -> Any:
     if isinstance(result, dict) and 'ok' in result:
         if result['ok']:
             return result.get('value', '')
+        if isinstance(result.get('error'), dict):
+            return {'ok': False, 'error': result['error']}
         return str(result.get('msg', repr(result)))
     return result
+
+
+def _stringify_tool_result(result: Any) -> str:
+    if isinstance(result, dict) and result.get('ok') is False and isinstance(result.get('error'), dict):
+        return json.dumps({'ok': False, 'error': result['error']}, ensure_ascii=False, default=str)
+    value = _unwrap_tool_result(result)
+    return str(value)
+
+
 class LazyLLMAgentBase(ModuleBase):
     def __init__(self, llm=None, tools: Optional[List[Union[str, Callable, Dict]]] = None,
                  max_retries: int = 5, return_trace: bool = False,
@@ -78,7 +89,10 @@ class LazyLLMAgentBase(ModuleBase):
                 dir=skills_dir, skills=self._skills, fs=fs, sandbox=self._sandbox,
             )
             self._ensure_default_skill_tools()
-        self._tools_manager = ToolManager(self._tools, return_trace=return_trace, sandbox=self._sandbox)
+        self._tools_manager = ToolManager(
+            self._tools, return_trace=return_trace, sandbox=self._sandbox,
+            enforce_visible_tools=True,
+        )
         for tool in self._tools_manager.all_tools:
             if tool.name in self._skill_tool_names:
                 tool.execute_in_sandbox = False

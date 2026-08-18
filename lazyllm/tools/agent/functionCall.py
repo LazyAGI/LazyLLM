@@ -3,7 +3,7 @@ from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import LOG, globals as lazyllm_globals, pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable, Optional
-from .base import LazyLLMAgentBase, _write_agent_data, _unwrap_tool_result
+from .base import LazyLLMAgentBase, _write_agent_data, _stringify_tool_result, _unwrap_tool_result
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
@@ -20,6 +20,18 @@ which can be called zero or multiple times according to your needs.
 Don\'t make assumptions about what values to plug into functions.
 Ask for clarification if a user request is ambiguous.\n
 '''
+
+
+def _normalize_tool_call_arguments(tool_calls):
+    for tool_call in tool_calls if isinstance(tool_calls, list) else [tool_calls]:
+        function = tool_call.get('function') if isinstance(tool_call, dict) else None
+        if not isinstance(function, dict):
+            continue
+        arguments = function.get('arguments')
+        if arguments is None or (isinstance(arguments, str) and not arguments.strip()):
+            function['arguments'] = '{}'
+        elif isinstance(arguments, dict):
+            function['arguments'] = json.dumps(arguments, ensure_ascii=False)
 
 
 class StreamResponse():
@@ -77,7 +89,10 @@ class FunctionCall(ModuleBase):
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
             self._sandbox = sandbox or create_sandbox()
-            self._tools_manager = ToolManager(tools, return_trace=return_trace, sandbox=self._sandbox)
+            self._tools_manager = ToolManager(
+                tools, return_trace=return_trace, sandbox=self._sandbox,
+                enforce_visible_tools=True,
+            )
         else:
             self._tools_manager = _tool_manager
             self._sandbox = _tool_manager.sandbox
@@ -141,7 +156,7 @@ class FunctionCall(ModuleBase):
             tool_call_results = [
                 {
                     'role': 'tool',
-                    'content': str(_unwrap_tool_result(tool_call['tool_call_result'])),
+                    'content': _stringify_tool_result(tool_call['tool_call_result']),
                     'tool_call_id': tool_call['id'],
                     'name': tool_call['function']['name'],
                 } for tool_call in workspace['tool_call_trace']
@@ -175,6 +190,7 @@ class FunctionCall(ModuleBase):
                 except Exception: pass
         if tool_calls := llm_output.get('tool_calls'):
             if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
+            _normalize_tool_call_arguments(tool_calls)
             if self._stream:
                 _write_agent_data('tool_calls', tool_calls=tool_calls)
             tool_calls_results = self._tools_manager(tool_calls)

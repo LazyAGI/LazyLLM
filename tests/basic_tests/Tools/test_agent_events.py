@@ -435,6 +435,37 @@ class TestReactAgentEvents(object):
             '[Internal runtime notice] Internal ReAct rounds left: 2.'
         )
 
+    def test_react_agent_exposes_structured_tool_failure_to_next_round(self):
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'Let me calculate.',
+                'tool_calls': [{
+                    'id': 'call-invalid',
+                    'type': 'function',
+                    'function': {'name': 'add_one'},
+                }],
+            },
+            {'role': 'assistant', 'content': 'I corrected the plan.'},
+        ])
+        agent = ReactAgent(
+            llm=llm,
+            tools=[add_one],
+            max_retries=3,
+            stream=True,
+            enable_builtin_tools=False,
+        )
+
+        assert agent('calculate') == 'I corrected the plan.'
+        events = _read_agent_events()
+        result_event = next(event for event in events if event.tag == 'tool_results')
+        error = result_event.tool_results[0]['result']['error']
+        assert error['category'] == 'INVALID_ARGS'
+        assert error['details']['violations'][0]['path'] == 'value'
+        tool_message = llm.inputs[1]['input'][0]
+        visible_error = json.loads(tool_message['content'].split('\n\n', 1)[0])
+        assert visible_error == {'ok': False, 'error': error}
+
     def test_react_agent_stream_emits_text_reasoning_and_tool_events(self):
         llm = _FakeLLM([
             {
