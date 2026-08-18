@@ -109,7 +109,7 @@ Output semantics:
   counts/order. In particular, distinct paragraphs are separated by a blank line; do not
   collapse them into sentences in one paragraph even if replacement meta describes them.
 - Replacements are returned in application order and preserve unaffected Markdown exactly.
-- Preserve existing <a id="block-..."></a> anchors and [](#block-...) links exactly.
+- Preserve existing <a id="block-..."></a> anchors and internal links exactly.
   Do not rename or drop them unless the instruction explicitly targets that reference.
 - Image handling:
   - When an instruction creates an image, put exactly `![<caption>](media-placeholder://<need_id>)`
@@ -140,7 +140,7 @@ Return one StringReplace. Copy the selected block exactly into old_string and
 return the complete replacement paragraph in new_string. Set content_ref to
 document_root=true.
 Preserve unaffected inline formatting.
-Preserve existing [](#block-...) links and any inline formatting inside the selected block.
+Preserve existing internal links and any inline formatting inside the selected block.
 Do not return surrounding document content or explanations.
 
 Instruction:
@@ -172,12 +172,11 @@ Output semantics:
   resolved media_asset reference after generation.
 - Preserve existing internal_ref spans in updated text blocks. Do not invent new
   target_node_id values; to reference an existing heading or image block, copy its exact
-  node_id from the visible document into an internal_ref span with empty text. The system
-  renders the reference and assigns created targets.
-- A paragraph that references an existing block uses one empty internal_ref span between
-  its text spans. content equals the concatenation of the text spans; an internal_ref
-  span keeps text empty, so do not include the target title in content. The system inserts
-  the rendered reference. Example: spans=[{{"text":"详见"}},{{"text":"","style":{{"link":{{"type":"internal_ref","target_node_id":"sec-related"}}}}}},{{"text":"中的定义。"}}] with content="详见中的定义。" renders as "详见第2章中的定义。".
+  node_id from the visible document into a non-empty internal_ref span containing the
+  natural words that carry the link.
+- content equals the concatenation of all span text. Example:
+  spans=[{{"text":"详见"}},{{"text":"架构设计","style":{{"link":{{"type":"internal_ref","target_node_id":"sec-related"}}}}}},{{"text":"中的定义。"}}]
+  with content="详见架构设计中的定义。".
 
 Visible document:
 {document_json}

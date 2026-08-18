@@ -18,9 +18,7 @@ from ..numbering import (
     build_numbering_view_from_ir,
     compute_numbering,
     format_target_number,
-    format_reference,
     materialize_ir,
-    materialize_feishu_links,
 )
 from ..prompts.profile_resources import RESOURCE_PROFILE_PROMPT
 from ..tools.revision_tools import apply_patch_to_ir
@@ -349,7 +347,6 @@ class WriterResourceTools(WriterToolBase):
         target = self._unified_optional_model(target_document, TargetDocument) or TargetDocument()
         protocol, real_path, fs, adapter, locator, document_id = \
             self._resolve_document_target(target, source_document=source)
-        source_numbering = compute_numbering(build_numbering_view_from_ir(source))
         revised_document, _ = apply_patch_to_ir(source, patch, media_assets=media_library)
         final_numbering = compute_numbering(build_numbering_view_from_ir(revised_document))
         block_id_by_node_id = {
@@ -521,16 +518,10 @@ class WriterResourceTools(WriterToolBase):
                 target_id = link.get('target_node_id')
                 target_block_id = block_id_by_node_id.get(target_id)
                 if not target_block_id:
-                    span.text = ''
                     continue
                 span.style['link'] = {
                     'url': f'https://feishu.cn/docx/{document_id}#{target_block_id}',
                 }
-                entry = numbering.get(target_id)
-                if entry is not None:
-                    span.text = format_reference(entry)
-            if item.spans:
-                item.content = ''.join(span.text for span in item.spans)
         return hunk
 
     @staticmethod

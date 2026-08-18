@@ -429,8 +429,11 @@ def _markdown_spans_from_token(token: Dict[str, Any]) -> List[WriterSpan]:
                 target = url[1:]
                 if target.startswith('block-'):
                     target = target[len('block-'):]
+                label = ''.join(
+                    _markdown_token_text(child) for child in node.get('children') or []
+                )
                 spans.append(WriterSpan(
-                    text='',
+                    text=label,
                     style={'link': {'type': 'internal_ref', 'target_node_id': target}},
                 ))
                 return

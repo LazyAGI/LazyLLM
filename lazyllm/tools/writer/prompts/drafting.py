@@ -34,17 +34,16 @@ Requirements:
   paths, URLs, tokens, placeholders, or image blocks for unresolved needs.
   The image block node_id is both the visual need_id and cross-reference target; its
   media_asset id is separate and must be copied from section_media.
-- Omit spans, provider_binding and provider_payload; the system manages them.
+- Omit provider_binding and provider_payload; the system manages them.
 - Use section_instruction.meta.cross_references as the authoritative cross-reference plan.
   For each item, the normalized "target" is the exact node_id to use.
   If must_create=true, create one child WriterBlock with type="image",
   node_id=target, and content=caption.
-  To reference a target, add an internal_ref span with target_node_id=target and text="".
-  Use the item's guidance to place that span inside a complete natural sentence.
-  Example: {{"text":"","style":{{"link":{{"type":"internal_ref","target_node_id":"sec-2"}}}}}}.
+  To reference a target, use a non-empty internal_ref span for the natural words that
+  carry the link, with target_node_id=target. All spans together must contain the complete sentence.
+  Example: {{"text":"架构设计","style":{{"link":{{"type":"internal_ref","target_node_id":"sec-2"}}}}}}.
   A required image item produces both its image child block and one internal_ref span in prose.
   Include each required target exactly once, and use no references beyond this plan.
-  Leave internal reference display text empty; the system renders it.
   Do not use target_node_id values outside section_instruction.meta.cross_reference_targets.
 - Emit WriterBlock fields in schema order. In particular, emit numbering and references before content.
 
@@ -89,8 +88,8 @@ Requirements:
   subheadings only when they help the requested content.
 - Use section_instruction.meta.cross_references as the authoritative cross-reference plan.
   Each item's "target" is the exact system key; an image target equals its visual need_id.
-  For a required target, use its guidance to emit exactly [](#block-<target>) once
-  inside a complete natural sentence.
+  For a required target, use its guidance to link natural, non-empty wording as
+  [reference wording](#block-<target>) exactly once inside a complete sentence.
   Do not use target keys outside section_instruction.meta.cross_reference_targets.
 - Return substantial finished prose, not a summary, placeholder, or planning notes.
 - The system places planned images after the prose link. Do not output image markup.

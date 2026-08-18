@@ -228,12 +228,6 @@ def format_target_number(entry: NumberingEntry) -> str:
     return f'{_LABEL_BY_KIND[entry.kind]}{entry.number_parts[0]}'
 
 
-def format_reference(entry: NumberingEntry) -> str:
-    if entry.kind == 'section':
-        return f'第{".".join(str(part) for part in entry.number_parts)}章'
-    return format_target_number(entry)
-
-
 def materialize_ir(document: WriterDocument, numbering: NumberingMap) -> WriterDocument:
     result = document.model_copy(deep=True)
     for block in _iter_blocks(result.blocks):
@@ -243,14 +237,6 @@ def materialize_ir(document: WriterDocument, numbering: NumberingMap) -> WriterD
             block.content = f'{prefix} {block.content}'.strip()
             if block.spans and block.spans[0].text:
                 block.spans[0].text = f'{prefix} {block.spans[0].text}'.strip()
-        for span in block.spans:
-            link = span.style.get('link')
-            if (
-                isinstance(link, dict)
-                and link.get('type') == 'internal_ref'
-                and link.get('target_node_id') in numbering
-            ):
-                span.text = format_reference(numbering[link['target_node_id']])
         if block.spans:
             block.content = ''.join(span.text for span in block.spans)
     return result
@@ -261,7 +247,6 @@ def materialize_feishu_links(
     document_token: str,
     host: str = 'feishu.cn',
 ) -> WriterDocument:
-    numbering = compute_numbering(build_numbering_view_from_ir(document))
     block_id_by_node_id = {
         block.node_id: block.provider_binding.get('block_id')
         for block in _iter_blocks(document.blocks)
@@ -275,7 +260,6 @@ def materialize_feishu_links(
             target_id = link.get('target_node_id')
             target_block_id = block_id_by_node_id.get(target_id)
             if not target_block_id:
-                span.text = format_reference(numbering[target_id]) if target_id in numbering else span.text
                 span.style['link'] = {
                     'url': f'https://{host}/docx/{document_token}#{target_id}',
                 }
@@ -283,10 +267,6 @@ def materialize_feishu_links(
             span.style['link'] = {
                 'url': f'https://{host}/docx/{document_token}#{target_block_id}',
             }
-            if target_id in numbering:
-                span.text = format_reference(numbering[target_id])
-        if block.spans:
-            block.content = ''.join(span.text for span in block.spans)
     return result
 
 
@@ -298,12 +278,6 @@ def materialize_markdown(markdown: str) -> str:
     output: list[str] = []
     fence: str | None = None
     lines = markdown.splitlines()
-
-    def replace_link(match: re.Match[str]) -> str:
-        entry = numbering.get(decode_anchor_id(match.group(2)))
-        if entry is None:
-            return match.group(0)
-        return f'[{format_reference(entry)}](#{match.group(2)})'
 
     for index, line in enumerate(lines):
         fence_match = _CODE_FENCE_RE.match(line)
@@ -358,7 +332,6 @@ def materialize_markdown(markdown: str) -> str:
                     last = image.end()
                 pieces.append(line[last:])
                 line = ''.join(pieces)
-        line = _INTERNAL_LINK_RE.sub(replace_link, line)
         output.append(line)
     return '\n'.join(output)
 
@@ -376,10 +349,6 @@ def dematerialize_ir(
                 block.content = block.content[len(prefix):]
             if block.spans and block.spans[0].text.startswith(prefix):
                 block.spans[0].text = block.spans[0].text[len(prefix):]
-        for span in block.spans:
-            link = span.style.get('link')
-            if isinstance(link, dict) and link.get('type') == 'internal_ref':
-                span.text = ''
         if block.spans:
             block.content = ''.join(span.text for span in block.spans)
     return result
@@ -456,7 +425,6 @@ def dematerialize_markdown(markdown: str, base_numbering: NumberingMap | None = 
                     last = image.end()
                 pieces.append(line[last:])
                 line = ''.join(pieces)
-        line = _INTERNAL_LINK_RE.sub(r'[](#\2)', line)
         output.append(line)
     return '\n'.join(output)
 
@@ -475,7 +443,6 @@ __all__ = [
     'dematerialize_markdown',
     'dematerialize_ir',
     'encode_anchor_id',
-    'format_reference',
     'format_target_number',
     'materialize_markdown',
     'materialize_feishu_links',

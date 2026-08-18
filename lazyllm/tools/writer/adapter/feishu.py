@@ -16,7 +16,6 @@ from ..data_models.writer_ir import (
     WriterSpan,
     WriterStage,
 )
-from ..numbering import build_numbering_view_from_ir, compute_numbering, format_reference
 from .base import NativeBlock, NativePatchOperation, WriterAdapterBase
 
 
@@ -141,7 +140,6 @@ class FeishuWriterAdapter(WriterAdapterBase):
     @staticmethod
     def _restore_internal_references(writer_by_id: Dict[str, WriterBlock]) -> None:
         for block in writer_by_id.values():
-            changed = False
             for span in block.spans:
                 link = span.style.get('link')
                 if not isinstance(link, dict):
@@ -151,14 +149,10 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 target = writer_by_id.get(block_id)
                 if target is None:
                     continue
-                span.text = ''
                 span.style['link'] = {
                     'type': 'internal_ref',
                     'target_node_id': target.node_id,
                 }
-                changed = True
-            if changed and block.spans:
-                block.content = ''.join(span.text for span in block.spans)
 
     @staticmethod
     def _index_raw_blocks(
@@ -207,21 +201,17 @@ class FeishuWriterAdapter(WriterAdapterBase):
             output_ids[block.node_id] = output_id
             used_output_ids.add(output_id)
 
-        numbering = compute_numbering(build_numbering_view_from_ir(document))
         external_document_id = document.provider_binding.get('document_id') or ''
 
-        def resolve_internal_ref(span: WriterSpan) -> tuple[str, str] | None:
+        def resolve_internal_ref(span: WriterSpan) -> str | None:
             link = span.style.get('link')
             if not isinstance(link, dict) or link.get('type') != 'internal_ref':
                 return None
             target_id = link.get('target_node_id')
             target_block_id = output_ids.get(target_id) if isinstance(target_id, str) else None
             if not target_block_id:
-                return '', ''
-            entry = numbering.get(target_id)
-            text = format_reference(entry) if entry is not None else ''
-            url = f'https://feishu.cn/docx/{external_document_id}#{target_block_id}'
-            return text, url
+                return None
+            return f'https://feishu.cn/docx/{external_document_id}#{target_block_id}'
 
         output: List[NativeBlock] = []
         for block, parent in flat_blocks:
@@ -854,19 +844,14 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 if field in span.style
             })
             link = span.style.get('link')
-            span_text = span.text
             link_url: Optional[str] = None
             if isinstance(link, dict) and isinstance(link.get('url'), str):
                 link_url = link['url']
             elif internal_ref_resolver is not None:
-                resolved = internal_ref_resolver(span)
-                if resolved is not None:
-                    text, url = resolved
-                    span_text = text if text else span.text
-                    link_url = url or None
+                link_url = internal_ref_resolver(span)
             if link_url:
                 raw_style['link'] = {'url': link_url}
-            text_run: Dict[str, Any] = {'content': span_text}
+            text_run: Dict[str, Any] = {'content': span.text}
             if raw_style:
                 text_run['text_element_style'] = raw_style
             elements.append({'text_run': text_run})

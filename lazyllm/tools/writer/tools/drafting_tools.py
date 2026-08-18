@@ -845,10 +845,7 @@ class WriterDraftingTools(WriterToolBase):
                 target = link.get('target_node_id')
                 if target not in allowed_targets:
                     raise ValueError(f'Unplanned IR cross-reference {target!r}.')
-                span.text = ''
                 found_targets.add(str(target))
-            if block.spans:
-                block.content = ''.join(span.text for span in block.spans)
 
         missing = [
             str(item.get('target')) for item in references
@@ -917,7 +914,7 @@ class WriterDraftingTools(WriterToolBase):
                     raise ValueError(f'Unplanned Markdown cross-reference {target!r}.')
                 found_targets.add(target)
                 reference_lines.setdefault(target, len(output))
-                return f'[](#block-{target})'
+                return f'[{match.group(1)}](#block-{target})'
 
             line = cls._MARKDOWN_INTERNAL_LINK_RE.sub(replace_link, line)
             output.append(line)

@@ -269,7 +269,7 @@ Requirements:
 - Visual plan needs own created images. Do not add must_create image objects; the system adds them.
    To reference a planned image in this or another section, use
    target_ref: {{"node_id": "<that visual need_id>"}} with must_create=false and kind="image".
-- Describe references naturally; the system renders their numbers.
+- Use guidance to describe what natural wording should carry each reference link.
 - Do not invent facts that conflict with writing context.
 
 Writing task:

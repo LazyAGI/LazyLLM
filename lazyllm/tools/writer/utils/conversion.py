@@ -101,15 +101,13 @@ def _inline_content(
         if token_type == 'link':
             url = str((token.get('attrs') or {}).get('url') or '')
             if url.startswith('#block-'):
-                output.spans.append(WriterSpan(
-                    text='',
-                    style={
-                        'link': {
-                            'type': 'internal_ref',
-                            'target_node_id': url.removeprefix('#block-'),
-                        },
+                _inline_content(children, {
+                    **inherited,
+                    'link': {
+                        'type': 'internal_ref',
+                        'target_node_id': url.removeprefix('#block-'),
                     },
-                ))
+                }, output)
                 continue
             start = len(output.content)
             _inline_content(children, inherited, output)
