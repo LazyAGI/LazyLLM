@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Dict, Mapping, Optional
 
@@ -6,70 +6,41 @@ from .model_outcome import ModelFailureCode
 
 
 @dataclass(frozen=True)
-class ProviderErrorMapping:
-    code_map: Mapping[str, ModelFailureCode]
-    type_map: Mapping[str, ModelFailureCode]
-    http_map: Mapping[int, ModelFailureCode]
+class ProviderErrorProfile:
+    code_map: Mapping[str, ModelFailureCode] = field(default_factory=dict)
+    type_map: Mapping[str, ModelFailureCode] = field(default_factory=dict)
+    http_map: Mapping[int, ModelFailureCode] = field(default_factory=dict)
+
+    def __post_init__(self):
+        object.__setattr__(self, 'code_map', MappingProxyType(self._normalized_string_map(self.code_map)))
+        object.__setattr__(self, 'type_map', MappingProxyType(self._normalized_string_map(self.type_map)))
+        object.__setattr__(self, 'http_map', MappingProxyType(dict(self.http_map)))
+
+    @staticmethod
+    def _normalized_string_map(mapping: Optional[Mapping[str, ModelFailureCode]]) -> Dict[str, ModelFailureCode]:
+        return {str(key).lower(): value for key, value in (mapping or {}).items()}
+
+    def extend(
+        self,
+        *,
+        code_map: Optional[Mapping[str, ModelFailureCode]] = None,
+        type_map: Optional[Mapping[str, ModelFailureCode]] = None,
+        http_map: Optional[Mapping[int, ModelFailureCode]] = None,
+    ) -> 'ProviderErrorProfile':
+        merged_code_map = dict(self.code_map)
+        merged_type_map = dict(self.type_map)
+        merged_http_map = dict(self.http_map)
+        merged_code_map.update(self._normalized_string_map(code_map))
+        merged_type_map.update(self._normalized_string_map(type_map))
+        merged_http_map.update(http_map or {})
+        return ProviderErrorProfile(
+            code_map=merged_code_map,
+            type_map=merged_type_map,
+            http_map=merged_http_map,
+        )
 
 
-_PROVIDER_ERROR_MAPPINGS: Dict[str, ProviderErrorMapping] = {}
-
-
-def _normalized_name(name: str) -> str:
-    normalized = name.strip().lower()
-    if not normalized:
-        raise ValueError('Provider error mapping name cannot be empty.')
-    return normalized
-
-
-def _normalized_string_map(mapping: Optional[Mapping[str, ModelFailureCode]]) -> Dict[str, ModelFailureCode]:
-    return {str(key).lower(): value for key, value in (mapping or {}).items()}
-
-
-def register_provider_error_mapping(
-    name: str,
-    *,
-    extends: Optional[str] = None,
-    code_map: Optional[Mapping[str, ModelFailureCode]] = None,
-    type_map: Optional[Mapping[str, ModelFailureCode]] = None,
-    http_map: Optional[Mapping[int, ModelFailureCode]] = None,
-) -> ProviderErrorMapping:
-    name = _normalized_name(name)
-    if name in _PROVIDER_ERROR_MAPPINGS:
-        raise ValueError(f'Provider error mapping {name!r} is already registered.')
-
-    if extends is None:
-        merged_code_map: Dict[str, ModelFailureCode] = {}
-        merged_type_map: Dict[str, ModelFailureCode] = {}
-        merged_http_map: Dict[int, ModelFailureCode] = {}
-    else:
-        parent = get_provider_error_mapping(extends)
-        merged_code_map = dict(parent.code_map)
-        merged_type_map = dict(parent.type_map)
-        merged_http_map = dict(parent.http_map)
-
-    merged_code_map.update(_normalized_string_map(code_map))
-    merged_type_map.update(_normalized_string_map(type_map))
-    merged_http_map.update(http_map or {})
-    mapping = ProviderErrorMapping(
-        code_map=MappingProxyType(merged_code_map),
-        type_map=MappingProxyType(merged_type_map),
-        http_map=MappingProxyType(merged_http_map),
-    )
-    _PROVIDER_ERROR_MAPPINGS[name] = mapping
-    return mapping
-
-
-def get_provider_error_mapping(name: str) -> ProviderErrorMapping:
-    normalized = _normalized_name(name)
-    try:
-        return _PROVIDER_ERROR_MAPPINGS[normalized]
-    except KeyError as exc:
-        raise KeyError(f'Provider error mapping {normalized!r} is not registered.') from exc
-
-
-register_provider_error_mapping(
-    'openai_compatible',
+OPENAI_COMPATIBLE_PROFILE = ProviderErrorProfile(
     http_map={
         400: ModelFailureCode.INVALID_REQUEST,
         401: ModelFailureCode.AUTHENTICATION_FAILED,
@@ -78,7 +49,7 @@ register_provider_error_mapping(
         408: ModelFailureCode.REQUEST_TIMEOUT,
         409: ModelFailureCode.CONFLICT,
         422: ModelFailureCode.UNPROCESSABLE_ENTITY,
-        429: ModelFailureCode.TOO_MANY_REQUESTS,
+        429: ModelFailureCode.RATE_LIMITED,
         500: ModelFailureCode.PROVIDER_INTERNAL_ERROR,
         502: ModelFailureCode.PROVIDER_INTERNAL_ERROR,
         503: ModelFailureCode.SERVICE_UNAVAILABLE,

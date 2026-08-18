@@ -16,6 +16,7 @@ from lazyllm.module.llms.onlinemodule.base.model_outcome import (
     ModelResponseError,
 )
 from lazyllm.module.llms.onlinemodule.base.onlineChatModuleBase import LazyLLMOnlineChatModuleBase
+from lazyllm.module.llms.onlinemodule.base.provider_error_mapping import OPENAI_COMPATIBLE_PROFILE
 from lazyllm.module.llms.onlinemodule.supplier.claude import ClaudeChat
 from lazyllm.module.llms.onlinemodule.supplier.deepseek import DeepSeekChat
 from lazyllm.module.llms.onlinemodule.supplier.glm import GLMChat
@@ -110,6 +111,15 @@ def test_malformed_json_is_protocol_failure(monkeypatch):
             proxies=None, request_timeout=1, state=ModelAttemptState(),
         )
     assert exc_info.value.failure.code is ModelFailureCode.PROTOCOL_ERROR
+
+
+def test_response_frame_and_json_payload_have_distinct_boundaries():
+    module = _module()
+    payload = json.dumps({'choices': []})
+
+    assert module._parse_response_frame(f'data: {payload}', False) == {'choices': []}
+    with pytest.raises(ModelResponseError, match='invalid JSON frame'):
+        module._parse_json_payload(f'data: {payload}', False)
 
 
 @pytest.mark.parametrize('late_frame', [
@@ -374,7 +384,7 @@ def test_http_failure_is_not_retried(monkeypatch):
     assert calls == 1
     assert [event[0] for event in events] == ['model_call_finished']
     assert events[0][1]['failure']['origin'] == 'http'
-    assert events[0][1]['failure']['code'] == 'too_many_requests'
+    assert events[0][1]['failure']['code'] == 'rate_limited'
     assert 'provider_http_status' not in events[0][1]['failure']
     assert 'retry_after_ms' not in events[0][1]['failure']
     assert 'provider_error_code' not in events[0][1]['failure']
@@ -393,7 +403,7 @@ def test_http_status_survives_error_body_transport_failure():
         module._raise_for_http_error(response)
 
     assert exc_info.value.failure.provider_http_status == 429
-    assert exc_info.value.failure.code is ModelFailureCode.TOO_MANY_REQUESTS
+    assert exc_info.value.failure.code is ModelFailureCode.RATE_LIMITED
 
 
 def test_retry_after_accepts_http_date_and_rejects_invalid_value(monkeypatch):
@@ -413,7 +423,7 @@ def test_retry_after_accepts_http_date_and_rejects_invalid_value(monkeypatch):
     (LazyLLMOnlineChatModuleBase, 404, '{"error":{}}', ModelFailureCode.NOT_FOUND),
     (LazyLLMOnlineChatModuleBase, 409, '{"error":{}}', ModelFailureCode.CONFLICT),
     (LazyLLMOnlineChatModuleBase, 422, '{"error":{}}', ModelFailureCode.UNPROCESSABLE_ENTITY),
-    (LazyLLMOnlineChatModuleBase, 429, '{"error":{}}', ModelFailureCode.TOO_MANY_REQUESTS),
+    (LazyLLMOnlineChatModuleBase, 429, '{"error":{}}', ModelFailureCode.RATE_LIMITED),
     (LazyLLMOnlineChatModuleBase, 500, '{"error":{}}', ModelFailureCode.PROVIDER_INTERNAL_ERROR),
     (LazyLLMOnlineChatModuleBase, 503, '{"error":{}}', ModelFailureCode.SERVICE_UNAVAILABLE),
     (LazyLLMOnlineChatModuleBase, 402, '{"error":{}}', ModelFailureCode.PROVIDER_REJECTED),
@@ -455,7 +465,7 @@ def test_deepseek_http_402_is_balance_exhausted(monkeypatch):
     ('credit_balance_exhausted', ModelFailureCode.BALANCE_EXHAUSTED),
     ('organization_spend_limit_exceeded', ModelFailureCode.ORGANIZATION_SPEND_LIMIT_EXCEEDED),
     ('project_spend_limit_exceeded', ModelFailureCode.PROJECT_SPEND_LIMIT_EXCEEDED),
-    ('organization_usage_limit_exceeded', ModelFailureCode.ORGANIZATION_USAGE_LIMIT_EXCEEDED),
+    ('organization_usage_limit_exceeded', ModelFailureCode.USAGE_LIMIT_EXCEEDED),
 ])
 def test_openai_billing_codes_preserve_specific_reason(monkeypatch, provider_code, expected):
     module = _module(OpenAIChat)
@@ -491,7 +501,7 @@ def test_openai_insufficient_quota_type_is_generic_fallback(monkeypatch):
 
 @pytest.mark.parametrize(('status', 'body', 'expected'), [
     (429, '{"error":{"code":"rate_limit_exceeded","type":"rate_limit_error"}}',
-     ModelFailureCode.TOO_MANY_REQUESTS),
+     ModelFailureCode.RATE_LIMITED),
     (401, '{"error":{"code":"invalid_api_key"}}', ModelFailureCode.AUTHENTICATION_FAILED),
     (400, '{"error":{"code":"content_policy_violation"}}', ModelFailureCode.INVALID_REQUEST),
 ])
@@ -511,7 +521,7 @@ def test_openai_undocumented_error_aliases_do_not_override_http(monkeypatch, sta
 def test_failure_public_dict_excludes_provider_diagnostics():
     failure = ModelFailure(
         origin=ModelFailureOrigin.HTTP,
-        code=ModelFailureCode.TOO_MANY_REQUESTS,
+        code=ModelFailureCode.RATE_LIMITED,
         provider_error_code='private-code',
         provider_error_type='private-type',
         provider_http_status=429,
@@ -522,7 +532,7 @@ def test_failure_public_dict_excludes_provider_diagnostics():
 
     assert failure.public_dict() == {
         'origin': 'http',
-        'code': 'too_many_requests',
+        'code': 'rate_limited',
         'has_semantic_output': False,
         'diagnostic_id': 'diag-safe',
     }
@@ -532,7 +542,7 @@ def test_minimax_http_200_base_resp_is_provider_failure():
     module = _module(MinimaxChat)
 
     with pytest.raises(ModelResponseError) as exc_info:
-        module._str_to_json(json.dumps({
+        module._parse_json_payload(json.dumps({
             'base_resp': {'status_code': 2056, 'status_msg': 'must stay private'},
         }), stream_output=False)
 
@@ -571,7 +581,7 @@ def test_siliconflow_top_level_model_not_found_uses_provider_mapping():
     module = _module(SiliconFlowChat)
 
     with pytest.raises(ModelResponseError) as exc_info:
-        module._str_to_json(json.dumps({
+        module._parse_json_payload(json.dumps({
             'code': 20012,
             'message': 'must stay private',
             'data': None,
@@ -584,12 +594,8 @@ def test_siliconflow_top_level_model_not_found_uses_provider_mapping():
     assert 'message' not in failure.public_dict()
 
 
-@pytest.mark.parametrize(('module_cls', 'expected'), [
-    (LazyLLMOnlineChatModuleBase, ModelFailureCode.TOO_MANY_REQUESTS),
-    (QwenChat, ModelFailureCode.RATE_LIMITED),
-])
-def test_provider_profiles_isolate_bare_http_429(monkeypatch, module_cls, expected):
-    module = _module(module_cls)
+def test_bare_http_429_is_generic_rate_limit(monkeypatch):
+    module = _module()
     monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(
         status_code=429,
         body='{"error":{}}',
@@ -601,7 +607,48 @@ def test_provider_profiles_isolate_bare_http_429(monkeypatch, module_cls, expect
             proxies=None, request_timeout=1, state=ModelAttemptState(),
         )
 
-    assert exc_info.value.failure.code is expected
+    assert exc_info.value.failure.code is ModelFailureCode.RATE_LIMITED
+
+
+@pytest.mark.parametrize(('provider_code', 'expected'), [
+    ('Throttling.RateQuota', ModelFailureCode.RATE_LIMITED),
+    ('Throttling.BurstRate', ModelFailureCode.RATE_LIMITED),
+    ('Throttling.Concurrency', ModelFailureCode.CONCURRENCY_LIMITED),
+])
+def test_qwen_throttling_codes_preserve_normalized_semantics(provider_code, expected):
+    failure = _module(QwenChat)._response_error(
+        'Provider rejected request.',
+        ModelFailureOrigin.PROVIDER,
+        provider_error_code=provider_code,
+    ).failure
+
+    assert failure.code is expected
+
+
+def test_provider_profiles_are_immutable_and_isolated():
+    child = OPENAI_COMPATIBLE_PROFILE.extend(
+        code_map={'MixedCase': ModelFailureCode.CONCURRENCY_LIMITED},
+        http_map={429: ModelFailureCode.CONCURRENCY_LIMITED},
+    )
+
+    assert child.code_map['mixedcase'] is ModelFailureCode.CONCURRENCY_LIMITED
+    assert child.http_map[429] is ModelFailureCode.CONCURRENCY_LIMITED
+    assert 'mixedcase' not in OPENAI_COMPATIBLE_PROFILE.code_map
+    assert OPENAI_COMPATIBLE_PROFILE.http_map[429] is ModelFailureCode.RATE_LIMITED
+    with pytest.raises(TypeError):
+        child.code_map['another'] = ModelFailureCode.RATE_LIMITED
+
+
+def test_provider_profile_declaration_is_reentrant():
+    first = LazyLLMOnlineChatModuleBase.ERROR_PROFILE.extend(
+        http_map={402: ModelFailureCode.BALANCE_EXHAUSTED},
+    )
+    second = LazyLLMOnlineChatModuleBase.ERROR_PROFILE.extend(
+        http_map={402: ModelFailureCode.BALANCE_EXHAUSTED},
+    )
+
+    assert first == second
+    assert first is not second
 
 
 def test_minimax_stream_business_error_preserves_partial_output(monkeypatch):

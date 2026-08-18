@@ -2,13 +2,9 @@ from urllib.parse import urljoin
 import requests
 from typing import Optional
 from ..base import ModelFailureCode, OnlineChatModuleBase
-from ..base.provider_error_mapping import register_provider_error_mapping
-
-
-register_provider_error_mapping(
-    'kimi',
-    extends='openai_compatible',
-    type_map={
+class KimiChat(OnlineChatModuleBase):
+    PROVIDER_NAME = 'kimi'
+    ERROR_PROFILE = OnlineChatModuleBase.ERROR_PROFILE.extend(type_map={
         'content_filter': ModelFailureCode.INPUT_FILTERED,
         'invalid_request_error': ModelFailureCode.INVALID_REQUEST,
         'invalid_authentication_error': ModelFailureCode.AUTHENTICATION_FAILED,
@@ -21,12 +17,7 @@ register_provider_error_mapping(
         'server_error': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
         'unexpected_output': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
         'server_unavailable': ModelFailureCode.SERVICE_UNAVAILABLE,
-    },
-)
-
-
-class KimiChat(OnlineChatModuleBase):
-    _PROVIDER_SOURCE = 'kimi'
+    })
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):

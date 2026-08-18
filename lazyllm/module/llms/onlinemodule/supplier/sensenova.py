@@ -17,7 +17,6 @@ from ..base import (
     LazyLLMOnlineEmbedModuleBase,
     LazyLLMOnlineText2ImageModuleBase,
 )
-from ..base.provider_error_mapping import register_provider_error_mapping
 from ..fileHandler import FileHandlerBase
 from ..base.utils import check_and_add_config, LAZY_API_KEY_TOKENS
 
@@ -25,35 +24,32 @@ from ..base.utils import check_and_add_config, LAZY_API_KEY_TOKENS
 check_and_add_config(key='sensenova_secret_key', description='The secret key for SenseNova.', cfg=lazyllm.globals.config)
 
 
-register_provider_error_mapping(
-    'sensenova',
-    extends='openai_compatible',
-    code_map={
-        '1': ModelFailureCode.REQUEST_TIMEOUT,
-        '2': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
-        '3': ModelFailureCode.INVALID_REQUEST,
-        '4': ModelFailureCode.REQUEST_TIMEOUT,
-        '5': ModelFailureCode.NOT_FOUND,
-        '6': ModelFailureCode.CONFLICT,
-        '7': ModelFailureCode.PERMISSION_DENIED,
-        '8': ModelFailureCode.RATE_LIMITED,
-        '9': ModelFailureCode.INVALID_REQUEST,
-        '10': ModelFailureCode.CONFLICT,
-        '11': ModelFailureCode.INVALID_REQUEST,
-        '12': ModelFailureCode.PROVIDER_REJECTED,
-        '13': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
-        '14': ModelFailureCode.SERVICE_UNAVAILABLE,
-        '15': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
-        '16': ModelFailureCode.AUTHENTICATION_FAILED,
-        '17': ModelFailureCode.TOKEN_LIMIT,
-        '18': ModelFailureCode.INPUT_FILTERED,
-    },
-    type_map={
-        'invalid_request_error': ModelFailureCode.INVALID_REQUEST,
-        'authentication_error': ModelFailureCode.AUTHENTICATION_FAILED,
-        'not_found_error': ModelFailureCode.NOT_FOUND,
-    },
-)
+_SENSENOVA_ERROR_CODE_MAP = {
+    '1': ModelFailureCode.REQUEST_TIMEOUT,
+    '2': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    '3': ModelFailureCode.INVALID_REQUEST,
+    '4': ModelFailureCode.REQUEST_TIMEOUT,
+    '5': ModelFailureCode.NOT_FOUND,
+    '6': ModelFailureCode.CONFLICT,
+    '7': ModelFailureCode.PERMISSION_DENIED,
+    '8': ModelFailureCode.RATE_LIMITED,
+    '9': ModelFailureCode.INVALID_REQUEST,
+    '10': ModelFailureCode.CONFLICT,
+    '11': ModelFailureCode.INVALID_REQUEST,
+    '12': ModelFailureCode.PROVIDER_REJECTED,
+    '13': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    '14': ModelFailureCode.SERVICE_UNAVAILABLE,
+    '15': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    '16': ModelFailureCode.AUTHENTICATION_FAILED,
+    '17': ModelFailureCode.TOKEN_LIMIT,
+    '18': ModelFailureCode.INPUT_FILTERED,
+}
+
+_SENSENOVA_ERROR_TYPE_MAP = {
+    'invalid_request_error': ModelFailureCode.INVALID_REQUEST,
+    'authentication_error': ModelFailureCode.AUTHENTICATION_FAILED,
+    'not_found_error': ModelFailureCode.NOT_FOUND,
+}
 
 
 class _SenseNovaBase(object):
@@ -97,7 +93,11 @@ class _SenseNovaBase(object):
 
 
 class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
-    _PROVIDER_SOURCE = 'sensenova'
+    PROVIDER_NAME = 'sensenova'
+    ERROR_PROFILE = OnlineChatModuleBase.ERROR_PROFILE.extend(
+        code_map=_SENSENOVA_ERROR_CODE_MAP,
+        type_map=_SENSENOVA_ERROR_TYPE_MAP,
+    )
     TRAINABLE_MODEL_LIST = ['nova-ptc-s-v2']
     VLM_MODEL_PREFIX = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner',
                         'SenseNova-V6-5-Pro', 'SenseNova-V6-5-Turbo']

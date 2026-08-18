@@ -12,7 +12,6 @@ from ..base import (
     LazyLLMOnlineRerankModuleBase, LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase,
     LazyLLMOnlineTTSModuleBase
 )
-from ..base.provider_error_mapping import register_provider_error_mapping
 from ..base.utils import resolve_online_params
 from ..fileHandler import FileHandlerBase
 from http import HTTPStatus
@@ -39,7 +38,7 @@ _QWEN_ERROR_MAP = {
     'ResourceExhausted': ModelFailureCode.RATE_LIMITED,
     'Throttling.BurstRate': ModelFailureCode.RATE_LIMITED,
     'limit_burst_rate': ModelFailureCode.RATE_LIMITED,
-    'Throttling.Concurrency': ModelFailureCode.RATE_LIMITED,
+    'Throttling.Concurrency': ModelFailureCode.CONCURRENCY_LIMITED,
     # DashScope uses the same code for input and output inspection failures.
     # Keep the public classification generic when the response has no phase.
     'DataInspectionFailed': ModelFailureCode.PROVIDER_REJECTED,
@@ -65,15 +64,6 @@ _QWEN_ERROR_MAP = {
     'internal_error': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
     'InternalError.Algo': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
 }
-
-
-register_provider_error_mapping(
-    'qwen',
-    extends='openai_compatible',
-    code_map=_QWEN_ERROR_MAP,
-    type_map=_QWEN_ERROR_MAP,
-    http_map={429: ModelFailureCode.RATE_LIMITED},
-)
 
 
 def _ensure_dashscope_urls_initialized() -> None:
@@ -103,7 +93,12 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ['qwen-turbo', 'qwen-7b-chat', 'qwen-72b-chat']
     VLM_MODEL_PREFIX = ['qwen-vl-plus', 'qwen-vl-max', 'qvq-max', 'qvq-plus']
     MODEL_NAME = 'qwen-plus'
-    _PROVIDER_SOURCE = 'qwen'
+    PROVIDER_NAME = 'qwen'
+    ERROR_PROFILE = OnlineChatModuleBase.ERROR_PROFILE.extend(
+        code_map=_QWEN_ERROR_MAP,
+        type_map=_QWEN_ERROR_MAP,
+        http_map={429: ModelFailureCode.RATE_LIMITED},
+    )
     _PROVIDER_ERROR_AT_TOP_LEVEL = True
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,

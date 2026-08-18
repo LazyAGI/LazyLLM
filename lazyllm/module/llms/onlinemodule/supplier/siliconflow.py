@@ -8,29 +8,22 @@ from ..base import (
     LazyLLMOnlineRerankModuleBase, LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase,
     LazyLLMOnlineTTSModuleBase,
 )
-from ..base.provider_error_mapping import register_provider_error_mapping
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file, _image_to_base64
 from ..fileHandler import FileHandlerBase
 from lazyllm import LOG, config
 
 
-register_provider_error_mapping(
-    'siliconflow',
-    extends='openai_compatible',
-    code_map={
-        '20012': ModelFailureCode.NOT_FOUND,
-    },
-    http_map={
-        429: ModelFailureCode.RATE_LIMITED,
-        503: ModelFailureCode.PROVIDER_OVERLOADED,
-        504: ModelFailureCode.PROVIDER_OVERLOADED,
-    },
-)
-
-
 class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
-    _PROVIDER_SOURCE = 'siliconflow'
+    PROVIDER_NAME = 'siliconflow'
+    ERROR_PROFILE = OnlineChatModuleBase.ERROR_PROFILE.extend(
+        code_map={'20012': ModelFailureCode.NOT_FOUND},
+        http_map={
+            429: ModelFailureCode.RATE_LIMITED,
+            503: ModelFailureCode.PROVIDER_OVERLOADED,
+            504: ModelFailureCode.PROVIDER_OVERLOADED,
+        },
+    )
     _PROVIDER_ERROR_AT_TOP_LEVEL = True
     VLM_MODEL_PREFIX = ['Qwen/Qwen2.5-VL-72B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct', 'deepseek-ai/deepseek-vl2',
                         'Qwen/Qwen3-VL-30B-A3B-Thinking', 'THUDM/GLM-4.1V-9B-Thinking']

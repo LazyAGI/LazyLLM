@@ -27,7 +27,7 @@ from .model_outcome import (
     ModelFinish,
     ModelResponseError,
 )
-from .provider_error_mapping import get_provider_error_mapping
+from .provider_error_mapping import OPENAI_COMPATIBLE_PROFILE
 from .utils import LazyLLMOnlineBase, resolve_online_params
 
 
@@ -37,7 +37,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     NO_PROXY = True
     __lazyllm_registry_key__ = LLMType.CHAT
     _message_format = 'openai'
-    _PROVIDER_SOURCE = 'openai_compatible'
+    PROVIDER_NAME = 'openai_compatible'
+    ERROR_PROFILE = OPENAI_COMPATIBLE_PROFILE
     _PROVIDER_ERROR_AT_TOP_LEVEL = False
     _FINISH_REASON_MAP = {
         'stop': ModelFinish.STOP,
@@ -101,11 +102,9 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     def _prepare_request_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         return data
 
-    def _str_to_json(self, msg: str, stream_output: bool):
-        content = self._extract_sse_payload(msg)
-        if content is None or content == '[DONE]': return ''
+    def _parse_json_payload(self, payload: str, stream_output: bool):
         try:
-            raw_message = json.loads(content)
+            raw_message = json.loads(payload)
         except (TypeError, ValueError) as exc:
             raise self._response_error('Provider returned an invalid JSON frame.', ModelFailureOrigin.PROTOCOL) from exc
         if not isinstance(raw_message, dict):
@@ -122,6 +121,11 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         if stream_output: self._emit_message_content(message, stream_output)
         lazyllm.LOG.debug(f'message: {message}')
         return message
+
+    def _parse_response_frame(self, msg: Union[str, bytes], stream_output: bool):
+        payload = self._extract_sse_payload(msg)
+        if payload is None or payload == '[DONE]': return ''
+        return self._parse_json_payload(payload, stream_output)
 
     @staticmethod
     def _extract_sse_payload(msg: Union[str, bytes]) -> Optional[str]:
@@ -188,7 +192,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             return ModelFailureCode.PROTOCOL_ERROR
         if origin == ModelFailureOrigin.TRANSPORT:
             return ModelFailureCode.TRANSPORT_ERROR
-        mapping = get_provider_error_mapping(self._PROVIDER_SOURCE)
+        mapping = self.ERROR_PROFILE
         if provider_error_code:
             mapped = mapping.code_map.get(provider_error_code.lower())
             if mapped is not None: return mapped
@@ -223,7 +227,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     def _log_failure(self, failure: ModelFailure) -> None:
         lazyllm.LOG.warning(
             'provider_failure '
-            f'diagnostic_id={failure.diagnostic_id} source={self._PROVIDER_SOURCE} '
+            f'diagnostic_id={failure.diagnostic_id} source={self.PROVIDER_NAME} '
             f'origin={failure.origin.value} code={failure.code.value} '
             f'http_status={failure.provider_http_status} provider_code={failure.provider_error_code} '
             f'provider_type={failure.provider_error_type} response_started={failure.response_started} '
@@ -413,7 +417,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                 raise self._response_error('Provider stream ended without a finish_reason.',
                                            ModelFailureOrigin.PROTOCOL)
             return True
-        message = self._str_to_json(content, stream_output)
+        message = self._parse_json_payload(content, stream_output)
         if not message: return False
         msg_json.append(message)
         if state is not None: self._update_attempt_state(message, state)
@@ -457,8 +461,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             with self.stream_output(stream_output):
                 if self._message_format != 'openai':
                     return list(filter(lambda x: x, (
-                        [self._str_to_json(line, stream_output) for line in r.iter_lines() if len(line)]
-                        if stream_output else [self._str_to_json(r.text, stream_output)]
+                        [self._parse_response_frame(line, stream_output) for line in r.iter_lines() if len(line)]
+                        if stream_output else [self._parse_response_frame(r.text, stream_output)]
                     )))
                 frames = r.iter_lines() if stream_output else [r.text]
                 return self._collect_openai_frames(frames, stream_output, state)
