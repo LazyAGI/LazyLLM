@@ -150,15 +150,16 @@ class WriterMultimodalTools(WriterToolBase):
 
         available = [asset for asset in library.assets.values() if self._asset_is_available(asset)]
         warnings: List[str] = []
-        if unresolved and available and self.llm is not None:
+        reusable = [need_id for need_id in unresolved if needs[need_id].preferred_strategy is None]
+        if reusable and available and self.llm is not None:
             try:
-                selections = self._select_existing_assets(unresolved, needs, available)
+                selections = self._select_existing_assets(reusable, needs, available)
                 for need_id, asset_ids in selections.items():
                     selected = [
                         asset_id for asset_id in asset_ids
                         if asset_id in library.assets and self._asset_is_available(library.assets[asset_id])
                     ]
-                    if need_id in unresolved and selected:
+                    if need_id in reusable and selected:
                         library.visual_need_asset_ids[need_id] = selected
             except Exception as exc:
                 warnings.append(f'Existing media selection failed: {type(exc).__name__}: {exc}')

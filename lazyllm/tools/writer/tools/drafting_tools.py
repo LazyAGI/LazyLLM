@@ -838,14 +838,20 @@ class WriterDraftingTools(WriterToolBase):
 
         found_targets: set[str] = set()
         for block in draft_block.iter_blocks():
+            has_internal_ref = False
             for span in block.spans:
                 link = span.style.get('link')
                 if not isinstance(link, dict) or link.get('type') != 'internal_ref':
                     continue
+                has_internal_ref = True
                 target = link.get('target_node_id')
                 if target not in allowed_targets:
                     raise ValueError(f'Unplanned IR cross-reference {target!r}.')
                 found_targets.add(str(target))
+            if has_internal_ref and (
+                ''.join(span.text for span in block.spans) != block.content
+            ):
+                raise ValueError('IR cross-reference spans must reproduce the complete block content.')
 
         missing = [
             str(item.get('target')) for item in references

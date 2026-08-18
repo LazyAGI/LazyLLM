@@ -666,14 +666,16 @@ def _render_block(block: WriterBlock, depth: int, allow_raw: bool) -> str:
         return '\n'.join(f'> {line}' if line else '>' for line in body.split('\n'))
     elif block.type == 'code':
         if re.match(r'^\s*(```|~~~)', block.content):
-            current = block.content
+            code = block.content
         else:
             extras = block.model_extra or {}
             language = str(extras.get('language') or block.provider_payload.get('code_language') or '').strip()
             meta = str(block.provider_payload.get('code_meta') or '').strip()
             info = f'{language}{(" " + meta) if meta else ""}'
             fence = _code_fence(block.content)
-            current = f'{fence}{info}\n{block.content}\n{fence}'
+            code = f'{fence}{info}\n{block.content}\n{fence}'
+        caption = str(block.provider_payload.get('numbering_caption') or '').strip()
+        current = '\n'.join(filter(None, [caption, code]))
     elif block.type == 'divider':
         current = block.content.strip() if re.fullmatch(r'(?:[-*_]\s*){3,}', block.content.strip()) else '---'
     elif block.type == 'image':

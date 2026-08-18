@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Literal, Optional
 from .base import WriterToolBase
 from .stream_tools import DraftPreviewStream, build_outline_stream
 from ..data_models.context import WritingContext
-from ..data_models.multimodal import VisualPlan, _VISUAL_STRATEGY_ORDER
+from ..data_models.multimodal import VisualPlan
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import ContentRef, WriterBlock, WriterDocument
@@ -483,8 +483,6 @@ class WriterPlanningTools(WriterToolBase):
                 raise ValueError('Visual plan must target a top-level outline node_id.')
             if not need.purpose.strip():
                 raise ValueError(f'Visual need for {node_id!r} has an empty purpose.')
-            if need.preferred_strategy is None:
-                need.preferred_strategy = _VISUAL_STRATEGY_ORDER[need.visual_type][0]
             canonical_id = canonical_ids[node_id]
             counts[canonical_id] = counts.get(canonical_id, 0) + 1
             need.need_id = f'visual-{canonical_id}-{counts[canonical_id]}'
@@ -523,8 +521,6 @@ class WriterPlanningTools(WriterToolBase):
                 _, heading_path = target_by_ref[key]
             if not need.purpose.strip():
                 raise ValueError(f'Visual need for {key!r} has an empty purpose.')
-            if need.preferred_strategy is None:
-                need.preferred_strategy = _VISUAL_STRATEGY_ORDER[need.visual_type][0]
             ref.heading_path = list(heading_path)
             ref.occurrence = key[1]
             ref.placeholder_id = f'IMAGE-{index}'

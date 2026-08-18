@@ -45,6 +45,15 @@ _STYLE_TO_IR = {
 _VALUE_STYLE_FIELDS = {
     'text_color', 'background_color', 'font_size', 'font_family',
 }
+
+
+def feishu_block_url(document_uri: str, document_id: str, block_id: str) -> str:
+    base = str(document_uri or '').split('#', 1)[0]
+    if not base.startswith(('http://', 'https://')):
+        base = f'https://feishu.cn/docx/{document_id}'
+    return f'{base}#{block_id}'
+
+
 _ELEMENT_TEXT_FIELDS = ('content', 'title', 'name', 'text')
 
 
@@ -202,6 +211,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
             used_output_ids.add(output_id)
 
         external_document_id = document.provider_binding.get('document_id') or ''
+        document_uri = document.provider_binding.get('uri') or ''
 
         def resolve_internal_ref(span: WriterSpan) -> str | None:
             link = span.style.get('link')
@@ -211,7 +221,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
             target_block_id = output_ids.get(target_id) if isinstance(target_id, str) else None
             if not target_block_id:
                 return None
-            return f'https://feishu.cn/docx/{external_document_id}#{target_block_id}'
+            return feishu_block_url(document_uri, external_document_id, target_block_id)
 
         output: List[NativeBlock] = []
         for block, parent in flat_blocks:

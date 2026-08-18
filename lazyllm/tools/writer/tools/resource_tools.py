@@ -8,7 +8,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from .base import WriterToolBase
 from ..adapter.base import NativePatchOperation, WriterAdapterBase
-from ..adapter.feishu import FeishuWriterAdapter
+from ..adapter.feishu import FeishuWriterAdapter, feishu_block_url
 from ..data_models.resource import MaterialStyle, ResourceProfile
 from ..data_models.multimodal import MediaAssetLibrary
 from ..data_models.revision import PatchHunk, PatchResult, PatchSet
@@ -282,12 +282,12 @@ class WriterResourceTools(WriterToolBase):
             source, document_id=adapter.make_document_id(document_id), stage='final',
             media_assets=media_library,
         )
-        if not document.provider_binding.get('document_id'):
-            document.provider_binding = {
-                **(document.provider_binding or {}),
-                'provider': protocol,
-                'document_id': document_id,
-            }
+        document.provider_binding = {
+            **(document.provider_binding or {}),
+            'provider': protocol,
+            'document_id': document_id,
+            'uri': locator,
+        }
         warnings: List[str] = []
         self._validate_available_images(document, media_library)
         numbering = compute_numbering(build_numbering_view_from_ir(document))
@@ -377,6 +377,7 @@ class WriterResourceTools(WriterToolBase):
                 block_id_by_node_id=block_id_by_node_id,
                 numbering=final_numbering,
                 document_id=document_id,
+                document_uri=locator,
             )
             operation = adapter.patch_to_operation(
                 hunk, persisted_document, media_assets=media_library)
@@ -450,6 +451,7 @@ class WriterResourceTools(WriterToolBase):
                 block_id_by_node_id=block_id_by_node_id,
                 numbering=final_numbering,
                 document_id=document_id,
+                document_uri=locator,
             )
             operation = adapter.patch_to_operation(
                 sync_hunk, persisted_document, media_assets=media_library)
@@ -497,6 +499,7 @@ class WriterResourceTools(WriterToolBase):
         block_id_by_node_id: Dict[str, Any],
         numbering: Dict[str, Any],
         document_id: str,
+        document_uri: str,
     ) -> PatchHunk:
         if hunk.block is None:
             return hunk
@@ -520,7 +523,7 @@ class WriterResourceTools(WriterToolBase):
                 if not target_block_id:
                     continue
                 span.style['link'] = {
-                    'url': f'https://feishu.cn/docx/{document_id}#{target_block_id}',
+                    'url': feishu_block_url(document_uri, document_id, target_block_id),
                 }
         return hunk
 

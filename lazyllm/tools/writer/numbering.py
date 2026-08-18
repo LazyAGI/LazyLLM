@@ -156,6 +156,10 @@ def build_numbering_view_from_markdown(markdown: str) -> NumberingView:
     references: list[ReferenceOccurrence] = []
     order = 0
     for _, line, kind, caption, anchors in _markdown_semantic_items(markdown):
+        # The document H1 is its title, not a numbered section. Markdown H2 is
+        # the first numbered section and therefore maps to IR level 1.
+        if kind == 'heading' and len(_HEADING_RE.match(line).group(1)) == 1:
+            continue
         order += 1
         target_id = (
             decode_anchor_id(anchors[0])
@@ -201,16 +205,24 @@ def compute_numbering(view: NumberingView) -> NumberingMap:
     validate_numbering_view(view)
     numbering: NumberingMap = {}
     counters: list[int] = []
+    root_level: int | None = None
+    previous_level = 0
     float_counters = {'figure': 0, 'table': 0, 'code': 0}
 
     for target in view.targets:
         if target.kind == 'section':
-            level = target.level or 1
+            raw_level = max(1, int(target.level or 1))
+            if root_level is None:
+                root_level = raw_level
+            level = max(1, raw_level - root_level + 1)
+            # A document cannot start at a nested level or skip a hierarchy.
+            level = min(level, previous_level + 1)
             if level <= len(counters):
                 counters = counters[:level]
             counters.extend([0] * (level - len(counters)))
             counters[-1] += 1
             number_parts = tuple(counters)
+            previous_level = level
         else:
             float_counters[target.kind] += 1
             number_parts = (float_counters[target.kind],)
@@ -234,39 +246,12 @@ def materialize_ir(document: WriterDocument, numbering: NumberingMap) -> WriterD
         entry = numbering.get(block.node_id)
         if entry is not None and block.type in {'heading', 'image', 'table', 'code'}:
             prefix = format_target_number(entry)
+            if block.type == 'code':
+                block.provider_payload['numbering_caption'] = prefix
+                continue
             block.content = f'{prefix} {block.content}'.strip()
             if block.spans and block.spans[0].text:
                 block.spans[0].text = f'{prefix} {block.spans[0].text}'.strip()
-        if block.spans:
-            block.content = ''.join(span.text for span in block.spans)
-    return result
-
-
-def materialize_feishu_links(
-    document: WriterDocument,
-    document_token: str,
-    host: str = 'feishu.cn',
-) -> WriterDocument:
-    block_id_by_node_id = {
-        block.node_id: block.provider_binding.get('block_id')
-        for block in _iter_blocks(document.blocks)
-    }
-    result = document.model_copy(deep=True)
-    for block in _iter_blocks(result.blocks):
-        for span in block.spans:
-            link = span.style.get('link')
-            if not isinstance(link, dict) or link.get('type') != 'internal_ref':
-                continue
-            target_id = link.get('target_node_id')
-            target_block_id = block_id_by_node_id.get(target_id)
-            if not target_block_id:
-                span.style['link'] = {
-                    'url': f'https://{host}/docx/{document_token}#{target_id}',
-                }
-                continue
-            span.style['link'] = {
-                'url': f'https://{host}/docx/{document_token}#{target_block_id}',
-            }
     return result
 
 
@@ -288,7 +273,7 @@ def materialize_markdown(markdown: str) -> str:
                 target = targets[target_index] if target_index < len(targets) else None
                 if target is not None and target.kind == 'code':
                     label = format_target_number(numbering[target.id])
-                    output.append(f'{label} {target.caption or ""}'.strip())
+                    output.append(label)
                     target_index += 1
             elif fence == marker:
                 fence = None
@@ -340,15 +325,26 @@ def dematerialize_ir(
     document: WriterDocument,
     base_numbering: NumberingMap,
 ) -> WriterDocument:
+    from .utils.serialization import strip_caption_numbering, strip_heading_numbering
+
     result = document.model_copy(deep=True)
     for block in _iter_blocks(result.blocks):
+        block.provider_payload.pop('numbering_caption', None)
         entry = base_numbering.get(block.node_id)
         if entry is not None and _KIND_BY_TYPE.get(block.type) == entry.kind:
-            prefix = f'{format_target_number(entry)} '
-            if block.content.startswith(prefix):
-                block.content = block.content[len(prefix):]
-            if block.spans and block.spans[0].text.startswith(prefix):
-                block.spans[0].text = block.spans[0].text[len(prefix):]
+            if block.type == 'heading':
+                block.content = strip_heading_numbering(block.content)
+            elif block.type in {'image', 'table'}:
+                block.content = strip_caption_numbering(block.content)
+            if block.spans:
+                first = block.spans[0].text
+                block.spans[0].text = (
+                    strip_heading_numbering(first)
+                    if block.type == 'heading'
+                    else strip_caption_numbering(first)
+                    if block.type in {'image', 'table'}
+                    else first
+                )
         if block.spans:
             block.content = ''.join(span.text for span in block.spans)
     return result
@@ -382,7 +378,11 @@ def dematerialize_markdown(markdown: str, base_numbering: NumberingMap | None = 
         if len(next_targets) == 1 and next_targets[0].kind in {'table', 'code'}:
             entry = (base_numbering or {}).get(next_targets[0].id)
             if entry is not None and entry.kind == next_targets[0].kind:
-                caption = f'{format_target_number(entry)} {entry.caption or ""}'.strip()
+                caption = (
+                    format_target_number(entry)
+                    if next_targets[0].kind == 'code'
+                    else f'{format_target_number(entry)} {entry.caption or ""}'.strip()
+                )
                 if line == caption:
                     continue
 
@@ -445,7 +445,6 @@ __all__ = [
     'encode_anchor_id',
     'format_target_number',
     'materialize_markdown',
-    'materialize_feishu_links',
     'materialize_ir',
     'validate_numbering_view',
 ]
