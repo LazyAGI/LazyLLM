@@ -37,6 +37,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     __lazyllm_registry_key__ = LLMType.CHAT
     _message_format = 'openai'
     _PROVIDER_SOURCE = 'openai_compatible'
+    _PROVIDER_ERROR_AT_TOP_LEVEL = False
     _FINISH_REASON_MAP = {
         'stop': ModelFinish.STOP,
         'tool_calls': ModelFinish.TOOL_CALLS,
@@ -150,20 +151,27 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             if (content := delta.get('content', '')) and not delta.get('tool_calls'):
                 self._stream_output(content, color)
 
-    @staticmethod
-    def _provider_error_fields(message: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+    @classmethod
+    def _provider_error_fields(cls, message: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
         error = message.get('error')
-        if not isinstance(error, dict): return None, None
-        code = error.get('code')
-        error_type = error.get('type')
+        if isinstance(error, dict):
+            error_payload = error
+        elif cls._PROVIDER_ERROR_AT_TOP_LEVEL:
+            error_payload = message
+        else:
+            return None, None
+        code = error_payload.get('code')
+        error_type = error_payload.get('type')
         return (
             str(code) if code is not None else None,
             str(error_type) if error_type is not None else None,
         )
 
     def _raise_for_provider_error(self, message: Dict[str, Any]) -> None:
-        if message.get('error') is None: return
+        has_nested_error = message.get('error') is not None
+        if not has_nested_error and not self._PROVIDER_ERROR_AT_TOP_LEVEL: return
         code, error_type = self._provider_error_fields(message)
+        if not has_nested_error and code is None and error_type is None: return
         raise self._response_error(
             'Provider returned an error frame.',
             ModelFailureOrigin.PROVIDER,

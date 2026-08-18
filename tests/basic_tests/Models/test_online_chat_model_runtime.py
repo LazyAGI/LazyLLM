@@ -16,9 +16,11 @@ from lazyllm.module.llms.onlinemodule.base.model_outcome import (
 )
 from lazyllm.module.llms.onlinemodule.base.onlineChatModuleBase import LazyLLMOnlineChatModuleBase
 from lazyllm.module.llms.onlinemodule.supplier.deepseek import DeepSeekChat
+from lazyllm.module.llms.onlinemodule.supplier.glm import GLMChat
 from lazyllm.module.llms.onlinemodule.supplier.minimax import MinimaxChat
 from lazyllm.module.llms.onlinemodule.supplier.openai import OpenAIChat
 from lazyllm.module.llms.onlinemodule.supplier.qwen import QwenChat
+from lazyllm.module.llms.onlinemodule.supplier.siliconflow import SiliconFlowChat
 
 
 class _Response:
@@ -72,6 +74,11 @@ def test_deepseek_maps_insufficient_system_resource_finish_reason():
         'insufficient_system_resource',
     ) is ModelFinish.INSUFFICIENT_SYSTEM_RESOURCE
     assert _module()._map_finish_reason('insufficient_system_resource') is ModelFinish.UNKNOWN
+
+
+def test_glm_maps_sensitive_finish_reason():
+    assert _module(GLMChat)._map_finish_reason('sensitive') is ModelFinish.CONTENT_FILTER
+    assert _module()._map_finish_reason('sensitive') is ModelFinish.UNKNOWN
 
 
 def test_strict_stream_requires_finish_reason(monkeypatch):
@@ -464,6 +471,23 @@ def test_qwen_top_level_data_inspection_error_uses_provider_mapping():
     assert failure.origin is ModelFailureOrigin.PROVIDER
     assert failure.code is ModelFailureCode.INPUT_FILTERED
     assert failure.provider_error_code == 'DataInspectionFailed'
+    assert 'message' not in failure.public_dict()
+
+
+def test_siliconflow_top_level_model_not_found_uses_provider_mapping():
+    module = _module(SiliconFlowChat)
+
+    with pytest.raises(ModelResponseError) as exc_info:
+        module._str_to_json(json.dumps({
+            'code': 20012,
+            'message': 'must stay private',
+            'data': None,
+        }), stream_output=False)
+
+    failure = exc_info.value.failure
+    assert failure.origin is ModelFailureOrigin.PROVIDER
+    assert failure.code is ModelFailureCode.NOT_FOUND
+    assert failure.provider_error_code == '20012'
     assert 'message' not in failure.public_dict()
 
 

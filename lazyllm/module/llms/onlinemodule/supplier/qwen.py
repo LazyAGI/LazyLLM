@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
-    ModelFailureCode, ModelFailureOrigin, OnlineChatModuleBase,
+    ModelFailureCode, OnlineChatModuleBase,
     LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineMultimodalEmbedModuleBase,
     LazyLLMOnlineRerankModuleBase, LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase,
     LazyLLMOnlineTTSModuleBase
@@ -102,6 +102,7 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = ['qwen-vl-plus', 'qwen-vl-max', 'qvq-max', 'qvq-plus']
     MODEL_NAME = 'qwen-plus'
     _PROVIDER_SOURCE = 'qwen'
+    _PROVIDER_ERROR_AT_TOP_LEVEL = True
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
@@ -144,30 +145,6 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
         else:
             data.pop('incremental_output', None)
         return data
-
-    @staticmethod
-    def _provider_error_fields(message: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
-        if message.get('error') is not None:
-            return OnlineChatModuleBase._provider_error_fields(message)
-        code = message.get('code')
-        error_type = message.get('type')
-        return (
-            str(code) if code is not None else None,
-            str(error_type) if error_type is not None else None,
-        )
-
-    def _raise_for_provider_error(self, message: Dict[str, Any]) -> None:
-        if message.get('error') is not None:
-            return super()._raise_for_provider_error(message)
-        code, error_type = self._provider_error_fields(message)
-        if code is None and error_type is None:
-            return
-        raise self._response_error(
-            'Provider returned an error frame.',
-            ModelFailureOrigin.PROVIDER,
-            provider_error_code=code,
-            provider_error_type=error_type,
-        )
 
     def _get_system_prompt(self):
         return ('You are a large-scale language model from Alibaba Cloud, '

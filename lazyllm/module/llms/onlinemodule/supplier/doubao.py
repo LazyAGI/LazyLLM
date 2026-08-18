@@ -3,10 +3,11 @@ import lazyllm
 from typing import Dict, List, Union, Optional
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
-    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase,
+    ModelFailureCode, OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase,
     LazyLLMOnlineMultimodalEmbedModuleBase, LazyLLMOnlineText2ImageModuleBase,
     LazyLLMOnlineText2VideoModuleBase,
 )
+from ..base.provider_error_mapping import register_provider_error_mapping
 import requests
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
@@ -14,7 +15,30 @@ from lazyllm.thirdparty import volcenginesdkarkruntime
 from lazyllm import LOG
 
 
+register_provider_error_mapping(
+    'doubao',
+    extends='openai_compatible',
+    code_map={
+        'AuthenticationError': ModelFailureCode.AUTHENTICATION_FAILED,
+        'InvalidEndpointOrModel.NotFound': ModelFailureCode.NOT_FOUND,
+        'PermissionDenied': ModelFailureCode.PERMISSION_DENIED,
+        'QuotaExceeded': ModelFailureCode.QUOTA_EXHAUSTED,
+        'AccountQuotaExceeded': ModelFailureCode.QUOTA_EXHAUSTED,
+        'RequestBurstTooFast': ModelFailureCode.RATE_LIMITED,
+        'ServerOverloaded': ModelFailureCode.PROVIDER_OVERLOADED,
+        'SensitiveContentDetected': ModelFailureCode.INPUT_FILTERED,
+        'SensitiveContentDetected.SevereViolation': ModelFailureCode.INPUT_FILTERED,
+        'SensitiveContentDetected.Violence': ModelFailureCode.INPUT_FILTERED,
+    },
+    type_map={
+        'Unauthorized': ModelFailureCode.AUTHENTICATION_FAILED,
+        'TooManyRequests': ModelFailureCode.RATE_LIMITED,
+    },
+)
+
+
 class DoubaoChat(OnlineChatModuleBase):
+    _PROVIDER_SOURCE = 'doubao'
     MODEL_NAME = 'doubao-1-5-pro-32k-250115'
     VLM_MODEL_PREFIX = ['doubao-seed-1-6-vision', 'doubao-1-5-ui-tars']
 
