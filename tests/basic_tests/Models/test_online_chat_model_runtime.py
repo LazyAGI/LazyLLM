@@ -1,4 +1,5 @@
 import json
+import socket
 
 import pytest
 import requests
@@ -186,6 +187,17 @@ def test_runner_retries_only_pre_output_transport_failures():
         'model_retry_scheduled', 'model_retry_scheduled', 'model_call_finished',
     ]
     assert len({event[1]['model_call_id'] for event in events}) == 1
+
+
+@pytest.mark.parametrize(('errno', 'retryable'), [
+    (socket.EAI_AGAIN, True),
+    (socket.EAI_NONAME, False),
+])
+def test_transport_retry_only_accepts_temporary_dns_errors(errno, retryable):
+    error = requests.ConnectionError('dns lookup failed')
+    error.__cause__ = socket.gaierror(errno, 'dns lookup failed')
+
+    assert _module()._is_retryable_transport_error(error) is retryable
 
 
 def test_runner_does_not_retry_after_semantic_output():

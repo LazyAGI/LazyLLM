@@ -6,6 +6,7 @@ import os
 import requests
 import re
 import random
+import socket
 import time
 import uuid
 from typing import Tuple, List, Dict, Union, Any, Optional
@@ -319,6 +320,9 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         chain = tuple(cls._exception_chain(exc))
         if any(isinstance(item, (requests.exceptions.SSLError, requests.exceptions.ProxyError)) for item in chain):
             return False
+        dns_errors = tuple(item for item in chain if isinstance(item, socket.gaierror))
+        if dns_errors:
+            return any(item.errno == socket.EAI_AGAIN for item in dns_errors)
         retryable_types = (
             requests.exceptions.ConnectTimeout,
             requests.exceptions.ReadTimeout,
