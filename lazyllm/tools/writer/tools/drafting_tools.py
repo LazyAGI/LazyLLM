@@ -39,7 +39,7 @@ class WriterDraftingTools(WriterToolBase):
         'generate_final_document',
     ]
 
-    _MARKDOWN_INTERNAL_LINK_RE = re.compile(r'\[([^\]]*)\]\(#((?:block-)?[^)]+)\)')
+    _MARKDOWN_INTERNAL_LINK_RE = re.compile(r'!?\[([^\]]*)\]\(#((?:block-)?[^)]+)\)')
     _MARKDOWN_ANCHOR_RE = MARKDOWN_ANCHOR_RE
     _MARKDOWN_MEDIA_PLACEHOLDER_RE = re.compile(
         r'!\[[^\]]*\]\(media-placeholder://([A-Za-z0-9_-]+)\)'
@@ -875,6 +875,9 @@ class WriterDraftingTools(WriterToolBase):
             for item in references
             if item.get('must_create')
         }
+        references_by_target = {
+            str(item.get('target')): item for item in references
+        }
         media_lines: Dict[str, int] = {}
         output: List[str] = []
         fence: str | None = None
@@ -914,10 +917,30 @@ class WriterDraftingTools(WriterToolBase):
                     raise ValueError(f'Unplanned Markdown cross-reference {target!r}.')
                 found_targets.add(target)
                 reference_lines.setdefault(target, len(output))
-                return f'[{match.group(1)}](#block-{target})'
+                text = match.group(1).strip() or cls._markdown_reference_text(
+                    references_by_target[target], target,
+                )
+                return f'[{text}](#block-{target})'
 
             line = cls._MARKDOWN_INTERNAL_LINK_RE.sub(replace_link, line)
             output.append(line)
+
+        fallback_reference_line: int | None = None
+        for item in references:
+            target = str(item.get('target'))
+            if (
+                item.get('must_create')
+                and item.get('kind') == 'image'
+                and target not in found_targets
+            ):
+                if fallback_reference_line is None:
+                    fallback_reference_line = cls._markdown_reference_fallback_line(output)
+                output[fallback_reference_line] = (
+                    f'{output[fallback_reference_line].rstrip()} '
+                    f'[{cls._markdown_reference_text(item, target)}](#block-{target})'
+                )
+                found_targets.add(target)
+                reference_lines[target] = fallback_reference_line
 
         missing = [
             str(item.get('target')) for item in references
@@ -959,6 +982,46 @@ class WriterDraftingTools(WriterToolBase):
         for index, markdown in reversed(insertions):
             output.insert(index, markdown)
         return '\n'.join(output).strip()
+
+    @staticmethod
+    def _markdown_reference_text(reference: Dict[str, Any], target: str) -> str:
+        return strip_caption_numbering(str(
+            reference.get('caption') or reference.get('guidance') or target
+        ).strip())
+
+    @classmethod
+    def _markdown_reference_fallback_line(cls, lines: List[str]) -> int:
+        paragraph_end: int | None = None
+        first_content: int | None = None
+        fence: str | None = None
+        for index, line in enumerate(lines):
+            fence_match = re.match(r'^\s*(```+|~~~+)', line)
+            if fence_match:
+                marker = fence_match.group(1)[0]
+                if fence is None:
+                    fence = marker
+                elif fence == marker:
+                    fence = None
+                continue
+            if fence is not None:
+                continue
+            stripped = line.strip()
+            if not stripped:
+                if paragraph_end is not None:
+                    return paragraph_end
+                continue
+            if first_content is None:
+                first_content = index
+            if stripped.startswith('#') or cls._MARKDOWN_ANCHOR_RE.fullmatch(stripped):
+                if paragraph_end is not None:
+                    return paragraph_end
+                continue
+            paragraph_end = index
+        if paragraph_end is not None:
+            return paragraph_end
+        if first_content is not None:
+            return first_content
+        raise ValueError('Markdown draft section body must not be empty.')
 
     @staticmethod
     def _cross_reference_plan(

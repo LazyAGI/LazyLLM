@@ -269,7 +269,8 @@ node_id must be a string. Do not include heading_path or nest objects inside nod
         invalid = [
             target.content_ref.model_dump(exclude_none=True)
             for target in locate_result.targets
-            if self._content_ref_key(target.content_ref) not in candidate_refs
+            if not self._revision_ref_is_exclusive(target.content_ref)
+            or self._content_ref_key(target.content_ref) not in candidate_refs
         ]
         if invalid:
             raise ValueError(f'locate_result contains references not in candidates: {invalid}.')
@@ -354,6 +355,22 @@ node_id must be a string. Do not include heading_path or nest objects inside nod
                 context_json=to_prompt_json(writing_context),
             )
             modify_plan = self._call_llm_structured(prompt, ModifyPlan)
+            invalid_shapes = self._invalid_plan_refs(modify_plan)
+            if invalid_shapes:
+                modify_plan = self._call_llm_structured(
+                    prompt + f'''
+
+Your previous plan used invalid mixed content references: {to_prompt_json(invalid_shapes)}
+Copy each content_ref exactly from locate_result or the visible document. Use exactly one
+locator kind per reference. Return valid JSON only.
+''',
+                    ModifyPlan,
+                )
+                invalid_shapes = self._invalid_plan_refs(modify_plan)
+            if invalid_shapes:
+                raise ValueError(
+                    f'modify_plan contains invalid mixed references: {invalid_shapes}.'
+                )
         else:
             modify_plan = ModifyPlan(scope='document', summary='No revision targets; nothing to plan.')
 
@@ -1007,24 +1024,15 @@ node_id must be a string. Do not include heading_path or nest objects inside nod
         located_set = {self._content_ref_key(content_ref) for content_ref in located_refs}
 
         def canonical_ref(reference: ContentRef, candidates: List[ContentRef]) -> Optional[ContentRef]:
+            # Preserve normalization of legacy enriched IR refs when this private
+            # helper is called directly. Newly generated plans are shape-validated
+            # before normalization, so model output still must use one locator kind.
+            if not self._revision_ref_is_exclusive(reference) and not reference.node_id:
+                return None
             exact_key = self._content_ref_key(reference)
             exact = [candidate for candidate in candidates
                      if self._content_ref_key(candidate) == exact_key]
-            if exact:
-                return exact[0]
-            if reference.node_id or not reference.heading_path:
-                return None
-            valid_at_location = [
-                key for key in valid_refs
-                if not key[0] and key[1] == tuple(reference.heading_path) and not key[3]
-            ]
-            if len(valid_at_location) != 1:
-                return None
-            same_location = [candidate for candidate in candidates
-                             if not candidate.node_id
-                             and candidate.heading_path == reference.heading_path
-                             and not candidate.document_root]
-            return same_location[0] if len(same_location) == 1 else None
+            return exact[0] if len(exact) == 1 else None
 
         instruction_ids: set = set()
         normalized: List[ModifyInstruction] = []
@@ -1145,6 +1153,30 @@ node_id must be a string. Do not include heading_path or nest objects inside nod
             }
             for _, heading_path, occurrence, body in sections
         ]
+
+    @staticmethod
+    def _revision_ref_is_exclusive(content_ref: ContentRef) -> bool:
+        # Writer IR is identified authoritatively by node_id. Keep accepting
+        # legacy model output that also carries stale display metadata because
+        # _content_ref_key canonicalizes it by node_id. Markdown has no node_id,
+        # so its locator kinds must remain strictly exclusive.
+        if content_ref.node_id:
+            return True
+        locator_count = sum((
+            bool(content_ref.heading_path),
+            bool(content_ref.placeholder_id),
+            bool(content_ref.document_root),
+        ))
+        return locator_count == 1
+
+    @classmethod
+    def _invalid_plan_refs(cls, plan: ModifyPlan) -> List[Dict[str, Any]]:
+        invalid: List[Dict[str, Any]] = []
+        for instruction in plan.instructions:
+            for reference in (instruction.content_ref, instruction.destination_ref):
+                if reference is not None and not cls._revision_ref_is_exclusive(reference):
+                    invalid.append(reference.model_dump(exclude_none=True))
+        return invalid
 
     @staticmethod
     def _content_ref_key(content_ref: ContentRef) -> Tuple[Any, ...]:

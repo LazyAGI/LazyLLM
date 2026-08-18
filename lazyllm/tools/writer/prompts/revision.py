@@ -12,6 +12,8 @@ Output semantics:
 - For Writer IR, each content_ref must be exactly {{"node_id": "<string copied from a candidate>"}}.
 - node_id must be a string. Never put an object inside node_id, and do not add
   heading_path, document_root, occurrence, or other fields when node_id is present.
+- For Markdown, copy heading_path and occurrence exactly from one candidate. Never add
+  node_id or placeholder_id to a Markdown heading reference.
 - Plain text without headings uses content_ref.document_root=true.
 - summary describes the revision scope in one sentence.
 - A body revision has one or more targets.
@@ -61,6 +63,10 @@ Plan semantics:
 - A contiguous insertion uses one create instruction so its blocks share one destination
   and retain their final document order.
 - content_ref identifies the located content involved in the operation.
+- Every content_ref and destination_ref must copy exactly one reference from locate_result
+  or the visible document. Locator kinds are mutually exclusive; never combine node_id,
+  heading_path, placeholder_id, or document_root in one reference. Describe a fragment
+  inside a Markdown section in instruction while retaining the section heading_path.
 - Create must provide position; content_ref and position identify the insertion location.
 - For move, content_ref identifies the content being moved, while destination_ref and
   position identify its destination. Move must provide both destination_ref and position.

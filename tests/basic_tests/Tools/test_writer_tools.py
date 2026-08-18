@@ -1164,11 +1164,67 @@ def test_markdown_draft_receives_its_section_visual_needs():
     assert markdown.endswith('![关键关系](media-placeholder://IMAGE-1)\n')
 
 
+def test_markdown_draft_system_owns_required_image_reference():
+    _, instruction, _ = _markdown_draft_inputs()
+    instruction.meta['cross_references'] = [{
+        'target': 'IMAGE-1',
+        'kind': 'image',
+        'caption': '图 1 关键关系',
+        'required': True,
+        'must_create': True,
+    }]
+    instruction.meta['cross_reference_targets'] = ['IMAGE-1']
+
+    markdown = WriterDraftingTools._normalize_markdown_cross_references(
+        '引言正文。\n\n后续正文。', instruction,
+    )
+
+    assert markdown.count('[关键关系](#block-IMAGE-1)') == 1
+    assert markdown.count('<a id="block-IMAGE-1"></a>') == 1
+    assert markdown.count('media-placeholder://IMAGE-1') == 1
+    assert markdown.index('media-placeholder://IMAGE-1') < markdown.index('后续正文')
+
+    existing = WriterDraftingTools._normalize_markdown_cross_references(
+        '引言正文 ![](#block-IMAGE-1)。\n\n后续正文。', instruction,
+    )
+    assert existing.count('[关键关系](#block-IMAGE-1)') == 1
+    assert '![](#block-IMAGE-1)' not in existing
+    assert existing.count('media-placeholder://IMAGE-1') == 1
+
+
+def test_markdown_draft_keeps_non_image_references_strict():
+    _, instruction, _ = _markdown_draft_inputs()
+    instruction.meta['cross_references'] = [{
+        'target': 'SECTION-1',
+        'kind': 'section',
+        'required': True,
+    }]
+    instruction.meta['cross_reference_targets'] = ['SECTION-1']
+
+    with pytest.raises(ValueError, match='Missing required cross-references'):
+        WriterDraftingTools._normalize_markdown_cross_references(
+            '正文没有交叉引用。', instruction,
+        )
+
+
 def test_markdown_outline_requires_title_and_section():
     with pytest.raises(ValueError, match='exactly one H1'):
         get_markdown_outline_targets('## 第一章\n')
     with pytest.raises(ValueError, match='at least one H2'):
         get_markdown_outline_targets('# 测试文档\n')
+
+
+def test_generated_markdown_outline_does_not_own_images():
+    outline = WriterPlanningTools._normalize_markdown_outline(
+        '# 测试文档\n\n## 概述\n\n'
+        '![上传图片](01_local-upload-lm-2048.png)\n\n'
+        '保留的结构说明。<img src="duplicate.png">\n'
+    )
+
+    assert '![' not in outline
+    assert '<img' not in outline
+    assert '保留的结构说明。' in outline
+    assert '<a id="block-' in outline
 
 
 def test_generate_markdown_draft_document_preserves_repeated_heading_order():

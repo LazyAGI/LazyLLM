@@ -2263,9 +2263,8 @@ class FeishuWikiFS(FeishuFSBase):
         document_id = self.get_document_id(path)
         url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{block_id}'
         payload = {
-            'text': {
+            'update_text_elements': {
                 'elements': [{'text_run': {'content': new_text}}],
-                'style': {},
             },
         }
         self._patch(url, json=payload)

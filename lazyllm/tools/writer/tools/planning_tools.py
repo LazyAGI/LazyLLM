@@ -504,10 +504,23 @@ class WriterPlanningTools(WriterToolBase):
             ref = need.content_ref
             if ref.node_id or ref.document_root or not ref.heading_path:
                 raise ValueError('Markdown visual plan must target an H2 section via heading_path.')
-            heading_path = ref.heading_path[:2]
+            requested_heading_path = list(ref.heading_path)
+            heading_path = requested_heading_path[:2]
             key = (tuple(heading_path), ref.occurrence)
             if key not in target_by_ref:
-                raise ValueError(f'Visual plan targets unknown Markdown H2 section {key!r}.')
+                suffix_matches = [
+                    candidate
+                    for candidate in target_by_ref
+                    if candidate[1] == ref.occurrence
+                    and tuple(candidate[0][-len(requested_heading_path):])
+                    == tuple(requested_heading_path)
+                ]
+                if len(suffix_matches) != 1:
+                    raise ValueError(
+                        f'Visual plan targets unknown Markdown H2 section {key!r}.'
+                    )
+                key = suffix_matches[0]
+                _, heading_path = target_by_ref[key]
             if not need.purpose.strip():
                 raise ValueError(f'Visual need for {key!r} has an empty purpose.')
             if need.preferred_strategy is None:
@@ -535,6 +548,10 @@ class WriterPlanningTools(WriterToolBase):
             if in_fence:
                 lines.append(line)
                 continue
+            had_content = bool(line.strip())
+            line = WriterPlanningTools._remove_outline_image_markup(line)
+            if had_content and not line.strip():
+                continue
             heading = re.match(r'^(#{1,6})\s+(.+?)\s*$', line)
             if heading:
                 title = strip_heading_numbering(heading.group(2))
@@ -544,6 +561,27 @@ class WriterPlanningTools(WriterToolBase):
         return WriterPlanningTools._materialize_markdown_outline_anchors(
             '\n'.join(lines).rstrip() + '\n',
         )
+
+    @staticmethod
+    def _remove_outline_image_markup(line: str) -> str:
+        """Keep generated outlines structural; visual placement has a separate owner."""
+        line = re.sub(
+            r'(?<!\\)!\[(?:\\.|[^\]\\])*\]\('
+            r'(?:\\.|[^()\\]|\([^()\n]*\))*\)',
+            '',
+            line,
+        )
+        line = re.sub(
+            r'(?<!\\)!\[(?:\\.|[^\]\\])*\]\s*\[(?:\\.|[^\]\\])*\]',
+            '',
+            line,
+        )
+        line = re.sub(
+            r'(?<!\\)!\[(?:\\.|[^\]\\])+\](?!\s*[\[(])',
+            '',
+            line,
+        )
+        return re.sub(r'<img\b[^>]*>', '', line, flags=re.IGNORECASE)
 
     @staticmethod
     def _materialize_markdown_outline_anchors(outline: str) -> str:

@@ -22,6 +22,8 @@ Requirements:
   the final document.
 - Do not create image-annotation headings such as "图片：..." or "Image: ..." at any level.
   Image needs are planned by the visual plan step; the outline must stay pure text structure.
+- Do not emit Markdown image syntax, HTML image tags, image paths, or image placeholders.
+  The visual plan and media resolver exclusively own image selection and placement.
 - Keep the outline concise but concrete enough to guide drafting.
 - Treat task.constraints.target_chars and task.constraints.max_chars as limits for the
   entire final document, not for each section.

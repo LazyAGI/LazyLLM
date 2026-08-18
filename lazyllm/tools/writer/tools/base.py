@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Optional, Type, TypeVar
 from pydantic import BaseModel
 from lazyllm.components.formatter import JsonFormatter
 from lazyllm.module import ModuleBase
+from lazyllm.thirdparty import json_repair
 from ..data_models.planning import SectionInstructionList
 from ..data_models.writer_ir import WriterBlock, WriterDocument
 from ..prompts.structured_output import STRUCTURED_OUTPUT_SYSTEM_PROMPT
@@ -31,6 +32,12 @@ class _WriterJsonFormatter(JsonFormatter):
         try:
             return json.loads(cleaned)
         except json.JSONDecodeError:
+            # JsonFormatter rejects unbalanced braces before reaching json_repair.
+            # Writer structured output is schema-validated immediately afterwards,
+            # so repair syntax here without weakening semantic validation.
+            repaired = json_repair.loads(cleaned)
+            if isinstance(repaired, (dict, list)):
+                return repaired
             return super()._load(cleaned)
 
 
