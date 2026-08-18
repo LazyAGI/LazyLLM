@@ -97,3 +97,25 @@ def inject_tool_config(tool_config: Optional[Dict[str, Any]]) -> None:
         lazyllm.globals.config[config_key] = {**existing, **new_entries}
 
     LOG.info(f'[inject_tool_config] injected tools: {sorted(injected)}')
+
+
+def inject_env_vars(env_vars: Optional[Dict[str, Any]]) -> None:
+    '''Inject environment variables for skill script execution.
+
+    Values are stored in lazyllm globals for the active session and consumed by
+    SkillManager.run_script when it starts the script subprocess. This does not
+    mutate the parent process ``os.environ``.
+    '''
+    if not env_vars:
+        return
+    updates: Dict[str, str] = {}
+    for name, value in env_vars.items():
+        key = str(name or '').strip()
+        if not key or value is None:
+            continue
+        updates[key] = str(value)
+    if not updates:
+        return
+    existing = lazyllm.globals.get('dynamic_env_vars', {}) or {}
+    lazyllm.globals['dynamic_env_vars'] = {**existing, **updates}
+    LOG.info(f'[inject_env_vars] injected env vars: {sorted(updates)}')
