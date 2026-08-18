@@ -10,6 +10,7 @@ from .model_outcome import (
     ModelCallInterrupted,
     ModelCallTerminal,
     ModelFailure,
+    ModelFailureCode,
     ModelFailureOrigin,
     ModelFinish,
     ModelResponseError,
@@ -82,6 +83,7 @@ class ModelCallRunner:
                     continue
                 failure = ModelFailure(
                     origin=ModelFailureOrigin.TRANSPORT,
+                    code=ModelFailureCode.TRANSPORT_ERROR,
                     diagnostic_id=uuid.uuid4().hex,
                     has_semantic_output=semantic_output,
                 )

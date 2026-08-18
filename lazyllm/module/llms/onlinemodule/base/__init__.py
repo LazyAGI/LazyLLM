@@ -4,6 +4,7 @@ from .model_outcome import (
     ModelCallInterrupted,
     ModelCallTerminal,
     ModelFailure,
+    ModelFailureCode,
     ModelFailureOrigin,
     ModelFinish,
 )
@@ -24,6 +25,7 @@ __all__ = [
     'ModelCallInterrupted',
     'ModelCallTerminal',
     'ModelFailure',
+    'ModelFailureCode',
     'ModelFailureOrigin',
     'ModelFinish',
     'OnlineEmbeddingModuleBase',

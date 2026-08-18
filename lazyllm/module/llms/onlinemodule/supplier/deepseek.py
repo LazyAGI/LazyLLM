@@ -1,9 +1,22 @@
 from lazyllm import LOG
 from typing import Optional
-from ..base import OnlineChatModuleBase
+from ..base import ModelFailureCode, ModelFinish, OnlineChatModuleBase
 
 
 class DeepSeekChat(OnlineChatModuleBase):
+    _PROVIDER_ERROR_CODE_MAP = {}
+    _PROVIDER_ERROR_TYPE_MAP = {}
+    _HTTP_ERROR_CODE_MAP = {
+        **OnlineChatModuleBase._HTTP_ERROR_CODE_MAP,
+        402: ModelFailureCode.QUOTA_EXHAUSTED,
+        429: ModelFailureCode.RATE_LIMITED,
+        503: ModelFailureCode.PROVIDER_OVERLOADED,
+    }
+    _FINISH_REASON_MAP = {
+        **OnlineChatModuleBase._FINISH_REASON_MAP,
+        'insufficient_system_resource': ModelFinish.INSUFFICIENT_SYSTEM_RESOURCE,
+    }
+
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         base_url = base_url or 'https://api.deepseek.com'

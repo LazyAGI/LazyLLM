@@ -1,5 +1,7 @@
 from itertools import groupby
+from email.utils import parsedate_to_datetime
 import json
+import math
 import os
 import requests
 import re
@@ -16,7 +18,13 @@ from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_b
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ....servermodule import LLMBase, StaticParams
 from .model_call_runner import ModelAttemptState, ModelCallRunner
-from .model_outcome import ModelFailure, ModelFailureOrigin, ModelFinish, ModelResponseError
+from .model_outcome import (
+    ModelFailure,
+    ModelFailureCode,
+    ModelFailureOrigin,
+    ModelFinish,
+    ModelResponseError,
+)
 from .utils import LazyLLMOnlineBase, resolve_online_params
 
 
@@ -26,6 +34,38 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     NO_PROXY = True
     __lazyllm_registry_key__ = LLMType.CHAT
     _message_format = 'openai'
+    _PROVIDER_ERROR_CODE_MAP = {
+        'credit_balance_exhausted': ModelFailureCode.QUOTA_EXHAUSTED,
+        'organization_spend_limit_exceeded': ModelFailureCode.QUOTA_EXHAUSTED,
+        'project_spend_limit_exceeded': ModelFailureCode.QUOTA_EXHAUSTED,
+        'organization_usage_limit_exceeded': ModelFailureCode.QUOTA_EXHAUSTED,
+        'rate_limit_exceeded': ModelFailureCode.RATE_LIMITED,
+        'content_policy_violation': ModelFailureCode.INPUT_FILTERED,
+    }
+    _PROVIDER_ERROR_TYPE_MAP = {
+        'insufficient_quota': ModelFailureCode.QUOTA_EXHAUSTED,
+        'rate_limit_error': ModelFailureCode.RATE_LIMITED,
+    }
+    _HTTP_ERROR_CODE_MAP = {
+        400: ModelFailureCode.INVALID_REQUEST,
+        401: ModelFailureCode.AUTHENTICATION_FAILED,
+        403: ModelFailureCode.PERMISSION_DENIED,
+        404: ModelFailureCode.NOT_FOUND,
+        408: ModelFailureCode.REQUEST_TIMEOUT,
+        422: ModelFailureCode.INVALID_REQUEST,
+        429: ModelFailureCode.TOO_MANY_REQUESTS,
+        500: ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+        502: ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+        503: ModelFailureCode.SERVICE_UNAVAILABLE,
+        504: ModelFailureCode.REQUEST_TIMEOUT,
+    }
+    _FINISH_REASON_MAP = {
+        'stop': ModelFinish.STOP,
+        'tool_calls': ModelFinish.TOOL_CALLS,
+        'function_call': ModelFinish.TOOL_CALLS,
+        'length': ModelFinish.LENGTH,
+        'content_filter': ModelFinish.CONTENT_FILTER,
+    }
 
     def __init__(self, api_key: Union[str, List[str]], base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
@@ -90,9 +130,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             raise self._response_error('Provider returned an invalid JSON frame.', ModelFailureOrigin.PROTOCOL) from exc
         if not isinstance(raw_message, dict):
             raise self._response_error('Provider returned a non-object JSON frame.', ModelFailureOrigin.PROTOCOL)
-        if raw_message.get('error') is not None:
-            code = self._provider_error_code(raw_message)
-            raise self._response_error('Provider returned an error frame.', ModelFailureOrigin.PROTOCOL, code)
+        self._raise_for_provider_error(raw_message)
         try:
             message = self._convert_msg_format(raw_message)
         except Exception as exc:
@@ -111,7 +149,11 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             try:
                 msg = msg.decode('utf-8')
             except UnicodeDecodeError as exc:
-                failure = ModelFailure(origin=ModelFailureOrigin.PROTOCOL, diagnostic_id=uuid.uuid4().hex)
+                failure = ModelFailure(
+                    origin=ModelFailureOrigin.PROTOCOL,
+                    code=ModelFailureCode.PROTOCOL_ERROR,
+                    diagnostic_id=uuid.uuid4().hex,
+                )
                 raise ModelResponseError('Provider returned a non-UTF-8 frame.', failure) from exc
         content = msg.strip()
         if not content or content.startswith(':') or re.match(r'^(event|id|retry):', content): return None
@@ -131,28 +173,89 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                 self._stream_output(content, color)
 
     @staticmethod
-    def _provider_error_code(message: Dict[str, Any]) -> Optional[str]:
+    def _provider_error_fields(message: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
         error = message.get('error')
-        if not isinstance(error, dict): return None
-        value = error.get('code') or error.get('type')
-        return str(value) if value is not None else None
+        if not isinstance(error, dict): return None, None
+        code = error.get('code')
+        error_type = error.get('type')
+        return (
+            str(code) if code is not None else None,
+            str(error_type) if error_type is not None else None,
+        )
 
-    @staticmethod
-    def _response_error(message: str, origin: ModelFailureOrigin,
-                        provider_error_code: Optional[str] = None) -> ModelResponseError:
+    def _raise_for_provider_error(self, message: Dict[str, Any]) -> None:
+        if message.get('error') is None: return
+        code, error_type = self._provider_error_fields(message)
+        raise self._response_error(
+            'Provider returned an error frame.',
+            ModelFailureOrigin.PROVIDER,
+            provider_error_code=code,
+            provider_error_type=error_type,
+        )
+
+    def _classify_failure_code(self, *, origin: ModelFailureOrigin,
+                               provider_error_code: Optional[str] = None,
+                               provider_error_type: Optional[str] = None,
+                               provider_http_status: Optional[int] = None) -> ModelFailureCode:
+        if origin == ModelFailureOrigin.PROTOCOL:
+            return ModelFailureCode.PROTOCOL_ERROR
+        if origin == ModelFailureOrigin.TRANSPORT:
+            return ModelFailureCode.TRANSPORT_ERROR
+        if provider_error_code:
+            mapped = self._PROVIDER_ERROR_CODE_MAP.get(provider_error_code.lower())
+            if mapped is not None: return mapped
+        if provider_error_type:
+            mapped = self._PROVIDER_ERROR_TYPE_MAP.get(provider_error_type.lower())
+            if mapped is not None: return mapped
+        if provider_http_status is not None:
+            mapped = self._HTTP_ERROR_CODE_MAP.get(provider_http_status)
+            if mapped is not None: return mapped
+        return ModelFailureCode.PROVIDER_REJECTED
+
+    def _response_error(self, message: str, origin: ModelFailureOrigin,
+                        provider_error_code: Optional[str] = None,
+                        provider_error_type: Optional[str] = None,
+                        provider_http_status: Optional[int] = None,
+                        retry_after_ms: Optional[int] = None) -> ModelResponseError:
         return ModelResponseError(message, ModelFailure(
             origin=origin,
+            code=self._classify_failure_code(
+                origin=origin,
+                provider_error_code=provider_error_code,
+                provider_error_type=provider_error_type,
+                provider_http_status=provider_http_status,
+            ),
             provider_error_code=provider_error_code,
+            provider_error_type=provider_error_type,
+            provider_http_status=provider_http_status,
+            retry_after_ms=retry_after_ms,
             diagnostic_id=uuid.uuid4().hex,
         ))
 
+    @classmethod
+    def _map_finish_reason(cls, raw_finish_reason: Any) -> ModelFinish:
+        return cls._FINISH_REASON_MAP.get(raw_finish_reason, ModelFinish.UNKNOWN)
+
     @staticmethod
-    def _map_finish_reason(raw_finish_reason: Any) -> ModelFinish:
-        if raw_finish_reason == 'stop': return ModelFinish.STOP
-        if raw_finish_reason in ('tool_calls', 'function_call'): return ModelFinish.TOOL_CALLS
-        if raw_finish_reason == 'length': return ModelFinish.LENGTH
-        if raw_finish_reason == 'content_filter': return ModelFinish.CONTENT_FILTER
-        return ModelFinish.UNKNOWN
+    def _retry_after_ms(headers: Any) -> Optional[int]:
+        if headers is None: return None
+        raw_value = headers.get('Retry-After')
+        if raw_value is None: return None
+        value = str(raw_value).strip()
+        try:
+            seconds = float(value)
+            if not math.isfinite(seconds) or seconds < 0: return None
+            return int(seconds * 1000)
+        except (TypeError, ValueError):
+            pass
+        try:
+            retry_at = parsedate_to_datetime(value)
+            if retry_at.tzinfo is None: return None
+            seconds = retry_at.timestamp() - time.time()
+            if not math.isfinite(seconds) or seconds < 0: return None
+            return int(seconds * 1000)
+        except (TypeError, ValueError, OverflowError):
+            return None
 
     def _update_attempt_state(self, message: Dict[str, Any], state: ModelAttemptState):
         choices = message.get('choices')
@@ -269,20 +372,64 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         except Exception:
             return ''
 
+    def _raise_for_http_error(self, response: Any) -> None:
+        if response.status_code == 200: return
+        try:
+            error_message = response.json()
+        except (TypeError, ValueError):
+            error_message = {}
+        code, error_type = self._provider_error_fields(error_message) \
+            if isinstance(error_message, dict) else (None, None)
+        raise self._response_error(
+            f'Provider returned HTTP status {response.status_code}.',
+            ModelFailureOrigin.HTTP,
+            provider_error_code=code,
+            provider_error_type=error_type,
+            provider_http_status=response.status_code,
+            retry_after_ms=self._retry_after_ms(getattr(response, 'headers', None)),
+        )
+
+    def _consume_openai_frame(self, raw_frame: Union[str, bytes], msg_json: List[Dict[str, Any]],
+                              stream_output: Union[bool, Dict], state: Optional[ModelAttemptState]) -> bool:
+        if raw_frame in (b'', ''): return False
+        content = self._extract_sse_payload(raw_frame)
+        if content is None: return False
+        if content == '[DONE]':
+            if state is None or state.finish is None:
+                raise self._response_error('Provider stream ended without a finish_reason.',
+                                           ModelFailureOrigin.PROTOCOL)
+            return True
+        message = self._str_to_json(content, stream_output)
+        if not message: return False
+        msg_json.append(message)
+        if state is not None: self._update_attempt_state(message, state)
+        return False
+
+    def _collect_openai_frames(self, frames: Any, stream_output: Union[bool, Dict],
+                               state: Optional[ModelAttemptState]) -> List[Dict[str, Any]]:
+        msg_json = []
+        try:
+            for raw_frame in frames:
+                if self._consume_openai_frame(raw_frame, msg_json, stream_output, state):
+                    break
+        except Exception:
+            # A valid OpenAI-compatible finish_reason is the semantic terminal.
+            # Transport failure after that terminal must not discard the outcome
+            # or trigger another paid attempt.
+            if state is None or state.finish is None:
+                raise
+        if state is None or state.finish is None:
+            raise self._response_error('Provider response ended without a finish_reason.',
+                                       ModelFailureOrigin.PROTOCOL)
+        return msg_json
+
     def _forward_impl(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
                       proxies: Optional[Dict], request_timeout: Optional[Union[float, Tuple[float, float]]],
                       state: Optional[ModelAttemptState] = None,
                       ) -> List[Dict[str, Any]]:
         with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,
                            proxies=proxies, timeout=request_timeout) as r:
-            if r.status_code != 200:
-                try:
-                    error_message = r.json()
-                except (TypeError, ValueError):
-                    error_message = {}
-                code = self._provider_error_code(error_message) if isinstance(error_message, dict) else None
-                raise self._response_error(f'Provider returned HTTP status {r.status_code}.',
-                                           ModelFailureOrigin.HTTP, code)
+            self._raise_for_http_error(r)
 
             with self.stream_output(stream_output):
                 if self._message_format != 'openai':
@@ -290,32 +437,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                         [self._str_to_json(line, stream_output) for line in r.iter_lines() if len(line)]
                         if stream_output else [self._str_to_json(r.text, stream_output)]
                     )))
-                msg_json = []
                 frames = r.iter_lines() if stream_output else [r.text]
-                try:
-                    for raw_frame in frames:
-                        if raw_frame in (b'', ''): continue
-                        content = self._extract_sse_payload(raw_frame)
-                        if content is None: continue
-                        if content == '[DONE]':
-                            if state is None or state.finish is None:
-                                raise self._response_error('Provider stream ended without a finish_reason.',
-                                                           ModelFailureOrigin.PROTOCOL)
-                            break
-                        message = self._str_to_json(content, stream_output)
-                        if not message: continue
-                        msg_json.append(message)
-                        if state is not None: self._update_attempt_state(message, state)
-                except Exception:
-                    # A valid OpenAI-compatible finish_reason is the semantic terminal.
-                    # Transport failure after that terminal must not discard the outcome
-                    # or trigger another paid attempt.
-                    if state is None or state.finish is None:
-                        raise
-                if state is None or state.finish is None:
-                    raise self._response_error('Provider response ended without a finish_reason.',
-                                               ModelFailureOrigin.PROTOCOL)
-        return msg_json
+                return self._collect_openai_frames(frames, stream_output, state)
 
     def _request_timeout(self, data: Dict[str, Any],
                          default_timeout: Optional[Union[int, float, Tuple[int, int], Tuple[float, float]]] = None,

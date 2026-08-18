@@ -5,7 +5,13 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
 from lazyllm.components.utils.downloader.model_downloader import LLMType
-from ..base import OnlineChatModuleBase, LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineTTSModuleBase
+from ..base import (
+    ModelFailureCode,
+    ModelFailureOrigin,
+    OnlineChatModuleBase,
+    LazyLLMOnlineText2ImageModuleBase,
+    LazyLLMOnlineTTSModuleBase,
+)
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
@@ -18,6 +24,25 @@ class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
         'global': 'https://api.minimax.io/v1/',
         'cn': 'https://api.minimaxi.com/v1/',
     }
+    _PROVIDER_ERROR_CODE_MAP = {
+        '1001': ModelFailureCode.REQUEST_TIMEOUT,
+        '1002': ModelFailureCode.RATE_LIMITED,
+        '1004': ModelFailureCode.AUTHENTICATION_FAILED,
+        '1008': ModelFailureCode.QUOTA_EXHAUSTED,
+        '1013': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+        '1024': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+        '1026': ModelFailureCode.INPUT_FILTERED,
+        '1027': ModelFailureCode.OUTPUT_FILTERED,
+        '1033': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+        '1039': ModelFailureCode.TOKEN_LIMIT,
+        '1041': ModelFailureCode.RATE_LIMITED,
+        '1042': ModelFailureCode.INVALID_REQUEST,
+        '2013': ModelFailureCode.INVALID_REQUEST,
+        '2045': ModelFailureCode.RATE_LIMITED,
+        '2049': ModelFailureCode.AUTHENTICATION_FAILED,
+        '2056': ModelFailureCode.QUOTA_EXHAUSTED,
+    }
+    _PROVIDER_ERROR_TYPE_MAP = {}
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False,
@@ -32,6 +57,18 @@ class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
     def _get_system_prompt(self):
         return 'You are an intelligent assistant provided by Minimax. You are a helpful assistant.'
+
+    def _raise_for_provider_error(self, message: Dict[str, Any]) -> None:
+        base_resp = message.get('base_resp')
+        if isinstance(base_resp, dict):
+            status_code = base_resp.get('status_code')
+            if status_code not in (None, 0, '0'):
+                raise self._response_error(
+                    'Provider returned a business error.',
+                    ModelFailureOrigin.PROVIDER,
+                    provider_error_code=str(status_code),
+                )
+        super()._raise_for_provider_error(message)
 
     def _convert_msg_format(self, msg: Dict[str, Any]):
         '''Convert the reasoning_details in output to reasoning_content field in message'''
