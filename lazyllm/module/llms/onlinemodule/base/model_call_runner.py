@@ -20,6 +20,7 @@ from .model_outcome import (
 @dataclass
 class ModelAttemptState:
     semantic_output: bool = False
+    response_started: bool = False
     finish: Optional[ModelFinish] = None
     raw_finish_reason: Optional[str] = None
 
@@ -27,9 +28,11 @@ class ModelAttemptState:
 class ModelCallRunner:
     def __init__(self, *, emit_event: Callable[[str, dict], None],
                  is_retryable_transport_error: Callable[[Exception], bool],
+                 report_failure: Optional[Callable[[ModelFailure], None]] = None,
                  sleep: Callable[[float], None] = time.sleep):
         self._emit_event = emit_event
         self._is_retryable_transport_error = is_retryable_transport_error
+        self._report_failure = report_failure
         self._sleep = sleep
 
     def run(self, execute_attempt: Callable[[ModelAttemptState], List[dict]], *, max_attempts: int) -> List[dict]:
@@ -58,6 +61,8 @@ class ModelCallRunner:
             except ModelResponseError as exc:
                 semantic_output = semantic_output or state.semantic_output
                 exc.failure.has_semantic_output = semantic_output
+                exc.failure.response_started = state.response_started
+                self._report(exc.failure)
                 terminal = ModelCallTerminal(
                     model_call_id=model_call_id,
                     attempt_count=attempt_index,
@@ -71,7 +76,7 @@ class ModelCallRunner:
             except Exception as exc:
                 semantic_output = semantic_output or state.semantic_output
                 retryable = self._is_retryable_transport_error(exc)
-                if retryable and not semantic_output and attempt_index < max_attempts:
+                if retryable and not state.response_started and not semantic_output and attempt_index < max_attempts:
                     delay = self._retry_delay(attempt_index)
                     self._emit_event('model_retry_scheduled', {
                         'model_call_id': model_call_id,
@@ -86,7 +91,9 @@ class ModelCallRunner:
                     code=ModelFailureCode.TRANSPORT_ERROR,
                     diagnostic_id=uuid.uuid4().hex,
                     has_semantic_output=semantic_output,
+                    response_started=state.response_started,
                 )
+                self._report(failure)
                 terminal = ModelCallTerminal(
                     model_call_id=model_call_id,
                     attempt_count=attempt_index,
@@ -98,6 +105,10 @@ class ModelCallRunner:
                 error_cls = ModelCallInterrupted if semantic_output else ModelCallFailed
                 raise error_cls('Model transport failed.', terminal) from exc
         raise AssertionError('model call runner exhausted without a terminal')
+
+    def _report(self, failure: ModelFailure) -> None:
+        if self._report_failure is not None:
+            self._report_failure(failure)
 
     @staticmethod
     def _retry_delay(retry_index: int) -> float:

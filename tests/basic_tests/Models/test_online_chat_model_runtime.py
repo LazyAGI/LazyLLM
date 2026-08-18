@@ -7,6 +7,7 @@ from lazyllm.module.llms.onlinemodule.base.model_call_runner import ModelAttempt
 from lazyllm.module.llms.onlinemodule.base.model_outcome import (
     ModelCallFailed,
     ModelCallInterrupted,
+    ModelFailure,
     ModelFailureCode,
     ModelFailureOrigin,
     ModelFinish,
@@ -211,6 +212,40 @@ def test_runner_does_not_retry_after_semantic_output():
     assert events[0][1]['failure']['code'] == 'transport_error'
 
 
+def test_runner_does_not_retry_after_response_headers(monkeypatch):
+    module = _module()
+    events = []
+    failures = []
+    calls = 0
+
+    def post(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return _Response(frames=[requests.exceptions.ChunkedEncodingError('cut after headers')])
+
+    monkeypatch.setattr(requests, 'post', post)
+    runner = ModelCallRunner(
+        emit_event=lambda event_type, data: events.append((event_type, data)),
+        is_retryable_transport_error=module._is_retryable_transport_error,
+        report_failure=failures.append,
+        sleep=lambda delay: None,
+    )
+    with pytest.raises(ModelCallFailed):
+        runner.run(
+            lambda state: module._forward_impl(
+                {'messages': []}, runtime_url='http://provider.test', stream_output=True,
+                proxies=None, request_timeout=1, state=state,
+            ),
+            max_attempts=3,
+        )
+
+    assert calls == 1
+    assert [event[0] for event in events] == ['model_call_finished']
+    assert events[0][1]['failure']['code'] == 'transport_error'
+    assert len(failures) == 1
+    assert failures[0].response_started is True
+
+
 def test_unknown_finish_interrupts_after_one_terminal():
     events = []
 
@@ -263,9 +298,9 @@ def test_http_failure_is_not_retried(monkeypatch):
     assert calls == 1
     assert [event[0] for event in events] == ['model_call_finished']
     assert events[0][1]['failure']['origin'] == 'http'
-    assert events[0][1]['failure']['code'] == 'rate_limited'
-    assert events[0][1]['failure']['provider_http_status'] == 429
-    assert events[0][1]['failure']['retry_after_ms'] == 2000
+    assert events[0][1]['failure']['code'] == 'too_many_requests'
+    assert 'provider_http_status' not in events[0][1]['failure']
+    assert 'retry_after_ms' not in events[0][1]['failure']
     assert 'provider_error_code' not in events[0][1]['failure']
     assert 'provider_error_type' not in events[0][1]['failure']
 
@@ -281,12 +316,18 @@ def test_retry_after_accepts_http_date_and_rejects_invalid_value(monkeypatch):
 
 
 @pytest.mark.parametrize(('module_cls', 'status', 'body', 'expected'), [
+    (LazyLLMOnlineChatModuleBase, 400, '{"error":{}}', ModelFailureCode.INVALID_REQUEST),
+    (LazyLLMOnlineChatModuleBase, 401, '{"error":{}}', ModelFailureCode.AUTHENTICATION_FAILED),
+    (LazyLLMOnlineChatModuleBase, 403, '{"error":{}}', ModelFailureCode.PERMISSION_DENIED),
+    (LazyLLMOnlineChatModuleBase, 404, '{"error":{}}', ModelFailureCode.NOT_FOUND),
+    (LazyLLMOnlineChatModuleBase, 409, '{"error":{}}', ModelFailureCode.CONFLICT),
+    (LazyLLMOnlineChatModuleBase, 422, '{"error":{}}', ModelFailureCode.UNPROCESSABLE_ENTITY),
     (LazyLLMOnlineChatModuleBase, 429, '{"error":{}}', ModelFailureCode.TOO_MANY_REQUESTS),
-    (LazyLLMOnlineChatModuleBase, 429,
-     '{"error":{"code":"credit_balance_exhausted"}}', ModelFailureCode.QUOTA_EXHAUSTED),
+    (LazyLLMOnlineChatModuleBase, 500, '{"error":{}}', ModelFailureCode.PROVIDER_INTERNAL_ERROR),
+    (LazyLLMOnlineChatModuleBase, 503, '{"error":{}}', ModelFailureCode.SERVICE_UNAVAILABLE),
     (LazyLLMOnlineChatModuleBase, 402, '{"error":{}}', ModelFailureCode.PROVIDER_REJECTED),
     (DeepSeekChat, 402, '{"error":{}}', ModelFailureCode.QUOTA_EXHAUSTED),
-    (LazyLLMOnlineChatModuleBase, 503, '{"error":{}}', ModelFailureCode.SERVICE_UNAVAILABLE),
+    (DeepSeekChat, 422, '{"error":{}}', ModelFailureCode.INVALID_REQUEST),
     (DeepSeekChat, 503, '{"error":{}}', ModelFailureCode.PROVIDER_OVERLOADED),
 ])
 def test_provider_http_mapping_uses_supplier_source(monkeypatch, module_cls, status, body, expected):
@@ -306,10 +347,88 @@ def test_provider_http_mapping_uses_supplier_source(monkeypatch, module_cls, sta
     assert exc_info.value.failure.provider_http_status == status
 
 
+@pytest.mark.parametrize(('provider_code', 'expected'), [
+    ('credit_balance_exhausted', ModelFailureCode.BALANCE_EXHAUSTED),
+    ('organization_spend_limit_exceeded', ModelFailureCode.ORGANIZATION_SPEND_LIMIT_EXCEEDED),
+    ('project_spend_limit_exceeded', ModelFailureCode.PROJECT_SPEND_LIMIT_EXCEEDED),
+    ('organization_usage_limit_exceeded', ModelFailureCode.ORGANIZATION_USAGE_LIMIT_EXCEEDED),
+])
+def test_openai_billing_codes_preserve_specific_reason(monkeypatch, provider_code, expected):
+    module = _module()
+    monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(
+        status_code=429,
+        body=json.dumps({'error': {'code': provider_code, 'type': 'insufficient_quota'}}),
+    ))
+
+    with pytest.raises(ModelResponseError) as exc_info:
+        module._forward_impl(
+            {'messages': []}, runtime_url='http://provider.test', stream_output=True,
+            proxies=None, request_timeout=1, state=ModelAttemptState(),
+        )
+
+    assert exc_info.value.failure.code is expected
+
+
+def test_openai_insufficient_quota_type_is_generic_fallback(monkeypatch):
+    module = _module()
+    monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(
+        status_code=429,
+        body='{"error":{"type":"insufficient_quota"}}',
+    ))
+
+    with pytest.raises(ModelResponseError) as exc_info:
+        module._forward_impl(
+            {'messages': []}, runtime_url='http://provider.test', stream_output=True,
+            proxies=None, request_timeout=1, state=ModelAttemptState(),
+        )
+
+    assert exc_info.value.failure.code is ModelFailureCode.QUOTA_EXHAUSTED
+
+
+@pytest.mark.parametrize(('status', 'body', 'expected'), [
+    (429, '{"error":{"code":"rate_limit_exceeded","type":"rate_limit_error"}}',
+     ModelFailureCode.TOO_MANY_REQUESTS),
+    (401, '{"error":{"code":"invalid_api_key"}}', ModelFailureCode.AUTHENTICATION_FAILED),
+    (400, '{"error":{"code":"content_policy_violation"}}', ModelFailureCode.INVALID_REQUEST),
+])
+def test_openai_undocumented_error_aliases_do_not_override_http(monkeypatch, status, body, expected):
+    module = _module()
+    monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(status_code=status, body=body))
+
+    with pytest.raises(ModelResponseError) as exc_info:
+        module._forward_impl(
+            {'messages': []}, runtime_url='http://provider.test', stream_output=True,
+            proxies=None, request_timeout=1, state=ModelAttemptState(),
+        )
+
+    assert exc_info.value.failure.code is expected
+
+
+def test_failure_public_dict_excludes_provider_diagnostics():
+    failure = ModelFailure(
+        origin=ModelFailureOrigin.HTTP,
+        code=ModelFailureCode.TOO_MANY_REQUESTS,
+        provider_error_code='private-code',
+        provider_error_type='private-type',
+        provider_http_status=429,
+        retry_after_ms=2000,
+        diagnostic_id='diag-safe',
+        response_started=True,
+    )
+
+    assert failure.public_dict() == {
+        'origin': 'http',
+        'code': 'too_many_requests',
+        'has_semantic_output': False,
+        'diagnostic_id': 'diag-safe',
+    }
+
+
 @pytest.mark.parametrize(('status_code', 'expected'), [
     (1001, ModelFailureCode.REQUEST_TIMEOUT),
     (1002, ModelFailureCode.RATE_LIMITED),
     (1008, ModelFailureCode.QUOTA_EXHAUSTED),
+    (2056, ModelFailureCode.QUOTA_EXHAUSTED),
     (1026, ModelFailureCode.INPUT_FILTERED),
     (1027, ModelFailureCode.OUTPUT_FILTERED),
     (1039, ModelFailureCode.TOKEN_LIMIT),

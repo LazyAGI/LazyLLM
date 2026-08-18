@@ -28,6 +28,10 @@ class ModelFailureCode(str, Enum):
     RATE_LIMITED = 'rate_limited'
     TOO_MANY_REQUESTS = 'too_many_requests'
     QUOTA_EXHAUSTED = 'quota_exhausted'
+    BALANCE_EXHAUSTED = 'balance_exhausted'
+    ORGANIZATION_SPEND_LIMIT_EXCEEDED = 'organization_spend_limit_exceeded'
+    PROJECT_SPEND_LIMIT_EXCEEDED = 'project_spend_limit_exceeded'
+    ORGANIZATION_USAGE_LIMIT_EXCEEDED = 'organization_usage_limit_exceeded'
     INPUT_FILTERED = 'input_filtered'
     OUTPUT_FILTERED = 'output_filtered'
     TOKEN_LIMIT = 'token_limit'
@@ -36,6 +40,8 @@ class ModelFailureCode(str, Enum):
     SERVICE_UNAVAILABLE = 'service_unavailable'
     PROVIDER_INTERNAL_ERROR = 'provider_internal_error'
     PROVIDER_REJECTED = 'provider_rejected'
+    CONFLICT = 'conflict'
+    UNPROCESSABLE_ENTITY = 'unprocessable_entity'
     PROTOCOL_ERROR = 'protocol_error'
     TRANSPORT_ERROR = 'transport_error'
 
@@ -50,6 +56,7 @@ class ModelFailure:
     retry_after_ms: Optional[int] = None
     diagnostic_id: Optional[str] = None
     has_semantic_output: bool = False
+    response_started: bool = False
 
     def public_dict(self) -> Dict[str, Any]:
         result = {
@@ -57,10 +64,6 @@ class ModelFailure:
             'code': self.code.value,
             'has_semantic_output': self.has_semantic_output,
         }
-        if self.provider_http_status is not None:
-            result['provider_http_status'] = self.provider_http_status
-        if self.retry_after_ms is not None:
-            result['retry_after_ms'] = self.retry_after_ms
         if self.diagnostic_id:
             result['diagnostic_id'] = self.diagnostic_id
         return result

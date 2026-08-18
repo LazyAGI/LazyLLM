@@ -34,17 +34,15 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     NO_PROXY = True
     __lazyllm_registry_key__ = LLMType.CHAT
     _message_format = 'openai'
+    _PROVIDER_SOURCE = 'openai'
     _PROVIDER_ERROR_CODE_MAP = {
-        'credit_balance_exhausted': ModelFailureCode.QUOTA_EXHAUSTED,
-        'organization_spend_limit_exceeded': ModelFailureCode.QUOTA_EXHAUSTED,
-        'project_spend_limit_exceeded': ModelFailureCode.QUOTA_EXHAUSTED,
-        'organization_usage_limit_exceeded': ModelFailureCode.QUOTA_EXHAUSTED,
-        'rate_limit_exceeded': ModelFailureCode.RATE_LIMITED,
-        'content_policy_violation': ModelFailureCode.INPUT_FILTERED,
+        'credit_balance_exhausted': ModelFailureCode.BALANCE_EXHAUSTED,
+        'organization_spend_limit_exceeded': ModelFailureCode.ORGANIZATION_SPEND_LIMIT_EXCEEDED,
+        'project_spend_limit_exceeded': ModelFailureCode.PROJECT_SPEND_LIMIT_EXCEEDED,
+        'organization_usage_limit_exceeded': ModelFailureCode.ORGANIZATION_USAGE_LIMIT_EXCEEDED,
     }
     _PROVIDER_ERROR_TYPE_MAP = {
         'insufficient_quota': ModelFailureCode.QUOTA_EXHAUSTED,
-        'rate_limit_error': ModelFailureCode.RATE_LIMITED,
     }
     _HTTP_ERROR_CODE_MAP = {
         400: ModelFailureCode.INVALID_REQUEST,
@@ -52,7 +50,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         403: ModelFailureCode.PERMISSION_DENIED,
         404: ModelFailureCode.NOT_FOUND,
         408: ModelFailureCode.REQUEST_TIMEOUT,
-        422: ModelFailureCode.INVALID_REQUEST,
+        409: ModelFailureCode.CONFLICT,
+        422: ModelFailureCode.UNPROCESSABLE_ENTITY,
         429: ModelFailureCode.TOO_MANY_REQUESTS,
         500: ModelFailureCode.PROVIDER_INTERNAL_ERROR,
         502: ModelFailureCode.PROVIDER_INTERNAL_ERROR,
@@ -231,6 +230,16 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             retry_after_ms=retry_after_ms,
             diagnostic_id=uuid.uuid4().hex,
         ))
+
+    def _log_failure(self, failure: ModelFailure) -> None:
+        lazyllm.LOG.warning(
+            'provider_failure '
+            f'diagnostic_id={failure.diagnostic_id} source={self._PROVIDER_SOURCE} '
+            f'origin={failure.origin.value} code={failure.code.value} '
+            f'http_status={failure.provider_http_status} provider_code={failure.provider_error_code} '
+            f'provider_type={failure.provider_error_type} response_started={failure.response_started} '
+            f'semantic_output={failure.has_semantic_output}'
+        )
 
     @classmethod
     def _map_finish_reason(cls, raw_finish_reason: Any) -> ModelFinish:
@@ -429,6 +438,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                       ) -> List[Dict[str, Any]]:
         with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,
                            proxies=proxies, timeout=request_timeout) as r:
+            if state is not None: state.response_started = True
             self._raise_for_http_error(r)
 
             with self.stream_output(stream_output):
@@ -469,6 +479,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                 stream_output, event_type, event_data,
             ),
             is_retryable_transport_error=self._is_retryable_transport_error,
+            report_failure=self._log_failure,
         )
         return runner.run(
             lambda state: self._forward_impl(

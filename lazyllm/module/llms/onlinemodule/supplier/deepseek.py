@@ -4,11 +4,13 @@ from ..base import ModelFailureCode, ModelFinish, OnlineChatModuleBase
 
 
 class DeepSeekChat(OnlineChatModuleBase):
+    _PROVIDER_SOURCE = 'deepseek'
     _PROVIDER_ERROR_CODE_MAP = {}
     _PROVIDER_ERROR_TYPE_MAP = {}
     _HTTP_ERROR_CODE_MAP = {
         **OnlineChatModuleBase._HTTP_ERROR_CODE_MAP,
         402: ModelFailureCode.QUOTA_EXHAUSTED,
+        422: ModelFailureCode.INVALID_REQUEST,
         429: ModelFailureCode.RATE_LIMITED,
         503: ModelFailureCode.PROVIDER_OVERLOADED,
     }

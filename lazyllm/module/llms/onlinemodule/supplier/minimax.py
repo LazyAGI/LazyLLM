@@ -20,6 +20,7 @@ from ..fileHandler import FileHandlerBase
 class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
     MODEL_NAME = 'MiniMax-M3'
+    _PROVIDER_SOURCE = 'minimax'
     BASE_URLS = {
         'global': 'https://api.minimax.io/v1/',
         'cn': 'https://api.minimaxi.com/v1/',
