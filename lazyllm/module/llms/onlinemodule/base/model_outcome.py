@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+from lazyllm.common import HandledException
 
 
 class ModelFinish(str, Enum):
@@ -99,10 +101,13 @@ class ModelResponseError(Exception):
         self.failure = failure
 
 
-class ModelCallError(Exception):
-    def __init__(self, message: str, terminal: ModelCallTerminal):
+class ModelCallError(HandledException):
+    def __init__(self, message: str, terminal: ModelCallTerminal,
+                 partial_response: Optional[List[dict]] = None):
         super().__init__(message)
         self.terminal = terminal
+        self.partial_response = list(partial_response or [])
+        self.usage: Optional[Dict[str, int]] = None
 
 
 class ModelCallInterrupted(ModelCallError): pass

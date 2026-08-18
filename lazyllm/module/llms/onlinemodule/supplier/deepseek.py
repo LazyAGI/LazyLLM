@@ -8,7 +8,7 @@ register_provider_error_mapping(
     'deepseek',
     extends='openai_compatible',
     http_map={
-        402: ModelFailureCode.QUOTA_EXHAUSTED,
+        402: ModelFailureCode.BALANCE_EXHAUSTED,
         422: ModelFailureCode.INVALID_REQUEST,
         429: ModelFailureCode.RATE_LIMITED,
         503: ModelFailureCode.PROVIDER_OVERLOADED,

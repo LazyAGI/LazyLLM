@@ -4,6 +4,7 @@ import socket
 import pytest
 import requests
 
+import lazyllm
 from lazyllm.module.llms.onlinemodule.base.model_call_runner import ModelAttemptState, ModelCallRunner
 from lazyllm.module.llms.onlinemodule.base.model_outcome import (
     ModelCallFailed,
@@ -15,6 +16,7 @@ from lazyllm.module.llms.onlinemodule.base.model_outcome import (
     ModelResponseError,
 )
 from lazyllm.module.llms.onlinemodule.base.onlineChatModuleBase import LazyLLMOnlineChatModuleBase
+from lazyllm.module.llms.onlinemodule.supplier.claude import ClaudeChat
 from lazyllm.module.llms.onlinemodule.supplier.deepseek import DeepSeekChat
 from lazyllm.module.llms.onlinemodule.supplier.glm import GLMChat
 from lazyllm.module.llms.onlinemodule.supplier.minimax import MinimaxChat
@@ -110,6 +112,25 @@ def test_malformed_json_is_protocol_failure(monkeypatch):
     assert exc_info.value.failure.code is ModelFailureCode.PROTOCOL_ERROR
 
 
+@pytest.mark.parametrize('late_frame', [
+    b'data: not-json',
+    b'data: {"error":{"code":"late_provider_error"}}',
+])
+def test_protocol_or_provider_error_after_finish_is_not_swallowed(monkeypatch, late_frame):
+    module = _module()
+    monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(frames=[
+        _frame({'role': 'assistant', 'content': 'ok'}),
+        _frame({}, 'stop'),
+        late_frame,
+    ]))
+
+    with pytest.raises(ModelResponseError):
+        module._forward_impl(
+            {'messages': []}, runtime_url='http://provider.test', stream_output=True,
+            proxies=None, request_timeout=1, state=ModelAttemptState(),
+        )
+
+
 def test_non_stream_response_requires_finish_reason(monkeypatch):
     module = _module()
     monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(body=json.dumps({
@@ -134,6 +155,40 @@ def test_deprecated_function_call_fragment_is_semantic_output():
 
     assert state.semantic_output is True
     assert state.finish is ModelFinish.TOOL_CALLS
+
+
+@pytest.mark.parametrize(('choices', 'expected'), [
+    ([
+        {'index': 0, 'message': {'content': 'complete'}, 'finish_reason': 'stop'},
+        {'index': 1, 'message': {'content': 'partial'}, 'finish_reason': 'length'},
+    ], ModelFinish.STOP),
+    ([
+        {'index': 1, 'message': {'content': 'complete'}, 'finish_reason': 'stop'},
+        {'index': 0, 'message': {'content': 'partial'}, 'finish_reason': 'length'},
+    ], ModelFinish.LENGTH),
+])
+def test_attempt_terminal_tracks_primary_choice(choices, expected):
+    module = _module()
+    state = ModelAttemptState()
+
+    module._update_attempt_state({'choices': choices}, state)
+
+    assert state.finish is expected
+    assert module._extract_specified_key_fields({'choices': choices})['content'] \
+        == next(choice for choice in choices if choice['index'] == 0)['message']['content']
+
+
+def test_attempt_ignores_frame_for_non_primary_choice():
+    state = ModelAttemptState(finish=ModelFinish.STOP, raw_finish_reason='stop')
+
+    _module()._update_attempt_state({'choices': [{
+        'index': 1,
+        'message': {'content': 'secondary partial'},
+        'finish_reason': 'length',
+    }]}, state)
+
+    assert state.finish is ModelFinish.STOP
+    assert state.raw_finish_reason == 'stop'
 
 
 def test_transport_error_after_finish_reason_keeps_terminal(monkeypatch):
@@ -326,6 +381,21 @@ def test_http_failure_is_not_retried(monkeypatch):
     assert 'provider_error_type' not in events[0][1]['failure']
 
 
+def test_http_status_survives_error_body_transport_failure():
+    module = _module()
+    response = _Response(status_code=429)
+
+    def broken_json():
+        raise requests.exceptions.ChunkedEncodingError('truncated error body')
+
+    response.json = broken_json
+    with pytest.raises(ModelResponseError) as exc_info:
+        module._raise_for_http_error(response)
+
+    assert exc_info.value.failure.provider_http_status == 429
+    assert exc_info.value.failure.code is ModelFailureCode.TOO_MANY_REQUESTS
+
+
 def test_retry_after_accepts_http_date_and_rejects_invalid_value(monkeypatch):
     monkeypatch.setattr(
         'lazyllm.module.llms.onlinemodule.base.onlineChatModuleBase.time.time',
@@ -363,6 +433,22 @@ def test_provider_http_mapping_uses_supplier_source(monkeypatch, module_cls, sta
 
     assert exc_info.value.failure.code is expected
     assert exc_info.value.failure.provider_http_status == status
+
+
+def test_deepseek_http_402_is_balance_exhausted(monkeypatch):
+    module = _module(DeepSeekChat)
+    monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(
+        status_code=402,
+        body='{"error":{}}',
+    ))
+
+    with pytest.raises(ModelResponseError) as exc_info:
+        module._forward_impl(
+            {'messages': []}, runtime_url='http://provider.test', stream_output=True,
+            proxies=None, request_timeout=1, state=ModelAttemptState(),
+        )
+
+    assert exc_info.value.failure.code is ModelFailureCode.BALANCE_EXHAUSTED
 
 
 @pytest.mark.parametrize(('provider_code', 'expected'), [
@@ -457,19 +543,26 @@ def test_minimax_http_200_base_resp_is_provider_failure():
     assert 'status_msg' not in failure.public_dict()
 
 
-def test_qwen_top_level_data_inspection_error_uses_provider_mapping():
+def test_qwen_data_inspection_without_phase_uses_generic_failure(monkeypatch):
     module = _module(QwenChat)
-
-    with pytest.raises(ModelResponseError) as exc_info:
-        module._str_to_json(json.dumps({
+    monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(
+        status_code=400,
+        body=json.dumps({'error': {
             'code': 'DataInspectionFailed',
             'type': 'data_inspection_failed',
             'message': 'must stay private',
-        }), stream_output=False)
+        }}),
+    ))
+
+    with pytest.raises(ModelResponseError) as exc_info:
+        module._forward_impl(
+            {'messages': []}, runtime_url='http://provider.test', stream_output=False,
+            proxies=None, request_timeout=1, state=ModelAttemptState(),
+        )
 
     failure = exc_info.value.failure
-    assert failure.origin is ModelFailureOrigin.PROVIDER
-    assert failure.code is ModelFailureCode.INPUT_FILTERED
+    assert failure.origin is ModelFailureOrigin.HTTP
+    assert failure.code is ModelFailureCode.PROVIDER_REJECTED
     assert failure.provider_error_code == 'DataInspectionFailed'
     assert 'message' not in failure.public_dict()
 
@@ -526,7 +619,7 @@ def test_minimax_stream_business_error_preserves_partial_output(monkeypatch):
         sleep=lambda delay: None,
     )
 
-    with pytest.raises(ModelCallInterrupted):
+    with pytest.raises(ModelCallInterrupted) as exc_info:
         runner.run(
             lambda state: module._forward_impl(
                 {'messages': []}, runtime_url='http://provider.test', stream_output=True,
@@ -539,3 +632,62 @@ def test_minimax_stream_business_error_preserves_partial_output(monkeypatch):
     assert terminal['has_semantic_output'] is True
     assert terminal['failure']['origin'] == 'provider'
     assert terminal['failure']['code'] == 'output_filtered'
+    assert exc_info.value.partial_response[0]['choices'][0]['delta']['content'] == 'partial'
+
+
+def test_non_stream_interruption_survives_module_boundary_with_partial_and_usage(monkeypatch):
+    module = OpenAIChat(
+        base_url='http://provider.test/v1/', model='test-model', api_key='',
+        stream=False, skip_auth=True,
+    )
+
+    def post(*args, **kwargs):
+        assert kwargs['stream'] is True
+        return _Response(body=json.dumps({
+            'choices': [{
+                'index': 0,
+                'message': {'role': 'assistant', 'content': 'partial answer'},
+                'finish_reason': 'length',
+            }],
+            'usage': {'prompt_tokens': 11, 'completion_tokens': 7},
+        }))
+
+    monkeypatch.setattr(requests, 'post', post)
+    with pytest.raises(ModelCallInterrupted) as exc_info:
+        module('hello', max_retries=1)
+
+    error = exc_info.value
+    assert error.terminal.finish is ModelFinish.LENGTH
+    assert error.partial_response[0]['choices'][0]['message']['content'] == 'partial answer'
+    assert error.usage == {'prompt_tokens': 11, 'completion_tokens': 7}
+    assert lazyllm.globals['usage'][module._module_id] == error.usage
+
+
+def test_claude_keeps_pre_response_transport_retry(monkeypatch):
+    module = _module(ClaudeChat)
+    calls = 0
+
+    def post(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise requests.ConnectTimeout('connect timeout')
+        return _Response(body=json.dumps({
+            'type': 'message',
+            'content': [{'type': 'text', 'text': 'ok'}],
+            'usage': {'input_tokens': 1, 'output_tokens': 1},
+        }))
+
+    monkeypatch.setattr(requests, 'post', post)
+    monkeypatch.setattr(
+        'lazyllm.module.llms.onlinemodule.base.onlineChatModuleBase.time.sleep',
+        lambda delay: None,
+    )
+
+    result = module._forward_with_retry(
+        {'messages': [], 'stream': False}, runtime_url='http://provider.test',
+        stream_output=False, proxies=None, max_retries=2, request_timeout=1,
+    )
+
+    assert calls == 2
+    assert result[0]['choices'][0]['message']['content'] == 'ok'

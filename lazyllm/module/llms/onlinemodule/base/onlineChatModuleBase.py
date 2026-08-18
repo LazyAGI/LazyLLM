@@ -20,6 +20,7 @@ from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ....servermodule import LLMBase, StaticParams
 from .model_call_runner import ModelAttemptState, ModelCallRunner
 from .model_outcome import (
+    ModelCallError,
     ModelFailure,
     ModelFailureCode,
     ModelFailureOrigin,
@@ -268,13 +269,23 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             if not isinstance(output, dict):
                 raise self._response_error('Provider response contains an invalid choice payload.',
                                            ModelFailureOrigin.PROTOCOL)
-            if (output.get('content') or output.get('reasoning_content')
-                    or output.get('tool_calls') or output.get('function_call')):
-                state.semantic_output = True
-            raw_finish_reason = choice.get('finish_reason')
-            if raw_finish_reason not in (None, ''):
-                state.raw_finish_reason = str(raw_finish_reason)
-                state.finish = self._map_finish_reason(raw_finish_reason)
+        choice = self._select_primary_choice(choices)
+        if choice is None: return
+        output = choice.get('message') or choice.get('delta') or {}
+        if (output.get('content') or output.get('reasoning_content')
+                or output.get('tool_calls') or output.get('function_call')):
+            state.semantic_output = True
+        raw_finish_reason = choice.get('finish_reason')
+        if raw_finish_reason not in (None, ''):
+            state.raw_finish_reason = str(raw_finish_reason)
+            state.finish = self._map_finish_reason(raw_finish_reason)
+
+    @staticmethod
+    def _select_primary_choice(choices: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not choices: return None
+        if any(choice.get('index') is not None for choice in choices):
+            return next((choice for choice in choices if choice.get('index') == 0), None)
+        return choices[0]
 
     def _emit_runtime_event(self, stream_output: Union[bool, Dict], event_type: str, data: Dict[str, Any]):
         if not stream_output: return
@@ -325,7 +336,10 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     def _extract_specified_key_fields(self, response: Dict[str, Any]):
         if not ('choices' in response and isinstance(response['choices'], list)):
             raise ValueError(f'The response {response} does not contain a `choices` field.')
-        outputs = response['choices'][0].get('message') or response['choices'][0].get('delta', {})
+        choice = self._select_primary_choice(response['choices'])
+        if choice is None:
+            raise ValueError(f'The response {response} contains no choices.')
+        outputs = choice.get('message') or choice.get('delta', {})
         return outputs
 
     def _merge_stream_result(self, src: List[Union[str, int, list, dict]], force_join: bool = False):
@@ -376,7 +390,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         if response.status_code == 200: return
         try:
             error_message = response.json()
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, requests.RequestException):
             error_message = {}
         code, error_type = self._provider_error_fields(error_message) \
             if isinstance(error_message, dict) else (None, None)
@@ -408,16 +422,22 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     def _collect_openai_frames(self, frames: Any, stream_output: Union[bool, Dict],
                                state: Optional[ModelAttemptState]) -> List[Dict[str, Any]]:
         msg_json = []
-        try:
-            for raw_frame in frames:
-                if self._consume_openai_frame(raw_frame, msg_json, stream_output, state):
+        if state is not None: state.frames = msg_json
+        frame_iter = iter(frames)
+        while True:
+            try:
+                raw_frame = next(frame_iter)
+            except StopIteration:
+                break
+            except Exception as exc:
+                # Only response-body transport failures may be ignored after a
+                # semantic terminal. Parser, provider, and stream-sink failures
+                # happen outside this narrow iterator boundary and remain fatal.
+                if state is not None and state.finish is not None and self._is_retryable_transport_error(exc):
                     break
-        except Exception:
-            # A valid OpenAI-compatible finish_reason is the semantic terminal.
-            # Transport failure after that terminal must not discard the outcome
-            # or trigger another paid attempt.
-            if state is None or state.finish is None:
                 raise
+            if self._consume_openai_frame(raw_frame, msg_json, stream_output, state):
+                break
         if state is None or state.finish is None:
             raise self._response_error('Provider response ended without a finish_reason.',
                                        ModelFailureOrigin.PROTOCOL)
@@ -427,7 +447,9 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                       proxies: Optional[Dict], request_timeout: Optional[Union[float, Tuple[float, float]]],
                       state: Optional[ModelAttemptState] = None,
                       ) -> List[Dict[str, Any]]:
-        with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,
+        # Always defer body consumption so response_started has the same
+        # response-header boundary for provider streaming and non-streaming calls.
+        with requests.post(runtime_url, json=data, headers=self._header, stream=True,
                            proxies=proxies, timeout=request_timeout) as r:
             if state is not None: state.response_started = True
             self._raise_for_http_error(r)
@@ -463,8 +485,19 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                             proxies: Optional[Dict], max_retries: int,
                             request_timeout: Optional[Union[float, Tuple[float, float]]]) -> List[Dict[str, Any]]:
         if self._message_format != 'openai':
-            return self._forward_impl(data, runtime_url=runtime_url, stream_output=stream_output,
-                                      proxies=proxies, request_timeout=request_timeout)
+            max_attempts = max(1, int(max_retries))
+            for attempt_index in range(1, max_attempts + 1):
+                state = ModelAttemptState()
+                try:
+                    return self._forward_impl(
+                        data, runtime_url=runtime_url, stream_output=stream_output,
+                        proxies=proxies, request_timeout=request_timeout, state=state,
+                    )
+                except Exception as exc:
+                    if (not self._is_retryable_transport_error(exc) or state.response_started
+                            or attempt_index >= max_attempts):
+                        raise
+                    time.sleep(ModelCallRunner._retry_delay(attempt_index))
         runner = ModelCallRunner(
             emit_event=lambda event_type, event_data: self._emit_runtime_event(
                 stream_output, event_type, event_data,
@@ -486,7 +519,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
                 tools: List[Dict[str, Any]] = None, stream_output: bool = None, stream: bool = None,
-                lazyllm_files=None, url: str = None, model: str = None, max_retries: int = 3, **kw):
+                lazyllm_files=None, url: str = None, model: str = None, max_retries: int = 5, **kw):
         request_timeout = self._request_timeout(kw, default_timeout=self._timeout)
         stream_output = stream_output if stream_output is not None else stream
         stream_output = stream_output if stream_output is not None else self._stream
@@ -513,17 +546,28 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
         data = self._prepare_request_data(data)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
-        msg_json = self._forward_with_retry(data, runtime_url=runtime_url, stream_output=stream_output,
-                                            proxies=proxies, max_retries=max_retries,
-                                            request_timeout=request_timeout)
+        try:
+            msg_json = self._forward_with_retry(data, runtime_url=runtime_url, stream_output=stream_output,
+                                                proxies=proxies, max_retries=max_retries,
+                                                request_timeout=request_timeout)
+        except ModelCallError as exc:
+            usage = self._extract_usage(exc.partial_response)
+            exc.usage = usage
+            self._record_usage(usage)
+            raise
 
+        usage = self._extract_usage(msg_json)
+        self._record_usage(usage)
+        extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
+        return self._formatter(extractor) if extractor else ''
+
+    @staticmethod
+    def _extract_usage(msg_json: List[Dict[str, Any]]) -> Dict[str, int]:
         usage = {'prompt_tokens': -1, 'completion_tokens': -1}
         if len(msg_json) > 0 and 'usage' in msg_json[-1] and isinstance(msg_json[-1]['usage'], dict):
             for k in usage:
                 usage[k] = msg_json[-1]['usage'].get(k, usage[k])
-        self._record_usage(usage)
-        extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
-        return self._formatter(extractor) if extractor else ''
+        return usage
 
     def _record_usage(self, usage: dict):
         globals['usage'][self._module_id] = usage

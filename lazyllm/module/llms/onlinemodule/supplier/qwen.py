@@ -40,8 +40,10 @@ _QWEN_ERROR_MAP = {
     'Throttling.BurstRate': ModelFailureCode.RATE_LIMITED,
     'limit_burst_rate': ModelFailureCode.RATE_LIMITED,
     'Throttling.Concurrency': ModelFailureCode.RATE_LIMITED,
-    'DataInspectionFailed': ModelFailureCode.INPUT_FILTERED,
-    'data_inspection_failed': ModelFailureCode.INPUT_FILTERED,
+    # DashScope uses the same code for input and output inspection failures.
+    # Keep the public classification generic when the response has no phase.
+    'DataInspectionFailed': ModelFailureCode.PROVIDER_REJECTED,
+    'data_inspection_failed': ModelFailureCode.PROVIDER_REJECTED,
     'InvalidApiKey': ModelFailureCode.AUTHENTICATION_FAILED,
     'invalid_api_key': ModelFailureCode.AUTHENTICATION_FAILED,
     'AccessDenied': ModelFailureCode.PERMISSION_DENIED,
