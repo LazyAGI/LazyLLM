@@ -7,10 +7,12 @@ from urllib.parse import urljoin
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
-    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineMultimodalEmbedModuleBase,
+    ModelFailureCode, ModelFailureOrigin, OnlineChatModuleBase,
+    LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineMultimodalEmbedModuleBase,
     LazyLLMOnlineRerankModuleBase, LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase,
     LazyLLMOnlineTTSModuleBase
 )
+from ..base.provider_error_mapping import register_provider_error_mapping
 from ..base.utils import resolve_online_params
 from ..fileHandler import FileHandlerBase
 from http import HTTPStatus
@@ -22,6 +24,54 @@ from lazyllm import LOG
 _DASHSCOPE_DEFAULT_HTTP_URL = 'https://dashscope.aliyuncs.com/api/v1'
 _DASHSCOPE_DEFAULT_WEBSOCKET_URL = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference'
 _dashscope_urls_initialized = False
+
+
+_QWEN_ERROR_MAP = {
+    'Arrearage': ModelFailureCode.BALANCE_EXHAUSTED,
+    'isv.OUT_OF_SERVICE': ModelFailureCode.BALANCE_EXHAUSTED,
+    'PrepaidBillOverdue': ModelFailureCode.BALANCE_EXHAUSTED,
+    'PostpaidBillOverdue': ModelFailureCode.BALANCE_EXHAUSTED,
+    'Throttling.AllocationQuota': ModelFailureCode.QUOTA_EXHAUSTED,
+    'insufficient_quota': ModelFailureCode.QUOTA_EXHAUSTED,
+    'Throttling.RateQuota': ModelFailureCode.RATE_LIMITED,
+    'LimitRequests': ModelFailureCode.RATE_LIMITED,
+    'limit_requests': ModelFailureCode.RATE_LIMITED,
+    'ResourceExhausted': ModelFailureCode.RATE_LIMITED,
+    'Throttling.BurstRate': ModelFailureCode.RATE_LIMITED,
+    'limit_burst_rate': ModelFailureCode.RATE_LIMITED,
+    'Throttling.Concurrency': ModelFailureCode.RATE_LIMITED,
+    'DataInspectionFailed': ModelFailureCode.INPUT_FILTERED,
+    'data_inspection_failed': ModelFailureCode.INPUT_FILTERED,
+    'InvalidApiKey': ModelFailureCode.AUTHENTICATION_FAILED,
+    'invalid_api_key': ModelFailureCode.AUTHENTICATION_FAILED,
+    'AccessDenied': ModelFailureCode.PERMISSION_DENIED,
+    'access_denied': ModelFailureCode.PERMISSION_DENIED,
+    'AccessDenied.Unpurchased': ModelFailureCode.PERMISSION_DENIED,
+    'Model.AccessDenied': ModelFailureCode.PERMISSION_DENIED,
+    'App.AccessDenied': ModelFailureCode.PERMISSION_DENIED,
+    'Workspace.AccessDenied': ModelFailureCode.PERMISSION_DENIED,
+    'ModelNotFound': ModelFailureCode.NOT_FOUND,
+    'model_not_found': ModelFailureCode.NOT_FOUND,
+    'model_not_supported': ModelFailureCode.NOT_FOUND,
+    'WorkSpaceNotFound': ModelFailureCode.NOT_FOUND,
+    'NotFound': ModelFailureCode.NOT_FOUND,
+    'InvalidParameter': ModelFailureCode.INVALID_REQUEST,
+    'invalid_request_error': ModelFailureCode.INVALID_REQUEST,
+    'invalid_value': ModelFailureCode.INVALID_REQUEST,
+    'InternalError.Algo.InvalidParameter': ModelFailureCode.INVALID_REQUEST,
+    'InternalError': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    'internal_error': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    'InternalError.Algo': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+}
+
+
+register_provider_error_mapping(
+    'qwen',
+    extends='openai_compatible',
+    code_map=_QWEN_ERROR_MAP,
+    type_map=_QWEN_ERROR_MAP,
+    http_map={429: ModelFailureCode.RATE_LIMITED},
+)
 
 
 def _ensure_dashscope_urls_initialized() -> None:
@@ -51,6 +101,7 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ['qwen-turbo', 'qwen-7b-chat', 'qwen-72b-chat']
     VLM_MODEL_PREFIX = ['qwen-vl-plus', 'qwen-vl-max', 'qvq-max', 'qvq-plus']
     MODEL_NAME = 'qwen-plus'
+    _PROVIDER_SOURCE = 'qwen'
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
@@ -93,6 +144,30 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
         else:
             data.pop('incremental_output', None)
         return data
+
+    @staticmethod
+    def _provider_error_fields(message: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+        if message.get('error') is not None:
+            return OnlineChatModuleBase._provider_error_fields(message)
+        code = message.get('code')
+        error_type = message.get('type')
+        return (
+            str(code) if code is not None else None,
+            str(error_type) if error_type is not None else None,
+        )
+
+    def _raise_for_provider_error(self, message: Dict[str, Any]) -> None:
+        if message.get('error') is not None:
+            return super()._raise_for_provider_error(message)
+        code, error_type = self._provider_error_fields(message)
+        if code is None and error_type is None:
+            return
+        raise self._response_error(
+            'Provider returned an error frame.',
+            ModelFailureOrigin.PROVIDER,
+            provider_error_code=code,
+            provider_error_type=error_type,
+        )
 
     def _get_system_prompt(self):
         return ('You are a large-scale language model from Alibaba Cloud, '

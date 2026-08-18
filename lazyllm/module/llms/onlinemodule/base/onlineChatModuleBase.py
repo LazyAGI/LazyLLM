@@ -26,6 +26,7 @@ from .model_outcome import (
     ModelFinish,
     ModelResponseError,
 )
+from .provider_error_mapping import get_provider_error_mapping
 from .utils import LazyLLMOnlineBase, resolve_online_params
 
 
@@ -35,30 +36,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     NO_PROXY = True
     __lazyllm_registry_key__ = LLMType.CHAT
     _message_format = 'openai'
-    _PROVIDER_SOURCE = 'openai'
-    _PROVIDER_ERROR_CODE_MAP = {
-        'credit_balance_exhausted': ModelFailureCode.BALANCE_EXHAUSTED,
-        'organization_spend_limit_exceeded': ModelFailureCode.ORGANIZATION_SPEND_LIMIT_EXCEEDED,
-        'project_spend_limit_exceeded': ModelFailureCode.PROJECT_SPEND_LIMIT_EXCEEDED,
-        'organization_usage_limit_exceeded': ModelFailureCode.ORGANIZATION_USAGE_LIMIT_EXCEEDED,
-    }
-    _PROVIDER_ERROR_TYPE_MAP = {
-        'insufficient_quota': ModelFailureCode.QUOTA_EXHAUSTED,
-    }
-    _HTTP_ERROR_CODE_MAP = {
-        400: ModelFailureCode.INVALID_REQUEST,
-        401: ModelFailureCode.AUTHENTICATION_FAILED,
-        403: ModelFailureCode.PERMISSION_DENIED,
-        404: ModelFailureCode.NOT_FOUND,
-        408: ModelFailureCode.REQUEST_TIMEOUT,
-        409: ModelFailureCode.CONFLICT,
-        422: ModelFailureCode.UNPROCESSABLE_ENTITY,
-        429: ModelFailureCode.TOO_MANY_REQUESTS,
-        500: ModelFailureCode.PROVIDER_INTERNAL_ERROR,
-        502: ModelFailureCode.PROVIDER_INTERNAL_ERROR,
-        503: ModelFailureCode.SERVICE_UNAVAILABLE,
-        504: ModelFailureCode.REQUEST_TIMEOUT,
-    }
+    _PROVIDER_SOURCE = 'openai_compatible'
     _FINISH_REASON_MAP = {
         'stop': ModelFinish.STOP,
         'tool_calls': ModelFinish.TOOL_CALLS,
@@ -201,14 +179,15 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             return ModelFailureCode.PROTOCOL_ERROR
         if origin == ModelFailureOrigin.TRANSPORT:
             return ModelFailureCode.TRANSPORT_ERROR
+        mapping = get_provider_error_mapping(self._PROVIDER_SOURCE)
         if provider_error_code:
-            mapped = self._PROVIDER_ERROR_CODE_MAP.get(provider_error_code.lower())
+            mapped = mapping.code_map.get(provider_error_code.lower())
             if mapped is not None: return mapped
         if provider_error_type:
-            mapped = self._PROVIDER_ERROR_TYPE_MAP.get(provider_error_type.lower())
+            mapped = mapping.type_map.get(provider_error_type.lower())
             if mapped is not None: return mapped
         if provider_http_status is not None:
-            mapped = self._HTTP_ERROR_CODE_MAP.get(provider_http_status)
+            mapped = mapping.http_map.get(provider_http_status)
             if mapped is not None: return mapped
         return ModelFailureCode.PROVIDER_REJECTED
 

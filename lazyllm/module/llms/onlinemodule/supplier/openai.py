@@ -5,12 +5,29 @@ import requests
 from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 from ..base import (
-    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase
+    ModelFailureCode, OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase
 )
+from ..base.provider_error_mapping import register_provider_error_mapping
 from ..fileHandler import FileHandlerBase
 
 
+register_provider_error_mapping(
+    'openai',
+    extends='openai_compatible',
+    code_map={
+        'credit_balance_exhausted': ModelFailureCode.BALANCE_EXHAUSTED,
+        'organization_spend_limit_exceeded': ModelFailureCode.ORGANIZATION_SPEND_LIMIT_EXCEEDED,
+        'project_spend_limit_exceeded': ModelFailureCode.PROJECT_SPEND_LIMIT_EXCEEDED,
+        'organization_usage_limit_exceeded': ModelFailureCode.ORGANIZATION_USAGE_LIMIT_EXCEEDED,
+    },
+    type_map={
+        'insufficient_quota': ModelFailureCode.QUOTA_EXHAUSTED,
+    },
+)
+
+
 class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
+    _PROVIDER_SOURCE = 'openai'
     TRAINABLE_MODEL_LIST = ['gpt-3.5-turbo-0125', 'gpt-3.5-turbo-1106',
                             'gpt-3.5-turbo-0613', 'babbage-002',
                             'davinci-002', 'gpt-4-0613']

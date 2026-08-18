@@ -12,20 +12,16 @@ from ..base import (
     LazyLLMOnlineText2ImageModuleBase,
     LazyLLMOnlineTTSModuleBase,
 )
+from ..base.provider_error_mapping import register_provider_error_mapping
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
 
 
-class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
-
-    MODEL_NAME = 'MiniMax-M3'
-    _PROVIDER_SOURCE = 'minimax'
-    BASE_URLS = {
-        'global': 'https://api.minimax.io/v1/',
-        'cn': 'https://api.minimaxi.com/v1/',
-    }
-    _PROVIDER_ERROR_CODE_MAP = {
+register_provider_error_mapping(
+    'minimax',
+    extends='openai_compatible',
+    code_map={
         '1001': ModelFailureCode.REQUEST_TIMEOUT,
         '1002': ModelFailureCode.RATE_LIMITED,
         '1004': ModelFailureCode.AUTHENTICATION_FAILED,
@@ -42,8 +38,18 @@ class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
         '2045': ModelFailureCode.RATE_LIMITED,
         '2049': ModelFailureCode.AUTHENTICATION_FAILED,
         '2056': ModelFailureCode.QUOTA_EXHAUSTED,
+    },
+)
+
+
+class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
+
+    MODEL_NAME = 'MiniMax-M3'
+    _PROVIDER_SOURCE = 'minimax'
+    BASE_URLS = {
+        'global': 'https://api.minimax.io/v1/',
+        'cn': 'https://api.minimaxi.com/v1/',
     }
-    _PROVIDER_ERROR_TYPE_MAP = {}
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False,

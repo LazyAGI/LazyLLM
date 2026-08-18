@@ -1,19 +1,23 @@
 from lazyllm import LOG
 from typing import Optional
 from ..base import ModelFailureCode, ModelFinish, OnlineChatModuleBase
+from ..base.provider_error_mapping import register_provider_error_mapping
 
 
-class DeepSeekChat(OnlineChatModuleBase):
-    _PROVIDER_SOURCE = 'deepseek'
-    _PROVIDER_ERROR_CODE_MAP = {}
-    _PROVIDER_ERROR_TYPE_MAP = {}
-    _HTTP_ERROR_CODE_MAP = {
-        **OnlineChatModuleBase._HTTP_ERROR_CODE_MAP,
+register_provider_error_mapping(
+    'deepseek',
+    extends='openai_compatible',
+    http_map={
         402: ModelFailureCode.QUOTA_EXHAUSTED,
         422: ModelFailureCode.INVALID_REQUEST,
         429: ModelFailureCode.RATE_LIMITED,
         503: ModelFailureCode.PROVIDER_OVERLOADED,
-    }
+    },
+)
+
+
+class DeepSeekChat(OnlineChatModuleBase):
+    _PROVIDER_SOURCE = 'deepseek'
     _FINISH_REASON_MAP = {
         **OnlineChatModuleBase._FINISH_REASON_MAP,
         'insufficient_system_resource': ModelFinish.INSUFFICIENT_SYSTEM_RESOURCE,

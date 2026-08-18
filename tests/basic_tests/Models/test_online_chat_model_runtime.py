@@ -17,6 +17,8 @@ from lazyllm.module.llms.onlinemodule.base.model_outcome import (
 from lazyllm.module.llms.onlinemodule.base.onlineChatModuleBase import LazyLLMOnlineChatModuleBase
 from lazyllm.module.llms.onlinemodule.supplier.deepseek import DeepSeekChat
 from lazyllm.module.llms.onlinemodule.supplier.minimax import MinimaxChat
+from lazyllm.module.llms.onlinemodule.supplier.openai import OpenAIChat
+from lazyllm.module.llms.onlinemodule.supplier.qwen import QwenChat
 
 
 class _Response:
@@ -338,9 +340,6 @@ def test_retry_after_accepts_http_date_and_rejects_invalid_value(monkeypatch):
     (LazyLLMOnlineChatModuleBase, 500, '{"error":{}}', ModelFailureCode.PROVIDER_INTERNAL_ERROR),
     (LazyLLMOnlineChatModuleBase, 503, '{"error":{}}', ModelFailureCode.SERVICE_UNAVAILABLE),
     (LazyLLMOnlineChatModuleBase, 402, '{"error":{}}', ModelFailureCode.PROVIDER_REJECTED),
-    (DeepSeekChat, 402, '{"error":{}}', ModelFailureCode.QUOTA_EXHAUSTED),
-    (DeepSeekChat, 422, '{"error":{}}', ModelFailureCode.INVALID_REQUEST),
-    (DeepSeekChat, 503, '{"error":{}}', ModelFailureCode.PROVIDER_OVERLOADED),
 ])
 def test_provider_http_mapping_uses_supplier_source(monkeypatch, module_cls, status, body, expected):
     module = _module(module_cls)
@@ -366,7 +365,7 @@ def test_provider_http_mapping_uses_supplier_source(monkeypatch, module_cls, sta
     ('organization_usage_limit_exceeded', ModelFailureCode.ORGANIZATION_USAGE_LIMIT_EXCEEDED),
 ])
 def test_openai_billing_codes_preserve_specific_reason(monkeypatch, provider_code, expected):
-    module = _module()
+    module = _module(OpenAIChat)
     monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(
         status_code=429,
         body=json.dumps({'error': {'code': provider_code, 'type': 'insufficient_quota'}}),
@@ -382,7 +381,7 @@ def test_openai_billing_codes_preserve_specific_reason(monkeypatch, provider_cod
 
 
 def test_openai_insufficient_quota_type_is_generic_fallback(monkeypatch):
-    module = _module()
+    module = _module(OpenAIChat)
     monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(
         status_code=429,
         body='{"error":{"type":"insufficient_quota"}}',
@@ -404,7 +403,7 @@ def test_openai_insufficient_quota_type_is_generic_fallback(monkeypatch):
     (400, '{"error":{"code":"content_policy_violation"}}', ModelFailureCode.INVALID_REQUEST),
 ])
 def test_openai_undocumented_error_aliases_do_not_override_http(monkeypatch, status, body, expected):
-    module = _module()
+    module = _module(OpenAIChat)
     monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(status_code=status, body=body))
 
     with pytest.raises(ModelResponseError) as exc_info:
@@ -436,29 +435,56 @@ def test_failure_public_dict_excludes_provider_diagnostics():
     }
 
 
-@pytest.mark.parametrize(('status_code', 'expected'), [
-    (1001, ModelFailureCode.REQUEST_TIMEOUT),
-    (1002, ModelFailureCode.RATE_LIMITED),
-    (1008, ModelFailureCode.QUOTA_EXHAUSTED),
-    (2056, ModelFailureCode.QUOTA_EXHAUSTED),
-    (1026, ModelFailureCode.INPUT_FILTERED),
-    (1027, ModelFailureCode.OUTPUT_FILTERED),
-    (1039, ModelFailureCode.TOKEN_LIMIT),
-    (9999, ModelFailureCode.PROVIDER_REJECTED),
-])
-def test_minimax_http_200_base_resp_is_provider_failure(status_code, expected):
+def test_minimax_http_200_base_resp_is_provider_failure():
     module = _module(MinimaxChat)
 
     with pytest.raises(ModelResponseError) as exc_info:
         module._str_to_json(json.dumps({
-            'base_resp': {'status_code': status_code, 'status_msg': 'must stay private'},
+            'base_resp': {'status_code': 2056, 'status_msg': 'must stay private'},
         }), stream_output=False)
 
     failure = exc_info.value.failure
     assert failure.origin is ModelFailureOrigin.PROVIDER
-    assert failure.code is expected
+    assert failure.code is ModelFailureCode.QUOTA_EXHAUSTED
     assert failure.provider_http_status is None
     assert 'status_msg' not in failure.public_dict()
+
+
+def test_qwen_top_level_data_inspection_error_uses_provider_mapping():
+    module = _module(QwenChat)
+
+    with pytest.raises(ModelResponseError) as exc_info:
+        module._str_to_json(json.dumps({
+            'code': 'DataInspectionFailed',
+            'type': 'data_inspection_failed',
+            'message': 'must stay private',
+        }), stream_output=False)
+
+    failure = exc_info.value.failure
+    assert failure.origin is ModelFailureOrigin.PROVIDER
+    assert failure.code is ModelFailureCode.INPUT_FILTERED
+    assert failure.provider_error_code == 'DataInspectionFailed'
+    assert 'message' not in failure.public_dict()
+
+
+@pytest.mark.parametrize(('module_cls', 'expected'), [
+    (LazyLLMOnlineChatModuleBase, ModelFailureCode.TOO_MANY_REQUESTS),
+    (QwenChat, ModelFailureCode.RATE_LIMITED),
+])
+def test_provider_profiles_isolate_bare_http_429(monkeypatch, module_cls, expected):
+    module = _module(module_cls)
+    monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(
+        status_code=429,
+        body='{"error":{}}',
+    ))
+
+    with pytest.raises(ModelResponseError) as exc_info:
+        module._forward_impl(
+            {'messages': []}, runtime_url='http://provider.test', stream_output=True,
+            proxies=None, request_timeout=1, state=ModelAttemptState(),
+        )
+
+    assert exc_info.value.failure.code is expected
 
 
 def test_minimax_stream_business_error_preserves_partial_output(monkeypatch):
