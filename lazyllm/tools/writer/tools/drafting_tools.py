@@ -951,6 +951,23 @@ class WriterDraftingTools(WriterToolBase):
                 found_targets.add(target)
                 reference_lines[target] = fallback_reference_line
 
+        # A model may produce an otherwise complete section while omitting a
+        # planned required link. Preserve the strict plan boundary (unplanned
+        # links still fail above), but deterministically materialize required
+        # planned links instead of discarding the completed section.
+        for item in references:
+            target = str(item.get('target'))
+            if not item.get('required', True) or target in found_targets:
+                continue
+            if fallback_reference_line is None:
+                fallback_reference_line = cls._markdown_reference_fallback_line(output)
+            output[fallback_reference_line] = (
+                f'{output[fallback_reference_line].rstrip()} '
+                f'[{cls._markdown_reference_text(item, target)}](#block-{target})'
+            )
+            found_targets.add(target)
+            reference_lines[target] = fallback_reference_line
+
         missing = [
             str(item.get('target')) for item in references
             if item.get('required', True)

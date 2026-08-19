@@ -19,6 +19,10 @@ Requirements:
   section_instruction.meta.max_chars is a hard prose limit when present.
 - The length limit takes precedence over exhaustive source coverage or prose expansion.
 - Respect required_points, fact_constraints, style_constraints, and relation_constraints.
+- Sections may be drafted independently and in parallel. Treat document-global point of view,
+  tense, narrative voice, character identity, and naming constraints as strict. Do not invent a
+  proper name for an unnamed protagonist. If multiple POV options remain without an explicit
+  selection, use third-person limited consistently.
 - When section_instruction.meta.rewrite=true, treat meta.source_content as the authoritative
   source material for this section and meta.source_format as formatting guidance. Rewrite it
   according to the instruction without exposing source metadata in the result.
@@ -78,6 +82,10 @@ Requirements:
 - The length limit takes precedence over exhaustive source coverage or prose expansion.
 - Write headings without visible numbering; the system renders numbers.
 - Respect required_points, fact_constraints, style_constraints, and relation_constraints.
+- Sections may be drafted independently and in parallel. Treat document-global point of view,
+  tense, narrative voice, character identity, and naming constraints as strict. Do not invent a
+  proper name for an unnamed protagonist. If multiple POV options remain without an explicit
+  selection, use third-person limited consistently.
 - When section_instruction.meta.rewrite=true, treat meta.source_content as the authoritative
   source material for this section and meta.source_format as formatting guidance. Rewrite it
   according to the instruction without exposing source metadata in the result.

@@ -127,6 +127,9 @@ class DraftPreviewStream(Iterator[str]):
     ):
         self._queue: Queue[Dict[str, Any]] = Queue()
         self._cancelled = False
+        # Only user-visible preview deltas count as forward progress. Provider
+        # reasoning/heartbeat frames may continue indefinitely after the model
+        # has stopped producing document content.
         self._last_activity = time.monotonic()
         self._idle_timeout = idle_timeout
         self._consume = consume
@@ -167,7 +170,6 @@ class DraftPreviewStream(Iterator[str]):
     def _sink(self, payload: Dict[str, Any]) -> None:
         if self._cancelled:
             return
-        self._last_activity = time.monotonic()
         self._queue.put(dict(payload))
 
     def _iterate(self) -> Iterator[str]:
@@ -179,10 +181,18 @@ class DraftPreviewStream(Iterator[str]):
                 except Empty:
                     self._raise_if_idle()
                     continue
-                yield from self._consume(payload)
+                deltas = self._consume(payload)
+                if any(delta for delta in deltas):
+                    self._last_activity = time.monotonic()
+                else:
+                    self._raise_if_idle()
+                yield from deltas
 
             for payload in self._drain_queue():
-                yield from self._consume(payload)
+                deltas = self._consume(payload)
+                if any(delta for delta in deltas):
+                    self._last_activity = time.monotonic()
+                yield from deltas
 
             final_deltas, self._result = self._finalize(self._future.result())
             yield from final_deltas

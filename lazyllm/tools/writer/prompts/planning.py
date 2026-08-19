@@ -152,6 +152,10 @@ Requirements:
 - instruction_id must be stable and unique. section_title and section_goal must be non-empty.
 - required_points must retain the source facts, plot points, terminology, and details needed by drafting.
 - expected_blocks must be a concise content plan, not visible headings.
+- Sections may be drafted independently and in parallel. Preserve one document-global point
+  of view, tense, narrative voice, character identity, and naming policy by copying the same
+  continuity constraints into every relevant section. Do not invent a proper name for an
+  unnamed protagonist, and do not leave mutually exclusive POV choices unresolved.
 - Keep required_points and expected_blocks selective enough to fit the final length budget.
 - references must contain only exact source_ref objects copied from source_sections. Use them to identify
   which source sections inform each rewritten section; do not invent reference fields or values.
@@ -248,6 +252,11 @@ Requirements:
 - fact_constraints MUST only contain factual statements actually present in the writing context.
 - references are owned by the authoritative outline. Omit references; the system normalizes them.
 - style_constraints should include tone, pov, audience, and style requirements when applicable.
+- Sections may be drafted independently and in parallel. Resolve document-global narrative
+  choices during planning: choose one point of view, tense, narrative voice, and protagonist
+  naming policy, then copy those exact continuity constraints into every relevant section.
+  If the task, context, and outline do not name a protagonist, do not invent a proper name.
+  If they allow multiple points of view without choosing one, select one and use it throughout.
 - relation_constraints should describe ordinary continuity with neighboring sections;
   the drafting model expresses that continuity in prose.
 - Use the visual plan to shape section goals, ordering, and transitions when its content_ref targets
