@@ -266,6 +266,11 @@ class FeishuWriterAdapter(WriterAdapterBase):
         operation: Optional[NativePatchOperation] = None,
         operation_result: Optional[Dict[str, Any]] = None,
     ) -> WriterDocument:
+        refreshed_ids = {
+            block.provider_binding.get('block_id'): block.node_id
+            for block in refreshed_document.iter_blocks()
+            if isinstance(block.provider_binding.get('block_id'), str)
+        }
         previous_ids = {
             block.provider_binding.get('block_id'): block.node_id
             for block in previous_document.iter_blocks()
@@ -321,6 +326,8 @@ class FeishuWriterAdapter(WriterAdapterBase):
                         'move block ID relations do not match the refreshed document.')
                 refreshed.node_id = node_id
 
+        self._rebase_internal_reference_targets(refreshed_document, refreshed_ids)
+
         previous_blocks = {block.node_id: block for block in previous_document.iter_blocks()}
         for block in refreshed_document.iter_blocks():
             previous = previous_blocks.get(block.node_id)
@@ -328,6 +335,28 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 continue
             block.references = deepcopy(previous.references)
         return WriterDocument.model_validate(refreshed_document.model_dump())
+
+    @staticmethod
+    def _rebase_internal_reference_targets(
+        document: WriterDocument,
+        refreshed_ids: Dict[str, str],
+    ) -> None:
+        node_id_remap = {}
+        for block in document.iter_blocks():
+            block_id = block.provider_binding.get('block_id')
+            refreshed_id = refreshed_ids.get(block_id)
+            if isinstance(refreshed_id, str) and refreshed_id != block.node_id:
+                node_id_remap[refreshed_id] = block.node_id
+        if not node_id_remap:
+            return
+        for block in document.iter_blocks():
+            for span in block.spans:
+                link = span.style.get('link')
+                if not isinstance(link, dict) or link.get('type') != 'internal_ref':
+                    continue
+                target_id = link.get('target_node_id')
+                if isinstance(target_id, str) and target_id in node_id_remap:
+                    link['target_node_id'] = node_id_remap[target_id]
 
     def _update_patch_to_operation(
         self,
