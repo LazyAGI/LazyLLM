@@ -12,6 +12,73 @@ add_toolsmgr_chinese_doc = functools.partial(utils.add_chinese_doc, module=impor
 add_toolsmgr_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 add_toolsmgr_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 
+add_agent_chinese_doc('ToolExecutionError', '''\
+可预期工具执行失败的基础异常。
+
+工具实现应在能够明确描述失败原因时抛出该异常或其子类，由 ``ToolManager`` 统一转换为结构化 ToolResult。
+该异常只描述已经发生的错误及其建议恢复方向，不维护 Agent 的重试次数，也不会触发程序化自动重试。
+
+Args:
+    message (str): 提供给 Agent 的错误说明。
+    code (str | None): 稳定的错误代码；为空时使用异常类型的默认代码。
+    details (Dict[str, Any] | None): 结构化错误上下文。
+    recovery_action (str | None): 建议的恢复动作；为空时使用异常类型的默认动作。
+''')
+
+add_agent_english_doc('ToolExecutionError', '''\
+Base exception for predictable tool execution failures.
+
+Tool implementations should raise this exception or one of its subclasses when they can describe the failure explicitly.
+``ToolManager`` converts it into a structured ToolResult. The exception describes the error and its suggested recovery direction;
+it does not track the Agent's retry budget or trigger an automatic retry.
+
+Args:
+    message (str): Error description exposed to the Agent.
+    code (str | None): Stable error code. The exception type's default code is used when omitted.
+    details (Dict[str, Any] | None): Structured error context.
+    recovery_action (str | None): Suggested recovery action. The exception type's default action is used when omitted.
+''')
+
+add_agent_chinese_doc('ToolInvalidArgumentsError', '''\
+表示工具参数不符合调用要求，建议 Agent 修正参数后重新调用。
+''')
+
+add_agent_english_doc('ToolInvalidArgumentsError', '''\
+Indicates that tool arguments do not satisfy the invocation requirements and should be corrected before another call.
+''')
+
+add_agent_chinese_doc('ToolTransientError', '''\
+表示工具遇到临时性故障，Agent 可在合适时机决定是否重试；该异常本身不会触发自动重试。
+''')
+
+add_agent_english_doc('ToolTransientError', '''\
+Indicates a temporary tool failure that the Agent may choose to retry later; the exception itself does not trigger a retry.
+''')
+
+add_agent_chinese_doc('ToolPermissionError', '''\
+表示工具调用缺少权限或授权，建议 Agent 请求所需授权，而不是原样重试。
+''')
+
+add_agent_english_doc('ToolPermissionError', '''\
+Indicates that a tool call lacks permission or authorization and should request the required authorization instead of retrying unchanged.
+''')
+
+add_agent_chinese_doc('ToolDomainError', '''\
+表示工具已正常执行，但因资源状态或领域条件无法完成请求，建议 Agent 调整计划。
+''')
+
+add_agent_english_doc('ToolDomainError', '''\
+Indicates that the tool ran but could not complete the request because of resource state or another domain condition.
+''')
+
+add_agent_chinese_doc('ToolPolicyError', '''\
+表示工具调用被运行时策略阻止，例如重复调用或重复失败，建议 Agent 改变执行计划。
+''')
+
+add_agent_english_doc('ToolPolicyError', '''\
+Indicates that a runtime policy blocked the tool call, for example because of repeated calls or repeated failures.
+''')
+
 add_chinese_doc('IntentClassifier', '''\
 意图分类模块，用于根据输入文本在给定的意图列表中进行分类。
 支持中英文自动选择提示模板，并可通过示例、提示、约束和注意事项增强分类效果。
