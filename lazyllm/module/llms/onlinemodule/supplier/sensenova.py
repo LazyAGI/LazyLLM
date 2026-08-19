@@ -94,7 +94,7 @@ class _SenseNovaBase(object):
 
 class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     PROVIDER_NAME = 'sensenova'
-    ERROR_PROFILE = OnlineChatModuleBase.ERROR_PROFILE.extend(
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(
         code_map=_SENSENOVA_ERROR_CODE_MAP,
         type_map=_SENSENOVA_ERROR_TYPE_MAP,
     )

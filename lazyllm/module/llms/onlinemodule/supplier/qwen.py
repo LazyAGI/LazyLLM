@@ -94,12 +94,12 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = ['qwen-vl-plus', 'qwen-vl-max', 'qvq-max', 'qvq-plus']
     MODEL_NAME = 'qwen-plus'
     PROVIDER_NAME = 'qwen'
-    ERROR_PROFILE = OnlineChatModuleBase.ERROR_PROFILE.extend(
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(
         code_map=_QWEN_ERROR_MAP,
         type_map=_QWEN_ERROR_MAP,
         http_map={429: ModelFailureCode.RATE_LIMITED},
+        error_at_top_level=True,
     )
-    _PROVIDER_ERROR_AT_TOP_LEVEL = True
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):

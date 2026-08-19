@@ -4,7 +4,7 @@ from typing import Optional
 from ..base import ModelFailureCode, OnlineChatModuleBase
 class KimiChat(OnlineChatModuleBase):
     PROVIDER_NAME = 'kimi'
-    ERROR_PROFILE = OnlineChatModuleBase.ERROR_PROFILE.extend(type_map={
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(type_map={
         'content_filter': ModelFailureCode.INPUT_FILTERED,
         'invalid_request_error': ModelFailureCode.INVALID_REQUEST,
         'invalid_authentication_error': ModelFailureCode.AUTHENTICATION_FAILED,

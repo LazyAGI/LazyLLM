@@ -16,15 +16,15 @@ from lazyllm import LOG, config
 
 class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
     PROVIDER_NAME = 'siliconflow'
-    ERROR_PROFILE = OnlineChatModuleBase.ERROR_PROFILE.extend(
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(
         code_map={'20012': ModelFailureCode.NOT_FOUND},
         http_map={
             429: ModelFailureCode.RATE_LIMITED,
             503: ModelFailureCode.PROVIDER_OVERLOADED,
             504: ModelFailureCode.PROVIDER_OVERLOADED,
         },
+        error_at_top_level=True,
     )
-    _PROVIDER_ERROR_AT_TOP_LEVEL = True
     VLM_MODEL_PREFIX = ['Qwen/Qwen2.5-VL-72B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct', 'deepseek-ai/deepseek-vl2',
                         'Qwen/Qwen3-VL-30B-A3B-Thinking', 'THUDM/GLM-4.1V-9B-Thinking']
 

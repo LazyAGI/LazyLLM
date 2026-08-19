@@ -16,7 +16,7 @@ from lazyllm import LOG
 
 class DoubaoChat(OnlineChatModuleBase):
     PROVIDER_NAME = 'doubao'
-    ERROR_PROFILE = OnlineChatModuleBase.ERROR_PROFILE.extend(
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(
         code_map={
             'AuthenticationError': ModelFailureCode.AUTHENTICATION_FAILED,
             'InvalidEndpointOrModel.NotFound': ModelFailureCode.NOT_FOUND,

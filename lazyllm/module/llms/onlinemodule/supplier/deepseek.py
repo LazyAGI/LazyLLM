@@ -3,16 +3,15 @@ from typing import Optional
 from ..base import ModelFailureCode, ModelFinish, OnlineChatModuleBase
 class DeepSeekChat(OnlineChatModuleBase):
     PROVIDER_NAME = 'deepseek'
-    ERROR_PROFILE = OnlineChatModuleBase.ERROR_PROFILE.extend(http_map={
-        402: ModelFailureCode.BALANCE_EXHAUSTED,
-        422: ModelFailureCode.INVALID_REQUEST,
-        429: ModelFailureCode.RATE_LIMITED,
-        503: ModelFailureCode.PROVIDER_OVERLOADED,
-    })
-    _FINISH_REASON_MAP = {
-        **OnlineChatModuleBase._FINISH_REASON_MAP,
-        'insufficient_system_resource': ModelFinish.INSUFFICIENT_SYSTEM_RESOURCE,
-    }
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(
+        http_map={
+            402: ModelFailureCode.BALANCE_EXHAUSTED,
+            422: ModelFailureCode.INVALID_REQUEST,
+            429: ModelFailureCode.RATE_LIMITED,
+            503: ModelFailureCode.PROVIDER_OVERLOADED,
+        },
+        finish_map={'insufficient_system_resource': ModelFinish.INSUFFICIENT_SYSTEM_RESOURCE},
+    )
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):

@@ -7,21 +7,31 @@ from urllib.parse import urljoin
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
     ModelFailureCode,
-    ModelFailureOrigin,
     OnlineChatModuleBase,
     LazyLLMOnlineText2ImageModuleBase,
     LazyLLMOnlineTTSModuleBase,
 )
+from ..base.provider_response import OpenAICompatibleResponseParser
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
+
+
+class _MinimaxResponseParser(OpenAICompatibleResponseParser):
+    def _extract_provider_error(self, message: Dict[str, Any]):
+        base_resp = message.get('base_resp')
+        if isinstance(base_resp, dict):
+            status_code = base_resp.get('status_code')
+            if status_code not in (None, 0, '0'):
+                return str(status_code), None
+        return super()._extract_provider_error(message)
 
 
 class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
     MODEL_NAME = 'MiniMax-M3'
     PROVIDER_NAME = 'minimax'
-    ERROR_PROFILE = OnlineChatModuleBase.ERROR_PROFILE.extend(code_map={
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(code_map={
         '1001': ModelFailureCode.REQUEST_TIMEOUT,
         '1002': ModelFailureCode.RATE_LIMITED,
         '1004': ModelFailureCode.AUTHENTICATION_FAILED,
@@ -39,6 +49,7 @@ class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
         '2049': ModelFailureCode.AUTHENTICATION_FAILED,
         '2056': ModelFailureCode.QUOTA_EXHAUSTED,
     })
+    RESPONSE_PARSER_CLASS = _MinimaxResponseParser
     BASE_URLS = {
         'global': 'https://api.minimax.io/v1/',
         'cn': 'https://api.minimaxi.com/v1/',
@@ -57,18 +68,6 @@ class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
     def _get_system_prompt(self):
         return 'You are an intelligent assistant provided by Minimax. You are a helpful assistant.'
-
-    def _raise_for_provider_error(self, message: Dict[str, Any]) -> None:
-        base_resp = message.get('base_resp')
-        if isinstance(base_resp, dict):
-            status_code = base_resp.get('status_code')
-            if status_code not in (None, 0, '0'):
-                raise self._response_error(
-                    'Provider returned a business error.',
-                    ModelFailureOrigin.PROVIDER,
-                    provider_error_code=str(status_code),
-                )
-        super()._raise_for_provider_error(message)
 
     def _convert_msg_format(self, msg: Dict[str, Any]):
         '''Convert the reasoning_details in output to reasoning_content field in message'''

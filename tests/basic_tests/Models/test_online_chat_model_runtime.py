@@ -5,7 +5,11 @@ import pytest
 import requests
 
 import lazyllm
-from lazyllm.module.llms.onlinemodule.base.model_call_runner import ModelAttemptState, ModelCallRunner
+from lazyllm.module.llms.onlinemodule.base.model_call_runner import (
+    ModelAttemptState,
+    ModelCallRunner,
+    is_retryable_transport_error,
+)
 from lazyllm.module.llms.onlinemodule.base.model_outcome import (
     ModelCallFailed,
     ModelCallInterrupted,
@@ -16,7 +20,11 @@ from lazyllm.module.llms.onlinemodule.base.model_outcome import (
     ModelResponseError,
 )
 from lazyllm.module.llms.onlinemodule.base.onlineChatModuleBase import LazyLLMOnlineChatModuleBase
-from lazyllm.module.llms.onlinemodule.base.provider_error_mapping import OPENAI_COMPATIBLE_PROFILE
+from lazyllm.module.llms.onlinemodule.base.provider_response import (
+    OPENAI_COMPATIBLE_PROFILE,
+    raise_for_http_error,
+    retry_after_ms,
+)
 from lazyllm.module.llms.onlinemodule.supplier.claude import ClaudeChat
 from lazyllm.module.llms.onlinemodule.supplier.deepseek import DeepSeekChat
 from lazyllm.module.llms.onlinemodule.supplier.glm import GLMChat
@@ -54,6 +62,10 @@ def _module(module_cls=LazyLLMOnlineChatModuleBase):
     return module
 
 
+def _parser(module_cls=LazyLLMOnlineChatModuleBase):
+    return _module(module_cls)._response_parser(False)
+
+
 def _frame(delta, finish_reason=None):
     return ('data: ' + json.dumps({
         'choices': [{'index': 0, 'delta': delta, 'finish_reason': finish_reason}],
@@ -69,19 +81,21 @@ def _frame(delta, finish_reason=None):
     ('provider_extension', ModelFinish.UNKNOWN),
 ])
 def test_finish_reason_mapping_is_limited_to_openai_values(raw, expected):
-    assert _module()._map_finish_reason(raw) is expected
+    assert LazyLLMOnlineChatModuleBase.RESPONSE_PROFILE.map_finish(raw) is expected
 
 
 def test_deepseek_maps_insufficient_system_resource_finish_reason():
-    assert _module(DeepSeekChat)._map_finish_reason(
+    assert DeepSeekChat.RESPONSE_PROFILE.map_finish(
         'insufficient_system_resource',
     ) is ModelFinish.INSUFFICIENT_SYSTEM_RESOURCE
-    assert _module()._map_finish_reason('insufficient_system_resource') is ModelFinish.UNKNOWN
+    assert LazyLLMOnlineChatModuleBase.RESPONSE_PROFILE.map_finish(
+        'insufficient_system_resource',
+    ) is ModelFinish.UNKNOWN
 
 
 def test_glm_maps_sensitive_finish_reason():
-    assert _module(GLMChat)._map_finish_reason('sensitive') is ModelFinish.CONTENT_FILTER
-    assert _module()._map_finish_reason('sensitive') is ModelFinish.UNKNOWN
+    assert GLMChat.RESPONSE_PROFILE.map_finish('sensitive') is ModelFinish.CONTENT_FILTER
+    assert LazyLLMOnlineChatModuleBase.RESPONSE_PROFILE.map_finish('sensitive') is ModelFinish.UNKNOWN
 
 
 def test_strict_stream_requires_finish_reason(monkeypatch):
@@ -114,12 +128,12 @@ def test_malformed_json_is_protocol_failure(monkeypatch):
 
 
 def test_response_frame_and_json_payload_have_distinct_boundaries():
-    module = _module()
+    parser = _parser()
     payload = json.dumps({'choices': []})
 
-    assert module._parse_response_frame(f'data: {payload}', False) == {'choices': []}
+    assert parser.parse_response_frame(f'data: {payload}') == {'choices': []}
     with pytest.raises(ModelResponseError, match='invalid JSON frame'):
-        module._parse_json_payload(f'data: {payload}', False)
+        parser.parse_json_payload(f'data: {payload}')
 
 
 @pytest.mark.parametrize('late_frame', [
@@ -156,7 +170,7 @@ def test_non_stream_response_requires_finish_reason(monkeypatch):
 
 def test_deprecated_function_call_fragment_is_semantic_output():
     state = ModelAttemptState()
-    _module()._update_attempt_state({
+    _parser().update_attempt_state({
         'choices': [{
             'message': {'function_call': {'name': 'lookup', 'arguments': '{'}},
             'finish_reason': 'function_call',
@@ -181,7 +195,7 @@ def test_attempt_terminal_tracks_primary_choice(choices, expected):
     module = _module()
     state = ModelAttemptState()
 
-    module._update_attempt_state({'choices': choices}, state)
+    _parser().update_attempt_state({'choices': choices}, state)
 
     assert state.finish is expected
     assert module._extract_specified_key_fields({'choices': choices})['content'] \
@@ -191,7 +205,7 @@ def test_attempt_terminal_tracks_primary_choice(choices, expected):
 def test_attempt_ignores_frame_for_non_primary_choice():
     state = ModelAttemptState(finish=ModelFinish.STOP, raw_finish_reason='stop')
 
-    _module()._update_attempt_state({'choices': [{
+    _parser().update_attempt_state({'choices': [{
         'index': 1,
         'message': {'content': 'secondary partial'},
         'finish_reason': 'length',
@@ -218,7 +232,7 @@ def test_transport_error_after_finish_reason_keeps_terminal(monkeypatch):
     events = []
     runner = ModelCallRunner(
         emit_event=lambda event_type, data: events.append((event_type, data)),
-        is_retryable_transport_error=module._is_retryable_transport_error,
+        is_retryable_transport_error=is_retryable_transport_error,
         sleep=lambda delay: None,
     )
     result = runner.run(
@@ -271,7 +285,7 @@ def test_transport_retry_only_accepts_temporary_dns_errors(errno, retryable):
     error = requests.ConnectionError('dns lookup failed')
     error.__cause__ = socket.gaierror(errno, 'dns lookup failed')
 
-    assert _module()._is_retryable_transport_error(error) is retryable
+    assert is_retryable_transport_error(error) is retryable
 
 
 def test_runner_does_not_retry_after_semantic_output():
@@ -312,7 +326,7 @@ def test_runner_does_not_retry_after_response_headers(monkeypatch):
     monkeypatch.setattr(requests, 'post', post)
     runner = ModelCallRunner(
         emit_event=lambda event_type, data: events.append((event_type, data)),
-        is_retryable_transport_error=module._is_retryable_transport_error,
+        is_retryable_transport_error=is_retryable_transport_error,
         report_failure=failures.append,
         sleep=lambda delay: None,
     )
@@ -369,7 +383,7 @@ def test_http_failure_is_not_retried(monkeypatch):
     monkeypatch.setattr(requests, 'post', post)
     runner = ModelCallRunner(
         emit_event=lambda event_type, data: events.append((event_type, data)),
-        is_retryable_transport_error=module._is_retryable_transport_error,
+        is_retryable_transport_error=is_retryable_transport_error,
         sleep=lambda delay: None,
     )
     with pytest.raises(ModelCallFailed):
@@ -400,7 +414,7 @@ def test_http_status_survives_error_body_transport_failure():
 
     response.json = broken_json
     with pytest.raises(ModelResponseError) as exc_info:
-        module._raise_for_http_error(response)
+        raise_for_http_error(response, module.RESPONSE_PROFILE)
 
     assert exc_info.value.failure.provider_http_status == 429
     assert exc_info.value.failure.code is ModelFailureCode.RATE_LIMITED
@@ -408,12 +422,12 @@ def test_http_status_survives_error_body_transport_failure():
 
 def test_retry_after_accepts_http_date_and_rejects_invalid_value(monkeypatch):
     monkeypatch.setattr(
-        'lazyllm.module.llms.onlinemodule.base.onlineChatModuleBase.time.time',
+        'lazyllm.module.llms.onlinemodule.base.provider_response.time.time',
         lambda: 1445412478,
     )
 
-    assert _module()._retry_after_ms({'Retry-After': 'Wed, 21 Oct 2015 07:28:00 GMT'}) == 2000
-    assert _module()._retry_after_ms({'Retry-After': 'not-a-date'}) is None
+    assert retry_after_ms({'Retry-After': 'Wed, 21 Oct 2015 07:28:00 GMT'}) == 2000
+    assert retry_after_ms({'Retry-After': 'not-a-date'}) is None
 
 
 @pytest.mark.parametrize(('module_cls', 'status', 'body', 'expected'), [
@@ -539,12 +553,12 @@ def test_failure_public_dict_excludes_provider_diagnostics():
 
 
 def test_minimax_http_200_base_resp_is_provider_failure():
-    module = _module(MinimaxChat)
+    parser = _parser(MinimaxChat)
 
     with pytest.raises(ModelResponseError) as exc_info:
-        module._parse_json_payload(json.dumps({
+        parser.parse_json_payload(json.dumps({
             'base_resp': {'status_code': 2056, 'status_msg': 'must stay private'},
-        }), stream_output=False)
+        }))
 
     failure = exc_info.value.failure
     assert failure.origin is ModelFailureOrigin.PROVIDER
@@ -578,14 +592,14 @@ def test_qwen_data_inspection_without_phase_uses_generic_failure(monkeypatch):
 
 
 def test_siliconflow_top_level_model_not_found_uses_provider_mapping():
-    module = _module(SiliconFlowChat)
+    parser = _parser(SiliconFlowChat)
 
     with pytest.raises(ModelResponseError) as exc_info:
-        module._parse_json_payload(json.dumps({
+        parser.parse_json_payload(json.dumps({
             'code': 20012,
             'message': 'must stay private',
             'data': None,
-        }), stream_output=False)
+        }))
 
     failure = exc_info.value.failure
     assert failure.origin is ModelFailureOrigin.PROVIDER
@@ -616,7 +630,7 @@ def test_bare_http_429_is_generic_rate_limit(monkeypatch):
     ('Throttling.Concurrency', ModelFailureCode.CONCURRENCY_LIMITED),
 ])
 def test_qwen_throttling_codes_preserve_normalized_semantics(provider_code, expected):
-    failure = _module(QwenChat)._response_error(
+    failure = QwenChat.RESPONSE_PROFILE.error(
         'Provider rejected request.',
         ModelFailureOrigin.PROVIDER,
         provider_error_code=provider_code,
@@ -629,21 +643,27 @@ def test_provider_profiles_are_immutable_and_isolated():
     child = OPENAI_COMPATIBLE_PROFILE.extend(
         code_map={'MixedCase': ModelFailureCode.CONCURRENCY_LIMITED},
         http_map={429: ModelFailureCode.CONCURRENCY_LIMITED},
+        finish_map={'custom_stop': ModelFinish.STOP},
+        error_at_top_level=True,
     )
 
     assert child.code_map['mixedcase'] is ModelFailureCode.CONCURRENCY_LIMITED
     assert child.http_map[429] is ModelFailureCode.CONCURRENCY_LIMITED
+    assert child.map_finish('custom_stop') is ModelFinish.STOP
+    assert child.error_at_top_level is True
     assert 'mixedcase' not in OPENAI_COMPATIBLE_PROFILE.code_map
     assert OPENAI_COMPATIBLE_PROFILE.http_map[429] is ModelFailureCode.RATE_LIMITED
+    assert OPENAI_COMPATIBLE_PROFILE.map_finish('custom_stop') is ModelFinish.UNKNOWN
+    assert OPENAI_COMPATIBLE_PROFILE.error_at_top_level is False
     with pytest.raises(TypeError):
         child.code_map['another'] = ModelFailureCode.RATE_LIMITED
 
 
 def test_provider_profile_declaration_is_reentrant():
-    first = LazyLLMOnlineChatModuleBase.ERROR_PROFILE.extend(
+    first = LazyLLMOnlineChatModuleBase.RESPONSE_PROFILE.extend(
         http_map={402: ModelFailureCode.BALANCE_EXHAUSTED},
     )
-    second = LazyLLMOnlineChatModuleBase.ERROR_PROFILE.extend(
+    second = LazyLLMOnlineChatModuleBase.RESPONSE_PROFILE.extend(
         http_map={402: ModelFailureCode.BALANCE_EXHAUSTED},
     )
 
@@ -662,7 +682,7 @@ def test_minimax_stream_business_error_preserves_partial_output(monkeypatch):
     ]))
     runner = ModelCallRunner(
         emit_event=lambda event_type, data: events.append((event_type, data)),
-        is_retryable_transport_error=module._is_retryable_transport_error,
+        is_retryable_transport_error=is_retryable_transport_error,
         sleep=lambda delay: None,
     )
 

@@ -69,14 +69,11 @@ _GLM_ERROR_CODE_MAP = {
 
 class GLMChat(OnlineChatModuleBase, FileHandlerBase):
     PROVIDER_NAME = 'glm'
-    ERROR_PROFILE = OnlineChatModuleBase.ERROR_PROFILE.extend(
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(
         code_map=_GLM_ERROR_CODE_MAP,
         http_map={435: ModelFailureCode.INVALID_REQUEST},
+        finish_map={'sensitive': ModelFinish.CONTENT_FILTER},
     )
-    _FINISH_REASON_MAP = {
-        **OnlineChatModuleBase._FINISH_REASON_MAP,
-        'sensitive': ModelFinish.CONTENT_FILTER,
-    }
     TRAINABLE_MODEL_LIST = ['chatglm3-6b', 'chatglm_12b', 'chatglm_32b', 'chatglm_66b', 'chatglm_130b']
     VLM_MODEL_PREFIX = ['glm-4.5v', 'glm-4.1v', 'glm-4v']
     MODEL_NAME = 'glm-4'

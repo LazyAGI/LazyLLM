@@ -1,8 +1,11 @@
 import random
+import socket
 import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
+
+import requests
 
 from .model_outcome import (
     ModelCallError,
@@ -17,6 +20,34 @@ from .model_outcome import (
 )
 
 
+def exception_chain(exc: Exception):
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        yield exc
+        exc = exc.__cause__ or exc.__context__
+
+
+def is_retryable_transport_error(exc: Exception) -> bool:
+    chain = tuple(exception_chain(exc))
+    if any(isinstance(item, (requests.exceptions.SSLError, requests.exceptions.ProxyError)) for item in chain):
+        return False
+    dns_errors = tuple(item for item in chain if isinstance(item, socket.gaierror))
+    if dns_errors:
+        return any(item.errno == socket.EAI_AGAIN for item in dns_errors)
+    retryable_types = (
+        requests.exceptions.ConnectTimeout,
+        requests.exceptions.ReadTimeout,
+        requests.exceptions.ChunkedEncodingError,
+        requests.exceptions.ConnectionError,
+        ConnectionResetError,
+        ConnectionAbortedError,
+        BrokenPipeError,
+    )
+    retryable_names = {'RemoteDisconnected', 'IncompleteRead', 'ProtocolError'}
+    return any(isinstance(item, retryable_types) or type(item).__name__ in retryable_names for item in chain)
+
+
 @dataclass
 class ModelAttemptState:
     semantic_output: bool = False
@@ -28,7 +59,7 @@ class ModelAttemptState:
 
 class ModelCallRunner:
     def __init__(self, *, emit_event: Callable[[str, dict], None],
-                 is_retryable_transport_error: Callable[[Exception], bool],
+                 is_retryable_transport_error: Callable[[Exception], bool] = is_retryable_transport_error,
                  report_failure: Optional[Callable[[ModelFailure], None]] = None,
                  sleep: Callable[[float], None] = time.sleep):
         self._emit_event = emit_event

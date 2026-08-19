@@ -12,7 +12,7 @@ from ..fileHandler import FileHandlerBase
 
 class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
     PROVIDER_NAME = 'openai'
-    ERROR_PROFILE = OnlineChatModuleBase.ERROR_PROFILE.extend(
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(
         code_map={
             'credit_balance_exhausted': ModelFailureCode.BALANCE_EXHAUSTED,
             'organization_spend_limit_exceeded': ModelFailureCode.ORGANIZATION_SPEND_LIMIT_EXCEEDED,
