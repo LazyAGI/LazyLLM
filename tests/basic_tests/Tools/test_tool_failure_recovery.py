@@ -1,6 +1,7 @@
 import json
 from typing import Dict, Literal
 
+from lazyllm.tools.agent import ToolDomainError, ToolPolicyError
 from lazyllm.tools.agent.toolsManager import ToolManager
 
 
@@ -43,61 +44,52 @@ def timeout_tool(query: str):
     raise TimeoutError('upstream timed out')
 
 
-def hidden_read(path: str):
-    '''Read hidden data.
-
-    Args:
-        path (str): Hidden path.
-    '''
-    return path
-
-
-def status_error_tool(resource: str):
-    '''Return a legacy domain failure.
-
-    Args:
-        resource (str): Resource name.
-    '''
-    return {
-        'success': True,
-        'tool': 'status_error_tool',
-        'result': {
-            'status': 'error',
-            'message': 'resource does not exist',
-            'resource_type': 'document',
-        },
-    }
-
-
-def rejected_tool(resource: str):
-    '''Reject a missing resource.
+def business_status(resource: str):
+    '''Return business data that resembles an error.
 
     Args:
         resource (str): Resource name.
     '''
     return {
         'success': False,
-        'tool': 'rejected_tool',
-        'error': {'reason': 'resource does not exist'},
+        'status': 'error',
+        'resource': resource,
     }
 
 
-def reported_permission_tool(resource: str):
-    '''Return a reported permission failure.
+def typed_domain_failure(resource: str):
+    '''Raise a typed domain failure.
 
     Args:
         resource (str): Resource name.
     '''
-    return {
-        'success': False,
-        'tool': 'reported_permission_tool',
-        'error': {
-            'reason': 'authorization is required',
-            'type': 'PermissionError',
-            'required_capability': 'document.read',
-            'authorization_required': True,
-        },
-    }
+    raise ToolDomainError(
+        'resource does not exist',
+        code='RESOURCE_NOT_FOUND',
+        details={'resource_type': 'document', 'resource': resource},
+    )
+
+
+def typed_policy_failure(operation: str):
+    '''Reject an operation through runtime policy.
+
+    Args:
+        operation (str): Rejected operation.
+    '''
+    raise ToolPolicyError(
+        'operation was blocked by runtime policy',
+        code='REPEATED_TOOL_CALL',
+        details={'operation': operation},
+    )
+
+
+def flexible_search(query: str, **kwargs):
+    '''Search with arbitrary provider options.
+
+    Args:
+        query (str): Search query.
+    '''
+    return {'query': query, **kwargs}
 
 
 def _call(name, arguments):
@@ -120,28 +112,9 @@ def test_unknown_tool_precedes_argument_validation_and_suggests_visible_tool():
         'suggested_tool': 'typed_search',
         'edit_distance': 1,
     }
-    assert result['error']['recovery_attempts_remaining'] == 1
-
-
-def test_allowed_tool_snapshot_is_fixed_for_one_parallel_call():
-    manager = ToolManager([{
-        'name': 'private',
-        'desc': 'Private tools.',
-        'lazy': True,
-        'prefix': False,
-        'tools': [hidden_read],
-    }])
-
-    allowed = {item['function']['name'] for item in manager.tools_description}
-    results = manager([
-        _call('get_private_methods', {}),
-        _call('hidden_read', {'path': '/tmp/secret'}),
-    ], allowed_tool_names=allowed)
-
-    assert allowed == {'get_private_methods'}
-    assert results[0]['ok'] is True
-    assert results[1]['error']['category'] == 'UNKNOWN_TOOL'
-    assert results[1]['error']['details']['suggested_tool'] is None
+    assert result['error']['recovery_action'] == 'choose_tool'
+    assert 'retryable' not in result['error']
+    assert 'recovery_attempts_remaining' not in result['error']
 
 
 def test_invalid_args_return_missing_and_type_violations():
@@ -151,20 +124,13 @@ def test_invalid_args_return_missing_and_type_violations():
 
     assert result['error']['category'] == 'INVALID_ARGS'
     assert result['error']['code'] == 'SCHEMA_VALIDATION_FAILED'
-    assert result['error']['details']['violations'] == [
-        {
-            'path': 'query',
-            'type': 'missing',
-            'actual': 'missing',
-            'expected': 'string',
-        },
-        {
-            'path': 'limit',
-            'type': 'type_error',
-            'actual': 'string',
-            'expected': 'integer',
-        },
+    violations = result['error']['details']['violations']
+    assert [(item['path'], item['type']) for item in violations] == [
+        ('query', 'missing'),
+        ('limit', 'int_parsing'),
     ]
+    assert all(item['message'] for item in violations)
+    assert result['error']['recovery_action'] == 'fix_arguments'
     assert 'query: Field required' in result['error']['message']
 
 
@@ -179,18 +145,11 @@ def test_invalid_args_return_enum_and_nested_paths():
         'query': 'LazyLLM', 'filters': {'limit': 'many'},
     }))[0]
 
-    assert enum_result['error']['details']['violations'] == [{
-        'path': 'mode',
-        'type': 'enum_error',
-        'actual': 'string',
-        'expected': {'enum': ['semantic', 'keyword']},
-    }]
-    assert nested_result['error']['details']['violations'] == [{
-        'path': 'filters.limit',
-        'type': 'type_error',
-        'actual': 'string',
-        'expected': 'integer',
-    }]
+    enum_violation = enum_result['error']['details']['violations'][0]
+    nested_violation = nested_result['error']['details']['violations'][0]
+    assert (enum_violation['path'], enum_violation['type']) == ('mode', 'literal_error')
+    assert enum_violation['context']['expected'] == "'semantic' or 'keyword'"
+    assert (nested_violation['path'], nested_violation['type']) == ('filters.limit', 'int_parsing')
 
 
 def test_invalid_json_and_non_object_arguments_are_classified():
@@ -207,7 +166,23 @@ def test_invalid_json_and_non_object_arguments_are_classified():
 
     assert invalid_result['error']['code'] == 'ARGUMENTS_JSON_INVALID'
     assert object_result['error']['code'] == 'ARGUMENTS_NOT_OBJECT'
-    assert object_result['error']['details']['violations'][0]['actual'] == 'array'
+    assert object_result['error']['details']['violations'][0]['input_type'] == 'array'
+
+
+def test_fixed_schema_forbids_extra_but_kwargs_accepts_it():
+    fixed = ToolManager([typed_search])(
+        _call('typed_search', {'query': 'LazyLLM', 'qurey': 'typo'}),
+    )[0]
+    flexible = ToolManager([flexible_search])(
+        _call('flexible_search', {'query': 'LazyLLM', 'provider': 'github'}),
+    )[0]
+
+    violation = fixed['error']['details']['violations'][0]
+    assert (violation['path'], violation['type']) == ('qurey', 'extra_forbidden')
+    assert flexible == {
+        'ok': True,
+        'value': {'query': 'LazyLLM', 'provider': 'github'},
+    }
 
 
 def test_execution_exceptions_are_classified_without_runtime_retry():
@@ -218,32 +193,43 @@ def test_execution_exceptions_are_classified_without_runtime_retry():
     transient_result = transient_manager(_call('timeout_tool', {'query': 'status'}))[0]
 
     assert permission_result['error']['category'] == 'PERMISSION_ERROR'
-    assert permission_result['error']['retryable'] is False
+    assert permission_result['error']['recovery_action'] == 'request_authorization'
     assert transient_result['error']['category'] == 'TRANSIENT_ERROR'
-    assert transient_result['error']['retryable'] is False
-    assert transient_result['error']['recovery_attempts_remaining'] == 0
+    assert transient_result['error']['recovery_action'] == 'retry_later'
 
 
-def test_legacy_reported_failures_are_normalized():
-    reported = ToolManager([rejected_tool])(
-        _call('rejected_tool', {'resource': 'missing'}),
-    )[0]['error']
-    nested = ToolManager([status_error_tool])(
-        _call('status_error_tool', {'resource': 'missing'}),
-    )[0]['error']
-    permission = ToolManager([reported_permission_tool])(
-        _call('reported_permission_tool', {'resource': 'private'}),
+def test_returned_business_dict_is_success_and_typed_failure_is_wrapped():
+    business = ToolManager([business_status])(
+        _call('business_status', {'resource': 'missing'}),
+    )[0]
+    failure = ToolManager([typed_domain_failure])(
+        _call('typed_domain_failure', {'resource': 'missing'}),
     )[0]['error']
 
-    assert (reported['category'], reported['message']) == (
-        'DOMAIN_FAILURE', 'resource does not exist',
-    )
-    assert nested['category'] == 'DOMAIN_FAILURE'
-    assert nested['details']['resource_type'] == 'document'
-    assert permission['category'] == 'PERMISSION_ERROR'
-    assert permission['retryable'] is False
-    assert permission['details'] == {
-        'error_type': 'PermissionError',
-        'required_capability': 'document.read',
-        'authorization_required': True,
+    assert business == {
+        'ok': True,
+        'value': {'success': False, 'status': 'error', 'resource': 'missing'},
+    }
+    assert failure == {
+        'category': 'DOMAIN_FAILURE',
+        'code': 'RESOURCE_NOT_FOUND',
+        'tool': 'typed_domain_failure',
+        'message': 'resource does not exist',
+        'recovery_action': 'change_plan',
+        'details': {'resource_type': 'document', 'resource': 'missing'},
+    }
+
+
+def test_typed_policy_failure_is_wrapped():
+    failure = ToolManager([typed_policy_failure])(
+        _call('typed_policy_failure', {'operation': 'search'}),
+    )[0]['error']
+
+    assert failure == {
+        'category': 'POLICY_ERROR',
+        'code': 'REPEATED_TOOL_CALL',
+        'tool': 'typed_policy_failure',
+        'message': 'operation was blocked by runtime policy',
+        'recovery_action': 'change_plan',
+        'details': {'operation': 'search'},
     }

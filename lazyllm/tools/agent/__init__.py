@@ -9,6 +9,14 @@ from .code_interpreter import code_interpreter
 from .skill_manager import SkillManager
 from .skill_hub import install_skill
 from .todo_tool import todo_write
+from .toolError import (
+    ToolExecutionError,
+    ToolInvalidArgumentsError,
+    ToolTransientError,
+    ToolPermissionError,
+    ToolDomainError,
+    ToolPolicyError,
+)
 
 __all__ = [
     'ToolManager',
@@ -25,4 +33,10 @@ __all__ = [
     'SkillManager',
     'install_skill',
     'todo_write',
+    'ToolExecutionError',
+    'ToolInvalidArgumentsError',
+    'ToolTransientError',
+    'ToolPermissionError',
+    'ToolDomainError',
+    'ToolPolicyError',
 ]

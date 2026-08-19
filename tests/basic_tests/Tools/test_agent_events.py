@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import lazyllm
 from lazyllm.tools import PlanAndSolveAgent, ReactAgent
+from lazyllm.tools.agent import ToolDomainError
 from lazyllm.tools.agent.functionCall import FunctionCall
 from lazyllm.tools.agent.toolsManager import ToolManager
 
@@ -39,6 +40,15 @@ def private_status() -> str:
         str: Private status.
     '''
     return 'private status'
+
+
+def exposed_failure(query: str) -> str:
+    '''Raise from an exposed prefixed tool.
+
+    Args:
+        query (str): Search query.
+    '''
+    raise ToolDomainError('search failed', code='SEARCH_FAILED')
 
 
 def _private_tool_group():
@@ -487,6 +497,46 @@ class TestReactAgentEvents(object):
         visible_error = json.loads(tool_message['content'].split('\n\n', 1)[0])
         assert visible_error == {'ok': False, 'error': error}
 
+    def test_prefixed_failure_keeps_exposed_name_in_error_event_and_history(self):
+        exposed_name = 'github_exposed_failure'
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'Search GitHub.',
+                'tool_calls': [{
+                    'id': 'call-prefixed',
+                    'type': 'function',
+                    'function': {
+                        'name': exposed_name,
+                        'arguments': '{"query": "LazyLLM"}',
+                    },
+                }],
+            },
+            {'role': 'assistant', 'content': 'Done.'},
+        ])
+        agent = ReactAgent(
+            llm=llm,
+            tools=[{
+                'name': 'github',
+                'desc': 'GitHub tools.',
+                'lazy': False,
+                'prefix': True,
+                'tools': [exposed_failure],
+            }],
+            max_retries=3,
+            stream=True,
+            enable_builtin_tools=False,
+        )
+
+        assert agent('search') == 'Done.'
+        event = next(item for item in _read_agent_events() if item.tag == 'tool_results')
+        tool_result = event.tool_results[0]
+        tool_message = llm.inputs[1]['input'][0]
+
+        assert tool_result['name'] == exposed_name
+        assert tool_result['result']['error']['tool'] == exposed_name
+        assert tool_message['name'] == exposed_name
+
     def test_react_agent_reuses_one_tool_snapshot_per_round(self):
         llm = _FakeLLM([
             {
@@ -530,6 +580,7 @@ class TestReactAgentEvents(object):
         first_round = result_events[0].tool_results
         assert first_round[0]['result'].startswith('Activated Toolkit "private"')
         assert first_round[1]['result']['error']['category'] == 'UNKNOWN_TOOL'
+        assert first_round[1]['result']['error']['details']['suggested_tool'] is None
         assert result_events[1].tool_results[0]['result'] == 'private status'
 
     def test_function_call_round_snapshot_is_session_local(self):
