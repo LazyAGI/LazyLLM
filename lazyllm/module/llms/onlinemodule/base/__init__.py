@@ -1,7 +1,6 @@
 from .onlineChatModuleBase import OnlineChatModuleBase
 from .model_outcome import (
-    ModelCallFailed,
-    ModelCallInterrupted,
+    ModelCallError,
     ModelCallTerminal,
     ModelFailure,
     ModelFailureCode,
@@ -21,8 +20,7 @@ from .onlineMultiModalBase import (
 
 __all__ = [
     'OnlineChatModuleBase',
-    'ModelCallFailed',
-    'ModelCallInterrupted',
+    'ModelCallError',
     'ModelCallTerminal',
     'ModelFailure',
     'ModelFailureCode',

@@ -7,23 +7,21 @@ import requests
 import lazyllm
 from lazyllm.module.llms.onlinemodule.base.model_call_runner import (
     ModelAttemptState,
-    ModelCallRunner,
+    _ModelCallRunner,
     is_retryable_transport_error,
 )
 from lazyllm.module.llms.onlinemodule.base.model_outcome import (
-    ModelCallFailed,
-    ModelCallInterrupted,
+    ModelCallError,
     ModelFailure,
     ModelFailureCode,
     ModelFailureOrigin,
     ModelFinish,
-    ModelResponseError,
+    _ModelResponseError,
 )
 from lazyllm.module.llms.onlinemodule.base.onlineChatModuleBase import LazyLLMOnlineChatModuleBase
 from lazyllm.module.llms.onlinemodule.base.provider_response import (
     OPENAI_COMPATIBLE_PROFILE,
     raise_for_http_error,
-    retry_after_ms,
 )
 from lazyllm.module.llms.onlinemodule.supplier.claude import ClaudeChat
 from lazyllm.module.llms.onlinemodule.supplier.deepseek import DeepSeekChat
@@ -119,7 +117,7 @@ def test_malformed_json_is_protocol_failure(monkeypatch):
     module = _module()
     monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(frames=[b'data: not-json']))
 
-    with pytest.raises(ModelResponseError, match='invalid JSON frame') as exc_info:
+    with pytest.raises(_ModelResponseError, match='invalid JSON frame') as exc_info:
         module._forward_impl(
             {'messages': []}, runtime_url='http://provider.test', stream_output=True,
             proxies=None, request_timeout=1, state=ModelAttemptState(),
@@ -132,7 +130,7 @@ def test_response_frame_and_json_payload_have_distinct_boundaries():
     payload = json.dumps({'choices': []})
 
     assert parser.parse_response_frame(f'data: {payload}') == {'choices': []}
-    with pytest.raises(ModelResponseError, match='invalid JSON frame'):
+    with pytest.raises(_ModelResponseError, match='invalid JSON frame'):
         parser.parse_json_payload(f'data: {payload}')
 
 
@@ -148,7 +146,7 @@ def test_protocol_or_provider_error_after_finish_is_not_swallowed(monkeypatch, l
         late_frame,
     ]))
 
-    with pytest.raises(ModelResponseError):
+    with pytest.raises(_ModelResponseError):
         module._forward_impl(
             {'messages': []}, runtime_url='http://provider.test', stream_output=True,
             proxies=None, request_timeout=1, state=ModelAttemptState(),
@@ -203,7 +201,7 @@ def test_attempt_terminal_tracks_primary_choice(choices, expected):
 
 
 def test_attempt_ignores_frame_for_non_primary_choice():
-    state = ModelAttemptState(finish=ModelFinish.STOP, raw_finish_reason='stop')
+    state = ModelAttemptState(finish=ModelFinish.STOP)
 
     _parser().update_attempt_state({'choices': [{
         'index': 1,
@@ -212,7 +210,6 @@ def test_attempt_ignores_frame_for_non_primary_choice():
     }]}, state)
 
     assert state.finish is ModelFinish.STOP
-    assert state.raw_finish_reason == 'stop'
 
 
 def test_transport_error_after_finish_reason_keeps_terminal(monkeypatch):
@@ -230,7 +227,7 @@ def test_transport_error_after_finish_reason_keeps_terminal(monkeypatch):
 
     monkeypatch.setattr(requests, 'post', post)
     events = []
-    runner = ModelCallRunner(
+    runner = _ModelCallRunner(
         emit_event=lambda event_type, data: events.append((event_type, data)),
         is_retryable_transport_error=is_retryable_transport_error,
         sleep=lambda delay: None,
@@ -259,10 +256,9 @@ def test_runner_retries_only_pre_output_transport_failures():
         if attempts < 3: raise requests.ConnectTimeout('timeout')
         state.semantic_output = True
         state.finish = ModelFinish.STOP
-        state.raw_finish_reason = 'stop'
         return [{'choices': [{'delta': {'content': 'ok'}, 'finish_reason': 'stop'}]}]
 
-    runner = ModelCallRunner(
+    runner = _ModelCallRunner(
         emit_event=lambda event_type, data: events.append((event_type, data)),
         is_retryable_transport_error=lambda exc: isinstance(exc, requests.ConnectTimeout),
         sleep=lambda delay: None,
@@ -298,12 +294,12 @@ def test_runner_does_not_retry_after_semantic_output():
         state.semantic_output = True
         raise requests.exceptions.ChunkedEncodingError('cut')
 
-    runner = ModelCallRunner(
+    runner = _ModelCallRunner(
         emit_event=lambda event_type, data: events.append((event_type, data)),
         is_retryable_transport_error=lambda exc: True,
         sleep=lambda delay: None,
     )
-    with pytest.raises(ModelCallInterrupted):
+    with pytest.raises(ModelCallError):
         runner.run(execute, max_attempts=3)
 
     assert attempts == 1
@@ -324,13 +320,13 @@ def test_runner_does_not_retry_after_response_headers(monkeypatch):
         return _Response(frames=[requests.exceptions.ChunkedEncodingError('cut after headers')])
 
     monkeypatch.setattr(requests, 'post', post)
-    runner = ModelCallRunner(
+    runner = _ModelCallRunner(
         emit_event=lambda event_type, data: events.append((event_type, data)),
         is_retryable_transport_error=is_retryable_transport_error,
         report_failure=failures.append,
         sleep=lambda delay: None,
     )
-    with pytest.raises(ModelCallFailed):
+    with pytest.raises(ModelCallError):
         runner.run(
             lambda state: module._forward_impl(
                 {'messages': []}, runtime_url='http://provider.test', stream_output=True,
@@ -351,15 +347,14 @@ def test_unknown_finish_interrupts_after_one_terminal():
 
     def execute(state):
         state.finish = ModelFinish.UNKNOWN
-        state.raw_finish_reason = 'provider_extension'
         return []
 
-    runner = ModelCallRunner(
+    runner = _ModelCallRunner(
         emit_event=lambda event_type, data: events.append((event_type, data)),
         is_retryable_transport_error=lambda exc: False,
         sleep=lambda delay: None,
     )
-    with pytest.raises(ModelCallInterrupted):
+    with pytest.raises(ModelCallError):
         runner.run(execute, max_attempts=3)
 
     assert [event[0] for event in events] == ['model_call_finished']
@@ -381,12 +376,12 @@ def test_http_failure_is_not_retried(monkeypatch):
         )
 
     monkeypatch.setattr(requests, 'post', post)
-    runner = ModelCallRunner(
+    runner = _ModelCallRunner(
         emit_event=lambda event_type, data: events.append((event_type, data)),
         is_retryable_transport_error=is_retryable_transport_error,
         sleep=lambda delay: None,
     )
-    with pytest.raises(ModelCallFailed):
+    with pytest.raises(ModelCallError):
         runner.run(
             lambda state: module._forward_impl(
                 {'messages': []}, runtime_url='http://provider.test', stream_output=True,
@@ -413,21 +408,11 @@ def test_http_status_survives_error_body_transport_failure():
         raise requests.exceptions.ChunkedEncodingError('truncated error body')
 
     response.json = broken_json
-    with pytest.raises(ModelResponseError) as exc_info:
+    with pytest.raises(_ModelResponseError) as exc_info:
         raise_for_http_error(response, module.RESPONSE_PROFILE)
 
     assert exc_info.value.failure.provider_http_status == 429
     assert exc_info.value.failure.code is ModelFailureCode.RATE_LIMITED
-
-
-def test_retry_after_accepts_http_date_and_rejects_invalid_value(monkeypatch):
-    monkeypatch.setattr(
-        'lazyllm.module.llms.onlinemodule.base.provider_response.time.time',
-        lambda: 1445412478,
-    )
-
-    assert retry_after_ms({'Retry-After': 'Wed, 21 Oct 2015 07:28:00 GMT'}) == 2000
-    assert retry_after_ms({'Retry-After': 'not-a-date'}) is None
 
 
 @pytest.mark.parametrize(('module_cls', 'status', 'body', 'expected'), [
@@ -449,7 +434,7 @@ def test_provider_http_mapping_uses_supplier_source(monkeypatch, module_cls, sta
         body=body,
     ))
 
-    with pytest.raises(ModelResponseError) as exc_info:
+    with pytest.raises(_ModelResponseError) as exc_info:
         module._forward_impl(
             {'messages': []}, runtime_url='http://provider.test', stream_output=True,
             proxies=None, request_timeout=1, state=ModelAttemptState(),
@@ -466,7 +451,7 @@ def test_deepseek_http_402_is_balance_exhausted(monkeypatch):
         body='{"error":{}}',
     ))
 
-    with pytest.raises(ModelResponseError) as exc_info:
+    with pytest.raises(_ModelResponseError) as exc_info:
         module._forward_impl(
             {'messages': []}, runtime_url='http://provider.test', stream_output=True,
             proxies=None, request_timeout=1, state=ModelAttemptState(),
@@ -488,7 +473,7 @@ def test_openai_billing_codes_preserve_specific_reason(monkeypatch, provider_cod
         body=json.dumps({'error': {'code': provider_code, 'type': 'insufficient_quota'}}),
     ))
 
-    with pytest.raises(ModelResponseError) as exc_info:
+    with pytest.raises(_ModelResponseError) as exc_info:
         module._forward_impl(
             {'messages': []}, runtime_url='http://provider.test', stream_output=True,
             proxies=None, request_timeout=1, state=ModelAttemptState(),
@@ -504,7 +489,7 @@ def test_openai_insufficient_quota_type_is_generic_fallback(monkeypatch):
         body='{"error":{"type":"insufficient_quota"}}',
     ))
 
-    with pytest.raises(ModelResponseError) as exc_info:
+    with pytest.raises(_ModelResponseError) as exc_info:
         module._forward_impl(
             {'messages': []}, runtime_url='http://provider.test', stream_output=True,
             proxies=None, request_timeout=1, state=ModelAttemptState(),
@@ -523,7 +508,7 @@ def test_openai_undocumented_error_aliases_do_not_override_http(monkeypatch, sta
     module = _module(OpenAIChat)
     monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: _Response(status_code=status, body=body))
 
-    with pytest.raises(ModelResponseError) as exc_info:
+    with pytest.raises(_ModelResponseError) as exc_info:
         module._forward_impl(
             {'messages': []}, runtime_url='http://provider.test', stream_output=True,
             proxies=None, request_timeout=1, state=ModelAttemptState(),
@@ -539,7 +524,6 @@ def test_failure_public_dict_excludes_provider_diagnostics():
         provider_error_code='private-code',
         provider_error_type='private-type',
         provider_http_status=429,
-        retry_after_ms=2000,
         diagnostic_id='diag-safe',
         response_started=True,
     )
@@ -547,7 +531,6 @@ def test_failure_public_dict_excludes_provider_diagnostics():
     assert failure.public_dict() == {
         'origin': 'http',
         'code': 'rate_limited',
-        'has_semantic_output': False,
         'diagnostic_id': 'diag-safe',
     }
 
@@ -555,7 +538,7 @@ def test_failure_public_dict_excludes_provider_diagnostics():
 def test_minimax_http_200_base_resp_is_provider_failure():
     parser = _parser(MinimaxChat)
 
-    with pytest.raises(ModelResponseError) as exc_info:
+    with pytest.raises(_ModelResponseError) as exc_info:
         parser.parse_json_payload(json.dumps({
             'base_resp': {'status_code': 2056, 'status_msg': 'must stay private'},
         }))
@@ -578,7 +561,7 @@ def test_qwen_data_inspection_without_phase_uses_generic_failure(monkeypatch):
         }}),
     ))
 
-    with pytest.raises(ModelResponseError) as exc_info:
+    with pytest.raises(_ModelResponseError) as exc_info:
         module._forward_impl(
             {'messages': []}, runtime_url='http://provider.test', stream_output=False,
             proxies=None, request_timeout=1, state=ModelAttemptState(),
@@ -594,7 +577,7 @@ def test_qwen_data_inspection_without_phase_uses_generic_failure(monkeypatch):
 def test_siliconflow_top_level_model_not_found_uses_provider_mapping():
     parser = _parser(SiliconFlowChat)
 
-    with pytest.raises(ModelResponseError) as exc_info:
+    with pytest.raises(_ModelResponseError) as exc_info:
         parser.parse_json_payload(json.dumps({
             'code': 20012,
             'message': 'must stay private',
@@ -615,7 +598,7 @@ def test_bare_http_429_is_generic_rate_limit(monkeypatch):
         body='{"error":{}}',
     ))
 
-    with pytest.raises(ModelResponseError) as exc_info:
+    with pytest.raises(_ModelResponseError) as exc_info:
         module._forward_impl(
             {'messages': []}, runtime_url='http://provider.test', stream_output=True,
             proxies=None, request_timeout=1, state=ModelAttemptState(),
@@ -680,13 +663,13 @@ def test_minimax_stream_business_error_preserves_partial_output(monkeypatch):
             'base_resp': {'status_code': 1027, 'status_msg': 'private output detail'},
         })).encode(),
     ]))
-    runner = ModelCallRunner(
+    runner = _ModelCallRunner(
         emit_event=lambda event_type, data: events.append((event_type, data)),
         is_retryable_transport_error=is_retryable_transport_error,
         sleep=lambda delay: None,
     )
 
-    with pytest.raises(ModelCallInterrupted) as exc_info:
+    with pytest.raises(ModelCallError) as exc_info:
         runner.run(
             lambda state: module._forward_impl(
                 {'messages': []}, runtime_url='http://provider.test', stream_output=True,
@@ -720,7 +703,7 @@ def test_non_stream_interruption_survives_module_boundary_with_partial_and_usage
         }))
 
     monkeypatch.setattr(requests, 'post', post)
-    with pytest.raises(ModelCallInterrupted) as exc_info:
+    with pytest.raises(ModelCallError) as exc_info:
         module('hello', max_retries=1)
 
     error = exc_info.value

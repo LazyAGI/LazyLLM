@@ -19,7 +19,6 @@ class ModelFailureOrigin(str, Enum):
     HTTP = 'http'
     PROVIDER = 'provider'
     PROTOCOL = 'protocol'
-    CANCELLED = 'cancelled'
 
 
 class ModelFailureCode(str, Enum):
@@ -55,16 +54,13 @@ class ModelFailure:
     provider_error_code: Optional[str] = None
     provider_error_type: Optional[str] = None
     provider_http_status: Optional[int] = None
-    retry_after_ms: Optional[int] = None
     diagnostic_id: Optional[str] = None
-    has_semantic_output: bool = False
     response_started: bool = False
 
     def public_dict(self) -> Dict[str, Any]:
         result = {
             'origin': self.origin.value,
             'code': self.code.value,
-            'has_semantic_output': self.has_semantic_output,
         }
         if self.diagnostic_id:
             result['diagnostic_id'] = self.diagnostic_id
@@ -78,7 +74,6 @@ class ModelCallTerminal:
     kind: str
     has_semantic_output: bool
     finish: Optional[ModelFinish] = None
-    raw_finish_reason: Optional[str] = None
     failure: Optional[ModelFailure] = None
 
     def public_dict(self) -> Dict[str, Any]:
@@ -95,20 +90,23 @@ class ModelCallTerminal:
         return result
 
 
-class ModelResponseError(Exception):
+class _ModelResponseError(Exception):
     def __init__(self, message: str, failure: ModelFailure):
-        super().__init__(message)
+        super().__init__(message, failure)
         self.failure = failure
+
+    def __str__(self) -> str:
+        return self.args[0]
 
 
 class ModelCallError(HandledException):
     def __init__(self, message: str, terminal: ModelCallTerminal,
                  partial_response: Optional[List[dict]] = None):
-        super().__init__(message)
+        partial_response = list(partial_response or [])
+        super().__init__(message, terminal, partial_response)
         self.terminal = terminal
-        self.partial_response = list(partial_response or [])
+        self.partial_response = partial_response
         self.usage: Optional[Dict[str, int]] = None
 
-
-class ModelCallInterrupted(ModelCallError): pass
-class ModelCallFailed(ModelCallError): pass
+    def __str__(self) -> str:
+        return self.args[0]

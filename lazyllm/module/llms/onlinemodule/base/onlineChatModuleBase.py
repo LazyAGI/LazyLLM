@@ -17,13 +17,13 @@ from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ....servermodule import LLMBase, StaticParams
 from .model_call_runner import (
     ModelAttemptState,
-    ModelCallRunner,
+    _ModelCallRunner,
     is_retryable_transport_error,
 )
 from .model_outcome import ModelCallError, ModelFailure
 from .provider_response import (
     OPENAI_COMPATIBLE_PROFILE,
-    OpenAICompatibleResponseParser,
+    _OpenAICompatibleResponseParser,
     raise_for_http_error,
     select_primary_choice,
 )
@@ -38,7 +38,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     _message_format = 'openai'
     PROVIDER_NAME = 'openai_compatible'
     RESPONSE_PROFILE = OPENAI_COMPATIBLE_PROFILE
-    RESPONSE_PARSER_CLASS = OpenAICompatibleResponseParser
+    RESPONSE_PARSER_CLASS = _OpenAICompatibleResponseParser
 
     def __init__(self, api_key: Union[str, List[str]], base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
@@ -94,7 +94,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     def _prepare_request_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         return data
 
-    def _response_parser(self, stream_output: Union[bool, Dict]) -> OpenAICompatibleResponseParser:
+    def _response_parser(self, stream_output: Union[bool, Dict]) -> _OpenAICompatibleResponseParser:
         emit_message = partial(self._emit_message_content, stream_output=stream_output) if stream_output else None
         return self.RESPONSE_PARSER_CLASS(
             profile=self.RESPONSE_PROFILE,
@@ -122,7 +122,6 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             f'origin={failure.origin.value} code={failure.code.value} '
             f'http_status={failure.provider_http_status} provider_code={failure.provider_error_code} '
             f'provider_type={failure.provider_error_type} response_started={failure.response_started} '
-            f'semantic_output={failure.has_semantic_output}'
         )
 
     def _emit_runtime_event(self, stream_output: Union[bool, Dict], event_type: str, data: Dict[str, Any]):
@@ -250,8 +249,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                     if (not is_retryable_transport_error(exc) or state.response_started
                             or attempt_index >= max_attempts):
                         raise
-                    time.sleep(ModelCallRunner._retry_delay(attempt_index))
-        runner = ModelCallRunner(
+                    time.sleep(_ModelCallRunner._retry_delay(attempt_index))
+        runner = _ModelCallRunner(
             emit_event=lambda event_type, event_data: self._emit_runtime_event(
                 stream_output, event_type, event_data,
             ),

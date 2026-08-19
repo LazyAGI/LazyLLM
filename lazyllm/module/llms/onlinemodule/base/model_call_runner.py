@@ -9,14 +9,12 @@ import requests
 
 from .model_outcome import (
     ModelCallError,
-    ModelCallFailed,
-    ModelCallInterrupted,
     ModelCallTerminal,
     ModelFailure,
     ModelFailureCode,
     ModelFailureOrigin,
     ModelFinish,
-    ModelResponseError,
+    _ModelResponseError,
 )
 
 
@@ -53,11 +51,10 @@ class ModelAttemptState:
     semantic_output: bool = False
     response_started: bool = False
     finish: Optional[ModelFinish] = None
-    raw_finish_reason: Optional[str] = None
     frames: List[dict] = field(default_factory=list)
 
 
-class ModelCallRunner:
+class _ModelCallRunner:
     def __init__(self, *, emit_event: Callable[[str, dict], None],
                  is_retryable_transport_error: Callable[[Exception], bool] = is_retryable_transport_error,
                  report_failure: Optional[Callable[[ModelFailure], None]] = None,
@@ -82,20 +79,18 @@ class ModelCallRunner:
                     attempt_count=attempt_index,
                     kind='finish',
                     finish=state.finish,
-                    raw_finish_reason=state.raw_finish_reason,
                     has_semantic_output=semantic_output,
                 )
                 self._emit_event('model_call_finished', terminal.public_dict())
                 if state.finish in (ModelFinish.STOP, ModelFinish.TOOL_CALLS):
                     return result
-                raise ModelCallInterrupted(
+                raise ModelCallError(
                     'Model call ended without a complete answer.', terminal, state.frames,
                 )
             except ModelCallError:
                 raise
-            except ModelResponseError as exc:
+            except _ModelResponseError as exc:
                 semantic_output = semantic_output or state.semantic_output
-                exc.failure.has_semantic_output = semantic_output
                 exc.failure.response_started = state.response_started
                 self._report(exc.failure)
                 terminal = ModelCallTerminal(
@@ -106,8 +101,7 @@ class ModelCallRunner:
                     has_semantic_output=semantic_output,
                 )
                 self._emit_event('model_call_finished', terminal.public_dict())
-                error_cls = ModelCallInterrupted if semantic_output else ModelCallFailed
-                raise error_cls(str(exc), terminal, state.frames) from exc
+                raise ModelCallError(str(exc), terminal, state.frames) from exc
             except Exception as exc:
                 semantic_output = semantic_output or state.semantic_output
                 retryable = self._is_retryable_transport_error(exc)
@@ -125,7 +119,6 @@ class ModelCallRunner:
                     origin=ModelFailureOrigin.TRANSPORT,
                     code=ModelFailureCode.TRANSPORT_ERROR,
                     diagnostic_id=uuid.uuid4().hex,
-                    has_semantic_output=semantic_output,
                     response_started=state.response_started,
                 )
                 self._report(failure)
@@ -137,8 +130,7 @@ class ModelCallRunner:
                     has_semantic_output=semantic_output,
                 )
                 self._emit_event('model_call_finished', terminal.public_dict())
-                error_cls = ModelCallInterrupted if semantic_output else ModelCallFailed
-                raise error_cls('Model transport failed.', terminal, state.frames) from exc
+                raise ModelCallError('Model transport failed.', terminal, state.frames) from exc
         raise AssertionError('model call runner exhausted without a terminal')
 
     def _report(self, failure: ModelFailure) -> None:

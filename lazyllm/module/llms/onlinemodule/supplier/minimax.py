@@ -11,13 +11,13 @@ from ..base import (
     LazyLLMOnlineText2ImageModuleBase,
     LazyLLMOnlineTTSModuleBase,
 )
-from ..base.provider_response import OpenAICompatibleResponseParser
+from ..base.provider_response import _OpenAICompatibleResponseParser
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
 
 
-class _MinimaxResponseParser(OpenAICompatibleResponseParser):
+class _MinimaxResponseParser(_OpenAICompatibleResponseParser):
     def _extract_provider_error(self, message: Dict[str, Any]):
         base_resp = message.get('base_resp')
         if isinstance(base_resp, dict):

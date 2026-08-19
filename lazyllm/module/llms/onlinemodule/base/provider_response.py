@@ -1,9 +1,6 @@
 from dataclasses import dataclass, field
-from email.utils import parsedate_to_datetime
 import json
-import math
 import re
-import time
 from types import MappingProxyType
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
 import uuid
@@ -17,7 +14,7 @@ from .model_outcome import (
     ModelFailureCode,
     ModelFailureOrigin,
     ModelFinish,
-    ModelResponseError,
+    _ModelResponseError,
 )
 
 
@@ -104,9 +101,8 @@ class ProviderResponseProfile:
         provider_error_code: Optional[str] = None,
         provider_error_type: Optional[str] = None,
         provider_http_status: Optional[int] = None,
-        retry_after_ms: Optional[int] = None,
-    ) -> ModelResponseError:
-        return ModelResponseError(message, ModelFailure(
+    ) -> _ModelResponseError:
+        return _ModelResponseError(message, ModelFailure(
             origin=origin,
             code=self.classify(
                 origin=origin,
@@ -117,7 +113,6 @@ class ProviderResponseProfile:
             provider_error_code=provider_error_code,
             provider_error_type=provider_error_type,
             provider_http_status=provider_http_status,
-            retry_after_ms=retry_after_ms,
             diagnostic_id=uuid.uuid4().hex,
         ))
 
@@ -156,27 +151,6 @@ OPENAI_COMPATIBLE_PROFILE = ProviderResponseProfile(
 )
 
 
-def retry_after_ms(headers: Any) -> Optional[int]:
-    if headers is None: return None
-    raw_value = headers.get('Retry-After')
-    if raw_value is None: return None
-    value = str(raw_value).strip()
-    try:
-        seconds = float(value)
-        if not math.isfinite(seconds) or seconds < 0: return None
-        return int(seconds * 1000)
-    except (TypeError, ValueError):
-        pass
-    try:
-        retry_at = parsedate_to_datetime(value)
-        if retry_at.tzinfo is None: return None
-        seconds = retry_at.timestamp() - time.time()
-        if not math.isfinite(seconds) or seconds < 0: return None
-        return int(seconds * 1000)
-    except (TypeError, ValueError, OverflowError):
-        return None
-
-
 def raise_for_http_error(response: Any, profile: ProviderResponseProfile) -> None:
     if response.status_code == 200: return
     try:
@@ -191,7 +165,6 @@ def raise_for_http_error(response: Any, profile: ProviderResponseProfile) -> Non
         provider_error_code=code,
         provider_error_type=error_type,
         provider_http_status=response.status_code,
-        retry_after_ms=retry_after_ms(getattr(response, 'headers', None)),
     )
 
 
@@ -202,7 +175,7 @@ def select_primary_choice(choices: List[Dict[str, Any]]) -> Optional[Dict[str, A
     return choices[0]
 
 
-class OpenAICompatibleResponseParser:
+class _OpenAICompatibleResponseParser:
     def __init__(
         self,
         *,
@@ -342,7 +315,6 @@ class OpenAICompatibleResponseParser:
             state.semantic_output = True
         raw_finish_reason = choice.get('finish_reason')
         if raw_finish_reason not in (None, ''):
-            state.raw_finish_reason = str(raw_finish_reason)
             state.finish = self._profile.map_finish(raw_finish_reason)
 
     def _extract_provider_error(self, message: Dict[str, Any]) -> ProviderErrorFields:
