@@ -45,9 +45,18 @@ class LazyLLMAgentBase(ModuleBase):
                  desc: str = '', workspace: Optional[str] = None,
                  sandbox: Union[str, LazyLLMSandboxBase, None] = 'auto',
                  fs: Optional[Any] = None, skills_dir: Optional[str] = None,
-                 enable_builtin_tools: bool = True):
+                 enable_builtin_tools: bool = True,
+                 skill_manager: Optional[SkillManager] = None):
         super().__init__(return_trace=return_trace)
         use_skills, skills = self._normalize_skills_config(skills)
+        if skill_manager is not None:
+            if not isinstance(skill_manager, SkillManager):
+                raise TypeError('skill_manager must be a SkillManager instance.')
+            if use_skills or fs is not None or skills_dir is not None:
+                raise ValueError(
+                    'skills, fs, and skills_dir must be omitted when skill_manager is provided.'
+                )
+            use_skills = True
         if not use_skills and (fs is not None or skills_dir is not None):
             import warnings
             warnings.warn(
@@ -65,8 +74,12 @@ class LazyLLMAgentBase(ModuleBase):
         self._return_last_tool_calls = return_last_tool_calls
         self._workspace = self._init_workspace(workspace)
         self._agent = None
-        self._skill_manager = None
-        self._sandbox = create_sandbox() if sandbox == 'auto' else sandbox
+        self._skill_manager = skill_manager
+        self._sandbox = (
+            skill_manager.sandbox
+            if skill_manager is not None and sandbox == 'auto'
+            else create_sandbox() if sandbox == 'auto' else sandbox
+        )
         self._builtin_tool_names = set()
         self._skill_tool_names = set()
         self._enable_builtin_tools = enable_builtin_tools
@@ -74,9 +87,10 @@ class LazyLLMAgentBase(ModuleBase):
         if self._enable_builtin_tools:
             self._ensure_builtin_tools()
         if use_skills:
-            self._skill_manager = SkillManager(
-                dir=skills_dir, skills=self._skills, fs=fs, sandbox=self._sandbox,
-            )
+            if self._skill_manager is None:
+                self._skill_manager = SkillManager(
+                    dir=skills_dir, skills=self._skills, fs=fs, sandbox=self._sandbox,
+                )
             self._ensure_default_skill_tools()
         self._tools_manager = ToolManager(self._tools, return_trace=return_trace, sandbox=self._sandbox)
         for tool in self._tools_manager.all_tools:

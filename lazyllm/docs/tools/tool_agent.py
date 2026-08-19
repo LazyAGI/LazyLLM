@@ -642,6 +642,7 @@ Args:
     stream (bool): 是否启用流式输出，默认为False。
     return_last_tool_calls (bool): 若为True，在模型结束且存在工具调用记录时返回最后一次的工具调用轨迹。
     skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
+    skill_manager (SkillManager, optional): 预构建的 SkillManager。使用时不要同时传入 skills、fs 或 skills_dir。
     desc (str): Agent 能力描述，可为空。
     workspace (str): Agent 默认工作目录，默认是 `config['home']/agent_workspace`。
 ''')
@@ -758,7 +759,8 @@ SkillManager 用于发现、加载与管理 Skills。
 
 Args:
     dir (str, optional): Skills 目录路径，支持逗号分隔的多个路径。
-    skills (Iterable[str], optional): 期望使用的技能名称列表。
+    skills (Iterable[str], optional): 初始向模型展示的技能名称列表。
+    allowed_skills (Iterable[str], optional): 当前 Agent 被允许调用的技能名称列表。省略时保持原有行为。
     max_skill_md_bytes (int, optional): 单个 SKILL.md 最大读取大小。
     llm: 预留参数，目前不强制使用。
 ''')
@@ -768,7 +770,8 @@ SkillManager discovers, loads, and manages Skills.
 
 Args:
     dir (str, optional): Skills directory paths, comma-separated is supported.
-    skills (Iterable[str], optional): Expected skill name list.
+    skills (Iterable[str], optional): Skill names initially exposed to the model.
+    allowed_skills (Iterable[str], optional): Skill names the current agent is allowed to invoke. Omit to keep the legacy behavior.
     max_skill_md_bytes (int, optional): Maximum SKILL.md size to load.
     llm: Reserved parameter, not required currently.
 ''')
@@ -785,6 +788,34 @@ List available skills under configured directories and return a Markdown string.
 
 **Returns:**\n
 - str: Skill list with name/description/path.
+''')
+
+add_chinese_doc('SkillManager.list_skill_metadata', '''\
+按可见或允许范围返回结构化 Skill 元数据，用于外部检索器，不读取完整工作流正文。
+
+Args:
+    scope (str): `visible` 或 `allowed`。
+''')
+
+add_english_doc('SkillManager.list_skill_metadata', '''\
+Return structured Skill metadata for the visible or allowed scope without loading workflow bodies.
+
+Args:
+    scope (str): `visible` or `allowed`.
+''')
+
+add_chinese_doc('SkillManager.expose_skills', '''\
+将允许范围内的 Skill 动态加入当前 Agent 会话的可见范围。
+
+Args:
+    names (Iterable[str]): Skill 名称或标识列表。
+''')
+
+add_english_doc('SkillManager.expose_skills', '''\
+Dynamically expose allowed Skills to the current agent session.
+
+Args:
+    names (Iterable[str]): Skill names or identifiers.
 ''')
 
 add_chinese_doc('SkillManager.build_prompt', '''\
@@ -998,6 +1029,7 @@ Args:
     stream (bool): Whether to enable streaming output for real-time display. Defaults to False.
     return_last_tool_calls (bool): If True, returns the last tool-call trace when the model finishes with pending tool calls.
     skills (bool | str | List[str]): Skills configuration. True enables Skills with automatic selection; a str/list enables the specified skills.
+    skill_manager (SkillManager, optional): A prebuilt SkillManager. Do not also pass skills, fs, or skills_dir.
     desc (str): Description of the agent capabilities. Can be empty.
     workspace (str): Default working directory for the agent. Defaults to `config['home']/agent_workspace`.
     force_summarize (bool): When True, if the agent has not produced a final answer after max_retries + 1 tool-call iterations, one additional LLM call is made with the full conversation history plus a force-summarize instruction, asking the model to stop tool calls and output its final answer immediately. If False (default), a ValueError is raised instead.

@@ -8,7 +8,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import yaml
 
-from lazyllm import config, LOG, ModuleBase
+from lazyllm import config, LOG, ModuleBase, locals as lazyllm_locals
 from lazyllm.thirdparty import fsspec
 
 DEFAULT_SKILLS_DIR = os.path.join(config['home'], 'skills')
@@ -101,6 +101,7 @@ _META_REQUIRED_FIELDS = {
 
 class SkillManager(ModuleBase):
     def __init__(self, dir: Optional[str] = None, skills: Optional[Iterable[str]] = None,
+                 allowed_skills: Optional[Iterable[str]] = None,
                  max_skill_md_bytes: Optional[int] = None, fs=None, sandbox=None):
         super().__init__(return_trace=False)
         self._fs = fs or fsspec.implementations.local.LocalFileSystem()
@@ -111,10 +112,18 @@ class SkillManager(ModuleBase):
         self._skills_dir = self._parse_dirs(dir or config['skills_dir'], fs=fs)
         self._validate_fs_dir_consistency(fs, self._skills_dir)
         self._skills_expected = self._parse_skills(skills)
+        self._allowed_skills_expected = (
+            None if allowed_skills is None else self._parse_skills(allowed_skills)
+        )
         self._max_skill_md_bytes = max_skill_md_bytes or config['max_skill_md_bytes']
         self._skills_index: Dict[str, Dict] = {}
+        self._skills_allowed: List[str] = []
         self._skills_selected: List[str] = []
         self._skills_index_lock = threading.Lock()
+
+    @property
+    def sandbox(self):
+        return self._sandbox
 
     @staticmethod
     def _extract_protocol(path: str) -> Optional[str]:
@@ -363,58 +372,82 @@ class SkillManager(ModuleBase):
                 return
             skills_index: Dict[str, Dict] = {}
             for skill_dir, skill_md in self._iter_skill_files():
-                try:
-                    size = self._fs_getsize(skill_md)
-                    if size is not None and size > self._max_skill_md_bytes:
-                        continue
-                    content = self._fs_read(skill_md)
-                    if size is None and self._content_exceeds_limit(content):
-                        continue
-                    meta = self._extract_yaml_meta(content)
-                    validation_error = self._validate_meta(meta)
-                    if validation_error:
-                        details = ' '.join(
-                            f'{detail_key}={detail_value}'
-                            for detail_key, detail_value in validation_error.items()
-                        )
-                        LOG.warning(
-                            f'event=skill_load_skipped {details} skill_md={skill_md!r}'
-                        )
-                        continue
-                    name = meta['name']
-                    key = self._skill_key_from_dir(skill_dir)
-                    if not key or key in skills_index:
-                        continue
-                    skills_index[key] = {
-                        'key': key,
-                        'name': name,
-                        'description': meta['description'],
-                        'argument-hint': meta.get('argument-hint', ''),
-                        'disable-model-invocation': self._to_bool(meta.get('disable-model-invocation', False)),
-                        'user-invocable': self._to_bool(meta.get('user-invocable', True)),
-                        'allowed-tools': meta.get('allowed-tools'),
-                        'source': self._extract_protocol(skill_dir) or 'file',
-                        'path': skill_dir,
-                        'skill_md': skill_md,
-                        'raw_meta': meta,
-                    }
-                except Exception as exc:
-                    LOG.warning(
-                        'event=skill_load_skipped code=unexpected_skill_load_error '
-                        f'error_type={type(exc).__name__} skill_md={skill_md!r}'
-                    )
+                entry = self._load_skill_index_entry(skill_dir, skill_md)
+                if entry is None:
                     continue
+                key, info = entry
+                if key not in skills_index:
+                    skills_index[key] = info
             self._skills_index = skills_index
-            if self._skills_expected:
-                self._skills_selected = [
-                    key for key in (self._resolve_skill_ref(ref, self._skills_index.keys())[0]
-                                    for ref in self._skills_expected)
-                    if key
-                ]
+            model_invocable = [
+                key for key, info in self._skills_index.items()
+                if not info.get('disable-model-invocation')
+            ]
+            if self._allowed_skills_expected is not None:
+                self._skills_allowed = self._resolve_skill_refs(
+                    self._allowed_skills_expected, model_invocable,
+                )
+            elif self._skills_expected:
+                self._skills_allowed = self._resolve_skill_refs(
+                    self._skills_expected, self._skills_index.keys(),
+                )
             else:
-                self._skills_selected = [
-                    key for key, info in self._skills_index.items() if not info.get('disable-model-invocation')
-                ]
+                self._skills_allowed = model_invocable
+
+            if self._skills_expected:
+                self._skills_selected = self._resolve_skill_refs(
+                    self._skills_expected, self._skills_allowed,
+                )
+            elif self._allowed_skills_expected is None:
+                self._skills_selected = list(self._skills_allowed)
+
+    def _load_skill_index_entry(self, skill_dir: str, skill_md: str) -> Optional[Tuple[str, Dict]]:
+        try:
+            size = self._fs_getsize(skill_md)
+            if size is not None and size > self._max_skill_md_bytes:
+                return None
+            content = self._fs_read(skill_md)
+            if size is None and self._content_exceeds_limit(content):
+                return None
+            meta = self._extract_yaml_meta(content)
+            validation_error = self._validate_meta(meta)
+            if validation_error:
+                details = ' '.join(
+                    f'{detail_key}={detail_value}'
+                    for detail_key, detail_value in validation_error.items()
+                )
+                LOG.warning(f'event=skill_load_skipped {details} skill_md={skill_md!r}')
+                return None
+            key = self._skill_key_from_dir(skill_dir)
+            if not key:
+                return None
+            return key, {
+                'key': key,
+                'name': meta['name'],
+                'description': meta['description'],
+                'argument-hint': meta.get('argument-hint', ''),
+                'disable-model-invocation': self._to_bool(meta.get('disable-model-invocation', False)),
+                'user-invocable': self._to_bool(meta.get('user-invocable', True)),
+                'allowed-tools': meta.get('allowed-tools'),
+                'source': self._extract_protocol(skill_dir) or 'file',
+                'path': skill_dir,
+                'skill_md': skill_md,
+                'raw_meta': meta,
+            }
+        except Exception as exc:
+            LOG.warning(
+                'event=skill_load_skipped code=unexpected_skill_load_error '
+                f'error_type={type(exc).__name__} skill_md={skill_md!r}'
+            )
+            return None
+
+    def _resolve_skill_refs(self, refs: Iterable[str], keys: Iterable[str]) -> List[str]:
+        resolved = []
+        for ref in refs:
+            key, _ = self._resolve_skill_ref(ref, keys)
+            if key and key not in resolved:
+                resolved.append(key)
+        return resolved
 
     def _resolve_skill_ref(self, ref: str, keys: Iterable[str]) -> Tuple[Optional[str], Optional[Dict]]:
         name = str(ref or '').strip()
@@ -442,15 +475,29 @@ class SkillManager(ModuleBase):
             }
         return matches[0], None
 
-    def _visible_skill_keys(self) -> List[str]:
+    def _allowed_skill_keys(self) -> List[str]:
         self._load_skills_index()
-        if self._skills_selected:
-            return [key for key in self._skills_selected if key in self._skills_index]
-        if self._skills_expected:
+        return [key for key in self._skills_allowed if key in self._skills_index]
+
+    def _runtime_exposed_skill_keys(self) -> List[str]:
+        try:
+            workspace = lazyllm_locals['_lazyllm_agent'].setdefault('workspace', {})
+        except Exception:
             return []
+        exposed_by_manager = workspace.get('_exposed_skills', {})
+        if not isinstance(exposed_by_manager, dict):
+            return []
+        exposed = exposed_by_manager.get(self._module_id, [])
+        return list(exposed) if isinstance(exposed, list) else []
+
+    def _visible_skill_keys(self) -> List[str]:
+        allowed = set(self._allowed_skill_keys())
         return [
-            key for key, info in self._skills_index.items()
-            if not info.get('disable-model-invocation')
+            key for key in dict.fromkeys([
+                *self._skills_selected,
+                *self._runtime_exposed_skill_keys(),
+            ])
+            if key in allowed
         ]
 
     def _visible_skills_index(self) -> Dict[str, Dict]:
@@ -466,6 +513,66 @@ class SkillManager(ModuleBase):
         if error:
             return None, error
         return self._skills_index.get(key), None
+
+    @staticmethod
+    def _metadata_list(value) -> List[str]:
+        if isinstance(value, str):
+            values = [item.strip() for item in value.split(',')]
+        elif isinstance(value, (list, tuple, set)):
+            values = [str(item).strip() for item in value]
+        else:
+            values = []
+        return list(dict.fromkeys(item for item in values if item))
+
+    def _skill_metadata(self, key: str) -> Dict:
+        info = self._skills_index[key]
+        raw_meta = info.get('raw_meta') or {}
+        return {
+            'id': key,
+            'name': str(info.get('name') or key),
+            'description': str(info.get('description') or ''),
+            'aliases': self._metadata_list(raw_meta.get('aliases')),
+            'tags': self._metadata_list(raw_meta.get('tags')),
+            'source': str(info.get('source') or 'file'),
+            'revision': str(raw_meta.get('revision') or ''),
+        }
+
+    def list_skill_metadata(self, scope: str = 'visible') -> List[Dict]:
+        if scope == 'visible':
+            keys = self._visible_skill_keys()
+        elif scope == 'allowed':
+            keys = self._allowed_skill_keys()
+        else:
+            raise ValueError("scope must be 'visible' or 'allowed'.")
+        return [self._skill_metadata(key) for key in keys]
+
+    def expose_skills(self, names: Iterable[str]) -> Dict:
+        allowed_keys = self._allowed_skill_keys()
+        resolved, errors = [], []
+        for name in self._parse_skills(names):
+            key, error = self._resolve_skill_ref(name, allowed_keys)
+            if error:
+                errors.append(error)
+            elif key and key not in resolved:
+                resolved.append(key)
+        try:
+            workspace = lazyllm_locals['_lazyllm_agent'].setdefault('workspace', {})
+            exposed_by_manager = workspace.setdefault('_exposed_skills', {})
+            exposed = exposed_by_manager.setdefault(self._module_id, [])
+        except Exception as exc:
+            return {
+                'status': 'error',
+                'skills': [],
+                'errors': [{'status': 'error', 'error': str(exc)}],
+            }
+        for key in resolved:
+            if key not in exposed:
+                exposed.append(key)
+        return {
+            'status': 'ok' if not errors else 'partial',
+            'skills': [self._skill_metadata(key) for key in resolved],
+            'errors': errors,
+        }
 
     def list_skill(self) -> str:
         visible_skills = self._visible_skills_index()
