@@ -256,6 +256,8 @@ def materialize_ir(document: WriterDocument, numbering: NumberingMap) -> WriterD
 
 
 def materialize_markdown(markdown: str) -> str:
+    from .utils.serialization import strip_heading_numbering
+
     view = build_numbering_view_from_markdown(markdown)
     numbering = compute_numbering(view)
     targets = list(view.targets)
@@ -292,7 +294,8 @@ def materialize_markdown(markdown: str) -> str:
         if heading:
             target = targets[target_index] if target_index < len(targets) else None
             if target is not None and target.kind == 'section':
-                line = f'{heading.group(1)} {format_target_number(numbering[target.id])} {heading.group(2).strip()}'
+                caption = strip_heading_numbering(heading.group(2))
+                line = f'{heading.group(1)} {format_target_number(numbering[target.id])} {caption}'
                 target_index += 1
         else:
             images = list(_IMAGE_RE.finditer(line))

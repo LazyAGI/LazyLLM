@@ -767,7 +767,10 @@ class WriterDraftingTools(WriterToolBase):
         top_sections = [section for section in sections if section[0] <= 2]
         if len(top_sections) != 1 or top_sections[0][0] != 2:
             raise ValueError('Markdown draft section must contain exactly one H2 root heading.')
-        if top_sections[0][1][-1] != strip_heading_numbering(instruction.content_ref.heading_path[-1]):
+        if (
+            strip_heading_numbering(top_sections[0][1][-1])
+            != strip_heading_numbering(instruction.content_ref.heading_path[-1])
+        ):
             raise ValueError('Markdown draft section heading does not match its content_ref.')
 
     @staticmethod
