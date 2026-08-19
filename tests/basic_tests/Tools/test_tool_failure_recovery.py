@@ -109,10 +109,10 @@ def _call(name, arguments):
 
 
 def test_unknown_tool_precedes_argument_validation_and_suggests_visible_tool():
-    manager = ToolManager([typed_search], enforce_visible_tools=True)
+    manager = ToolManager([typed_search])
     call = {'function': {'name': 'typed_seach', 'arguments': '{not-json'}}
 
-    result = manager(call)[0]
+    result = manager(call, allowed_tool_names={'typed_search'})[0]
 
     assert result['error']['category'] == 'UNKNOWN_TOOL'
     assert result['error']['code'] == 'TOOL_NOT_EXPOSED'
@@ -123,22 +123,25 @@ def test_unknown_tool_precedes_argument_validation_and_suggests_visible_tool():
     assert result['error']['recovery_attempts_remaining'] == 1
 
 
-def test_hidden_lazy_tool_is_not_callable_or_suggested():
+def test_allowed_tool_snapshot_is_fixed_for_one_parallel_call():
     manager = ToolManager([{
         'name': 'private',
         'desc': 'Private tools.',
         'lazy': True,
         'prefix': False,
         'tools': [hidden_read],
-    }], enforce_visible_tools=True)
+    }])
 
-    assert [item['function']['name'] for item in manager.tools_description] == [
-        'get_private_methods',
-    ]
-    result = manager(_call('hidden_read', {'path': '/tmp/secret'}))[0]
+    allowed = {item['function']['name'] for item in manager.tools_description}
+    results = manager([
+        _call('get_private_methods', {}),
+        _call('hidden_read', {'path': '/tmp/secret'}),
+    ], allowed_tool_names=allowed)
 
-    assert result['error']['category'] == 'UNKNOWN_TOOL'
-    assert result['error']['details']['suggested_tool'] is None
+    assert allowed == {'get_private_methods'}
+    assert results[0]['ok'] is True
+    assert results[1]['error']['category'] == 'UNKNOWN_TOOL'
+    assert results[1]['error']['details']['suggested_tool'] is None
 
 
 def test_invalid_args_return_missing_and_type_violations():

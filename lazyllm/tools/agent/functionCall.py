@@ -51,6 +51,7 @@ class StreamResponse():
 
 
 _COMPACTION_TRUNCATE_LEN = 200  # chars kept per old tool result
+_ROUND_TOOLS_KEY = '_function_call_round_tools'
 
 
 def _compact_chat_history(history: List[Dict[str, Any]], keep_full_turns: int) -> List[Dict[str, Any]]:
@@ -91,7 +92,6 @@ class FunctionCall(ModuleBase):
             self._sandbox = sandbox or create_sandbox()
             self._tools_manager = ToolManager(
                 tools, return_trace=return_trace, sandbox=self._sandbox,
-                enforce_visible_tools=True,
             )
         else:
             self._tools_manager = _tool_manager
@@ -104,7 +104,7 @@ class FunctionCall(ModuleBase):
         prompt = _prompt or FC_PROMPT
         self._prompter = ChatPrompter(
             instruction={'system': prompt, 'user': ''},
-            tools=lambda: self._tools_manager.tools_description,
+            tools=self._get_current_tools,
             skills=self._skill_manager.build_prompt() if self._skill_manager else '',
         )
         self._llm = llm.share(
@@ -127,7 +127,29 @@ class FunctionCall(ModuleBase):
         if hasattr(self, '_tools_manager') and self._tools_manager is not None:
             self._tools_manager.sandbox = sandbox
 
+    def _resolve_current_tools(self):
+        tools = tuple(self._tools_manager.tools_description)
+        snapshots = locals.get(_ROUND_TOOLS_KEY)
+        if not isinstance(snapshots, dict):
+            snapshots = {}
+            locals[_ROUND_TOOLS_KEY] = snapshots
+        snapshots[self._module_id] = tools
+        return tools
+
+    def _get_current_tools(self):
+        snapshots = locals.get(_ROUND_TOOLS_KEY, {})
+        tools = snapshots.get(self._module_id) if isinstance(snapshots, dict) else None
+        return list(tools if tools is not None else self._resolve_current_tools())
+
+    def _get_visible_tool_names(self):
+        return {
+            item.get('function', {}).get('name')
+            for item in self._get_current_tools()
+            if item.get('function', {}).get('name')
+        }
+
     def _build_history(self, input: Union[str, dict, list]):
+        self._resolve_current_tools()
         workspace = locals['_lazyllm_agent']['workspace']
         history_idx = len(workspace.setdefault('history', []))
         budget_notice = None
@@ -193,7 +215,10 @@ class FunctionCall(ModuleBase):
             _normalize_tool_call_arguments(tool_calls)
             if self._stream:
                 _write_agent_data('tool_calls', tool_calls=tool_calls)
-            tool_calls_results = self._tools_manager(tool_calls)
+            tool_calls_results = self._tools_manager(
+                tool_calls,
+                allowed_tool_names=self._get_visible_tool_names(),
+            )
             if self._stream:
                 _write_agent_data('tool_results',
                                   tool_results=LazyLLMAgentBase._normalize_tool_results(tool_calls,

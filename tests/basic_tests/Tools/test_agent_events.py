@@ -6,6 +6,8 @@ from types import SimpleNamespace
 
 import lazyllm
 from lazyllm.tools import PlanAndSolveAgent, ReactAgent
+from lazyllm.tools.agent.functionCall import FunctionCall
+from lazyllm.tools.agent.toolsManager import ToolManager
 
 
 def add_one(value: int) -> int:
@@ -28,6 +30,25 @@ def get_status() -> dict:
         dict: Structured status information.
     '''
     return {'status': 'ok', 'content': 'Error handling reference'}
+
+
+def private_status() -> str:
+    '''Return a private toolkit status.
+
+    Returns:
+        str: Private status.
+    '''
+    return 'private status'
+
+
+def _private_tool_group():
+    return {
+        'name': 'private',
+        'desc': 'Private status tools.',
+        'lazy': True,
+        'prefix': False,
+        'tools': [private_status],
+    }
 
 
 class _FakeLLM(object):
@@ -465,6 +486,85 @@ class TestReactAgentEvents(object):
         tool_message = llm.inputs[1]['input'][0]
         visible_error = json.loads(tool_message['content'].split('\n\n', 1)[0])
         assert visible_error == {'ok': False, 'error': error}
+
+    def test_react_agent_reuses_one_tool_snapshot_per_round(self):
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'Activate and inspect.',
+                'tool_calls': [
+                    {
+                        'id': 'call-gateway',
+                        'type': 'function',
+                        'function': {'name': 'get_private_methods', 'arguments': '{}'},
+                    },
+                    {
+                        'id': 'call-hidden-same-round',
+                        'type': 'function',
+                        'function': {'name': 'private_status', 'arguments': '{}'},
+                    },
+                ],
+            },
+            {
+                'role': 'assistant',
+                'content': 'Use the activated tool.',
+                'tool_calls': [{
+                    'id': 'call-hidden-next-round',
+                    'type': 'function',
+                    'function': {'name': 'private_status', 'arguments': '{}'},
+                }],
+            },
+            {'role': 'assistant', 'content': 'Done.'},
+        ])
+        agent = ReactAgent(
+            llm=llm,
+            tools=[_private_tool_group()],
+            max_retries=3,
+            stream=True,
+            enable_builtin_tools=False,
+        )
+
+        assert agent('inspect private status') == 'Done.'
+        result_events = [event for event in _read_agent_events() if event.tag == 'tool_results']
+
+        first_round = result_events[0].tool_results
+        assert first_round[0]['result'].startswith('Activated Toolkit "private"')
+        assert first_round[1]['result']['error']['category'] == 'UNKNOWN_TOOL'
+        assert result_events[1].tool_results[0]['result'] == 'private status'
+
+    def test_function_call_round_snapshot_is_session_local(self):
+        manager = ToolManager([_private_tool_group()])
+        function_call = FunctionCall(_FakeLLM([]), _tool_manager=manager)
+        barrier = threading.Barrier(2)
+        snapshots = {}
+        errors = []
+
+        def capture(label, active):
+            try:
+                with lazyllm.new_session(f'tool-snapshot-{label}'):
+                    lazyllm.locals['_lazyllm_agent'] = {
+                        'workspace': {'_active_groups': ['private'] if active else []},
+                    }
+                    function_call._resolve_current_tools()
+                    barrier.wait()
+                    snapshots[label] = function_call._get_visible_tool_names()
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [
+            threading.Thread(target=capture, args=('inactive', False)),
+            threading.Thread(target=capture, args=('active', True)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert not errors
+        assert snapshots == {
+            'inactive': {'get_private_methods'},
+            'active': {'private_status'},
+        }
 
     def test_react_agent_stream_emits_text_reasoning_and_tool_events(self):
         llm = _FakeLLM([

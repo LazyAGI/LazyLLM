@@ -91,7 +91,6 @@ class LazyLLMAgentBase(ModuleBase):
             self._ensure_default_skill_tools()
         self._tools_manager = ToolManager(
             self._tools, return_trace=return_trace, sandbox=self._sandbox,
-            enforce_visible_tools=True,
         )
         for tool in self._tools_manager.all_tools:
             if tool.name in self._skill_tool_names:

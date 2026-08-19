@@ -1011,14 +1011,12 @@ def _load_tool_by_name(name: str) -> 'ModuleTool':
 
 class ToolManager(ModuleBase):
 
-    def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None,
-                 enforce_visible_tools: bool = False):
+    def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None):
         super().__init__(return_trace=return_trace)
         self._tools = [_build_tool_from_element(element) for element in tools]
         self._format_tools()
         self._tools_desc = self._transform_to_openai_function()
         self._sandbox = sandbox
-        self._enforce_visible_tools = enforce_visible_tools
 
     @property
     def all_tools(self) -> List[ModuleTool]:
@@ -1031,15 +1029,9 @@ class ToolManager(ModuleBase):
         except Exception:
             workspace = {}
         active_groups = set(workspace.get('_active_groups', []))
-        descriptions = [x for item in self._tools_desc
-                        for x in (item.get_description(active_groups=active_groups)
-                                  if isinstance(item, ToolContainer) else item() if callable(item) else [item])]
-        if self._enforce_visible_tools and isinstance(workspace, dict):
-            workspace['_visible_tool_names'] = [
-                item.get('function', {}).get('name') for item in descriptions
-                if item.get('function', {}).get('name')
-            ]
-        return descriptions
+        return [x for item in self._tools_desc
+                for x in (item.get_description(active_groups=active_groups)
+                          if isinstance(item, ToolContainer) else item() if callable(item) else [item])]
 
     @property
     def tools_info(self):
@@ -1187,7 +1179,7 @@ class ToolManager(ModuleBase):
         s = s + (']' * max(0, opens_sq)) + ('}' * max(0, opens))
         return json.loads(s)
 
-    def _parse_tool_call(self, tc):
+    def _parse_tool_call(self, tc, allowed_tool_names=None):
         func = tc.get('function') if isinstance(tc, dict) else None
         if not func or 'name' not in func or 'arguments' not in func:
             tool_name = str(func.get('name') or '') if isinstance(func, dict) else ''
@@ -1199,13 +1191,9 @@ class ToolManager(ModuleBase):
             return None, failure, None
         name = func['name']
         raw_args = func['arguments']
-        workspace = lazyllm_locals.get('_lazyllm_agent', {}).get('workspace', {})
-        visible_names = workspace.get('_visible_tool_names') if self._enforce_visible_tools else None
-        if self._enforce_visible_tools and visible_names is None:
-            visible_names = [item.get('function', {}).get('name') for item in self.tools_description]
-        if not self._enforce_visible_tools:
-            visible_names = list(self._tool_call)
-        visible_names = [item for item in visible_names if item]
+        visible_names = list(self._tool_call) if allowed_tool_names is None else [
+            item for item in allowed_tool_names if item
+        ]
         if name not in visible_names:
             suggested_tool, distance = _closest_tool_name(name, visible_names)
             details = {'suggested_tool': suggested_tool}
@@ -1270,8 +1258,8 @@ class ToolManager(ModuleBase):
                 f'[ToolCall] tool={tool.name!r} raised: {type(error).__name__}: {error}')
             return _exception_failure(tool, error)
 
-    def _build_tool_invocation(self, tool_call):
-        tool, arguments, validated_arguments = self._parse_tool_call(tool_call)
+    def _build_tool_invocation(self, tool_call, allowed_tool_names=None):
+        tool, arguments, validated_arguments = self._parse_tool_call(tool_call, allowed_tool_names)
         if tool is None:
             return (
                 lambda *_, _failure=arguments: _failure,
@@ -1355,9 +1343,13 @@ class ToolManager(ModuleBase):
             raise min(errors, key=lambda item: item[0])[1]
         return lazyllm.package(ordered_results)
 
-    def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False):
+    def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False,
+                allowed_tool_names: Optional[Set[str]] = None):
         if not tools: return []
         tool_calls = [tools] if isinstance(tools, dict) else tools
-        invocations = [self._build_tool_invocation(tool_call) for tool_call in tool_calls]
+        invocations = [
+            self._build_tool_invocation(tool_call, allowed_tool_names)
+            for tool_call in tool_calls
+        ]
         callables, call_arguments, accesses = map(list, zip(*invocations))
         return self._execute_tool_calls(tool_calls, callables, call_arguments, accesses)
