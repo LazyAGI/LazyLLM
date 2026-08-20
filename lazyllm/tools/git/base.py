@@ -373,7 +373,7 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
         if not stash:
             return {'success': True, 'message': 'no stashed comments', 'created': 0}
         created = 0
-        errors = []
+        errors: List[ToolExecutionError] = []
         for item in stash:
             try:
                 self.create_review_comment(
@@ -384,11 +384,27 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
                 )
                 created += 1
             except ToolExecutionError as error:
-                errors.append(str(error))
+                errors.append(error)
         if clear_stash:
             stash.clear()
         if errors:
-            return {'success': False, 'message': '; '.join(errors), 'created': created}
+            first_error = errors[0]
+            first_error.details.update({
+                'batch_operation': 'batch_commit_review_comments',
+                'batch_created': created,
+                'batch_failed': len(errors),
+                'batch_failures': [
+                    {
+                        'category': error.category,
+                        'code': error.code,
+                        'message': str(error),
+                        'recovery_action': error.recovery_action,
+                        'details': dict(error.details),
+                    }
+                    for error in errors
+                ],
+            })
+            raise first_error
         return {'success': True, 'message': 'committed', 'created': created}
 
     @_git_api

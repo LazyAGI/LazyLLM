@@ -425,3 +425,54 @@ def test_git_provider_helper_preserves_http_failure_category(
     assert exc_info.value.code == code
     assert exc_info.value.details['status_code'] == status_code
     assert exc_info.value.details['operation'] == 'list_user_starred_repos'
+
+
+@pytest.mark.parametrize('submit_kwargs', [
+    {'body': 'review body'},
+    {'comments': [{'body': 'fallback comment'}]},
+])
+@pytest.mark.parametrize(('status_code', 'error_type', 'code'), [
+    (403, ToolPermissionError, 'GIT_PERMISSION_DENIED'),
+    (503, ToolTransientError, 'GIT_TEMPORARY_FAILURE'),
+])
+def test_gitlab_submit_review_checks_note_write_failures(
+        monkeypatch, submit_kwargs, status_code, error_type, code):
+    backend = GitLab(token='token', repo='owner/repo')
+    response = SimpleNamespace(
+        status_code=status_code,
+        text='opaque provider response',
+        reason='provider failure',
+    )
+    monkeypatch.setattr(backend, '_req', lambda *args, **kwargs: response)
+
+    with pytest.raises(error_type) as exc_info:
+        backend.submit_review(1, 'COMMENT', **submit_kwargs)
+
+    assert exc_info.value.code == code
+    assert exc_info.value.details['status_code'] == status_code
+    assert exc_info.value.details['operation'] == 'submit_review'
+
+
+def test_batch_review_comments_preserves_typed_failure_and_partial_progress(monkeypatch):
+    backend = GitLab(token='token', repo='owner/repo')
+    responses = iter([
+        SimpleNamespace(status_code=201, text='', reason='', json=lambda: {'id': 1}),
+        SimpleNamespace(status_code=403, text='opaque provider response', reason='provider failure'),
+    ])
+    monkeypatch.setattr(backend, '_req', lambda *args, **kwargs: next(responses))
+    backend.stash_review_comment(1, 'first', 'first.py', 1)
+    backend.stash_review_comment(1, 'second', 'second.py', 2)
+
+    with pytest.raises(ToolPermissionError) as exc_info:
+        backend.batch_commit_review_comments()
+
+    error = exc_info.value
+    assert error.code == 'GIT_PERMISSION_DENIED'
+    assert error.recovery_action == 'request_authorization'
+    assert error.details['status_code'] == 403
+    assert error.details['operation'] == 'create_review_comment'
+    assert error.details['batch_operation'] == 'batch_commit_review_comments'
+    assert error.details['batch_created'] == 1
+    assert error.details['batch_failed'] == 1
+    assert error.details['batch_failures'][0]['category'] == 'PERMISSION_ERROR'
+    assert backend._stashed_comments() == []

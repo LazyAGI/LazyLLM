@@ -224,7 +224,9 @@ class GitLab(LazyLLMGitBase):
         if event.upper() == 'APPROVE':
             return self.approve_pull_request(number)
         if body:
-            self._req('POST', f'/merge_requests/{number}/notes', json={'body': body})
+            r = self._req('POST', f'/merge_requests/{number}/notes', json={'body': body})
+            if r.status_code not in (200, 201):
+                return self._http_failure(r)
         if comments:
             for c in comments:
                 if not isinstance(c, dict) or not c.get('body'):
@@ -237,7 +239,9 @@ class GitLab(LazyLLMGitBase):
                         number=number, body=c['body'], path=path, line=int(line), commit_id=commit_id
                     )
                 else:
-                    self._req('POST', f'/merge_requests/{number}/notes', json={'body': c['body']})
+                    r = self._req('POST', f'/merge_requests/{number}/notes', json={'body': c['body']})
+                    if r.status_code not in (200, 201):
+                        return self._http_failure(r)
         return {'success': True, 'message': 'submitted'}
 
     def approve_pull_request(self, number: int, sha: Optional[str] = None) -> Dict[str, Any]:
