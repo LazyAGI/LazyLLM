@@ -196,7 +196,7 @@ class ReactAgent(LazyLLMAgentBase):
         )
         return summary if summary else None
 
-    def _post_process(self, ret):
+    def _post_process(self, ret):  # noqa: C901
         if isinstance(ret, str):
             completed = self._pop_tool_calls()
             if completed is not None:
