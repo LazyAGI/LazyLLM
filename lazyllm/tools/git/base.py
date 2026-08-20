@@ -2,6 +2,7 @@
 import re
 import subprocess
 from abc import ABC, abstractmethod
+from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -10,6 +11,8 @@ from lazyllm.module import ModuleBase
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
 from lazyllm.tools.agent.toolError import (
     ToolDomainError,
+    ToolExecutionError,
+    ToolInvalidArgumentsError,
     ToolPermissionError,
     ToolPolicyError,
     ToolTransientError,
@@ -17,6 +20,87 @@ from lazyllm.tools.agent.toolError import (
 
 # Safe remote name: alphanumeric, underscore, hyphen only. Reject ext:: and other protocols.
 _REMOTE_NAME_RE = re.compile(r'^[a-zA-Z0-9_-]+$')
+
+
+def _raise_git_failure(operation: str, result: Any) -> Any:
+    if not isinstance(result, dict) or result.get('success') is not False:
+        return result
+
+    message = str(result.get('message') or f'Git operation {operation} failed.')
+    status_code = result.get('status_code')
+    details = {
+        key: value for key, value in result.items()
+        if key not in {'success', 'message'}
+    }
+    details['operation'] = operation
+    lowered = message.lower()
+    if status_code in (401, 403) or any(
+        token in lowered for token in (
+            'permission denied', 'access denied', 'forbidden', 'unauthorized', '401', '403'
+        )
+    ):
+        raise ToolPermissionError(message, code='GIT_PERMISSION_DENIED', details=details)
+    if status_code in (408, 429, 502, 503, 504) or any(
+        token in lowered for token in (
+            'timed out', 'timeout', 'temporarily unavailable', 'service unavailable',
+            'too many requests', '408', '429', '502', '503', '504'
+        )
+    ):
+        raise ToolTransientError(message, code='GIT_TEMPORARY_FAILURE', details=details)
+    if 'not supported' in lowered or 'does not support' in lowered:
+        raise ToolPolicyError(message, code='GIT_OPERATION_NOT_SUPPORTED', details=details)
+    raise ToolDomainError(message, code='GIT_OPERATION_FAILED', details=details)
+
+
+def _git_api(method):
+    if getattr(method, '__git_failure_boundary__', False):
+        return method
+
+    @wraps(method)
+    def wrapped(*args, **kwargs):
+        operation = method.__name__
+        try:
+            return _raise_git_failure(operation, method(*args, **kwargs))
+        except ToolExecutionError:
+            raise
+        except ValueError as error:
+            raise ToolInvalidArgumentsError(
+                str(error), code='INVALID_GIT_ARGUMENTS', details={'operation': operation}
+            ) from error
+        except (TimeoutError, subprocess.TimeoutExpired, requests.Timeout,
+                requests.ConnectionError) as error:
+            raise ToolTransientError(
+                str(error), code='GIT_TEMPORARY_FAILURE', details={'operation': operation}
+            ) from error
+        except Exception as error:
+            status_code = getattr(getattr(error, 'response', None), 'status_code', None)
+            details = {'operation': operation}
+            if status_code is not None:
+                details['status_code'] = status_code
+            lowered = str(error).lower()
+            if status_code in (401, 403) or isinstance(error, PermissionError) or any(
+                token in lowered for token in (
+                    'permission denied', 'access denied', 'forbidden', 'unauthorized', '401', '403'
+                )
+            ):
+                raise ToolPermissionError(
+                    str(error), code='GIT_PERMISSION_DENIED', details=details
+                ) from error
+            if status_code in (408, 429, 502, 503, 504) or any(
+                token in lowered for token in (
+                    'timed out', 'timeout', 'temporarily unavailable', 'service unavailable',
+                    'too many requests', '408', '429', '502', '503', '504'
+                )
+            ):
+                raise ToolTransientError(
+                    str(error), code='GIT_TEMPORARY_FAILURE', details=details
+                ) from error
+            raise ToolDomainError(
+                str(error), code='GIT_OPERATION_FAILED', details=details
+            ) from error
+
+    wrapped.__git_failure_boundary__ = True
+    return wrapped
 
 
 def _validate_remote_name(remote_name: str) -> None:
@@ -84,6 +168,12 @@ class ReviewCommentInfo:
 
 
 class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        for name, member in list(cls.__dict__.items()):
+            if not name.startswith('_') and callable(member):
+                setattr(cls, name, _git_api(member))
+
     def __init__(self, token: str, repo: Optional[str] = None, api_base: Optional[str] = None,
                  user: Optional[str] = None, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
@@ -92,48 +182,6 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
         self._api_base = (api_base or '').rstrip('/')
         self._user = (user or '').strip() or None
         self._session = requests.Session()
-
-    @staticmethod
-    def __tool_result_adapter__(operation: str, result: Any) -> Any:
-        '''Translate a legacy Git failure result at the Agent tool boundary.'''
-        if not isinstance(result, dict) or result.get('success') is not False:
-            return result
-
-        message = str(result.get('message') or f'Git operation {operation} failed.')
-        status_code = result.get('status_code')
-        details = {
-            key: value for key, value in result.items()
-            if key not in {'success', 'message'}
-        }
-        details['operation'] = operation
-        lowered = message.lower()
-        if status_code in (401, 403) or any(
-            token in lowered for token in ('permission denied', 'forbidden', 'unauthorized')
-        ):
-            raise ToolPermissionError(
-                message,
-                code='GIT_PERMISSION_DENIED',
-                details=details,
-            )
-        if status_code in (408, 429, 502, 503, 504) or any(
-            token in lowered for token in ('timed out', 'timeout', 'temporarily unavailable')
-        ):
-            raise ToolTransientError(
-                message,
-                code='GIT_TEMPORARY_FAILURE',
-                details=details,
-            )
-        if 'not supported' in lowered:
-            raise ToolPolicyError(
-                message,
-                code='GIT_OPERATION_NOT_SUPPORTED',
-                details=details,
-            )
-        raise ToolDomainError(
-            message,
-            code='GIT_OPERATION_FAILED',
-            details=details,
-        )
 
     def _parse_owner_repo(self, repo: str) -> Tuple[str, str]:
         parts = repo.split('/', 1)
@@ -148,6 +196,7 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
                 'to use repo-related APIs.'
             )
 
+    @_git_api
     def push_branch(self, local_branch: str, remote_branch: Optional[str] = None,
                     remote_name: str = 'origin', repo_path: Optional[str] = None) -> Dict[str, Any]:
         _validate_remote_name(remote_name)
@@ -254,8 +303,6 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
     def check_review_resolution(self, number: int, comment_ids: Optional[List[Any]] = None
                                 ) -> Dict[str, Any]:
         out = self.list_review_comments(number)
-        if not out.get('success'):
-            return out
         comments = out.get('comments') or []
         if comment_ids is not None:
             id_set = set(comment_ids)
@@ -289,6 +336,7 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
         })
         return {'success': True, 'message': 'stashed', 'stash_size': len(self._stashed_comments())}
 
+    @_git_api
     def batch_commit_review_comments(self, clear_stash: bool = True) -> Dict[str, Any]:
         self._require_repo()
         stash = self._stashed_comments()
@@ -297,16 +345,16 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
         created = 0
         errors = []
         for item in stash:
-            r = self.create_review_comment(
-                number=item['number'],
-                body=item['body'],
-                path=item['path'],
-                line=item.get('line'),
-            )
-            if r.get('success'):
+            try:
+                self.create_review_comment(
+                    number=item['number'],
+                    body=item['body'],
+                    path=item['path'],
+                    line=item.get('line'),
+                )
                 created += 1
-            else:
-                errors.append(r.get('message', 'unknown'))
+            except ToolExecutionError as error:
+                errors.append(str(error))
         if clear_stash:
             stash.clear()
         if errors:
