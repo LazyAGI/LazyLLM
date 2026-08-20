@@ -19,6 +19,7 @@ from .file_tool import (  # noqa: F401
 )
 from .shell_tool import shell_tool  # noqa: F401
 from .download_tool import download_file  # noqa: F401
+from .toolError import tool_failure_message
 
 
 def _write_agent_data(tag: str, **kwargs):
@@ -37,7 +38,7 @@ def _unwrap_tool_result(result: Any) -> Any:
             return result.get('value', '')
         if isinstance(result.get('error'), dict):
             return {'ok': False, 'error': result['error']}
-        return str(result.get('msg', repr(result)))
+        return tool_failure_message(result, repr(result))
     return result
 
 

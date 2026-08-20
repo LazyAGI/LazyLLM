@@ -1,10 +1,10 @@
 import os
 import tempfile
-import threading
-import http.server
-import socketserver
-from functools import partial
 
+import pytest
+
+from lazyllm.tools import ToolManager
+from lazyllm.tools.agent import ToolPermissionError
 from lazyllm.tools.agent.file_tool import (read_file, write_file, list_dir, search_in_files,
                                            move_file, delete_file)
 from lazyllm.tools.agent.shell_tool import shell_tool
@@ -45,34 +45,47 @@ class TestShellTool(object):
         assert 'hello' in res['stdout']
 
     def test_shell_tool_needs_approval(self):
-        res = shell_tool('rm -rf /tmp/does_not_exist')
-        assert res['status'] == 'needs_approval'
+        with pytest.raises(ToolPermissionError, match='dangerous token'):
+            shell_tool('rm -rf /tmp/does_not_exist')
+
+    def test_shell_tool_permission_failure_is_structured(self):
+        manager = ToolManager(['shell_tool'])
+        call = {
+            'function': {
+                'name': 'shell_tool',
+                'arguments': {'cmd': 'rm -rf /tmp/does_not_exist'},
+            },
+        }
+
+        result = manager(call)[0]
+
+        assert result['error']['category'] == 'PERMISSION_ERROR'
+        assert result['error']['code'] == 'SHELL_COMMAND_REQUIRES_APPROVAL'
 
 
 class TestDownloadTool(object):
     def test_download_tool_needs_approval(self):
         with tempfile.TemporaryDirectory() as tmp:
             dst = os.path.join(tmp, 'a.txt')
-            res = download_file('http://example.com/a.txt', dst, root=tmp)
-            assert res['status'] == 'needs_approval'
+            with pytest.raises(ToolPermissionError, match='requires approval'):
+                download_file('http://example.com/a.txt', dst, root=tmp)
 
-    def test_download_tool(self):
+    def test_download_tool(self, monkeypatch):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                return False
+
+            @staticmethod
+            def read():
+                return b'hello download'
+
+        monkeypatch.setattr('urllib.request.urlopen', lambda *args, **kwargs: FakeResponse())
         with tempfile.TemporaryDirectory() as tmp:
-            src_path = os.path.join(tmp, 'payload.txt')
-            with open(src_path, 'w', encoding='utf-8') as f:
-                f.write('hello download')
-
-            handler = partial(http.server.SimpleHTTPRequestHandler, directory=tmp)
-            httpd = socketserver.TCPServer(('127.0.0.1', 0), handler)
-            port = httpd.server_address[1]
-            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-            thread.start()
-            try:
-                url = f'http://127.0.0.1:{port}/payload.txt'
-                dst = os.path.join(tmp, 'out.txt')
-                res = download_file(url, dst, root=tmp, allow_unsafe=True)
-                assert res['status'] == 'ok'
-                assert res['bytes'] > 0
-            finally:
-                httpd.shutdown()
-                httpd.server_close()
+            url = 'http://example.com/payload.txt'
+            dst = os.path.join(tmp, 'out.txt')
+            res = download_file(url, dst, root=tmp, allow_unsafe=True)
+            assert res['status'] == 'ok'
+            assert res['bytes'] > 0

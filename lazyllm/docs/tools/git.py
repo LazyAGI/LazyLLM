@@ -18,6 +18,9 @@ _add_git_chinese('LazyLLMGitBase', '''\
 Git 平台统一基类，借助 registry 注册各平台实现（如 GitHub、GitLab、Gitee、GitCode）。
 子类需实现：认证方式、API 根地址、以及抽象方法。
 Agent 可通过 lazyllm.git.github / lazyllm.git.gitlab 等获取实例并调用接口。
+直接调用 Git SDK 时仍保留带 ``success`` 字段的兼容返回值；当 Git 实例的方法注册为 Agent 工具时，旧实现中的
+``success=False`` 会在工具包装边界转换为 ``ToolPermissionError``、``ToolTransientError``、``ToolPolicyError``
+或 ``ToolDomainError``，不会作为成功值返回给 Agent。
 
 Args:
     token (str): 平台 Access Token / Private Token。
@@ -31,6 +34,10 @@ _add_git_english('LazyLLMGitBase', '''\
 Unified Git platform base; implementations (GitHub, GitLab, Gitee, GitCode) are registered via registry.
 Subclasses implement auth, API base URL, and abstract methods.
 Agents get instances via lazyllm.git.github / lazyllm.git.gitlab etc.
+Direct Git SDK calls retain the compatibility dictionary containing ``success``. When a Git instance method is registered
+as an Agent tool, legacy ``success=False`` results are converted at the tool wrapping boundary into
+``ToolPermissionError``, ``ToolTransientError``, ``ToolPolicyError``, or ``ToolDomainError`` instead of being returned to
+the Agent as successful values.
 
 Args:
     token (str): Platform access token or private token.

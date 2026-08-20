@@ -8,6 +8,12 @@ import requests
 
 from lazyllm.module import ModuleBase
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
+from lazyllm.tools.agent.toolError import (
+    ToolDomainError,
+    ToolPermissionError,
+    ToolPolicyError,
+    ToolTransientError,
+)
 
 # Safe remote name: alphanumeric, underscore, hyphen only. Reject ext:: and other protocols.
 _REMOTE_NAME_RE = re.compile(r'^[a-zA-Z0-9_-]+$')
@@ -86,6 +92,48 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
         self._api_base = (api_base or '').rstrip('/')
         self._user = (user or '').strip() or None
         self._session = requests.Session()
+
+    @staticmethod
+    def __tool_result_adapter__(operation: str, result: Any) -> Any:
+        '''Translate a legacy Git failure result at the Agent tool boundary.'''
+        if not isinstance(result, dict) or result.get('success') is not False:
+            return result
+
+        message = str(result.get('message') or f'Git operation {operation} failed.')
+        status_code = result.get('status_code')
+        details = {
+            key: value for key, value in result.items()
+            if key not in {'success', 'message'}
+        }
+        details['operation'] = operation
+        lowered = message.lower()
+        if status_code in (401, 403) or any(
+            token in lowered for token in ('permission denied', 'forbidden', 'unauthorized')
+        ):
+            raise ToolPermissionError(
+                message,
+                code='GIT_PERMISSION_DENIED',
+                details=details,
+            )
+        if status_code in (408, 429, 502, 503, 504) or any(
+            token in lowered for token in ('timed out', 'timeout', 'temporarily unavailable')
+        ):
+            raise ToolTransientError(
+                message,
+                code='GIT_TEMPORARY_FAILURE',
+                details=details,
+            )
+        if 'not supported' in lowered:
+            raise ToolPolicyError(
+                message,
+                code='GIT_OPERATION_NOT_SUPPORTED',
+                details=details,
+            )
+        raise ToolDomainError(
+            message,
+            code='GIT_OPERATION_FAILED',
+            details=details,
+        )
 
     def _parse_owner_repo(self, repo: str) -> Tuple[str, str]:
         parts = repo.split('/', 1)

@@ -1,6 +1,7 @@
 import ast
 import copy
 from dataclasses import dataclass
+from functools import wraps
 import json5 as json
 import lazyllm
 import docstring_parser
@@ -467,8 +468,11 @@ class MethodModuleTool(ModuleTool):
         object.__setattr__(self, '_method_name', method_name)
         object.__setattr__(self, '_input_adapter', input_adapter)
         bound = getattr(instance, method_name)
+        result_adapter = getattr(instance, '__tool_result_adapter__', None)
 
-        def _apply(**kwargs): return bound(**kwargs)
+        def _apply(**kwargs):
+            result = bound(**kwargs)
+            return result_adapter(method_name, result) if result_adapter else result
         _apply.__doc__ = bound.__doc__ or self._find_inherited_docstring(instance, method_name)
         _apply.__name__ = method_name
 
@@ -783,6 +787,21 @@ TOOL_CALL_FORMAT_EXAMPLE = (
 )
 
 
+def _wrap_tool_result_adapter(tool_callable):
+    schema_func = tool_callable
+    instance = getattr(tool_callable, '__self__', None)
+    result_adapter = getattr(instance, '__tool_result_adapter__', None)
+    if not result_adapter:
+        return tool_callable, schema_func
+
+    @wraps(tool_callable)
+    def adapted(*args, **kwargs):
+        result = schema_func(*args, **kwargs)
+        return result_adapter(schema_func.__name__, result)
+
+    return adapted, schema_func
+
+
 def _build_tool_from_element(
         element: Any, _outer_prefix: Optional[str] = None) -> Optional[Union['ModuleTool', 'ToolGroup']]:
     if isinstance(element, str):
@@ -814,12 +833,13 @@ def _build_tool_from_element(
             return ToolGroupWrapper(group, key_source)
         return group
     if callable(element):
+        element, schema_func = _wrap_tool_result_adapter(element)
         register('tmp_tool')(element)
         try:
             # The registry wraps callables in a generated method whose module globals
             # differ from the callable's defining module. Keep the original callable
             # as the schema source so forward references and structured models resolve.
-            return lazyllm.tmp_tool.resolve(element.__name__)(schema_func=element)
+            return lazyllm.tmp_tool.resolve(element.__name__)(schema_func=schema_func)
         finally:
             lazyllm.tmp_tool.remove(element.__name__)
     raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, got {type(element)}')
@@ -1005,14 +1025,16 @@ class ToolManager(ModuleBase):
 
     def _parse_tool_call(self, tc, allowed_tool_names=None):
         func = tc.get('function') if isinstance(tc, dict) else None
-        if not func or 'name' not in func or 'arguments' not in func:
+        name = func.get('name') if isinstance(func, dict) else None
+        if not isinstance(func, dict) or not isinstance(name, str) or not name.strip() \
+                or 'arguments' not in func:
             tool_name = str(func.get('name') or '') if isinstance(func, dict) else ''
             failure = tool_failure(
                 'INVALID_ARGS', 'TOOL_CALL_FORMAT_INVALID', tool_name,
                 f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}',
             )
             return None, failure, None
-        name = func['name']
+        name = name.strip()
         raw_args = func['arguments']
         visible_names = list(self._tool_call) if allowed_tool_names is None else sorted(
             item for item in allowed_tool_names if item
@@ -1167,8 +1189,10 @@ class ToolManager(ModuleBase):
 
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False,
                 allowed_tool_names: Optional[Set[str]] = None):
-        if not tools: return []
+        if isinstance(tools, list) and not tools: return []
         tool_calls = [tools] if isinstance(tools, dict) else tools
+        if not isinstance(tool_calls, list):
+            tool_calls = [tool_calls]
         invocations = [
             self._build_tool_invocation(tool_call, allowed_tool_names)
             for tool_call in tool_calls

@@ -1,8 +1,11 @@
 import json
 from typing import Dict, Literal
 
+import pytest
+
 from lazyllm.tools.agent import ToolDomainError, ToolPolicyError
 from lazyllm.tools.agent.toolsManager import ToolManager
+from lazyllm.tools.git import LocalGit
 
 
 def typed_search(query: str, limit: int = 10, mode: Literal['semantic', 'keyword'] = 'semantic'):
@@ -92,6 +95,18 @@ def flexible_search(query: str, **kwargs):
     return {'query': query, **kwargs}
 
 
+def translated_permission_failure(resource: str):
+    '''Translate a domain failure into a permission failure.
+
+    Args:
+        resource (str): Protected resource.
+    '''
+    try:
+        raise ToolDomainError('resource does not exist', code='RESOURCE_NOT_FOUND')
+    except ToolDomainError:
+        raise PermissionError(f'access denied: {resource}') from None
+
+
 def _call(name, arguments):
     return {
         'id': f'call-{name}',
@@ -115,6 +130,25 @@ def test_unknown_tool_precedes_argument_validation_and_suggests_visible_tool():
     assert result['error']['recovery_action'] == 'choose_tool'
     assert 'retryable' not in result['error']
     assert 'recovery_attempts_remaining' not in result['error']
+
+
+@pytest.mark.parametrize('tool_call', [
+    None,
+    {},
+    {'function': None},
+    {'function': []},
+    {'function': {'name': None, 'arguments': '{}'}},
+    {'function': {'name': 123, 'arguments': '{}'}},
+    {'function': {'name': [], 'arguments': '{}'}},
+    {'function': {'name': {}, 'arguments': '{}'}},
+    {'function': {'name': '   ', 'arguments': '{}'}},
+])
+def test_malformed_tool_call_returns_structured_format_failure(tool_call):
+    result = ToolManager([typed_search])(tool_call)[0]
+
+    assert result['ok'] is False
+    assert result['error']['category'] == 'INVALID_ARGS'
+    assert result['error']['code'] == 'TOOL_CALL_FORMAT_INVALID'
 
 
 def test_invalid_args_return_missing_and_type_violations():
@@ -169,6 +203,22 @@ def test_invalid_json_and_non_object_arguments_are_classified():
     assert object_result['error']['details']['violations'][0]['input_type'] == 'array'
 
 
+def test_repairable_json_is_parsed_before_schema_validation():
+    manager = ToolManager([typed_search])
+
+    repaired = manager({
+        'function': {
+            'name': 'typed_search',
+            'arguments': '{"query": "LazyLLM", "limit": 5,}',
+        },
+    })[0]
+
+    assert repaired == {
+        'ok': True,
+        'value': {'query': 'LazyLLM', 'limit': 5, 'mode': 'semantic'},
+    }
+
+
 def test_fixed_schema_forbids_extra_but_kwargs_accepts_it():
     fixed = ToolManager([typed_search])(
         _call('typed_search', {'query': 'LazyLLM', 'qurey': 'typo'}),
@@ -196,6 +246,16 @@ def test_execution_exceptions_are_classified_without_runtime_retry():
     assert permission_result['error']['recovery_action'] == 'request_authorization'
     assert transient_result['error']['category'] == 'TRANSIENT_ERROR'
     assert transient_result['error']['recovery_action'] == 'retry_later'
+
+
+def test_exception_translation_from_none_hides_suppressed_context():
+    manager = ToolManager([translated_permission_failure])
+
+    result = manager(_call('translated_permission_failure', {'resource': 'secret'}))[0]
+
+    assert result['error']['category'] == 'PERMISSION_ERROR'
+    assert result['error']['code'] == 'PERMISSION_DENIED'
+    assert 'access denied' in result['error']['message']
 
 
 def test_returned_business_dict_is_success_and_typed_failure_is_wrapped():
@@ -232,4 +292,45 @@ def test_typed_policy_failure_is_wrapped():
         'message': 'operation was blocked by runtime policy',
         'recovery_action': 'change_plan',
         'details': {'operation': 'search'},
+    }
+
+
+def test_git_legacy_failure_is_translated_at_tool_boundary():
+    class LegacyGitTool:
+        @staticmethod
+        def __tool_result_adapter__(operation, result):
+            return LocalGit.__tool_result_adapter__(operation, result)
+
+        def add_issue_comment(self, number: int, body: str):
+            '''Add a local issue comment.
+
+            Args:
+                number (int): Issue number.
+                body (str): Comment body.
+            '''
+            return {'success': False, 'message': 'Issue comments are not supported in local mode'}
+
+    backend = LegacyGitTool()
+    manager = ToolManager([backend.add_issue_comment])
+    call = _call('add_issue_comment', {'number': 1, 'body': 'comment'})
+
+    result = manager(call)[0]
+
+    assert backend.add_issue_comment(1, 'comment')['success'] is False
+    assert result['error']['category'] == 'POLICY_ERROR'
+    assert result['error']['code'] == 'GIT_OPERATION_NOT_SUPPORTED'
+    assert result['error']['details']['operation'] == 'add_issue_comment'
+
+
+def test_git_partial_success_remains_normal_business_data():
+    result = LocalGit.__tool_result_adapter__('list_issue_comments', {
+        'success': True,
+        'partial': True,
+        'comments': [{'id': 1}],
+    })
+
+    assert result == {
+        'success': True,
+        'partial': True,
+        'comments': [{'id': 1}],
     }

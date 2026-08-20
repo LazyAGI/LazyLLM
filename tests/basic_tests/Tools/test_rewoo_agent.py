@@ -15,6 +15,17 @@ class _ToolManagerStub:
         return [{'ok': True, 'value': value}]
 
 
+class _FailureToolManagerStub(_ToolManagerStub):
+    def __call__(self, tool_calls):
+        self.calls.append(tool_calls)
+        return [{
+            'ok': False,
+            'value': None,
+            'error': {'message': 'canonical failure'},
+            'msg': 'legacy failure',
+        }]
+
+
 def _agent_with_stub():
     agent = object.__new__(ReWOOAgent)
     agent._tools_manager = _ToolManagerStub()
@@ -41,3 +52,12 @@ def test_rewoo_resolves_evidence_embedded_in_text_without_corrupting_json():
     )
 
     assert resolved == {'input': 'Use {"ok": true} to continue', 'payload': [1, 2]}
+
+
+def test_rewoo_prefers_canonical_error_message_over_legacy_msg():
+    agent = _agent_with_stub()
+    agent._tools_manager = _FailureToolManagerStub()
+
+    result = agent._parse_and_call_tool('fail_tool[{}]', {})
+
+    assert result == 'canonical failure'

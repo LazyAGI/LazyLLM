@@ -1,5 +1,7 @@
 from typing import Any, Dict, Optional
 
+from lazyllm.common import HandledException
+
 
 _CATEGORY_RECOVERY_ACTION = {
     'UNKNOWN_TOOL': 'choose_tool',
@@ -33,10 +35,22 @@ def tool_failure(category: str, code: str, tool_name: str, message: str, *,
         'recovery_action': action,
         'details': dict(details or {}),
     }
+    # ``msg`` is retained as a deprecated compatibility alias. New consumers
+    # must read ``error.message``.
     return {'ok': False, 'value': None, 'error': error, 'msg': message}
 
 
-class ToolExecutionError(Exception):
+def tool_failure_message(result: Any, default: str = 'Tool call failed') -> str:
+    if isinstance(result, dict):
+        error = result.get('error')
+        if isinstance(error, dict) and error.get('message'):
+            return str(error['message'])
+        if result.get('msg'):
+            return str(result['msg'])
+    return default
+
+
+class ToolExecutionError(HandledException):
     category = 'DOMAIN_FAILURE'
     default_code = 'TOOL_EXECUTION_FAILED'
     recovery_action = 'change_plan'
@@ -85,11 +99,26 @@ class ToolPolicyError(ToolExecutionError):
 
 
 def exception_failure(tool_name: str, error: Exception) -> Dict[str, Any]:
+    # ModuleBase translates ordinary exceptions into ModuleExecutionError and
+    # suppresses that wrapper's context for presentation. The wrapped exception
+    # is still the semantic tool failure, so unwrap this one framework layer
+    # before honoring user-authored ``raise ... from None`` chains below.
+    from lazyllm.module.module import ModuleExecutionError
+    if isinstance(error, ModuleExecutionError) and error.__context__ is not None:
+        error = error.__context__
+
     causes = []
+    seen_ids = set()
     current = error
-    while current is not None and current not in causes:
+    while current is not None and id(current) not in seen_ids:
         causes.append(current)
-        current = current.__cause__ or current.__context__
+        seen_ids.add(id(current))
+        if current.__cause__ is not None:
+            current = current.__cause__
+        elif not current.__suppress_context__:
+            current = current.__context__
+        else:
+            current = None
 
     typed_error = next((item for item in causes if isinstance(item, ToolExecutionError)), None)
     if typed_error is not None:

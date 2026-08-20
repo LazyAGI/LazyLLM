@@ -4,6 +4,7 @@ import subprocess
 from typing import Dict, Optional
 
 from .toolsManager import register
+from .toolError import ToolDomainError, ToolInvalidArgumentsError, ToolPermissionError, ToolTransientError
 
 _DANGEROUS_WORD_TOKENS = [
     'rm', 'sudo', 'chmod', 'chown', 'mkfs', 'dd', 'shutdown', 'reboot', 'poweroff',
@@ -54,28 +55,43 @@ def shell_tool(cmd: str, cwd: Optional[str] = None, timeout: int = 30,
     '''
     cmd = cmd.strip()
     if not cmd:
-        raise ValueError('cmd cannot be empty.')
+        raise ToolInvalidArgumentsError('cmd cannot be empty.', code='EMPTY_COMMAND')
     if cwd is not None and not os.path.isdir(cwd):
-        raise FileNotFoundError(f'cwd not found: {cwd}')
+        raise ToolDomainError(
+            f'cwd not found: {cwd}',
+            code='WORKING_DIRECTORY_NOT_FOUND',
+            details={'cwd': cwd},
+        )
 
     dangerous = _detect_dangerous_command(cmd)
     if dangerous and not allow_unsafe:
-        return {
-            'status': 'needs_approval',
-            'reason': f'Command contains potentially dangerous token: {dangerous}',
-            'command': cmd,
-            'cwd': cwd or os.getcwd(),
-        }
+        raise ToolPermissionError(
+            f'Command contains potentially dangerous token: {dangerous}',
+            code='SHELL_COMMAND_REQUIRES_APPROVAL',
+            details={
+                'command': cmd,
+                'cwd': cwd or os.getcwd(),
+                'dangerous_token': dangerous,
+                'authorization_required': True,
+            },
+        )
 
-    completed = subprocess.run(
-        cmd,
-        cwd=cwd,
-        env=env,
-        shell=True,
-        text=True,
-        capture_output=True,
-        timeout=timeout,
-    )
+    try:
+        completed = subprocess.run(
+            cmd,
+            cwd=cwd,
+            env=env,
+            shell=True,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ToolTransientError(
+            f'Shell command timed out after {timeout} seconds.',
+            code='SHELL_COMMAND_TIMEOUT',
+            details={'command': cmd, 'cwd': cwd or os.getcwd(), 'timeout': timeout},
+        ) from exc
     return {
         'status': 'ok',
         'stdout': completed.stdout,

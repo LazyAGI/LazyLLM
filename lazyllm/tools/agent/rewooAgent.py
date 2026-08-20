@@ -7,6 +7,7 @@ from lazyllm.components import ChatPrompter
 from lazyllm import pipeline, LOG, bind, Color, locals, ifs, once_wrapper
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 from .base import LazyLLMAgentBase, _write_agent_data
+from .toolError import tool_failure_message
 
 
 P_PROMPT_PREFIX = ('For the following tasks, make plans that can solve the problem step-by-step. '
@@ -134,7 +135,7 @@ class ReWOOAgent(LazyLLMAgentBase):
         if isinstance(tool_result, dict) and 'ok' in tool_result:
             if tool_result['ok']:
                 return tool_result.get('value')
-            return tool_result.get('msg') or 'Tool call failed'
+            return tool_failure_message(tool_result)
         return tool_result
 
     def _get_worker_evidences(self, response: str):

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import lazyllm
 from lazyllm.tools.agent.skill_manager import SkillManager
+from lazyllm.tools.agent.toolError import ToolExecutionError
 
 DEFAULT_SKILL_REPO = 'https://github.com/LazyAGI/LazyLLM'
 ATOMGIT_SKILL_REPO = 'https://atomgit.com/LazyAGI/LazyLLM'
@@ -142,7 +143,20 @@ def _handle_list(manager, _args):
 
 def _handle_info(manager, args):
     _require_name(args)
-    res = manager.get_skill(args.name, allow_large=args.allow_large)
+    try:
+        res = manager.get_skill(args.name, allow_large=args.allow_large)
+    except ToolExecutionError as exc:
+        if exc.code == 'SKILL_NOT_FOUND':
+            lazyllm.LOG.error(f'Skill not found: {args.name}')
+        elif exc.code == 'SKILL_CONTENT_TOO_LARGE':
+            limit = exc.details.get('limit')
+            extra = f' (limit: {limit} bytes)' if limit else ''
+            lazyllm.LOG.error(
+                f'SKILL.md is too large for \'{args.name}\'. Use --allow-large to override.{extra}'
+            )
+        else:
+            lazyllm.LOG.error(f'Failed to load skill \'{args.name}\': {exc}')
+        sys.exit(1)
     if res.get('status') != 'ok':
         status = res.get('status', 'error')
         reason = res.get('reason')
