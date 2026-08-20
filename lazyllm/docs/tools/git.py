@@ -18,8 +18,9 @@ _add_git_chinese('LazyLLMGitBase', '''\
 Git 平台统一基类，借助 registry 注册各平台实现（如 GitHub、GitLab、Gitee、GitCode）。
 子类需实现：认证方式、API 根地址、以及抽象方法。
 Agent 可通过 lazyllm.git.github / lazyllm.git.gitlab 等获取实例并调用接口。
-Git SDK 与 Agent 工具使用同一失败协议：成功返回正常结果，失败抛出 ``ToolPermissionError``、
-``ToolTransientError``、``ToolPolicyError`` 或 ``ToolDomainError``。ToolManager 会将这些异常转换为 structured failure。
+Git SDK 与 Agent 工具使用同一失败协议：成功返回正常结果，失败抛出 ``ToolInvalidArgumentsError``、
+``ToolPermissionError``、``ToolTransientError``、``ToolPolicyError`` 或 ``ToolDomainError``。ToolManager 会将这些异常
+转换为 structured failure。
 
 Args:
     token (str): 平台 Access Token / Private Token。
@@ -34,8 +35,8 @@ Unified Git platform base; implementations (GitHub, GitLab, Gitee, GitCode) are 
 Subclasses implement auth, API base URL, and abstract methods.
 Agents get instances via lazyllm.git.github / lazyllm.git.gitlab etc.
 The Git SDK and Agent tools share one failure contract: successful calls return normal results, while failures raise
-``ToolPermissionError``, ``ToolTransientError``, ``ToolPolicyError``, or ``ToolDomainError``. ToolManager converts these
-exceptions into structured failures.
+``ToolInvalidArgumentsError``, ``ToolPermissionError``, ``ToolTransientError``, ``ToolPolicyError``, or
+``ToolDomainError``. ToolManager converts these exceptions into structured failures.
 
 Args:
     token (str): Platform access token or private token.

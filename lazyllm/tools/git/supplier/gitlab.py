@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 import requests
+from lazyllm.tools.agent.toolError import ToolInvalidArgumentsError, ToolPolicyError
 
 from ..base import LazyLLMGitBase, PrInfo, ReviewCommentInfo, _sanitize_path
 
@@ -31,7 +32,9 @@ class GitLab(LazyLLMGitBase):
             return self._current_user_id
         r = self._session.get(f'{self._api_base}/user')
         if r.status_code != 200:
-            raise RuntimeError(f'Failed to get current user: {r.text or r.reason}')
+            self._raise_http_error(
+                r, message=f'Failed to get current user: {r.text or r.reason}'
+            )
         data = r.json()
         self._current_user_id = data.get('id')
         return self._current_user_id
@@ -49,7 +52,7 @@ class GitLab(LazyLLMGitBase):
         }
         r = self._req('POST', '/merge_requests', json=payload)
         if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         data = r.json()
         return {
             'success': True,
@@ -71,19 +74,19 @@ class GitLab(LazyLLMGitBase):
             return {'success': True, 'message': 'nothing to update'}
         r = self._req('PUT', f'/merge_requests/{number}', json=payload)
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         return {'success': True, 'message': 'updated'}
 
     def add_pr_labels(self, number: int, labels: List[str]) -> Dict[str, Any]:
         r = self._req('PUT', f'/merge_requests/{number}', json={'labels': ','.join(labels)})
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         return {'success': True, 'message': 'labels updated'}
 
     def get_pull_request(self, number: int) -> Dict[str, Any]:
         r = self._req('GET', f'/merge_requests/{number}')
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         data = r.json()
         pr = PrInfo(
             number=data['iid'],
@@ -109,7 +112,7 @@ class GitLab(LazyLLMGitBase):
         while len(out) < max_results:
             r = self._req('GET', '/merge_requests', params=params)
             if r.status_code != 200:
-                return {'success': False, 'message': r.text or r.reason}
+                return self._http_failure(r)
             page_data = r.json()
             if not page_data:
                 break
@@ -135,7 +138,7 @@ class GitLab(LazyLLMGitBase):
     def get_pr_diff(self, number: int) -> Dict[str, Any]:
         r = self._req('GET', f'/merge_requests/{number}/changes')
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         data = r.json()
         diffs = [c.get('diff', '') for c in data.get('changes', []) if c.get('diff')]
         return {'success': True, 'diff': '\n'.join(diffs)}
@@ -144,7 +147,7 @@ class GitLab(LazyLLMGitBase):
         r = self._req('GET', f'/merge_requests/{number}/discussions',
                       params={'sort': 'asc', 'order_by': 'created_at'})
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         out = []
         for d in r.json():
             for note in d.get('notes', []):
@@ -171,7 +174,7 @@ class GitLab(LazyLLMGitBase):
             if r.status_code != 200:
                 if out:
                     return {'success': True, 'comments': out, 'partial': True}
-                return {'success': False, 'message': r.text or r.reason}
+                return self._http_failure(r)
             notes = r.json()
             if not notes:
                 break
@@ -210,7 +213,7 @@ class GitLab(LazyLLMGitBase):
         else:
             r = self._req('POST', f'/merge_requests/{number}/discussions', json={'body': body, 'position': pos})
         if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         data = r.json()
         cid = data.get('id') or (data.get('notes', [{}])[0].get('id') if data.get('notes') else None)
         return {'success': True, 'comment_id': cid, 'message': 'created'}
@@ -241,7 +244,7 @@ class GitLab(LazyLLMGitBase):
         payload = {'sha': sha} if sha else {}
         r = self._req('POST', f'/merge_requests/{number}/approve', json=payload)
         if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         return {'success': True, 'message': 'approved'}
 
     def merge_pull_request(self, number: int, merge_method: Optional[str] = None,
@@ -258,16 +261,17 @@ class GitLab(LazyLLMGitBase):
             payload['sha'] = sha
         r = self._req('PUT', f'/merge_requests/{number}/merge', json=payload)
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         data = r.json()
         return {'success': True, 'sha': data.get('merge_commit_sha'), 'message': 'merged'}
 
     def list_repo_stargazers(self, page: int = 1, per_page: int = 20) -> Dict[str, Any]:
         self._require_repo()
-        return {
-            'success': False,
-            'message': 'GitLab API does not provide an endpoint to list users who starred a project.',
-        }
+        raise ToolPolicyError(
+            'GitLab API does not provide an endpoint to list users who starred a project.',
+            code='GIT_OPERATION_NOT_SUPPORTED',
+            details={'operation': 'list_repo_stargazers'},
+        )
 
     def reply_to_review_comment(self, number: int, comment_id: Any, body: str,
                                 path: str, line: Optional[int] = None,
@@ -279,7 +283,7 @@ class GitLab(LazyLLMGitBase):
         else:
             r = self._req('POST', f'/merge_requests/{number}/notes', json={'body': body})
         if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         data = r.json()
         return {'success': True, 'comment_id': data.get('id'), 'message': 'replied'}
 
@@ -287,21 +291,22 @@ class GitLab(LazyLLMGitBase):
                                discussion_id: Optional[Any] = None) -> Dict[str, Any]:
         self._require_repo()
         if not discussion_id:
-            return {
-                'success': False,
-                'message': 'GitLab requires discussion_id (pass as keyword argument) to resolve a discussion.',
-            }
+            raise ToolInvalidArgumentsError(
+                'GitLab requires discussion_id (pass as keyword argument) to resolve a discussion.',
+                code='INVALID_GIT_ARGUMENTS',
+                details={'operation': 'resolve_review_comment', 'argument': 'discussion_id'},
+            )
         r = self._req('PUT', f'/merge_requests/{number}/discussions/{discussion_id}',
                       json={'resolved': True})
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         return {'success': True, 'message': 'resolved'}
 
     def get_user_info(self, username: Optional[str] = None) -> Dict[str, Any]:
         if username:
             r = self._session.get(f'{self._api_base}/users', params={'username': username})
             if r.status_code != 200:
-                return {'success': False, 'message': r.text or r.reason}
+                return self._http_failure(r)
             data = r.json()
             if not data:
                 return {'success': False, 'message': f'User not found: {username}'}
@@ -309,11 +314,11 @@ class GitLab(LazyLLMGitBase):
         if self._user:
             r = self._session.get(f'{self._api_base}/users', params={'username': self._user})
             if r.status_code != 200 or not r.json():
-                return {'success': False, 'message': r.text or r.reason or 'User not found'}
+                return self._http_failure(r, message=r.text or r.reason or 'User not found')
             return {'success': True, 'user': r.json()[0]}
         r = self._session.get(f'{self._api_base}/user')
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         return {'success': True, 'user': r.json()}
 
     def list_user_starred_repos(self, username: Optional[str] = None,
@@ -321,19 +326,19 @@ class GitLab(LazyLLMGitBase):
         if username:
             ru = self._session.get(f'{self._api_base}/users', params={'username': username})
             if ru.status_code != 200 or not ru.json():
-                return {'success': False, 'message': ru.text or ru.reason or 'User not found'}
+                return self._http_failure(ru, message=ru.text or ru.reason or 'User not found')
             user_id = ru.json()[0].get('id')
             url = f'{self._api_base}/users/{user_id}/starred_projects'
         else:
             if self._user:
                 ru = self._session.get(f'{self._api_base}/users', params={'username': self._user})
                 if ru.status_code != 200 or not ru.json():
-                    return {'success': False, 'message': ru.text or ru.reason or 'User not found'}
+                    return self._http_failure(ru, message=ru.text or ru.reason or 'User not found')
                 user_id = ru.json()[0].get('id')
             else:
                 user_id = self._get_current_user_id()
             url = f'{self._api_base}/users/{user_id}/starred_projects'
         r = self._session.get(url, params={'page': page, 'per_page': per_page})
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         return {'success': True, 'list': r.json()}

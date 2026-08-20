@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 from typing import Dict, Literal
 
 import pytest
@@ -11,7 +12,7 @@ from lazyllm.tools.agent import (
     ToolTransientError,
 )
 from lazyllm.tools.agent.toolsManager import ToolManager
-from lazyllm.tools.git import LocalGit
+from lazyllm.tools.git import GitLab, LocalGit
 
 
 def typed_search(query: str, limit: int = 10, mode: Literal['semantic', 'keyword'] = 'semantic'):
@@ -337,23 +338,25 @@ def test_git_success_remains_normal_business_data():
 
 class _GitFailureStub(LocalGit):
     def permission_failure(self):
-        return {'success': False, 'message': 'forbidden', 'status_code': 403}
+        response = SimpleNamespace(status_code=403, text='provider-specific rejection', reason='')
+        return self._http_failure(response)
 
     def transient_failure(self):
-        return {'success': False, 'message': 'temporarily unavailable', 'status_code': 503}
+        response = SimpleNamespace(status_code=503, text='provider-specific outage', reason='')
+        return self._http_failure(response)
 
     def domain_failure(self):
         return {'success': False, 'message': 'reference was not found', 'status_code': 404}
 
-    def invalid_arguments(self):
-        raise ValueError('invalid ref')
+    def runtime_value_error(self):
+        raise ValueError('invalid provider response')
 
 
 @pytest.mark.parametrize(('method_name', 'error_type', 'code'), [
     ('permission_failure', ToolPermissionError, 'GIT_PERMISSION_DENIED'),
     ('transient_failure', ToolTransientError, 'GIT_TEMPORARY_FAILURE'),
     ('domain_failure', ToolDomainError, 'GIT_OPERATION_FAILED'),
-    ('invalid_arguments', ToolInvalidArgumentsError, 'INVALID_GIT_ARGUMENTS'),
+    ('runtime_value_error', ToolDomainError, 'GIT_OPERATION_FAILED'),
 ])
 def test_git_sdk_classifies_failures_at_direct_call_boundary(method_name, error_type, code):
     with pytest.raises(error_type) as exc_info:
@@ -361,3 +364,64 @@ def test_git_sdk_classifies_failures_at_direct_call_boundary(method_name, error_
 
     assert exc_info.value.code == code
     assert exc_info.value.details['operation'] == method_name
+
+
+def test_git_base_public_apis_and_explicit_validation_use_typed_failures():
+    backend = LocalGit()
+
+    for method_name in (
+        'check_review_resolution', 'stash_review_comment', 'submit_review_with_comments'
+    ):
+        assert getattr(getattr(backend, method_name), '__git_failure_boundary__', False)
+
+    with pytest.raises(ToolInvalidArgumentsError) as stash_error:
+        backend.stash_review_comment(1, 'comment', 'file.py')
+    with pytest.raises(ToolInvalidArgumentsError) as remote_error:
+        backend.push_branch('feature', remote_name='ext::helper')
+
+    assert stash_error.value.code == 'GIT_REPOSITORY_REQUIRED'
+    assert remote_error.value.code == 'INVALID_GIT_REMOTE_NAME'
+
+
+@pytest.mark.parametrize(('status_code', 'error_type', 'code'), [
+    (403, ToolPermissionError, 'GIT_PERMISSION_DENIED'),
+    (503, ToolTransientError, 'GIT_TEMPORARY_FAILURE'),
+])
+def test_git_provider_http_status_drives_failure_category(
+        monkeypatch, status_code, error_type, code):
+    backend = GitLab(token='token', repo='owner/repo')
+    response = SimpleNamespace(
+        status_code=status_code,
+        text='opaque provider response',
+        reason='provider failure',
+    )
+    monkeypatch.setattr(backend, '_req', lambda *args, **kwargs: response)
+
+    with pytest.raises(error_type) as exc_info:
+        backend.create_pull_request('feature', 'main', 'title')
+
+    assert exc_info.value.code == code
+    assert exc_info.value.details['status_code'] == status_code
+    assert exc_info.value.details['operation'] == 'create_pull_request'
+
+
+@pytest.mark.parametrize(('status_code', 'error_type', 'code'), [
+    (403, ToolPermissionError, 'GIT_PERMISSION_DENIED'),
+    (503, ToolTransientError, 'GIT_TEMPORARY_FAILURE'),
+])
+def test_git_provider_helper_preserves_http_failure_category(
+        monkeypatch, status_code, error_type, code):
+    backend = GitLab(token='token')
+    response = SimpleNamespace(
+        status_code=status_code,
+        text='opaque provider response',
+        reason='provider failure',
+    )
+    monkeypatch.setattr(backend._session, 'get', lambda *args, **kwargs: response)
+
+    with pytest.raises(error_type) as exc_info:
+        backend.list_user_starred_repos()
+
+    assert exc_info.value.code == code
+    assert exc_info.value.details['status_code'] == status_code
+    assert exc_info.value.details['operation'] == 'list_user_starred_repos'

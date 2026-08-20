@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 import requests
 from lazyllm import config
 from lazyllm.thirdparty import jwt
+from lazyllm.tools.agent.toolError import ToolPolicyError
 
 from ..base import LazyLLMGitBase, PrInfo, ReviewCommentInfo, _sanitize_path
 
@@ -68,24 +69,17 @@ class GitHub(LazyLLMGitBase):
         self._require_repo()
         return f'{self._api_base}/repos/{self._owner}/{self._repo_name}{_sanitize_path(path)}'
 
-    def _check_401(self, r: 'requests.Response') -> None:
-        if r.status_code == 401:
-            raise RuntimeError(
-                'GitHub API returned 401 Unauthorized. '
-                'Please authenticate by running: gh auth login'
-            )
-
     def _fail(self, r: 'requests.Response') -> Dict[str, Any]:
-        self._check_401(r)
-        return {'success': False, 'message': r.text or r.reason}
+        return self._http_failure(r)
 
     def _get_current_user(self) -> str:
         if self._current_user_login is not None:
             return self._current_user_login
         r = self._session.get(f'{self._api_base}/user')
         if r.status_code != 200:
-            self._check_401(r)
-            raise RuntimeError(f'Failed to get current user: {r.text or r.reason}')
+            self._raise_http_error(
+                r, message=f'Failed to get current user: {r.text or r.reason}'
+            )
         data = r.json()
         self._current_user_login = data.get('login', '')
         return self._current_user_login
@@ -345,8 +339,7 @@ class GitHub(LazyLLMGitBase):
         if r.status_code not in (200, 201):
             import lazyllm
             lazyllm.LOG.warning(f'submit_review HTTP {r.status_code}: {r.text[:400]}')
-            self._check_401(r)
-            return {'success': False, 'message': r.text or r.reason, 'status_code': r.status_code}
+            return self._http_failure(r)
         data = r.json()
         return {'success': True, 'review_id': data.get('id'), 'message': 'submitted'}
 
@@ -387,10 +380,11 @@ class GitHub(LazyLLMGitBase):
 
     def resolve_review_comment(self, number: int, comment_id: Any) -> Dict[str, Any]:
         self._require_repo()
-        return {
-            'success': False,
-            'message': 'GitHub REST API does not support resolving review comments; use GraphQL or the web UI.',
-        }
+        raise ToolPolicyError(
+            'GitHub REST API does not support resolving review comments; use GraphQL or the web UI.',
+            code='GIT_OPERATION_NOT_SUPPORTED',
+            details={'operation': 'resolve_review_comment'},
+        )
 
     def get_user_info(self, username: Optional[str] = None) -> Dict[str, Any]:
         if username:

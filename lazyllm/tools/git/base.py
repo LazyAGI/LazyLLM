@@ -63,10 +63,6 @@ def _git_api(method):
             return _raise_git_failure(operation, method(*args, **kwargs))
         except ToolExecutionError:
             raise
-        except ValueError as error:
-            raise ToolInvalidArgumentsError(
-                str(error), code='INVALID_GIT_ARGUMENTS', details={'operation': operation}
-            ) from error
         except (TimeoutError, subprocess.TimeoutExpired, requests.Timeout,
                 requests.ConnectionError) as error:
             raise ToolTransientError(
@@ -105,16 +101,27 @@ def _git_api(method):
 
 def _validate_remote_name(remote_name: str) -> None:
     if not remote_name or not isinstance(remote_name, str):
-        raise ValueError('remote_name must be a non-empty string')
+        raise ToolInvalidArgumentsError(
+            'remote_name must be a non-empty string',
+            code='INVALID_GIT_REMOTE_NAME',
+            details={'remote_name': remote_name},
+        )
     if '::' in remote_name or not _REMOTE_NAME_RE.match(remote_name):
-        raise ValueError(
+        raise ToolInvalidArgumentsError(
             'remote_name must be a safe identifier (alphanumeric, underscore, hyphen). '
-            'Dangerous protocols like ext:: are not allowed.'
+            'Dangerous protocols like ext:: are not allowed.',
+            code='INVALID_GIT_REMOTE_NAME',
+            details={'remote_name': remote_name},
         )
 
 
 def _sanitize_path(path: str) -> str:
-    if '..' in path: raise ValueError('Path must not contain ".."')
+    if '..' in path:
+        raise ToolInvalidArgumentsError(
+            'Path must not contain ".."',
+            code='INVALID_GIT_PATH',
+            details={'path': path},
+        )
     return path
 
 
@@ -186,15 +193,36 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
     def _parse_owner_repo(self, repo: str) -> Tuple[str, str]:
         parts = repo.split('/', 1)
         if len(parts) != 2:
-            raise ValueError(f'repo must be \'owner/repo\', got: {repo!r}')
+            raise ToolInvalidArgumentsError(
+                f'repo must be \'owner/repo\', got: {repo!r}',
+                code='INVALID_GIT_REPOSITORY',
+                details={'repo': repo},
+            )
         return parts[0], parts[1]
 
     def _require_repo(self) -> None:
         if not self._repo:
-            raise ValueError(
+            raise ToolInvalidArgumentsError(
                 f'repo is not set; pass repo when constructing {self.__class__.__name__} '
-                'to use repo-related APIs.'
+                'to use repo-related APIs.',
+                code='GIT_REPOSITORY_REQUIRED',
             )
+
+    @staticmethod
+    def _http_failure(response, message: Optional[str] = None, **details) -> Dict[str, Any]:
+        return {
+            'success': False,
+            'message': message or response.text or response.reason,
+            'status_code': response.status_code,
+            **details,
+        }
+
+    @staticmethod
+    def _raise_http_error(response, message: Optional[str] = None) -> None:
+        raise requests.HTTPError(
+            message or response.text or response.reason,
+            response=response,
+        )
 
     @_git_api
     def push_branch(self, local_branch: str, remote_branch: Optional[str] = None,
@@ -300,6 +328,7 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
                                 page: int = 1, per_page: int = 20) -> Dict[str, Any]:
         raise NotImplementedError
 
+    @_git_api
     def check_review_resolution(self, number: int, comment_ids: Optional[List[Any]] = None
                                 ) -> Dict[str, Any]:
         out = self.list_review_comments(number)
@@ -325,6 +354,7 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
             self._comment_stash = []
         return self._comment_stash
 
+    @_git_api
     def stash_review_comment(self, number: int, body: str, path: str,
                              line: Optional[int] = None) -> Dict[str, Any]:
         self._require_repo()
@@ -361,6 +391,7 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
             return {'success': False, 'message': '; '.join(errors), 'created': created}
         return {'success': True, 'message': 'committed', 'created': created}
 
+    @_git_api
     def submit_review_with_comments(
         self,
         number: int,
