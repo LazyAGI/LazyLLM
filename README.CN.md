@@ -167,7 +167,7 @@ https://github.com/LazyAGI/LazyLLM/assets/12124621/77267adc-6e40-47b8-96a8-895df
         + 支持根据用户场景自动选择最合适的框架和模型参数(如micro-bs、tp、zero等)。
     * 在线服务：
         + 支持微调服务：GPT、SenseNova、通义千问
-        + 支持推理服务：GPT、SenseNova、Kimi、智谱、通义千问
+        + 支持推理服务：GPT、SenseNova、Kimi、智谱、通义千问、OrcaRouter
         + 支持Embedding推理服务：Openai、SenseNova、GLM、通义千问
     * 支持开发者以统一的方式使用本地服务和线上服务
 4. **支持RAG常用组件**：Document、Parser、Retriever、Reranker等。
