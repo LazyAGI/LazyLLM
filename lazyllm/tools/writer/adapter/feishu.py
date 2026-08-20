@@ -3,8 +3,10 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
+from urllib.parse import unquote
 
 from ..utils.feishu_docx import DOCX_BLOCK_TYPE_FIELDS, prepare_docx_descendants
+from ..utils import strip_caption_numbering, strip_heading_numbering
 from ..data_models.revision import PatchHunk
 from ..data_models.multimodal import MediaAssetLibrary
 from ..data_models.writer_ir import (
@@ -43,6 +45,15 @@ _STYLE_TO_IR = {
 _VALUE_STYLE_FIELDS = {
     'text_color', 'background_color', 'font_size', 'font_family',
 }
+
+
+def feishu_block_url(document_uri: str, document_id: str, block_id: str) -> str:
+    base = str(document_uri or '').split('#', 1)[0]
+    if not base.startswith(('http://', 'https://')):
+        base = f'https://feishu.cn/docx/{document_id}'
+    return f'{base}#{block_id}'
+
+
 _ELEMENT_TEXT_FIELDS = ('content', 'title', 'name', 'text')
 
 
@@ -81,6 +92,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
             )
             for index, block_id in enumerate(source_order)
         }
+        self._restore_internal_references(writer_by_id)
         page_ids = {
             block_id
             for block_id in source_order
@@ -135,6 +147,23 @@ class FeishuWriterAdapter(WriterAdapterBase):
         )
 
     @staticmethod
+    def _restore_internal_references(writer_by_id: Dict[str, WriterBlock]) -> None:
+        for block in writer_by_id.values():
+            for span in block.spans:
+                link = span.style.get('link')
+                if not isinstance(link, dict):
+                    continue
+                url = unquote(str(link.get('url') or ''))
+                block_id = url.rsplit('#', 1)[-1] if '#' in url else ''
+                target = writer_by_id.get(block_id)
+                if target is None:
+                    continue
+                span.style['link'] = {
+                    'type': 'internal_ref',
+                    'target_node_id': target.node_id,
+                }
+
+    @staticmethod
     def _index_raw_blocks(
         blocks: List[NativeBlock],
     ) -> Tuple[Dict[str, NativeBlock], List[str]]:
@@ -181,14 +210,28 @@ class FeishuWriterAdapter(WriterAdapterBase):
             output_ids[block.node_id] = output_id
             used_output_ids.add(output_id)
 
+        external_document_id = document.provider_binding.get('document_id') or ''
+        document_uri = document.provider_binding.get('uri') or ''
+
+        def resolve_internal_ref(span: WriterSpan) -> str | None:
+            link = span.style.get('link')
+            if not isinstance(link, dict) or link.get('type') != 'internal_ref':
+                return None
+            target_id = link.get('target_node_id')
+            target_block_id = output_ids.get(target_id) if isinstance(target_id, str) else None
+            if not target_block_id:
+                return None
+            return feishu_block_url(document_uri, external_document_id, target_block_id)
+
         output: List[NativeBlock] = []
         for block, parent in flat_blocks:
-            raw = self._ir_block_to_raw(block, media_library)
+            raw = self._ir_block_to_raw(block, media_library, resolve_internal_ref)
             raw['block_id'] = output_ids[block.node_id]
             raw.pop('children', None)
-            if parent is not None:
+            # Headings are sections, not visual containers.
+            if parent is not None and parent.type != 'heading':
                 raw['parent_id'] = output_ids[parent.node_id]
-            elif raw.get('parent_id') in used_output_ids:
+            else:
                 raw.pop('parent_id', None)
             output.append(raw)
         return output
@@ -223,6 +266,11 @@ class FeishuWriterAdapter(WriterAdapterBase):
         operation: Optional[NativePatchOperation] = None,
         operation_result: Optional[Dict[str, Any]] = None,
     ) -> WriterDocument:
+        refreshed_ids = {
+            block.provider_binding.get('block_id'): block.node_id
+            for block in refreshed_document.iter_blocks()
+            if isinstance(block.provider_binding.get('block_id'), str)
+        }
         previous_ids = {
             block.provider_binding.get('block_id'): block.node_id
             for block in previous_document.iter_blocks()
@@ -278,6 +326,8 @@ class FeishuWriterAdapter(WriterAdapterBase):
                         'move block ID relations do not match the refreshed document.')
                 refreshed.node_id = node_id
 
+        self._rebase_internal_reference_targets(refreshed_document, refreshed_ids)
+
         previous_blocks = {block.node_id: block for block in previous_document.iter_blocks()}
         for block in refreshed_document.iter_blocks():
             previous = previous_blocks.get(block.node_id)
@@ -285,6 +335,28 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 continue
             block.references = deepcopy(previous.references)
         return WriterDocument.model_validate(refreshed_document.model_dump())
+
+    @staticmethod
+    def _rebase_internal_reference_targets(
+        document: WriterDocument,
+        refreshed_ids: Dict[str, str],
+    ) -> None:
+        node_id_remap = {}
+        for block in document.iter_blocks():
+            block_id = block.provider_binding.get('block_id')
+            refreshed_id = refreshed_ids.get(block_id)
+            if isinstance(refreshed_id, str) and refreshed_id != block.node_id:
+                node_id_remap[refreshed_id] = block.node_id
+        if not node_id_remap:
+            return
+        for block in document.iter_blocks():
+            for span in block.spans:
+                link = span.style.get('link')
+                if not isinstance(link, dict) or link.get('type') != 'internal_ref':
+                    continue
+                target_id = link.get('target_node_id')
+                if isinstance(target_id, str) and target_id in node_id_remap:
+                    link['target_node_id'] = node_id_remap[target_id]
 
     def _update_patch_to_operation(
         self,
@@ -521,10 +593,14 @@ class FeishuWriterAdapter(WriterAdapterBase):
         if block_type == 27:
             caption = ((raw.get('image') or {}).get('caption') or {}).get('content')
             content = caption if isinstance(caption, str) else ''
+            content = strip_caption_numbering(content)
             spans = []
         numbering: Dict[str, Any] = {}
         if isinstance(block_type, int) and 3 <= block_type <= 11:
             numbering['level'] = block_type - 2
+            content = strip_heading_numbering(content)
+            if spans and spans[0].text:
+                spans[0].text = strip_heading_numbering(spans[0].text)
         elif block_type in (12, 13):
             numbering['ordered'] = block_type == 13
 
@@ -558,12 +634,17 @@ class FeishuWriterAdapter(WriterAdapterBase):
         self,
         block: WriterBlock,
         media_assets: Optional[MediaAssetLibrary] = None,
+        internal_ref_resolver: Any = None,
     ) -> NativeBlock:
         if block.type == 'image':
             return self._ir_image_block_to_raw(block, media_assets)
-        return self._ir_non_image_block_to_raw(block)
+        return self._ir_non_image_block_to_raw(block, internal_ref_resolver)
 
-    def _ir_non_image_block_to_raw(self, block: WriterBlock) -> NativeBlock:
+    def _ir_non_image_block_to_raw(
+        self,
+        block: WriterBlock,
+        internal_ref_resolver: Any = None,
+    ) -> NativeBlock:
         original = self._raw_payload(block)
         raw = deepcopy(original)
         original_type = original.get('block_type')
@@ -604,7 +685,8 @@ class FeishuWriterAdapter(WriterAdapterBase):
         if block_type == 22:
             content_payload = {}
         elif block_type in _TEXT_BLOCK_TYPES:
-            content_payload['elements'] = self._spans_to_elements(block)
+            content_payload['elements'] = self._spans_to_elements(
+                block, internal_ref_resolver)
         raw[content_field] = content_payload
         raw['plain_text'] = block.content
         return raw
@@ -661,6 +743,9 @@ class FeishuWriterAdapter(WriterAdapterBase):
             if not isinstance(ordered, bool):
                 raise ValueError('list_item blocks require boolean numbering.ordered.')
             return 13 if ordered else 12
+        if block.type == 'table' and not block.provider_payload:
+            # Caption-only tables degrade to text.
+            return 2
         mapped = _IR_BLOCK_TYPES.get(block.type)
         if mapped is not None:
             return mapped
@@ -774,7 +859,11 @@ class FeishuWriterAdapter(WriterAdapterBase):
         return ''
 
     @classmethod
-    def _spans_to_elements(cls, block: WriterBlock) -> List[Dict[str, Any]]:
+    def _spans_to_elements(
+        cls,
+        block: WriterBlock,
+        internal_ref_resolver: Any = None,
+    ) -> List[Dict[str, Any]]:
         if not block.spans:
             return cls._plain_text_elements(block.content)
         elements: List[Dict[str, Any]] = []
@@ -794,8 +883,13 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 if field in span.style
             })
             link = span.style.get('link')
+            link_url: Optional[str] = None
             if isinstance(link, dict) and isinstance(link.get('url'), str):
-                raw_style['link'] = {'url': link['url']}
+                link_url = link['url']
+            elif internal_ref_resolver is not None:
+                link_url = internal_ref_resolver(span)
+            if link_url:
+                raw_style['link'] = {'url': link_url}
             text_run: Dict[str, Any] = {'content': span.text}
             if raw_style:
                 text_run['text_element_style'] = raw_style

@@ -67,16 +67,13 @@ def _to_json_data(obj: Any) -> Any:
     return obj
 
 
-def save_artifact_json(
+def serialize_artifact_json(
     obj: Any,
-    path: str,
     *,
     schema_name: Optional[str] = None,
     created_by: str = '',
     extra_meta: Optional[Dict[str, Any]] = None,
 ) -> str:
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-
     meta: Dict[str, Any] = {
         'created_by': created_by,
         'created_at': datetime.now().astimezone().isoformat(),
@@ -89,9 +86,51 @@ def save_artifact_json(
         data=_to_json_data(obj),
         meta=meta,
     )
+    return artifact.model_dump_json(indent=2, by_alias=True) + '\n'
 
+
+def deserialize_artifact_json(
+    content: str,
+    model_class: Optional[Type[T]] = None,
+    *,
+    expected_schema_name: Optional[str] = None,
+    validate_schema: bool = True,
+) -> Any:
+    raw = json.loads(content)
+    if not isinstance(raw, dict) or 'data' not in raw:
+        raise ValueError('Artifact content is missing the \'data\' field.')
+
+    if validate_schema:
+        expected = expected_schema_name
+        if expected is None and model_class is not None:
+            expected = _schema_name_for_class(model_class)
+        actual = raw.get('schema')
+        if expected is not None and actual != expected:
+            raise ValueError(
+                f'Artifact schema mismatch: expected {expected!r}, got {actual!r}.'
+            )
+
+    if model_class is None:
+        return raw['data']
+    return model_class.model_validate(raw['data'])
+
+
+def save_artifact_json(
+    obj: Any,
+    path: str,
+    *,
+    schema_name: Optional[str] = None,
+    created_by: str = '',
+    extra_meta: Optional[Dict[str, Any]] = None,
+) -> str:
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, 'w', encoding='utf-8') as fh:
-        fh.write(artifact.model_dump_json(indent=2, by_alias=True))
+        fh.write(serialize_artifact_json(
+            obj,
+            schema_name=schema_name,
+            created_by=created_by,
+            extra_meta=extra_meta,
+        ))
 
     return os.path.abspath(path)
 
@@ -104,25 +143,16 @@ def load_artifact_json(
     validate_schema: bool = True,
 ) -> Any:
     with open(path, 'r', encoding='utf-8') as fh:
-        raw = json.load(fh)
-
-    if 'data' not in raw:
-        raise ValueError(f'Artifact file {path!r} is missing the \'data\' field.')
-
-    if validate_schema:
-        expected = expected_schema_name
-        if expected is None and model_class is not None:
-            expected = _schema_name_for_class(model_class)
-        actual = raw.get('schema')
-        if expected is not None and actual != expected:
-            raise ValueError(
-                f'Artifact schema mismatch for {path!r}: expected {expected!r}, got {actual!r}.'
-            )
-
-    if model_class is None:
-        return raw['data']
-
-    return model_class.model_validate(raw['data'])
+        content = fh.read()
+    try:
+        return deserialize_artifact_json(
+            content,
+            model_class,
+            expected_schema_name=expected_schema_name,
+            validate_schema=validate_schema,
+        )
+    except ValueError as exc:
+        raise ValueError(f'Invalid Artifact file {path!r}: {exc}') from exc
 
 
 class ArtifactModel(BaseModel):
