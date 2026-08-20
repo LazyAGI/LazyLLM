@@ -1,6 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 # flake8: noqa E501
-"""FS module docs: LazyLLMFSBase, CloudFSBufferedFile, CloudFS, CloudFsWatchdog, FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS, YuqueFS, OnesFS, S3FS, ObsidianFS."""
+'''FS module docs: LazyLLMFSBase, CloudFSBufferedFile, CloudFS, CloudFsWatchdog, FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS, YuqueFS, OnesFS, S3FS, ObsidianFS.'''
 import importlib
 import functools
 
@@ -1120,6 +1120,32 @@ Return the current user OAuth refresh_token (may have been updated after refresh
 
 Returns:
     str: Current refresh_token, or empty string if not set or not yet authorized.
+''')
+_add_feishu_chinese('FeishuFSBase.download_media', '''\
+按飞书媒体 file_token 下载原始媒体内容。
+
+Args:
+    file_token (str): 飞书媒体文件 token，通常来自文档图片块或媒体上传接口。
+
+Returns:
+    bytes: 下载得到的媒体二进制内容。
+
+Raises:
+    ValueError: file_token 为空。
+    RuntimeError: 飞书返回空内容。
+''')
+_add_feishu_english('FeishuFSBase.download_media', '''\
+Download raw media content by Feishu media file_token.
+
+Args:
+    file_token (str): Feishu media file token, usually from a document image block or media upload API.
+
+Returns:
+    bytes: Downloaded media bytes.
+
+Raises:
+    ValueError: file_token is empty.
+    RuntimeError: Feishu returns empty content.
 ''')
 _add_feishu_chinese('FeishuFSBase.create_block', '''\
 在指定飞书 Docx 文档的父块下创建原生块子树。

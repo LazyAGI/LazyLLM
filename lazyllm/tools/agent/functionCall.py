@@ -179,7 +179,7 @@ class FunctionCall(ModuleBase):
         locals['chat_history'][self._llm._module_id] = chat_history
         return input
 
-    def _post_action(self, llm_output: Dict[str, Any]):
+    def _post_action(self, llm_output: Dict[str, Any]):  # noqa: C901
         if not llm_output.get('tool_calls'):
             if (match := re.search(r'Action:\s*Call\s+(\w+)\s+with\s+parameters\s+(\{.*?\})', llm_output['content'])):
                 try:

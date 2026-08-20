@@ -799,7 +799,7 @@ class WriterDraftingTools(WriterToolBase):
         return draft_block
 
     @staticmethod
-    def _normalize_ir_cross_references(
+    def _normalize_ir_cross_references(  # noqa: C901
         draft_block: WriterBlock,
         instruction: SectionInstruction,
         *,
@@ -858,7 +858,7 @@ class WriterDraftingTools(WriterToolBase):
             raise ValueError(f'Missing required cross-references: {missing!r}.')
 
     @classmethod
-    def _normalize_markdown_cross_references(
+    def _normalize_markdown_cross_references(  # noqa: C901
         cls,
         body: str,
         instruction: SectionInstruction,
@@ -1004,7 +1004,7 @@ class WriterDraftingTools(WriterToolBase):
         ).strip())
 
     @classmethod
-    def _markdown_reference_fallback_line(cls, lines: List[str]) -> int:
+    def _markdown_reference_fallback_line(cls, lines: List[str]) -> int:  # noqa: C901
         paragraph_end: int | None = None
         first_content: int | None = None
         fence: str | None = None

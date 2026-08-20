@@ -255,7 +255,7 @@ def materialize_ir(document: WriterDocument, numbering: NumberingMap) -> WriterD
     return result
 
 
-def materialize_markdown(markdown: str) -> str:
+def materialize_markdown(markdown: str) -> str:  # noqa: C901
     from .utils.serialization import strip_heading_numbering
 
     view = build_numbering_view_from_markdown(markdown)
@@ -353,7 +353,7 @@ def dematerialize_ir(
     return result
 
 
-def dematerialize_markdown(markdown: str, base_numbering: NumberingMap | None = None) -> str:
+def dematerialize_markdown(markdown: str, base_numbering: NumberingMap | None = None) -> str:  # noqa: C901
     semantic_items = list(_markdown_semantic_items(markdown))
     view = build_numbering_view_from_markdown(markdown)
     targets_by_line: dict[int, list[NumberingTarget]] = {}

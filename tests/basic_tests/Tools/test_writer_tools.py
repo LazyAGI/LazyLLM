@@ -14,8 +14,6 @@ from lazyllm.tools.writer.data_models import (
     ContentRef,
     DocumentSummary,
     MaterialStyle,
-    MediaAsset,
-    MediaAssetLibrary,
     ResourceProfile,
     VisualInstruction,
     VisualPlan,
@@ -949,6 +947,7 @@ def test_overlong_ir_and_markdown_drafts_are_condensed_once():
         instruction_id='section-1', content_ref=ContentRef(node_id='section-1'),
         section_title='第一章', section_goal='写作', meta={'max_chars': 10},
     )
+
     def block(text):
         return WriterBlock(
             node_id='section-1', type='heading', content='第一章',

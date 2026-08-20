@@ -560,7 +560,7 @@ class WriterPlanningTools(WriterToolBase):
 
     @staticmethod
     def _remove_outline_image_markup(line: str) -> str:
-        """Keep generated outlines structural; visual placement has a separate owner."""
+        '''Keep generated outlines structural; visual placement has a separate owner.'''
         line = re.sub(
             r'(?<!\\)!\[(?:\\.|[^\]\\])*\]\('
             r'(?:\\.|[^()\\]|\([^()\n]*\))*\)',

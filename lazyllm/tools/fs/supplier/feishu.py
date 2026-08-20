@@ -717,7 +717,7 @@ class FeishuFSBase(LinkDocumentFSBase):
                 f'Failed to bind {len(binding_errors)} Feishu image block(s).') from binding_errors[0]
         return revision
 
-    def _bind_docx_links(
+    def _bind_docx_links(  # noqa: C901
         self,
         document_id: str,
         blocks: List[Dict[str, Any]],

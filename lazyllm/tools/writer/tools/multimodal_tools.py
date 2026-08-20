@@ -111,7 +111,7 @@ class WriterMultimodalTools(WriterToolBase):
             warnings=warnings,
         ).model_dump()
 
-    def resolve_visual_needs(
+    def resolve_visual_needs(  # noqa: C901
         self,
         visual_plan: Any,
         media_assets: Any,

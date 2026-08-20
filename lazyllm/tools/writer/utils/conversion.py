@@ -76,7 +76,7 @@ def _append_span(result: _InlineContent, text: str, style: Dict[str, Any]) -> No
         result.spans.append(WriterSpan(text=text, style=dict(style)))
 
 
-def _inline_content(
+def _inline_content(  # noqa: C901
     tokens: Optional[Iterable[Dict[str, Any]]],
     style: Optional[Dict[str, Any]] = None,
     result: Optional[_InlineContent] = None,
@@ -267,7 +267,7 @@ class _MarkdownParser:
         lines.extend(f'| {" | ".join(cell_text(cell) for cell in row)} |' for row in rows)
         return '\n'.join(lines)
 
-    def parse_sequence(self, tokens: Iterable[Dict[str, Any]]) -> List[WriterBlock]:
+    def parse_sequence(self, tokens: Iterable[Dict[str, Any]]) -> List[WriterBlock]:  # noqa: C901
         blocks: List[WriterBlock] = []
         for token in tokens:
             token_type = str(token.get('type') or '')
@@ -523,7 +523,7 @@ def _render_styled_range(block: WriterBlock, start: int, end: int) -> str:
     )
 
 
-def _render_inline(block: WriterBlock) -> str:
+def _render_inline(block: WriterBlock) -> str:  # noqa: C901
     content = block.content
     media = next((item for item in block.references if item.get('type') == 'media_asset'), None)
     if media:
