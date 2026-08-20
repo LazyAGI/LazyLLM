@@ -1,10 +1,23 @@
 from urllib.parse import urljoin
 import requests
 from typing import Optional
-from ..base import OnlineChatModuleBase
-
-
+from ..base import ModelFailureCode, OnlineChatModuleBase
 class KimiChat(OnlineChatModuleBase):
+    PROVIDER_NAME = 'kimi'
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(type_map={
+        'content_filter': ModelFailureCode.INPUT_FILTERED,
+        'invalid_request_error': ModelFailureCode.INVALID_REQUEST,
+        'invalid_authentication_error': ModelFailureCode.AUTHENTICATION_FAILED,
+        'incorrect_api_key_error': ModelFailureCode.AUTHENTICATION_FAILED,
+        'permission_denied_error': ModelFailureCode.PERMISSION_DENIED,
+        'resource_not_found_error': ModelFailureCode.NOT_FOUND,
+        'engine_overloaded_error': ModelFailureCode.PROVIDER_OVERLOADED,
+        'exceeded_current_quota_error': ModelFailureCode.QUOTA_EXHAUSTED,
+        'rate_limit_reached_error': ModelFailureCode.RATE_LIMITED,
+        'server_error': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+        'unexpected_output': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+        'server_unavailable': ModelFailureCode.SERVICE_UNAVAILABLE,
+    })
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
