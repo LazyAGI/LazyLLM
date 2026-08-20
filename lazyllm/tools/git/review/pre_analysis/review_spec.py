@@ -5,6 +5,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
+from lazyllm.tools.agent.toolError import ToolExecutionError
 
 from ...base import LazyLLMGitBase
 from ..checkpoint import _load_cache, _save_cache, _save_cache_multi
@@ -390,8 +391,9 @@ def analyze_historical_reviews(  # noqa: C901
     merged: List[Any] = []
     fetch_size = max_prs
     while len(merged) < max_prs:
-        pr_list_res = backend.list_pull_requests(state='closed', max_results=fetch_size)
-        if not pr_list_res.get('success'):
+        try:
+            pr_list_res = backend.list_pull_requests(state='closed', max_results=fetch_size)
+        except ToolExecutionError:
             return '(historical review analysis unavailable)'
         prs = pr_list_res.get('list') or []
         if not prs:

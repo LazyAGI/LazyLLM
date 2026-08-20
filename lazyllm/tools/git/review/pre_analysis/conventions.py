@@ -4,6 +4,7 @@ import json
 from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
+from lazyllm.tools.agent.toolError import ToolExecutionError
 
 from ...base import LazyLLMGitBase
 from ..checkpoint import _load_cache, _save_cache_multi
@@ -242,7 +243,7 @@ def _format_conventions_result(all_conventions: List[Dict[str, Any]]) -> str:
     return '\n\n'.join(parts) if parts else ''
 
 
-def analyze_framework_conventions(
+def analyze_framework_conventions(  # noqa: C901
     backend: LazyLLMGitBase, llm: Any, cache_path: Optional[str] = None, max_prs: int = 50,
 ) -> str:
     cached_ver_str = _load_cache(cache_path, 'framework_conventions_ver')
@@ -254,8 +255,9 @@ def analyze_framework_conventions(
     merged: List[Any] = []
     fetch_size = max_prs
     while len(merged) < max_prs:
-        pr_list_res = backend.list_pull_requests(state='closed', max_results=fetch_size)
-        if not pr_list_res.get('success'):
+        try:
+            pr_list_res = backend.list_pull_requests(state='closed', max_results=fetch_size)
+        except ToolExecutionError:
             return ''
         prs = pr_list_res.get('list') or []
         if not prs:

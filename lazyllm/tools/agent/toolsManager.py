@@ -1,7 +1,6 @@
 import ast
 import copy
 from dataclasses import dataclass
-from functools import wraps
 import json5 as json
 import lazyllm
 import docstring_parser
@@ -468,11 +467,9 @@ class MethodModuleTool(ModuleTool):
         object.__setattr__(self, '_method_name', method_name)
         object.__setattr__(self, '_input_adapter', input_adapter)
         bound = getattr(instance, method_name)
-        result_adapter = getattr(instance, '__tool_result_adapter__', None)
 
         def _apply(**kwargs):
-            result = bound(**kwargs)
-            return result_adapter(method_name, result) if result_adapter else result
+            return bound(**kwargs)
         _apply.__doc__ = bound.__doc__ or self._find_inherited_docstring(instance, method_name)
         _apply.__name__ = method_name
 
@@ -787,21 +784,6 @@ TOOL_CALL_FORMAT_EXAMPLE = (
 )
 
 
-def _wrap_tool_result_adapter(tool_callable):
-    schema_func = tool_callable
-    instance = getattr(tool_callable, '__self__', None)
-    result_adapter = getattr(instance, '__tool_result_adapter__', None)
-    if not result_adapter:
-        return tool_callable, schema_func
-
-    @wraps(tool_callable)
-    def adapted(*args, **kwargs):
-        result = schema_func(*args, **kwargs)
-        return result_adapter(schema_func.__name__, result)
-
-    return adapted, schema_func
-
-
 def _build_tool_from_element(
         element: Any, _outer_prefix: Optional[str] = None) -> Optional[Union['ModuleTool', 'ToolGroup']]:
     if isinstance(element, str):
@@ -833,7 +815,7 @@ def _build_tool_from_element(
             return ToolGroupWrapper(group, key_source)
         return group
     if callable(element):
-        element, schema_func = _wrap_tool_result_adapter(element)
+        schema_func = element
         register('tmp_tool')(element)
         try:
             # The registry wraps callables in a generated method whose module globals

@@ -18,9 +18,8 @@ _add_git_chinese('LazyLLMGitBase', '''\
 Git 平台统一基类，借助 registry 注册各平台实现（如 GitHub、GitLab、Gitee、GitCode）。
 子类需实现：认证方式、API 根地址、以及抽象方法。
 Agent 可通过 lazyllm.git.github / lazyllm.git.gitlab 等获取实例并调用接口。
-直接调用 Git SDK 时仍保留带 ``success`` 字段的兼容返回值；当 Git 实例的方法注册为 Agent 工具时，旧实现中的
-``success=False`` 会在工具包装边界转换为 ``ToolPermissionError``、``ToolTransientError``、``ToolPolicyError``
-或 ``ToolDomainError``，不会作为成功值返回给 Agent。
+Git SDK 与 Agent 工具使用同一失败协议：成功返回正常结果，失败抛出 ``ToolPermissionError``、
+``ToolTransientError``、``ToolPolicyError`` 或 ``ToolDomainError``。ToolManager 会将这些异常转换为 structured failure。
 
 Args:
     token (str): 平台 Access Token / Private Token。
@@ -34,10 +33,9 @@ _add_git_english('LazyLLMGitBase', '''\
 Unified Git platform base; implementations (GitHub, GitLab, Gitee, GitCode) are registered via registry.
 Subclasses implement auth, API base URL, and abstract methods.
 Agents get instances via lazyllm.git.github / lazyllm.git.gitlab etc.
-Direct Git SDK calls retain the compatibility dictionary containing ``success``. When a Git instance method is registered
-as an Agent tool, legacy ``success=False`` results are converted at the tool wrapping boundary into
-``ToolPermissionError``, ``ToolTransientError``, ``ToolPolicyError``, or ``ToolDomainError`` instead of being returned to
-the Agent as successful values.
+The Git SDK and Agent tools share one failure contract: successful calls return normal results, while failures raise
+``ToolPermissionError``, ``ToolTransientError``, ``ToolPolicyError``, or ``ToolDomainError``. ToolManager converts these
+exceptions into structured failures.
 
 Args:
     token (str): Platform access token or private token.
@@ -1169,29 +1167,33 @@ _add_local_example('LocalGit.get_origin_repo', '''\
 ''')
 
 _add_local_chinese('LocalGit.add_issue_comment', '''\
-本地模式不支持向平台发布评论，调用此方法始终返回失败。
+本地模式不支持向平台发布评论，调用此方法会抛出策略错误。
 
 Args:
     number (int): 占位参数，本地模式无意义。
     body (str): 占位参数，本地模式无意义。
 
-Returns:
-    dict: ``{'success': False, 'message': 'add_issue_comment is not supported in local mode'}``
+Raises:
+    ToolPolicyError: 错误码为 ``GIT_OPERATION_NOT_SUPPORTED``。
 ''')
 
 _add_local_english('LocalGit.add_issue_comment', '''\
-Not supported in local mode. Always returns a failure response.
+Not supported in local mode. Calling this method raises a policy error.
 
 Args:
     number (int): Placeholder; unused in local mode.
     body (str): Placeholder; unused in local mode.
 
-Returns:
-    dict: ``{'success': False, 'message': 'add_issue_comment is not supported in local mode'}``
+Raises:
+    ToolPolicyError: The error code is ``GIT_OPERATION_NOT_SUPPORTED``.
 ''')
 
 _add_local_example('LocalGit.add_issue_comment', '''\
 >>> backend = Git(backend='local', repo_path='.')
->>> backend.add_issue_comment(0, 'hello')
-... {'success': False, 'message': 'add_issue_comment is not supported in local mode'}
+>>> from lazyllm.tools.agent import ToolPolicyError
+>>> try:
+...     backend.add_issue_comment(0, 'hello')
+... except ToolPolicyError as error:
+...     print(error.code)
+GIT_OPERATION_NOT_SUPPORTED
 ''')

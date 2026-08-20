@@ -4,6 +4,7 @@ from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import lazyllm
+from lazyllm.tools.agent.toolError import ToolExecutionError
 
 from ..base import LazyLLMGitBase
 from .utils import _Progress
@@ -84,9 +85,10 @@ def _comment_body_text(c: Dict[str, Any], model_name: str) -> str:
 
 
 def _fetch_existing_pr_comments(backend: LazyLLMGitBase, pr_number: int) -> List[Dict[str, Any]]:
-    res = backend.list_review_comments(pr_number)
-    if not res.get('success'):
-        lazyllm.LOG.warning(f'Failed to fetch existing PR comments: {res.get("message", "unknown")}')
+    try:
+        res = backend.list_review_comments(pr_number)
+    except ToolExecutionError as error:
+        lazyllm.LOG.warning(f'Failed to fetch existing PR comments: {error}')
         return []
     raw_comments = res.get('comments') or []
     result = []
@@ -116,22 +118,24 @@ def _submit_with_retry(
     body: str,
 ) -> bool:
     for wait in _RATE_LIMIT_BACKOFF + [None]:
-        r = backend.submit_review(
-            number=pr_number,
-            event='COMMENT',
-            body=body,
-            comments=batch,
-            commit_id=head_sha,
-        )
-        if r.get('success'):
+        try:
+            backend.submit_review(
+                number=pr_number,
+                event='COMMENT',
+                body=body,
+                comments=batch,
+                commit_id=head_sha,
+            )
             return True
-        status = r.get('status_code', 0)
-        if status == 403 and wait is not None:
-            lazyllm.LOG.warning(f'Rate limited (403), retrying after {wait}s...')
-            time.sleep(wait)
-            continue
-        lazyllm.LOG.warning(f'submit_review failed: {r.get("message", "unknown")[:200]}')
-        return False
+        except ToolExecutionError as error:
+            details = getattr(error, 'details', {})
+            status = details.get('status_code', 0)
+            if status == 403 and wait is not None:
+                lazyllm.LOG.warning(f'Rate limited (403), retrying after {wait}s...')
+                time.sleep(wait)
+                continue
+            lazyllm.LOG.warning(f'submit_review failed: {str(error)[:200]}')
+            return False
     return False
 
 

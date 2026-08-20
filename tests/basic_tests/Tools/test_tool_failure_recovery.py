@@ -3,7 +3,13 @@ from typing import Dict, Literal
 
 import pytest
 
-from lazyllm.tools.agent import ToolDomainError, ToolPolicyError
+from lazyllm.tools.agent import (
+    ToolDomainError,
+    ToolInvalidArgumentsError,
+    ToolPermissionError,
+    ToolPolicyError,
+    ToolTransientError,
+)
 from lazyllm.tools.agent.toolsManager import ToolManager
 from lazyllm.tools.git import LocalGit
 
@@ -295,42 +301,63 @@ def test_typed_policy_failure_is_wrapped():
     }
 
 
-def test_git_legacy_failure_is_translated_at_tool_boundary():
-    class LegacyGitTool:
-        @staticmethod
-        def __tool_result_adapter__(operation, result):
-            return LocalGit.__tool_result_adapter__(operation, result)
+def test_git_sdk_and_tool_manager_share_typed_failure_contract():
+    backend = LocalGit()
 
-        def add_issue_comment(self, number: int, body: str):
-            '''Add a local issue comment.
+    def add_issue_comment(number: int, body: str):
+        '''Add an issue comment through the Git SDK.
 
-            Args:
-                number (int): Issue number.
-                body (str): Comment body.
-            '''
-            return {'success': False, 'message': 'Issue comments are not supported in local mode'}
+        Args:
+            number (int): Issue number.
+            body (str): Comment body.
+        '''
+        return backend.add_issue_comment(number, body)
 
-    backend = LegacyGitTool()
-    manager = ToolManager([backend.add_issue_comment])
+    manager = ToolManager([add_issue_comment])
     call = _call('add_issue_comment', {'number': 1, 'body': 'comment'})
 
+    with pytest.raises(ToolPolicyError) as exc_info:
+        backend.add_issue_comment(1, 'comment')
     result = manager(call)[0]
 
-    assert backend.add_issue_comment(1, 'comment')['success'] is False
+    assert exc_info.value.code == 'GIT_OPERATION_NOT_SUPPORTED'
     assert result['error']['category'] == 'POLICY_ERROR'
     assert result['error']['code'] == 'GIT_OPERATION_NOT_SUPPORTED'
     assert result['error']['details']['operation'] == 'add_issue_comment'
 
 
-def test_git_partial_success_remains_normal_business_data():
-    result = LocalGit.__tool_result_adapter__('list_issue_comments', {
-        'success': True,
-        'partial': True,
-        'comments': [{'id': 1}],
-    })
+def test_git_success_remains_normal_business_data():
+    result = LocalGit().list_issue_comments(1)
 
     assert result == {
         'success': True,
-        'partial': True,
-        'comments': [{'id': 1}],
+        'comments': [],
     }
+
+
+class _GitFailureStub(LocalGit):
+    def permission_failure(self):
+        return {'success': False, 'message': 'forbidden', 'status_code': 403}
+
+    def transient_failure(self):
+        return {'success': False, 'message': 'temporarily unavailable', 'status_code': 503}
+
+    def domain_failure(self):
+        return {'success': False, 'message': 'reference was not found', 'status_code': 404}
+
+    def invalid_arguments(self):
+        raise ValueError('invalid ref')
+
+
+@pytest.mark.parametrize(('method_name', 'error_type', 'code'), [
+    ('permission_failure', ToolPermissionError, 'GIT_PERMISSION_DENIED'),
+    ('transient_failure', ToolTransientError, 'GIT_TEMPORARY_FAILURE'),
+    ('domain_failure', ToolDomainError, 'GIT_OPERATION_FAILED'),
+    ('invalid_arguments', ToolInvalidArgumentsError, 'INVALID_GIT_ARGUMENTS'),
+])
+def test_git_sdk_classifies_failures_at_direct_call_boundary(method_name, error_type, code):
+    with pytest.raises(error_type) as exc_info:
+        getattr(_GitFailureStub(), method_name)()
+
+    assert exc_info.value.code == code
+    assert exc_info.value.details['operation'] == method_name
