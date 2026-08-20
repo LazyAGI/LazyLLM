@@ -7,7 +7,8 @@ from urllib.parse import urljoin
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
-    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineMultimodalEmbedModuleBase,
+    ModelFailureCode, OnlineChatModuleBase,
+    LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineMultimodalEmbedModuleBase,
     LazyLLMOnlineRerankModuleBase, LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase,
     LazyLLMOnlineTTSModuleBase
 )
@@ -22,6 +23,47 @@ from lazyllm import LOG
 _DASHSCOPE_DEFAULT_HTTP_URL = 'https://dashscope.aliyuncs.com/api/v1'
 _DASHSCOPE_DEFAULT_WEBSOCKET_URL = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference'
 _dashscope_urls_initialized = False
+
+
+_QWEN_ERROR_MAP = {
+    'Arrearage': ModelFailureCode.BALANCE_EXHAUSTED,
+    'isv.OUT_OF_SERVICE': ModelFailureCode.BALANCE_EXHAUSTED,
+    'PrepaidBillOverdue': ModelFailureCode.BALANCE_EXHAUSTED,
+    'PostpaidBillOverdue': ModelFailureCode.BALANCE_EXHAUSTED,
+    'Throttling.AllocationQuota': ModelFailureCode.QUOTA_EXHAUSTED,
+    'insufficient_quota': ModelFailureCode.QUOTA_EXHAUSTED,
+    'Throttling.RateQuota': ModelFailureCode.RATE_LIMITED,
+    'LimitRequests': ModelFailureCode.RATE_LIMITED,
+    'limit_requests': ModelFailureCode.RATE_LIMITED,
+    'ResourceExhausted': ModelFailureCode.RATE_LIMITED,
+    'Throttling.BurstRate': ModelFailureCode.RATE_LIMITED,
+    'limit_burst_rate': ModelFailureCode.RATE_LIMITED,
+    'Throttling.Concurrency': ModelFailureCode.CONCURRENCY_LIMITED,
+    # DashScope uses the same code for input and output inspection failures.
+    # Keep the public classification generic when the response has no phase.
+    'DataInspectionFailed': ModelFailureCode.PROVIDER_REJECTED,
+    'data_inspection_failed': ModelFailureCode.PROVIDER_REJECTED,
+    'InvalidApiKey': ModelFailureCode.AUTHENTICATION_FAILED,
+    'invalid_api_key': ModelFailureCode.AUTHENTICATION_FAILED,
+    'AccessDenied': ModelFailureCode.PERMISSION_DENIED,
+    'access_denied': ModelFailureCode.PERMISSION_DENIED,
+    'AccessDenied.Unpurchased': ModelFailureCode.PERMISSION_DENIED,
+    'Model.AccessDenied': ModelFailureCode.PERMISSION_DENIED,
+    'App.AccessDenied': ModelFailureCode.PERMISSION_DENIED,
+    'Workspace.AccessDenied': ModelFailureCode.PERMISSION_DENIED,
+    'ModelNotFound': ModelFailureCode.NOT_FOUND,
+    'model_not_found': ModelFailureCode.NOT_FOUND,
+    'model_not_supported': ModelFailureCode.NOT_FOUND,
+    'WorkSpaceNotFound': ModelFailureCode.NOT_FOUND,
+    'NotFound': ModelFailureCode.NOT_FOUND,
+    'InvalidParameter': ModelFailureCode.INVALID_REQUEST,
+    'invalid_request_error': ModelFailureCode.INVALID_REQUEST,
+    'invalid_value': ModelFailureCode.INVALID_REQUEST,
+    'InternalError.Algo.InvalidParameter': ModelFailureCode.INVALID_REQUEST,
+    'InternalError': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    'internal_error': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    'InternalError.Algo': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+}
 
 
 def _ensure_dashscope_urls_initialized() -> None:
@@ -51,6 +93,13 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ['qwen-turbo', 'qwen-7b-chat', 'qwen-72b-chat']
     VLM_MODEL_PREFIX = ['qwen-vl-plus', 'qwen-vl-max', 'qvq-max', 'qvq-plus']
     MODEL_NAME = 'qwen-plus'
+    PROVIDER_NAME = 'qwen'
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(
+        code_map=_QWEN_ERROR_MAP,
+        type_map=_QWEN_ERROR_MAP,
+        http_map={429: ModelFailureCode.RATE_LIMITED},
+        error_at_top_level=True,
+    )
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):

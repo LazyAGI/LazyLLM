@@ -1909,6 +1909,31 @@ add_example('OnlineChatModuleBase', '''\
 ...
 ''')
 
+add_chinese_doc('llms.onlinemodule.base.ModelCallError', '''\
+模型调用未完整成功时抛出的异常，携带规范化终态以及已经收到的部分响应。
+
+Args:
+    message (str): 安全的错误描述。
+    terminal (ModelCallTerminal): 模型调用的规范化终态。
+    partial_response (Optional[List[dict]]): 失败前已经收到的响应帧。
+
+Attributes:
+    usage (Optional[Dict[str, int]]): 从部分响应中提取的 token 用量。
+''')
+
+add_english_doc('llms.onlinemodule.base.ModelCallError', '''\
+Raised when a model call does not complete successfully. It carries the normalized terminal state and any partial
+response received before the failure.
+
+Args:
+    message (str): Safe error description.
+    terminal (ModelCallTerminal): Normalized terminal state of the model call.
+    partial_response (Optional[List[dict]]): Response frames received before the failure.
+
+Attributes:
+    usage (Optional[Dict[str, int]]): Token usage extracted from the partial response.
+''')
+
 add_chinese_doc('OnlineChatModuleBase.set_train_tasks', """\
 设置模型微调训练任务参数。
 
