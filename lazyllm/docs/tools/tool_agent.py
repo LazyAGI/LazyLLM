@@ -12,6 +12,32 @@ add_toolsmgr_chinese_doc = functools.partial(utils.add_chinese_doc, module=impor
 add_toolsmgr_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 add_toolsmgr_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 
+add_agent_chinese_doc('ToolExecutionError', '''\
+可预期工具执行失败的基础异常。
+
+工具实现应在能够明确描述失败原因时抛出该异常，由 ``ToolManager`` 统一转换为结构化 ToolResult。
+消息必须自包含 Agent 或用户理解和恢复失败所需的信息。
+该异常不维护 Agent 的重试次数，也不会触发程序化自动重试。
+
+Args:
+    message (str): 提供给 Agent 的错误说明。
+
+需要用户确认时，使用 ``ToolExecutionError.approval_required(message)``。
+''')
+
+add_agent_english_doc('ToolExecutionError', '''\
+Base exception for predictable tool execution failures.
+
+Tool implementations should raise this exception when they can describe the failure explicitly. ``ToolManager`` converts it
+into a structured ToolResult. The message must contain all information that an Agent or user needs to understand and recover
+from the failure. The exception does not track the Agent's retry budget or trigger an automatic retry.
+
+Args:
+    message (str): Error description exposed to the Agent.
+
+Use ``ToolExecutionError.approval_required(message)`` when user confirmation is required.
+''')
+
 add_chinese_doc('IntentClassifier', '''\
 意图分类模块，用于根据输入文本在给定的意图列表中进行分类。
 支持中英文自动选择提示模板，并可通过示例、提示、约束和注意事项增强分类效果。
@@ -140,6 +166,16 @@ ToolManager是一个工具管理类，用于提供工具信息和工具调用给
 
 工具组支持多级嵌套，子节点可以是普通工具或另一个工具组（通过嵌套 ``dict`` 定义）。
 
+工具执行结果统一为 ``{'ok': True, 'value': ...}`` 或 ``{'ok': False, 'value': ...}``。
+成功时 ``value`` 是工具的业务返回值，失败时 ``value`` 是提供给 Agent 的异常消息字符串；
+``ok`` 和其他外层字段由程序事件、调用追踪和渲染层使用。
+需要用户确认的失败是唯一特例，额外包含 ``'needs_approval': True``。
+普通执行路径中的工具应对正常业务数据使用 ``return``，对可预期失败抛出 ``ToolExecutionError``。
+失败消息必须自包含；工具名由外层 tool call/event 提供。参数经过兼容性 JSON 修复后仍无法解析时，
+ToolManager 返回清晰的参数错误消息；可修复的尾逗号或截断输入会继续进入参数校验。
+``ToolExecutionError`` 表示本次工具调用失败，因此仍会触发工具模块的 ERROR 日志与 ``on_error`` hook，
+但 ToolManager 会将其转换成可供 Agent 后续恢复的结构化结果。
+
 Args:
     tools (List): 工具列表，每个元素支持字符串、Callable、ModuleTool、带 ``__public_apis__`` 的实例、``(instance, key_source)`` 元组，或 ``dict`` 工具组。
     return_trace (bool): 是否返回中间步骤和工具调用信息。
@@ -169,6 +205,17 @@ Tool groups (``ToolGroup``) support three modes:
 - **pick-first-valid mode** (``pick_first_valid=True``): Scans the child list and exposes only the first tool whose credential is currently valid. Designed for scenarios where multiple equivalent services act as fallbacks (e.g. multiple search engines). ``lazy`` is forced to ``False`` in this mode.
 
 Tool groups support multi-level nesting; child nodes can be plain tools or another tool group (defined via a nested ``dict``).
+
+Tool execution always returns either ``{'ok': True, 'value': ...}`` or
+``{'ok': False, 'value': ...}``. On success, ``value`` is the tool's business return value. On failure, ``value`` is the
+exception message string exposed to the Agent; ``ok`` and the other envelope fields are consumed by program events, traces,
+and renderers. On the direct execution path, tools should return normal business data and raise
+``ToolExecutionError`` for predictable failures. The failure message must be self-contained; the outer tool call or event
+already carries the tool name. Approval-required failures are the sole exception and additionally include
+``'needs_approval': True``. Arguments that remain unparseable after compatibility JSON repair return a clear message;
+repairable trailing commas or truncated input continue to argument validation.
+A ``ToolExecutionError`` still represents a failed tool invocation, so it triggers the tool module's ERROR log and
+``on_error`` hook, while ToolManager converts it into a structured result that the Agent can recover from.
 
 Args:
     tools (List): Tool list. Each element can be a string, Callable, ModuleTool, an instance with ``__public_apis__``, a ``(instance, key_source)`` tuple, or a ``dict`` tool group.

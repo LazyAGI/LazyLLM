@@ -132,9 +132,7 @@ class ReWOOAgent(LazyLLMAgentBase):
         )
         tool_result = result[0]
         if isinstance(tool_result, dict) and 'ok' in tool_result:
-            if tool_result['ok']:
-                return tool_result.get('value')
-            return tool_result.get('msg') or 'Tool call failed'
+            return tool_result.get('value')
         return tool_result
 
     def _get_worker_evidences(self, response: str):

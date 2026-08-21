@@ -2,29 +2,69 @@
 import re
 import subprocess
 from abc import ABC, abstractmethod
+from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
 from lazyllm.module import ModuleBase
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
+from lazyllm.tools.agent.toolError import ToolExecutionError
 
 # Safe remote name: alphanumeric, underscore, hyphen only. Reject ext:: and other protocols.
 _REMOTE_NAME_RE = re.compile(r'^[a-zA-Z0-9_-]+$')
 
 
+def _raise_git_failure(operation: str, result: Any) -> Any:
+    if not isinstance(result, dict) or result.get('success') is not False:
+        return result
+
+    message = str(result.get('message') or f'Git operation {operation} failed.')
+    status_code = result.get('status_code')
+    context = f'Git operation {operation} failed'
+    if status_code is not None:
+        context += f' with HTTP {status_code}'
+    message = f'{context}: {message}'
+    raise ToolExecutionError(message)
+
+
+def _git_api(method):
+    if getattr(method, '__git_failure_boundary__', False):
+        return method
+
+    @wraps(method)
+    def wrapped(*args, **kwargs):
+        operation = method.__name__
+        try:
+            return _raise_git_failure(operation, method(*args, **kwargs))
+        except ToolExecutionError:
+            raise
+        except Exception as error:
+            response = getattr(error, 'response', None)
+            status_code = getattr(response, 'status_code', None)
+            context = f'Git operation {operation} failed'
+            if status_code is not None:
+                context += f' with HTTP {status_code}'
+            message = f'{context}: {error}'
+            raise ToolExecutionError(message) from error
+
+    wrapped.__git_failure_boundary__ = True
+    return wrapped
+
+
 def _validate_remote_name(remote_name: str) -> None:
     if not remote_name or not isinstance(remote_name, str):
-        raise ValueError('remote_name must be a non-empty string')
+        raise ToolExecutionError(f'remote_name must be a non-empty string, got {remote_name!r}.')
     if '::' in remote_name or not _REMOTE_NAME_RE.match(remote_name):
-        raise ValueError(
+        raise ToolExecutionError(
             'remote_name must be a safe identifier (alphanumeric, underscore, hyphen). '
-            'Dangerous protocols like ext:: are not allowed.'
+            f'Dangerous protocols like ext:: are not allowed; got {remote_name!r}.',
         )
 
 
 def _sanitize_path(path: str) -> str:
-    if '..' in path: raise ValueError('Path must not contain ".."')
+    if '..' in path:
+        raise ToolExecutionError(f'Path must not contain ".."; got {path!r}.')
     return path
 
 
@@ -78,6 +118,12 @@ class ReviewCommentInfo:
 
 
 class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        for name, member in list(cls.__dict__.items()):
+            if not name.startswith('_') and callable(member):
+                setattr(cls, name, _git_api(member))
+
     def __init__(self, token: str, repo: Optional[str] = None, api_base: Optional[str] = None,
                  user: Optional[str] = None, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
@@ -90,16 +136,35 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
     def _parse_owner_repo(self, repo: str) -> Tuple[str, str]:
         parts = repo.split('/', 1)
         if len(parts) != 2:
-            raise ValueError(f'repo must be \'owner/repo\', got: {repo!r}')
+            raise ToolExecutionError(f'repo must be \'owner/repo\', got: {repo!r}')
         return parts[0], parts[1]
 
     def _require_repo(self) -> None:
         if not self._repo:
-            raise ValueError(
+            raise ToolExecutionError(
                 f'repo is not set; pass repo when constructing {self.__class__.__name__} '
                 'to use repo-related APIs.'
             )
 
+    @staticmethod
+    def _http_failure(response, message: Optional[str] = None, **details) -> Dict[str, Any]:
+        failure_message = message or response.text or response.reason
+        failure = {
+            'success': False,
+            'message': failure_message,
+            'status_code': response.status_code,
+            **details,
+        }
+        return failure
+
+    @staticmethod
+    def _raise_http_error(response, message: Optional[str] = None) -> None:
+        raise requests.HTTPError(
+            message or response.text or response.reason,
+            response=response,
+        )
+
+    @_git_api
     def push_branch(self, local_branch: str, remote_branch: Optional[str] = None,
                     remote_name: str = 'origin', repo_path: Optional[str] = None) -> Dict[str, Any]:
         _validate_remote_name(remote_name)
@@ -203,11 +268,10 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
                                 page: int = 1, per_page: int = 20) -> Dict[str, Any]:
         raise NotImplementedError
 
+    @_git_api
     def check_review_resolution(self, number: int, comment_ids: Optional[List[Any]] = None
                                 ) -> Dict[str, Any]:
         out = self.list_review_comments(number)
-        if not out.get('success'):
-            return out
         comments = out.get('comments') or []
         if comment_ids is not None:
             id_set = set(comment_ids)
@@ -230,6 +294,7 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
             self._comment_stash = []
         return self._comment_stash
 
+    @_git_api
     def stash_review_comment(self, number: int, body: str, path: str,
                              line: Optional[int] = None) -> Dict[str, Any]:
         self._require_repo()
@@ -241,30 +306,37 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
         })
         return {'success': True, 'message': 'stashed', 'stash_size': len(self._stashed_comments())}
 
+    @_git_api
     def batch_commit_review_comments(self, clear_stash: bool = True) -> Dict[str, Any]:
         self._require_repo()
         stash = self._stashed_comments()
         if not stash:
             return {'success': True, 'message': 'no stashed comments', 'created': 0}
         created = 0
-        errors = []
+        errors: List[ToolExecutionError] = []
         for item in stash:
-            r = self.create_review_comment(
-                number=item['number'],
-                body=item['body'],
-                path=item['path'],
-                line=item.get('line'),
-            )
-            if r.get('success'):
+            try:
+                self.create_review_comment(
+                    number=item['number'],
+                    body=item['body'],
+                    path=item['path'],
+                    line=item.get('line'),
+                )
                 created += 1
-            else:
-                errors.append(r.get('message', 'unknown'))
+            except ToolExecutionError as error:
+                errors.append(error)
         if clear_stash:
             stash.clear()
         if errors:
-            return {'success': False, 'message': '; '.join(errors), 'created': created}
+            first_error = errors[0]
+            message = (
+                f'Failed to submit review comments: {created} created and {len(errors)} failed. '
+                + '; '.join(str(error) for error in errors)
+            )
+            raise type(first_error)(message) from first_error
         return {'success': True, 'message': 'committed', 'created': created}
 
+    @_git_api
     def submit_review_with_comments(
         self,
         number: int,

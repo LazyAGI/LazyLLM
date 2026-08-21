@@ -186,8 +186,6 @@ def review(  # noqa: C901
 
     # always need PR metadata for title/body
     pr_res = backend_inst.get_pull_request(pr_number)
-    if not pr_res.get('success'):
-        raise RuntimeError(f'Failed to get PR #{pr_number}: {pr_res.get("message", "unknown")}')
     pr = pr_res['pr']
 
     # head_sha: when refresh_diff=False, prefer cached sha to avoid rotating checkpoint
@@ -224,8 +222,6 @@ def review(  # noqa: C901
                 ckpt.rotate_on_head_sha_change(live_sha)
                 head_sha = live_sha
         diff_res = backend_inst.get_pr_diff(pr_number)
-        if not diff_res.get('success'):
-            raise RuntimeError(f'Failed to get PR #{pr_number} diff: {diff_res.get("message", "unknown")}')
         diff_text = diff_res.get('diff', '')
         # Never truncate diff_text — each round handles oversized content internally
         # via sliding windows, per-file batching, or skeleton extraction.

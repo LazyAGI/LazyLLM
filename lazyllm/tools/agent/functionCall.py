@@ -3,7 +3,7 @@ from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import LOG, globals as lazyllm_globals, pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable, Optional
-from .base import LazyLLMAgentBase, _write_agent_data, _unwrap_tool_result
+from .base import LazyLLMAgentBase, _write_agent_data
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
@@ -20,7 +20,6 @@ which can be called zero or multiple times according to your needs.
 Don\'t make assumptions about what values to plug into functions.
 Ask for clarification if a user request is ambiguous.\n
 '''
-
 
 class StreamResponse():
     def __init__(self, prefix: str, prefix_color: str = None, color: str = None, stream: bool = False):
@@ -39,10 +38,17 @@ class StreamResponse():
 
 
 _COMPACTION_TRUNCATE_LEN = 200  # chars kept per old tool result
+_ROUND_TOOLS_KEY = '_function_call_round_tools'
+
+
+def _tool_result_observation(result: Any) -> Any:
+    if isinstance(result, dict) and 'ok' in result:
+        return result.get('value', '')
+    return result
 
 
 def _tool_result_stop_text(result: Any) -> Optional[str]:
-    value = _unwrap_tool_result(result)
+    value = _tool_result_observation(result)
     if not isinstance(value, dict):
         return None
     control = value.get('_agent_control')
@@ -90,7 +96,9 @@ class FunctionCall(ModuleBase):
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
             self._sandbox = sandbox or create_sandbox()
-            self._tools_manager = ToolManager(tools, return_trace=return_trace, sandbox=self._sandbox)
+            self._tools_manager = ToolManager(
+                tools, return_trace=return_trace, sandbox=self._sandbox,
+            )
         else:
             self._tools_manager = _tool_manager
             self._sandbox = _tool_manager.sandbox
@@ -102,7 +110,7 @@ class FunctionCall(ModuleBase):
         prompt = _prompt or FC_PROMPT
         self._prompter = ChatPrompter(
             instruction={'system': prompt, 'user': ''},
-            tools=lambda: self._tools_manager.tools_description,
+            tools=self._get_current_tools,
             skills=self._skill_manager.build_prompt() if self._skill_manager else '',
         )
         self._llm = llm.share(
@@ -125,7 +133,24 @@ class FunctionCall(ModuleBase):
         if hasattr(self, '_tools_manager') and self._tools_manager is not None:
             self._tools_manager.sandbox = sandbox
 
+    def _get_current_tools(self, refresh: bool = False):
+        snapshots = locals.get(_ROUND_TOOLS_KEY)
+        if not isinstance(snapshots, dict):
+            snapshots = {}
+            locals[_ROUND_TOOLS_KEY] = snapshots
+        if refresh or self._module_id not in snapshots:
+            snapshots[self._module_id] = tuple(self._tools_manager.tools_description)
+        return list(snapshots[self._module_id])
+
+    def _get_visible_tool_names(self):
+        return {
+            item.get('function', {}).get('name')
+            for item in self._get_current_tools()
+            if item.get('function', {}).get('name')
+        }
+
     def _build_history(self, input: Union[str, dict, list]):
+        self._get_current_tools(refresh=True)
         workspace = locals['_lazyllm_agent']['workspace']
         history_idx = len(workspace.setdefault('history', []))
         budget_notice = None
@@ -154,7 +179,7 @@ class FunctionCall(ModuleBase):
             tool_call_results = [
                 {
                     'role': 'tool',
-                    'content': str(_unwrap_tool_result(tool_call['tool_call_result'])),
+                    'content': str(_tool_result_observation(tool_call['tool_call_result'])),
                     'tool_call_id': tool_call['id'],
                     'name': tool_call['function']['name'],
                 } for tool_call in workspace['tool_call_trace']
@@ -188,11 +213,14 @@ class FunctionCall(ModuleBase):
                 except Exception: pass
         if tool_calls := llm_output.get('tool_calls'):
             if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
-            tool_calls = self._tools_manager._normalize_tool_calls(tool_calls)
+            tool_calls = self._tools_manager.normalize_tool_calls(tool_calls)
             llm_output['tool_calls'] = tool_calls
             if self._stream:
                 _write_agent_data('tool_calls', tool_calls=tool_calls)
-            tool_calls_results = self._tools_manager(tool_calls)
+            tool_calls_results = self._tools_manager(
+                tool_calls,
+                allowed_tool_names=self._get_visible_tool_names(),
+            )
             if self._stream:
                 _write_agent_data('tool_results',
                                   tool_results=LazyLLMAgentBase._normalize_tool_results(tool_calls,
@@ -220,7 +248,7 @@ class FunctionCall(ModuleBase):
                         and (tc.get('function') or {}).get('name') in self._stop_tools
                     )
                     if not stop_failed:
-                        return '\n'.join(str(_unwrap_tool_result(r)) for r in tool_calls_results)
+                        return '\n'.join(str(_tool_result_observation(r)) for r in tool_calls_results)
         else:
             llm_output = llm_output['content']
         return llm_output
