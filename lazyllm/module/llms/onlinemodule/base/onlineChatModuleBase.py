@@ -1,10 +1,11 @@
+from functools import partial
 from itertools import groupby
 import json
 import os
 import requests
-import re
 import random
 import time
+import uuid
 from typing import Tuple, List, Dict, Union, Any, Optional
 from urllib.parse import urljoin
 from operator import itemgetter as itemget
@@ -14,25 +15,19 @@ from lazyllm import globals, pipeline, config
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ....servermodule import LLMBase, StaticParams
+from .model_call_runner import (
+    ModelAttemptState,
+    _ModelCallRunner,
+    is_retryable_transport_error,
+)
+from .model_outcome import ModelCallError, ModelFailure
+from .provider_response import (
+    OPENAI_COMPATIBLE_PROFILE,
+    _OpenAICompatibleResponseParser,
+    raise_for_http_error,
+    select_primary_choice,
+)
 from .utils import LazyLLMOnlineBase, resolve_online_params
-
-
-def _is_input_inspection_failure(exc: Exception) -> bool:
-    detail = str(exc).lower()
-    return 'data_inspection_failed' in detail or 'input data may contain inappropriate content' in detail
-
-
-def _remove_prior_tool_traces(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    '''Drop untrusted tool payloads from older turns while preserving conversational history.'''
-    last_user_index = max(
-        (index for index, message in enumerate(messages) if message.get('role') == 'user'),
-        default=len(messages),
-    )
-    return [
-        message for index, message in enumerate(messages)
-        if index >= last_user_index
-        or (message.get('role') != 'tool' and not message.get('tool_calls'))
-    ]
 
 
 class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
@@ -41,6 +36,9 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     NO_PROXY = True
     __lazyllm_registry_key__ = LLMType.CHAT
     _message_format = 'openai'
+    PROVIDER_NAME = 'openai_compatible'
+    RESPONSE_PROFILE = OPENAI_COMPATIBLE_PROFILE
+    RESPONSE_PARSER_CLASS = _OpenAICompatibleResponseParser
 
     def __init__(self, api_key: Union[str, List[str]], base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
@@ -96,34 +94,61 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     def _prepare_request_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         return data
 
-    def _str_to_json(self, msg: str, stream_output: bool):
-        if isinstance(msg, bytes):
-            msg = msg.decode('utf-8')
-        content = re.sub(r'^data:\s*', '', msg.strip())
-        if not content or content == '[DONE]':
-            return ''
-        try:
-            message = self._convert_msg_format(json.loads(content))
-            if not stream_output: return message
-            color = stream_output.get('color') if isinstance(stream_output, dict) else None
-            for item in message.get('choices', []):
-                delta = item.get('message', item.get('delta', {}))
-                if delta.get('reasoning_content') and delta.get('content'):
-                    lazyllm.LOG.warning('stream delta contains both reasoning_content and content')
-                if (reasoning_content := delta.get('reasoning_content', '')):
-                    self._stream_output(reasoning_content, color, cls='think')
-                if (content := delta.get('content', '')) and not delta.get('tool_calls'):
-                    self._stream_output(content, color)
-            lazyllm.LOG.debug(f'message: {message}')
-            return message
-        except Exception:
-            lazyllm.LOG.warning(f'Failed to parse message: {msg}')
-            return ''
+    def _response_parser(self, stream_output: Union[bool, Dict]) -> _OpenAICompatibleResponseParser:
+        emit_message = partial(self._emit_message_content, stream_output=stream_output) if stream_output else None
+        return self.RESPONSE_PARSER_CLASS(
+            profile=self.RESPONSE_PROFILE,
+            convert_message=self._convert_msg_format,
+            emit_message=emit_message,
+        )
+
+    def _emit_message_content(self, message: Dict[str, Any], stream_output: Union[bool, Dict]):
+        color = stream_output.get('color') if isinstance(stream_output, dict) else None
+        for item in message.get('choices', []):
+            if not isinstance(item, dict): continue
+            delta = item.get('message', item.get('delta', {}))
+            if not isinstance(delta, dict): continue
+            if delta.get('reasoning_content') and delta.get('content'):
+                lazyllm.LOG.warning('stream delta contains both reasoning_content and content')
+            if (reasoning_content := delta.get('reasoning_content', '')):
+                self._stream_output(reasoning_content, color, cls='think')
+            if (content := delta.get('content', '')) and not delta.get('tool_calls'):
+                self._stream_output(content, color)
+
+    def _log_failure(self, failure: ModelFailure) -> None:
+        lazyllm.LOG.warning(
+            'provider_failure '
+            f'diagnostic_id={failure.diagnostic_id} source={self.PROVIDER_NAME} '
+            f'origin={failure.origin.value} code={failure.code.value} '
+            f'http_status={failure.provider_http_status} provider_code={failure.provider_error_code} '
+            f'provider_type={failure.provider_error_type} response_started={failure.response_started} '
+        )
+
+    def _emit_runtime_event(self, stream_output: Union[bool, Dict], event_type: str, data: Dict[str, Any]):
+        if not stream_output: return
+        payload = {
+            'tag': 'runtime_event',
+            'runtime_event': {
+                'schema_version': 1,
+                'event_id': uuid.uuid4().hex,
+                'type': event_type,
+                'data': data,
+            },
+        }
+        stream_sink = stream_output.get('_stream_sink') if isinstance(stream_output, dict) \
+            else getattr(self, '_stream_sink', None)
+        if stream_sink is not None:
+            stream_sink(payload)
+        else:
+            lazyllm.FileSystemQueue().enqueue(json.dumps(payload, ensure_ascii=False))
 
     def _extract_specified_key_fields(self, response: Dict[str, Any]):
         if not ('choices' in response and isinstance(response['choices'], list)):
             raise ValueError(f'The response {response} does not contain a `choices` field.')
-        outputs = response['choices'][0].get('message') or response['choices'][0].get('delta', {})
+        choice = select_primary_choice(response['choices'])
+        if choice is None:
+            raise ValueError(f'The response {response} contains no choices.')
+        outputs = choice.get('message') or choice.get('delta', {})
         return outputs
 
     def _merge_stream_result(self, src: List[Union[str, int, list, dict]], force_join: bool = False):
@@ -171,22 +196,24 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             return ''
 
     def _forward_impl(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
-                      proxies: Optional[Dict], request_timeout: Optional[Union[float, Tuple[float, float]]]
+                      proxies: Optional[Dict], request_timeout: Optional[Union[float, Tuple[float, float]]],
+                      state: Optional[ModelAttemptState] = None,
                       ) -> List[Dict[str, Any]]:
-        with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,
+        # Always defer body consumption so response_started has the same
+        # response-header boundary for provider streaming and non-streaming calls.
+        with requests.post(runtime_url, json=data, headers=self._header, stream=True,
                            proxies=proxies, timeout=request_timeout) as r:
-            if r.status_code != 200:
-                err_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]) \
-                    if stream_output else r.text
-                raise requests.RequestException(f'{r.status_code}: {err_msg}')
+            if state is not None: state.response_started = True
+            raise_for_http_error(r, self.RESPONSE_PROFILE)
 
             with self.stream_output(stream_output):
-                msg_json = list(filter(lambda x: x, (
-                    [self._str_to_json(line, stream_output) for line in r.iter_lines() if len(line)]
-                    if stream_output
-                    else [self._str_to_json(r.text, stream_output)]
-                )))
-        return msg_json
+                if self._message_format != 'openai':
+                    return list(filter(lambda x: x, (
+                        [self._parse_response_frame(line, stream_output) for line in r.iter_lines() if len(line)]
+                        if stream_output else [self._parse_response_frame(r.text, stream_output)]
+                    )))
+                frames = r.iter_lines() if stream_output else [r.text]
+                return self._response_parser(stream_output).collect(frames, state)
 
     def _request_timeout(self, data: Dict[str, Any],
                          default_timeout: Optional[Union[int, float, Tuple[int, int], Tuple[float, float]]] = None,
@@ -209,66 +236,41 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     def _forward_with_retry(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
                             proxies: Optional[Dict], max_retries: int,
                             request_timeout: Optional[Union[float, Tuple[float, float]]]) -> List[Dict[str, Any]]:
-        _RETRY_DELAYS = [3, 10, 30]
-        _CONTINUATION_PROMPT = (
-            'Your previous response was interrupted. '
-            'Please continue your response exactly from where it left off. '
-            'Do NOT repeat any content that was already provided. '
-            'Do NOT add any transitional phrases like "Continuing..." or "As I was saying...". '
-            'Just seamlessly continue the response. '
-            'Keep the same language as your previous response.'
+        if self._message_format != 'openai':
+            max_attempts = max(1, int(max_retries))
+            for attempt_index in range(1, max_attempts + 1):
+                state = ModelAttemptState()
+                try:
+                    return self._forward_impl(
+                        data, runtime_url=runtime_url, stream_output=stream_output,
+                        proxies=proxies, request_timeout=request_timeout, state=state,
+                    )
+                except Exception as exc:
+                    if (not is_retryable_transport_error(exc) or state.response_started
+                            or attempt_index >= max_attempts):
+                        raise
+                    time.sleep(_ModelCallRunner._retry_delay(attempt_index))
+        runner = _ModelCallRunner(
+            emit_event=lambda event_type, event_data: self._emit_runtime_event(
+                stream_output, event_type, event_data,
+            ),
+            report_failure=self._log_failure,
         )
-        msg_json = []
-        partial_content = ''
-        for attempt in range(max_retries):
-            if attempt > 0 and partial_content:
-                # If the stream was cut mid-tool-call, the partial assistant message contains
-                # a truncated tool_calls block with malformed JSON arguments.  Appending it
-                # back into the history causes a 400 from providers that validate
-                # function.arguments.  In that case, skip the continuation injection and
-                # retry with the original messages so the model can restart the tool call.
-                last_msg = data['messages'][-1] if data['messages'] else {}
-                stream_cut_in_tool_call = (
-                    last_msg.get('role') == 'assistant' and last_msg.get('tool_calls')
-                )
-                if not stream_cut_in_tool_call:
-                    data['messages'].append({'role': 'assistant', 'content': partial_content})
-                    data['messages'].append({'role': 'user', 'content': _CONTINUATION_PROMPT})
-                else:
-                    lazyllm.LOG.warning('Stream interrupted mid-tool-call; retrying without continuation injection.')
-                partial_content = ''
-            try:
-                msg_json = self._forward_impl(data, runtime_url=runtime_url,
-                                              stream_output=stream_output, proxies=proxies,
-                                              request_timeout=request_timeout)
-            except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError):
-                if attempt < max_retries - 1:
-                    partial_content = self._extract_partial_content(msg_json)
-                    lazyllm.LOG.warning(f'Stream interrupted (attempt {attempt + 1}), retrying...')
-                    time.sleep(_RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)])
-                    continue
-                raise
-            except requests.RequestException as exc:
-                if _is_input_inspection_failure(exc) and attempt < max_retries - 1:
-                    sanitized = _remove_prior_tool_traces(data.get('messages') or [])
-                    if len(sanitized) < len(data.get('messages') or []):
-                        data['messages'] = sanitized
-                        lazyllm.LOG.warning(
-                            'Provider rejected model input during content inspection; retrying without '
-                            'tool calls/results from prior turns while preserving conversation messages.'
-                        )
-                        continue
-                if attempt < max_retries - 1:
-                    lazyllm.LOG.warning(f'Request failed (attempt {attempt + 1}), retrying...')
-                    time.sleep(_RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)])
-                    continue
-                raise
-            break
-        return msg_json
+        return runner.run(
+            lambda state: self._forward_impl(
+                data,
+                runtime_url=runtime_url,
+                stream_output=stream_output,
+                proxies=proxies,
+                request_timeout=request_timeout,
+                state=state,
+            ),
+            max_attempts=max_retries,
+        )
 
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
                 tools: List[Dict[str, Any]] = None, stream_output: bool = None, stream: bool = None,
-                lazyllm_files=None, url: str = None, model: str = None, max_retries: int = 3, **kw):
+                lazyllm_files=None, url: str = None, model: str = None, max_retries: int = 5, **kw):
         request_timeout = self._request_timeout(kw, default_timeout=self._timeout)
         stream_output = stream_output if stream_output is not None else stream
         stream_output = stream_output if stream_output is not None else self._stream
@@ -295,17 +297,28 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
         data = self._prepare_request_data(data)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
-        msg_json = self._forward_with_retry(data, runtime_url=runtime_url, stream_output=stream_output,
-                                            proxies=proxies, max_retries=max_retries,
-                                            request_timeout=request_timeout)
+        try:
+            msg_json = self._forward_with_retry(data, runtime_url=runtime_url, stream_output=stream_output,
+                                                proxies=proxies, max_retries=max_retries,
+                                                request_timeout=request_timeout)
+        except ModelCallError as exc:
+            usage = self._extract_usage(exc.partial_response)
+            exc.usage = usage
+            self._record_usage(usage)
+            raise
 
+        usage = self._extract_usage(msg_json)
+        self._record_usage(usage)
+        extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
+        return self._formatter(extractor) if extractor else ''
+
+    @staticmethod
+    def _extract_usage(msg_json: List[Dict[str, Any]]) -> Dict[str, int]:
         usage = {'prompt_tokens': -1, 'completion_tokens': -1}
         if len(msg_json) > 0 and 'usage' in msg_json[-1] and isinstance(msg_json[-1]['usage'], dict):
             for k in usage:
                 usage[k] = msg_json[-1]['usage'].get(k, usage[k])
-        self._record_usage(usage)
-        extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
-        return self._formatter(extractor) if extractor else ''
+        return usage
 
     def _record_usage(self, usage: dict):
         globals['usage'][self._module_id] = usage

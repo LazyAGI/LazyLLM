@@ -5,15 +5,51 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
 from lazyllm.components.utils.downloader.model_downloader import LLMType
-from ..base import OnlineChatModuleBase, LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineTTSModuleBase
+from ..base import (
+    ModelFailureCode,
+    OnlineChatModuleBase,
+    LazyLLMOnlineText2ImageModuleBase,
+    LazyLLMOnlineTTSModuleBase,
+)
+from ..base.provider_response import _OpenAICompatibleResponseParser
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
 
 
+class _MinimaxResponseParser(_OpenAICompatibleResponseParser):
+    def _extract_provider_error(self, message: Dict[str, Any]):
+        base_resp = message.get('base_resp')
+        if isinstance(base_resp, dict):
+            status_code = base_resp.get('status_code')
+            if status_code not in (None, 0, '0'):
+                return str(status_code), None
+        return super()._extract_provider_error(message)
+
+
 class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
     MODEL_NAME = 'MiniMax-M3'
+    PROVIDER_NAME = 'minimax'
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(code_map={
+        '1001': ModelFailureCode.REQUEST_TIMEOUT,
+        '1002': ModelFailureCode.RATE_LIMITED,
+        '1004': ModelFailureCode.AUTHENTICATION_FAILED,
+        '1008': ModelFailureCode.QUOTA_EXHAUSTED,
+        '1013': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+        '1024': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+        '1026': ModelFailureCode.INPUT_FILTERED,
+        '1027': ModelFailureCode.OUTPUT_FILTERED,
+        '1033': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+        '1039': ModelFailureCode.TOKEN_LIMIT,
+        '1041': ModelFailureCode.RATE_LIMITED,
+        '1042': ModelFailureCode.INVALID_REQUEST,
+        '2013': ModelFailureCode.INVALID_REQUEST,
+        '2045': ModelFailureCode.RATE_LIMITED,
+        '2049': ModelFailureCode.AUTHENTICATION_FAILED,
+        '2056': ModelFailureCode.QUOTA_EXHAUSTED,
+    })
+    RESPONSE_PARSER_CLASS = _MinimaxResponseParser
     BASE_URLS = {
         'global': 'https://api.minimax.io/v1/',
         'cn': 'https://api.minimaxi.com/v1/',
