@@ -278,6 +278,54 @@ class TestSkills(object):
             assert fail_result['exit_code'] == 7
             assert 'bad' in fail_result['stdout']
 
+    def test_run_script_accepts_supported_script_outside_scripts_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'core-script-skill', 'core-script-skill')
+            skill_md = os.path.join(skill_dir, 'SKILL.md')
+            with open(skill_md, 'a', encoding='utf-8') as f:
+                f.write('\nRun `core/check.py`.\n')
+            core_dir = os.path.join(skill_dir, 'core')
+            os.makedirs(core_dir, exist_ok=True)
+            script = os.path.join(core_dir, 'check.py')
+            with open(script, 'w', encoding='utf-8') as f:
+                f.write('print("ok")\n')
+
+            manager = SkillManager(dir=tmp)
+            result = manager.run_script('core-script-skill', 'core/check.py', allow_unsafe=True)
+
+            assert result['status'] == 'ok'
+            assert result['exit_code'] == 0
+            assert result['stdout'] == 'ok\n'
+
+    def test_run_script_rejects_undeclared_script_outside_scripts_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'core-script-skill', 'core-script-skill')
+            core_dir = os.path.join(skill_dir, 'core')
+            os.makedirs(core_dir, exist_ok=True)
+            with open(os.path.join(core_dir, 'generate_hashes.py'), 'w', encoding='utf-8') as f:
+                f.write('print("maintenance")\n')
+
+            manager = SkillManager(dir=tmp)
+            result = manager.run_script(
+                'core-script-skill', 'core/generate_hashes.py', allow_unsafe=True,
+            )
+
+            assert result['status'] == 'error'
+            assert result['error_type'] == 'UndeclaredScript'
+
+    def test_run_script_rejects_unsupported_file_type(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'document-skill', 'document-skill')
+            reference = os.path.join(skill_dir, 'REFERENCE.md')
+            with open(reference, 'w', encoding='utf-8') as f:
+                f.write('# Reference\n')
+
+            manager = SkillManager(dir=tmp)
+            result = manager.run_script('document-skill', 'REFERENCE.md', allow_unsafe=True)
+
+            assert result['status'] == 'error'
+            assert result['error_type'] == 'UnsupportedScriptType'
+
     def test_run_script_reports_missing_cwd_as_tool_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             skill_dir = _make_skill(tmp, 'cwd-skill', 'cwd-skill')
