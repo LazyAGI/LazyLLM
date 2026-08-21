@@ -49,6 +49,18 @@ class TestLazyLLMAgentBase(object):
             if tool.name in agent._skill_tool_names
         )
 
+    def test_agent_accepts_prebuilt_skill_manager(self, tmp_path):
+        skill_manager = SkillManager(dir=str(tmp_path), allowed_skills=[])
+
+        agent = _DummyAgent(
+            skill_manager=skill_manager,
+            enable_builtin_tools=False,
+        )
+
+        assert agent._skill_manager is skill_manager
+        assert agent._sandbox is skill_manager.sandbox
+        assert agent._skill_tool_names == {'get_skill', 'read_reference', 'run_script'}
+
     def test_agent_sandbox_auto_creates_sandbox(self, monkeypatch):
         sentinel = object()
         monkeypatch.setattr(agent_base_module, 'create_sandbox', lambda: sentinel)

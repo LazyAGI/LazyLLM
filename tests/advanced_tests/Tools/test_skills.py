@@ -4,6 +4,7 @@ import shutil
 import tempfile
 
 import lazyllm
+from lazyllm.common import new_session
 from lazyllm.tools import ReactAgent
 from lazyllm.cli.skills import skills as skills_cli
 from lazyllm.tools.agent.skill_manager import SkillManager
@@ -101,6 +102,73 @@ class TestSkills(object):
         listing = manager.list_skill()
         assert self._alpha_name in listing
         assert self._beta_name in listing
+
+    def test_skill_manager_separates_allowed_and_visible_skills(self):
+        manager = SkillManager(
+            dir=self._src_root,
+            skills=[self._alpha_name],
+            allowed_skills=[self._alpha_name, self._beta_name],
+        )
+
+        assert [item['id'] for item in manager.list_skill_metadata('visible')] == [
+            self._alpha_name,
+        ]
+        assert [item['id'] for item in manager.list_skill_metadata('allowed')] == [
+            self._alpha_name,
+            self._beta_name,
+        ]
+        assert manager.get_skill(self._beta_name)['status'] == 'missing'
+
+        with new_session('skill-exposure-one'):
+            result = manager.expose_skills([self._beta_name, 'not-allowed'])
+            assert result['status'] == 'partial'
+            assert [item['id'] for item in result['skills']] == [self._beta_name]
+            assert manager.get_skill(self._beta_name)['status'] == 'ok'
+
+        with new_session('skill-exposure-two'):
+            assert manager.get_skill(self._beta_name)['status'] == 'missing'
+
+    def test_skill_metadata_normalizes_aliases_and_tags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'resume', 'resume')
+            with open(os.path.join(skill_dir, 'SKILL.md'), 'w', encoding='utf-8') as f:
+                f.write(
+                    '---\n'
+                    'name: resume\n'
+                    'description: Build a professional resume.\n'
+                    'aliases: [CV, 简历]\n'
+                    'tags: career, document\n'
+                    'revision: v2\n'
+                    '---\n'
+                )
+
+            metadata = SkillManager(dir=tmp).list_skill_metadata('allowed')
+
+            assert metadata == [{
+                'id': 'resume',
+                'name': 'resume',
+                'description': 'Build a professional resume.',
+                'aliases': ['CV', '简历'],
+                'tags': ['career', 'document'],
+                'source': 'file',
+                'revision': 'v2',
+            }]
+
+    def test_allowed_scope_excludes_skills_that_disable_model_invocation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'manual-only', 'manual-only')
+            with open(os.path.join(skill_dir, 'SKILL.md'), 'w', encoding='utf-8') as f:
+                f.write(
+                    '---\n'
+                    'name: manual-only\n'
+                    'description: Must not be called by a model.\n'
+                    'disable-model-invocation: true\n'
+                    '---\n'
+                )
+
+            manager = SkillManager(dir=tmp, allowed_skills=['manual-only'])
+
+            assert manager.list_skill_metadata('allowed') == []
 
     def test_parse_dirs_local_expands_paths(self):
         parsed = SkillManager._parse_dirs('~/skills')
