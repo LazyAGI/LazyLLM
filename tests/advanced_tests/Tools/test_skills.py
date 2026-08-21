@@ -278,6 +278,29 @@ class TestSkills(object):
             assert fail_result['exit_code'] == 7
             assert 'bad' in fail_result['stdout']
 
+    def test_run_script_uses_dynamic_env_vars(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'env-skill', 'env-skill')
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            script = os.path.join(scripts_dir, 'print_env.py')
+            with open(script, 'w', encoding='utf-8') as f:
+                f.write('import os\nprint(os.getenv("DYNAMIC_TEST_API_KEY", ""))\n')
+
+            old_dynamic_env = lazyllm.globals.get('dynamic_env_vars')
+            lazyllm.globals['dynamic_env_vars'] = {'DYNAMIC_TEST_API_KEY': 'secret-from-session'}
+            try:
+                manager = SkillManager(dir=tmp)
+                result = manager.run_script('env-skill', 'scripts/print_env.py', allow_unsafe=True)
+            finally:
+                if old_dynamic_env is None:
+                    lazyllm.globals.pop('dynamic_env_vars', None)
+                else:
+                    lazyllm.globals['dynamic_env_vars'] = old_dynamic_env
+
+            assert result['status'] == 'ok'
+            assert result['stdout'].strip() == 'secret-from-session'
+
     def test_run_script_reports_missing_cwd_as_tool_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             skill_dir = _make_skill(tmp, 'cwd-skill', 'cwd-skill')

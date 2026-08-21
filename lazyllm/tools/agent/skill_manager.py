@@ -8,7 +8,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import yaml
 
-from lazyllm import config, LOG, ModuleBase
+from lazyllm import config, LOG, ModuleBase, globals as lazyllm_globals
 from lazyllm.thirdparty import fsspec
 
 DEFAULT_SKILLS_DIR = os.path.join(config['home'], 'skills')
@@ -648,12 +648,17 @@ class SkillManager(ModuleBase):
                     'error_type': 'SandboxUnavailable',
                     'error': 'The configured sandbox does not support skill script execution.',
                 }
+            script_env = {
+                str(key): str(value)
+                for key, value in (lazyllm_globals.get('dynamic_env_vars', {}) or {}).items()
+            }
             result = self._sandbox.execute_script(
                 source_dir=base,
                 rel_path=normalized_rel_path,
                 args=args,
                 cwd=os.path.relpath(run_cwd, os.path.realpath(os.path.abspath(base))),
                 allow_unsafe=allow_unsafe,
+                env=script_env,
             )
             if result.get('status') == 'ok' and result.get('exit_code', 0) != 0:
                 result['status'] = 'failed'

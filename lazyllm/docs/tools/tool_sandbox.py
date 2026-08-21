@@ -103,6 +103,7 @@ Args:
     args (list[str] | None): 传递给脚本的参数。
     cwd (str): 相对于 `source_dir` 的工作目录，默认为 `.`。
     allow_unsafe (bool): 预留的审批参数；DummySandbox 当前不提供审批边界，因此会忽略该参数。
+    env (dict[str, str] | None): 额外环境变量，会覆盖合并进子进程环境；不会修改当前进程的 `os.environ`。默认为 `None`。
 
 **Returns:**\n
     dict：包含 `status`、`stdout`、`stderr`、`exit_code` 和 `cwd`。脚本不存在时返回
@@ -110,7 +111,7 @@ Args:
 
 Notes:
     DummySandbox 只提供临时目录和子进程执行边界，并非强安全隔离。它不会限制脚本读取宿主机文件、
-    访问网络或继承当前进程环境。不要用它执行未经信任的代码。
+    访问网络，或在继承当前进程环境后再叠加 `env`。不要用它执行未经信任的代码。
 ''')
 
 add_sandbox_english_doc('DummySandbox.execute_script', '''\
@@ -126,6 +127,8 @@ Args:
     args (list[str] | None): arguments passed to the script.
     cwd (str): working directory relative to `source_dir`, default `.`.
     allow_unsafe (bool): reserved approval parameter; DummySandbox currently has no approval boundary and ignores it.
+    env (dict[str, str] | None): extra environment variables merged into the subprocess environment; does not mutate the
+        parent process `os.environ`. Default `None`.
 
 **Returns:**\n
     dict: contains `status`, `stdout`, `stderr`, `exit_code`, and `cwd`. A missing script returns `status='missing'`;
@@ -133,8 +136,8 @@ Args:
 
 Notes:
     DummySandbox provides only a temporary-directory and subprocess boundary, not strong security isolation. It does not
-    prevent scripts from reading host files, accessing the network, or inheriting the current process environment. Do not
-    use it to execute untrusted code.
+    prevent scripts from reading host files, accessing the network, or inheriting the current process environment with
+    `env` overlaid. Do not use it to execute untrusted code.
 ''')
 
 add_sandbox_example('DummySandbox.execute_script', """\
