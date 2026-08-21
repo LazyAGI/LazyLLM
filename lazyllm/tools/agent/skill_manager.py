@@ -309,6 +309,32 @@ class SkillManager(ModuleBase):
         return meta if isinstance(meta, dict) else None
 
     @staticmethod
+    def _has_frontmatter_start(text: str) -> bool:
+        normalized = text.lstrip('\ufeff')
+        return normalized == '---' or normalized.startswith(('---\n', '---\r\n'))
+
+    @staticmethod
+    def _extract_legacy_meta(text: str, name: str) -> Optional[dict]:
+        if SkillManager._has_frontmatter_start(text):
+            return None
+        paragraph = []
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                if paragraph:
+                    break
+                continue
+            if line.startswith(('#', '|', '- ', '* ', '> ', '```')) or line == '---':
+                continue
+            paragraph.append(line)
+        if not paragraph:
+            return None
+        description = re.sub(r'[*_`]+', '', ' '.join(paragraph)).strip()
+        if not description:
+            return None
+        return {'name': name, 'description': description}
+
+    @staticmethod
     def _validate_meta(meta: Optional[dict]) -> Optional[Dict[str, str]]:
         if not isinstance(meta, dict):
             return {
@@ -370,7 +396,11 @@ class SkillManager(ModuleBase):
                     content = self._fs_read(skill_md)
                     if size is None and self._content_exceeds_limit(content):
                         continue
-                    meta = self._extract_yaml_meta(content)
+                    key = self._skill_key_from_dir(skill_dir)
+                    if self._has_frontmatter_start(content):
+                        meta = self._extract_yaml_meta(content)
+                    else:
+                        meta = self._extract_legacy_meta(content, key.rsplit('/', 1)[-1])
                     validation_error = self._validate_meta(meta)
                     if validation_error:
                         details = ' '.join(
@@ -382,7 +412,6 @@ class SkillManager(ModuleBase):
                         )
                         continue
                     name = meta['name']
-                    key = self._skill_key_from_dir(skill_dir)
                     if not key or key in skills_index:
                         continue
                     skills_index[key] = {

@@ -200,6 +200,53 @@ class TestSkills(object):
         assert 'skills/bad-name' not in prompt
         assert 'skills/bad-description' not in prompt
 
+    def test_skill_manager_loads_legacy_markdown_without_frontmatter(self):
+        content = (
+            b'# Interview Simulator\n\n'
+            b'## Identity\n\n'
+            b'You are a professional interview simulator.\n\n'
+            b'---\n\n'
+            b'## Flow\n'
+        )
+        fs = _MemoryCloudFS(
+            {
+                'skills': [{'name': 'skills/interview-simulator', 'type': 'directory'}],
+                'skills/interview-simulator': [
+                    {'name': 'skills/interview-simulator/SKILL.md', 'type': 'file'},
+                ],
+            },
+            {'skills/interview-simulator/SKILL.md': content},
+        )
+        manager = SkillManager(dir='skills', fs=fs)
+
+        listing = manager.list_skill()
+        skill = manager.get_skill('interview-simulator')
+
+        assert 'professional interview simulator' in listing
+        assert skill['status'] == 'ok'
+        assert skill['content'].encode() == content
+
+    def test_skill_manager_rejects_malformed_frontmatter_as_legacy(self):
+        fs = _MemoryCloudFS(
+            {
+                'skills': [{'name': 'skills/broken', 'type': 'directory'}],
+                'skills/broken': [{'name': 'skills/broken/SKILL.md', 'type': 'file'}],
+            },
+            {
+                'skills/broken/SKILL.md': (
+                    b'---\n'
+                    b'name: broken\n'
+                    b'description: missing closing separator\n'
+                    b'# Broken\n'
+                ),
+            },
+        )
+        manager = SkillManager(dir='skills', fs=fs)
+
+        listing = manager.list_skill()
+
+        assert 'skills/broken' not in listing
+
     def test_skill_manager_enforces_size_limit_when_info_has_no_size(self):
         fs = _MemoryCloudFS(
             {
