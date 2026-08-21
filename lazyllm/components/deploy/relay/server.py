@@ -58,6 +58,8 @@ parser.add_argument('--pythonpath')
 parser.add_argument('--num_replicas', type=int, default=1, help='num of ray replicas')
 parser.add_argument('--security_key', type=str, default=None, help='security key')
 parser.add_argument('--defined_pos', type=str, default=None, help='user defined positional')
+parser.add_argument('--h11_max_incomplete_event_size', type=int, default=1024 * 1024,
+                    help='maximum buffered size for an incomplete h11 request event')
 args = parser.parse_args()
 
 func = load_obj(args.function)
@@ -208,4 +210,5 @@ if __name__ == '__main__':
                     printed = True
             time.sleep(2)
     else:
-        uvicorn.run(app, host=args.open_ip, port=args.open_port)
+        uvicorn.run(app, host=args.open_ip, port=args.open_port,
+                    h11_max_incomplete_event_size=args.h11_max_incomplete_event_size)
