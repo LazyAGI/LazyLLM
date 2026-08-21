@@ -26,7 +26,7 @@ Document 是 LazyLLM 的文档管理组件，是所有文档和处理配置的�
     3.manager：是否使用 ui 界面会影响 Document 内部的处理逻辑，默认为 False
     4.launcher：启动服务的方式，集群应用会用到这个参数，单机应用可以忽略
     5.store_conf：配置使用哪种存储引擎保存文档解析结果
-    6.doc_fields：配置需要存储和检索的字段及对应的类型（当前在使用内存存储、Chroma以及Milvus向量数据库时支持该功能）
+    6.doc_fields：配置需要存储和检索的字段及对应的类型（当前在使用内存存储、Chroma、Milvus以及Qdrant向量数据库时支持该功能）
 
 #### 基本用法
 
