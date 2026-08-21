@@ -10,13 +10,7 @@ import yaml
 
 from lazyllm import config, LOG, ModuleBase
 from lazyllm.thirdparty import fsspec
-from .toolError import (
-    ToolDomainError,
-    ToolInvalidArgumentsError,
-    ToolPermissionError,
-    ToolPolicyError,
-    ToolTransientError,
-)
+from .toolError import ToolExecutionError
 
 DEFAULT_SKILLS_DIR = os.path.join(config['home'], 'skills')
 os.makedirs(DEFAULT_SKILLS_DIR, exist_ok=True)
@@ -548,40 +542,26 @@ class SkillManager(ModuleBase):
         if error:
             self._raise_skill_lookup_error(name, error)
         if not info:
-            raise ToolDomainError(
-                f'Skill not found: {name}',
-                code='SKILL_NOT_FOUND',
-                details={'name': name},
-            )
+            raise ToolExecutionError(f'Skill not found: {name}')
         skill_md = info['skill_md']
         size = self._fs_getsize(skill_md)
         if size is not None and size > self._max_skill_md_bytes and not allow_large:
-            raise ToolPolicyError(
-                f'Skill content exceeds the configured size limit: {name}',
-                code='SKILL_CONTENT_TOO_LARGE',
-                details={
-                    'name': name, 'path': skill_md, 'size': size,
-                    'limit': self._max_skill_md_bytes, 'allow_large': allow_large,
-                },
+            raise ToolExecutionError(
+                f'Skill {name} is {size} bytes and exceeds the configured '
+                f'{self._max_skill_md_bytes}-byte size limit. Set allow_large=True to read it.'
             )
         try:
             content = self._fs_read(skill_md)
         except Exception as e:
-            raise ToolDomainError(
-                f'Failed to read skill {name}: {e}',
-                code='SKILL_READ_FAILED',
-                details={'name': name, 'path': skill_md},
+            raise ToolExecutionError(
+                f'Failed to read skill {name} at {skill_md}: {e}'
             ) from e
         if size is None:
             size = len(content.encode('utf-8'))
         if size > self._max_skill_md_bytes and not allow_large:
-            raise ToolPolicyError(
-                f'Skill content exceeds the configured size limit: {name}',
-                code='SKILL_CONTENT_TOO_LARGE',
-                details={
-                    'name': name, 'path': skill_md, 'size': size,
-                    'limit': self._max_skill_md_bytes, 'allow_large': allow_large,
-                },
+            raise ToolExecutionError(
+                f'Skill {name} is {size} bytes and exceeds the configured '
+                f'{self._max_skill_md_bytes}-byte size limit. Set allow_large=True to read it.'
             )
         return {'status': 'ok', 'name': name, 'path': skill_md, 'content': content}
 
@@ -590,44 +570,31 @@ class SkillManager(ModuleBase):
         if error:
             self._raise_skill_lookup_error(name, error)
         if not info:
-            raise ToolDomainError(
-                f'Skill not found: {name}',
-                code='SKILL_NOT_FOUND',
-                details={'name': name},
-            )
+            raise ToolExecutionError(f'Skill not found: {name}')
         try:
             normalized_rel_path = self._normalize_skill_rel_path(rel_path)
         except ValueError as exc:
-            raise ToolInvalidArgumentsError(
-                f'Invalid skill reference path: {exc}',
-                code='INVALID_SKILL_PATH',
-                details={'name': name, 'rel_path': rel_path},
+            raise ToolExecutionError(
+                f'Invalid reference path {rel_path!r} for skill {name}: {exc}'
             ) from exc
         base = info['path']
         path = self._fs_join(base, normalized_rel_path)
         try:
             return {'status': 'ok', 'path': path, 'content': self._fs_read(path)}
         except Exception as e:
-            raise ToolDomainError(
-                f'Failed to read skill reference: {e}',
-                code='SKILL_REFERENCE_READ_FAILED',
-                details={'name': name, 'path': path, 'rel_path': normalized_rel_path},
+            raise ToolExecutionError(
+                f'Failed to read reference {normalized_rel_path!r} for skill {name} at {path}: {e}'
             ) from e
 
     @staticmethod
     def _raise_skill_lookup_error(name: str, error: Dict[str, str]) -> None:
         status = error.get('status')
         if status == 'ambiguous':
-            raise ToolInvalidArgumentsError(
-                str(error.get('error') or f'Ambiguous skill name: {name}'),
-                code='AMBIGUOUS_SKILL_NAME',
-                details={'name': name, 'matches': error.get('matches') or []},
+            matches = error.get('matches') or []
+            raise ToolExecutionError(
+                str(error.get('error') or f'Ambiguous skill name {name!r}; matches: {matches}')
             )
-        raise ToolDomainError(
-            f'Skill not found: {name}',
-            code='SKILL_NOT_FOUND',
-            details={'name': name},
-        )
+        raise ToolExecutionError(f'Skill not found: {name}')
 
     def _materialize_script_base(self, base: str, rel_path: str) -> Tuple[str, Optional[tempfile.TemporaryDirectory]]:
         remote_script_path = self._fs_join(base, rel_path)
@@ -644,54 +611,36 @@ class SkillManager(ModuleBase):
     def _raise_run_script_exception(self, name: str, rel_path: str, cwd: Optional[str],
                                     run_cwd: Optional[str], exc: Exception) -> None:
         error_cwd = run_cwd or cwd
-        details = {
-            'name': name,
-            'rel_path': rel_path,
-            'cwd': error_cwd,
-            'error_type': exc.__class__.__name__,
-        }
+        context = f'skill {name}, script {rel_path!r}, cwd {error_cwd!r}'
         if isinstance(exc, ValueError):
-            details['cwd'] = cwd
-            raise ToolInvalidArgumentsError(
-                f'Invalid run_script path argument: {exc}',
-                code='INVALID_SKILL_SCRIPT_PATH',
-                details=details,
+            raise ToolExecutionError(
+                f'Invalid run_script path argument for skill {name}, script {rel_path!r}, cwd {cwd!r}: {exc}'
             ) from exc
         if isinstance(exc, FileNotFoundError):
-            raise ToolDomainError(
-                f'run_script filesystem path not found: {exc}',
-                code='SKILL_SCRIPT_PATH_NOT_FOUND',
-                details=details,
-            ) from exc
+            raise ToolExecutionError(f'run_script filesystem path not found for {context}: {exc}') from exc
         if isinstance(exc, subprocess.TimeoutExpired):
-            details['timeout'] = exc.timeout
-            raise ToolTransientError(
-                f'run_script timed out after {exc.timeout} seconds.',
-                code='SKILL_SCRIPT_TIMEOUT',
-                details=details,
+            raise ToolExecutionError(
+                f'run_script timed out after {exc.timeout} seconds for {context}.'
             ) from exc
-        raise ToolDomainError(
-            f'run_script execution failed: {exc}',
-            code='SKILL_SCRIPT_EXECUTION_FAILED',
-            details=details,
-        ) from exc
+        raise ToolExecutionError(f'run_script execution failed for {context}: {exc}') from exc
 
     @staticmethod
     def _normalize_script_result(result: Dict) -> Dict:
         if result.get('status') == 'ok' and result.get('exit_code', 0) != 0:
             result['status'] = 'failed'
         if result.get('status') == 'needs_approval':
-            raise ToolPermissionError(
-                str(result.get('reason') or 'Skill script execution requires approval.'),
-                code='SKILL_SCRIPT_REQUIRES_APPROVAL',
-                details={**result, 'authorization_required': True},
+            raise ToolExecutionError.approval_required(
+                str(result.get('reason') or 'Skill script execution requires approval.')
             )
         if result.get('status') in ('error', 'failed', 'missing'):
-            raise ToolDomainError(
-                str(result.get('error') or result.get('stderr') or 'Skill script execution failed.'),
-                code='SKILL_SCRIPT_EXECUTION_FAILED',
-                details=result,
+            reason = str(
+                result.get('error') or result.get('stderr')
+                or result.get('stdout') or 'Skill script execution failed.'
             )
+            exit_code = result.get('exit_code')
+            if exit_code is not None:
+                reason = f'Skill script execution failed with exit code {exit_code}: {reason}'
+            raise ToolExecutionError(reason)
         return result
 
     def run_script(self, name: str, rel_path: str, args: Optional[List[str]] = None,
@@ -700,24 +649,16 @@ class SkillManager(ModuleBase):
         if error:
             self._raise_skill_lookup_error(name, error)
         if not info:
-            raise ToolDomainError(
-                f'Skill not found: {name}',
-                code='SKILL_NOT_FOUND',
-                details={'name': name},
-            )
+            raise ToolExecutionError(f'Skill not found: {name}')
         try:
             normalized_rel_path = self._normalize_skill_rel_path(rel_path)
         except ValueError as exc:
-            raise ToolInvalidArgumentsError(
-                f'Invalid skill script path: {exc}',
-                code='INVALID_SKILL_SCRIPT_PATH',
-                details={'name': name, 'rel_path': rel_path},
+            raise ToolExecutionError(
+                f'Invalid script path {rel_path!r} for skill {name}: {exc}'
             ) from exc
         if not normalized_rel_path.startswith('scripts/'):
-            raise ToolInvalidArgumentsError(
-                'run_script rel_path must be under scripts/.',
-                code='INVALID_SKILL_SCRIPT_PATH',
-                details={'name': name, 'rel_path': normalized_rel_path},
+            raise ToolExecutionError(
+                f'run_script path {normalized_rel_path!r} for skill {name} must be under scripts/.'
             )
         base = info['path']
         temp_dir = None
@@ -728,16 +669,13 @@ class SkillManager(ModuleBase):
             run_cwd = self._resolve_run_cwd(base, cwd)
             script_exists = os.path.exists(script_path) if temp_dir is not None else self._fs.exists(script_path)
             if not script_exists:
-                raise ToolDomainError(
-                    f'Skill script not found: {normalized_rel_path}',
-                    code='SKILL_SCRIPT_NOT_FOUND',
-                    details={'name': name, 'path': script_path, 'rel_path': normalized_rel_path},
+                raise ToolExecutionError(
+                    f'Skill script {normalized_rel_path!r} for skill {name} was not found at {script_path}.'
                 )
             if self._sandbox is None or not hasattr(self._sandbox, 'execute_script'):
-                raise ToolPolicyError(
-                    'The configured sandbox does not support skill script execution.',
-                    code='SKILL_SCRIPT_SANDBOX_UNAVAILABLE',
-                    details={'name': name, 'rel_path': normalized_rel_path},
+                raise ToolExecutionError(
+                    f'The configured sandbox does not support executing skill {name} script '
+                    f'{normalized_rel_path!r}.'
                 )
             result = self._sandbox.execute_script(
                 source_dir=base,
@@ -747,8 +685,7 @@ class SkillManager(ModuleBase):
                 allow_unsafe=allow_unsafe,
             )
             return self._normalize_script_result(result)
-        except (ToolDomainError, ToolInvalidArgumentsError, ToolPermissionError,
-                ToolPolicyError, ToolTransientError):
+        except ToolExecutionError:
             raise
         except Exception as exc:
             self._raise_run_script_exception(name, normalized_rel_path, cwd, run_cwd, exc)

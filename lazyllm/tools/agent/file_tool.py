@@ -5,7 +5,7 @@ import shutil
 from typing import Dict, List, Optional
 
 from .toolsManager import register, tool_concurrency
-from .toolError import ToolDomainError, ToolInvalidArgumentsError, ToolPermissionError
+from .toolError import ToolExecutionError
 
 
 def _resolve_path(path: str) -> str:
@@ -18,10 +18,8 @@ def _check_root(path: str, root: Optional[str]) -> None:
     root_abs = _resolve_path(root)
     path_abs = _resolve_path(path)
     if os.path.commonpath([path_abs, root_abs]) != root_abs:
-        raise ToolPermissionError(
-            'Path is outside the allowed root.',
-            code='PATH_OUTSIDE_ALLOWED_ROOT',
-            details={'path': path_abs, 'root': root_abs, 'authorization_required': True},
+        raise ToolExecutionError(
+            f'Path {path_abs} is outside the allowed root {root_abs}.',
         )
 
 
@@ -29,11 +27,7 @@ def _compile_search_pattern(pattern: str):
     try:
         return re.compile(pattern)
     except re.error as exc:
-        raise ToolInvalidArgumentsError(
-            f'Invalid regular expression: {exc}',
-            code='INVALID_SEARCH_PATTERN',
-            details={'pattern': pattern},
-        ) from exc
+        raise ToolExecutionError(f'Invalid regular expression {pattern!r}: {exc}') from exc
 
 
 @register('builtin_tools', execute_in_sandbox=False)
@@ -59,11 +53,7 @@ def read_file(path: str, start_line: Optional[int] = None, end_line: Optional[in
     _check_root(path, root)
     path_abs = _resolve_path(path)
     if not os.path.isfile(path_abs):
-        raise ToolDomainError(
-            f'File not found: {path_abs}',
-            code='FILE_NOT_FOUND',
-            details={'path': path_abs},
-        )
+        raise ToolExecutionError(f'File not found: {path_abs}')
     with open(path_abs, 'r', encoding=encoding, errors=errors) as f:
         lines = f.readlines()
     total_lines = len(lines)
@@ -104,11 +94,7 @@ def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
     _check_root(path, root)
     path_abs = _resolve_path(path)
     if not os.path.isdir(path_abs):
-        raise ToolDomainError(
-            f'Directory not found: {path_abs}',
-            code='DIRECTORY_NOT_FOUND',
-            details={'path': path_abs},
-        )
+        raise ToolExecutionError(f'Directory not found: {path_abs}')
     entries: List[str] = []
     if not recursive:
         entries = sorted(os.listdir(path_abs))
@@ -154,11 +140,7 @@ def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
     _check_root(path, root)
     path_abs = _resolve_path(path)
     if not os.path.isdir(path_abs):
-        raise ToolDomainError(
-            f'Directory not found: {path_abs}',
-            code='DIRECTORY_NOT_FOUND',
-            details={'path': path_abs},
-        )
+        raise ToolExecutionError(f'Directory not found: {path_abs}')
     regex = _compile_search_pattern(pattern)
     results: List[Dict[str, str]] = []
     for dirpath, _, filenames in os.walk(path_abs):
@@ -229,16 +211,10 @@ def write_file(path: str, content: str, mode: str = 'overwrite', encoding: str =
     _check_root(path, root)
     path_abs = _resolve_path(path)
     if mode not in ('overwrite', 'append'):
-        raise ToolInvalidArgumentsError(
-            'mode must be "overwrite" or "append".',
-            code='INVALID_WRITE_MODE',
-            details={'mode': mode},
-        )
+        raise ToolExecutionError(f'Invalid write mode {mode!r}; expected "overwrite" or "append".')
     if mode == 'overwrite' and os.path.exists(path_abs) and not allow_unsafe:
-        raise ToolPermissionError(
-            'Writing to an existing file requires approval.',
-            code='FILE_OVERWRITE_REQUIRES_APPROVAL',
-            details={'path': path_abs, 'mode': mode, 'authorization_required': True},
+        raise ToolExecutionError.approval_required(
+            f'Writing to existing file {path_abs} requires approval.'
         )
     parent = os.path.dirname(path_abs)
 
@@ -266,16 +242,10 @@ def delete_file(path: str, root: Optional[str] = None, allow_unsafe: bool = Fals
     _check_root(path, root)
     path_abs = _resolve_path(path)
     if not os.path.exists(path_abs):
-        raise ToolDomainError(
-            f'File not found: {path_abs}',
-            code='FILE_NOT_FOUND',
-            details={'path': path_abs},
-        )
+        raise ToolExecutionError(f'File not found: {path_abs}')
     if not allow_unsafe:
-        raise ToolPermissionError(
-            'Deleting files requires approval.',
-            code='FILE_DELETE_REQUIRES_APPROVAL',
-            details={'path': path_abs, 'authorization_required': True},
+        raise ToolExecutionError.approval_required(
+            f'Deleting file {path_abs} requires approval.'
         )
     os.remove(path_abs)
     return {'status': 'ok', 'path': path_abs}
@@ -304,22 +274,12 @@ def move_file(src: str, dst: str, root: Optional[str] = None, allow_unsafe: bool
     src_abs = _resolve_path(src)
     dst_abs = _resolve_path(dst)
     if not os.path.exists(src_abs):
-        raise ToolDomainError(
-            f'Source file not found: {src_abs}',
-            code='SOURCE_FILE_NOT_FOUND',
-            details={'path': src_abs},
-        )
+        raise ToolExecutionError(f'Source file not found: {src_abs}')
     if os.path.exists(dst_abs) and not overwrite:
-        raise ToolDomainError(
-            f'Destination already exists: {dst_abs}',
-            code='DESTINATION_EXISTS',
-            details={'path': dst_abs},
-        )
+        raise ToolExecutionError(f'Destination already exists: {dst_abs}')
     if not allow_unsafe:
-        raise ToolPermissionError(
-            'Moving/renaming files requires approval.',
-            code='FILE_MOVE_REQUIRES_APPROVAL',
-            details={'src': src_abs, 'dst': dst_abs, 'authorization_required': True},
+        raise ToolExecutionError.approval_required(
+            f'Moving/renaming {src_abs} to {dst_abs} requires approval.'
         )
     parent = os.path.dirname(dst_abs)
     if parent and create_parents:

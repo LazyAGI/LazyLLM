@@ -9,14 +9,7 @@ import requests
 
 from lazyllm.module import ModuleBase
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
-from lazyllm.tools.agent.toolError import (
-    ToolDomainError,
-    ToolExecutionError,
-    ToolInvalidArgumentsError,
-    ToolPermissionError,
-    ToolPolicyError,
-    ToolTransientError,
-)
+from lazyllm.tools.agent.toolError import ToolExecutionError
 
 # Safe remote name: alphanumeric, underscore, hyphen only. Reject ext:: and other protocols.
 _REMOTE_NAME_RE = re.compile(r'^[a-zA-Z0-9_-]+$')
@@ -28,28 +21,11 @@ def _raise_git_failure(operation: str, result: Any) -> Any:
 
     message = str(result.get('message') or f'Git operation {operation} failed.')
     status_code = result.get('status_code')
-    details = {
-        key: value for key, value in result.items()
-        if key not in {'success', 'message'}
-    }
-    details['operation'] = operation
-    lowered = message.lower()
-    if status_code in (401, 403) or any(
-        token in lowered for token in (
-            'permission denied', 'access denied', 'forbidden', 'unauthorized', '401', '403'
-        )
-    ):
-        raise ToolPermissionError(message, code='GIT_PERMISSION_DENIED', details=details)
-    if status_code in (408, 429, 502, 503, 504) or any(
-        token in lowered for token in (
-            'timed out', 'timeout', 'temporarily unavailable', 'service unavailable',
-            'too many requests', '408', '429', '502', '503', '504'
-        )
-    ):
-        raise ToolTransientError(message, code='GIT_TEMPORARY_FAILURE', details=details)
-    if 'not supported' in lowered or 'does not support' in lowered:
-        raise ToolPolicyError(message, code='GIT_OPERATION_NOT_SUPPORTED', details=details)
-    raise ToolDomainError(message, code='GIT_OPERATION_FAILED', details=details)
+    context = f'Git operation {operation} failed'
+    if status_code is not None:
+        context += f' with HTTP {status_code}'
+    message = f'{context}: {message}'
+    raise ToolExecutionError(message)
 
 
 def _git_api(method):
@@ -63,37 +39,14 @@ def _git_api(method):
             return _raise_git_failure(operation, method(*args, **kwargs))
         except ToolExecutionError:
             raise
-        except (TimeoutError, subprocess.TimeoutExpired, requests.Timeout,
-                requests.ConnectionError) as error:
-            raise ToolTransientError(
-                str(error), code='GIT_TEMPORARY_FAILURE', details={'operation': operation}
-            ) from error
         except Exception as error:
-            status_code = getattr(getattr(error, 'response', None), 'status_code', None)
-            details = {'operation': operation}
+            response = getattr(error, 'response', None)
+            status_code = getattr(response, 'status_code', None)
+            context = f'Git operation {operation} failed'
             if status_code is not None:
-                details['status_code'] = status_code
-            lowered = str(error).lower()
-            if status_code in (401, 403) or isinstance(error, PermissionError) or any(
-                token in lowered for token in (
-                    'permission denied', 'access denied', 'forbidden', 'unauthorized', '401', '403'
-                )
-            ):
-                raise ToolPermissionError(
-                    str(error), code='GIT_PERMISSION_DENIED', details=details
-                ) from error
-            if status_code in (408, 429, 502, 503, 504) or any(
-                token in lowered for token in (
-                    'timed out', 'timeout', 'temporarily unavailable', 'service unavailable',
-                    'too many requests', '408', '429', '502', '503', '504'
-                )
-            ):
-                raise ToolTransientError(
-                    str(error), code='GIT_TEMPORARY_FAILURE', details=details
-                ) from error
-            raise ToolDomainError(
-                str(error), code='GIT_OPERATION_FAILED', details=details
-            ) from error
+                context += f' with HTTP {status_code}'
+            message = f'{context}: {error}'
+            raise ToolExecutionError(message) from error
 
     wrapped.__git_failure_boundary__ = True
     return wrapped
@@ -101,27 +54,17 @@ def _git_api(method):
 
 def _validate_remote_name(remote_name: str) -> None:
     if not remote_name or not isinstance(remote_name, str):
-        raise ToolInvalidArgumentsError(
-            'remote_name must be a non-empty string',
-            code='INVALID_GIT_REMOTE_NAME',
-            details={'remote_name': remote_name},
-        )
+        raise ToolExecutionError(f'remote_name must be a non-empty string, got {remote_name!r}.')
     if '::' in remote_name or not _REMOTE_NAME_RE.match(remote_name):
-        raise ToolInvalidArgumentsError(
+        raise ToolExecutionError(
             'remote_name must be a safe identifier (alphanumeric, underscore, hyphen). '
-            'Dangerous protocols like ext:: are not allowed.',
-            code='INVALID_GIT_REMOTE_NAME',
-            details={'remote_name': remote_name},
+            f'Dangerous protocols like ext:: are not allowed; got {remote_name!r}.',
         )
 
 
 def _sanitize_path(path: str) -> str:
     if '..' in path:
-        raise ToolInvalidArgumentsError(
-            'Path must not contain ".."',
-            code='INVALID_GIT_PATH',
-            details={'path': path},
-        )
+        raise ToolExecutionError(f'Path must not contain ".."; got {path!r}.')
     return path
 
 
@@ -193,29 +136,26 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
     def _parse_owner_repo(self, repo: str) -> Tuple[str, str]:
         parts = repo.split('/', 1)
         if len(parts) != 2:
-            raise ToolInvalidArgumentsError(
-                f'repo must be \'owner/repo\', got: {repo!r}',
-                code='INVALID_GIT_REPOSITORY',
-                details={'repo': repo},
-            )
+            raise ToolExecutionError(f'repo must be \'owner/repo\', got: {repo!r}')
         return parts[0], parts[1]
 
     def _require_repo(self) -> None:
         if not self._repo:
-            raise ToolInvalidArgumentsError(
+            raise ToolExecutionError(
                 f'repo is not set; pass repo when constructing {self.__class__.__name__} '
-                'to use repo-related APIs.',
-                code='GIT_REPOSITORY_REQUIRED',
+                'to use repo-related APIs.'
             )
 
     @staticmethod
     def _http_failure(response, message: Optional[str] = None, **details) -> Dict[str, Any]:
-        return {
+        failure_message = message or response.text or response.reason
+        failure = {
             'success': False,
-            'message': message or response.text or response.reason,
+            'message': failure_message,
             'status_code': response.status_code,
             **details,
         }
+        return failure
 
     @staticmethod
     def _raise_http_error(response, message: Optional[str] = None) -> None:
@@ -389,22 +329,11 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
             stash.clear()
         if errors:
             first_error = errors[0]
-            first_error.details.update({
-                'batch_operation': 'batch_commit_review_comments',
-                'batch_created': created,
-                'batch_failed': len(errors),
-                'batch_failures': [
-                    {
-                        'category': error.category,
-                        'code': error.code,
-                        'message': str(error),
-                        'recovery_action': error.recovery_action,
-                        'details': dict(error.details),
-                    }
-                    for error in errors
-                ],
-            })
-            raise first_error
+            message = (
+                f'Failed to submit review comments: {created} created and {len(errors)} failed. '
+                + '; '.join(str(error) for error in errors)
+            )
+            raise type(first_error)(message) from first_error
         return {'success': True, 'message': 'committed', 'created': created}
 
     @_git_api

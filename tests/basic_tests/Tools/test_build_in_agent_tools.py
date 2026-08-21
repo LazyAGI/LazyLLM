@@ -4,7 +4,7 @@ import tempfile
 import pytest
 
 from lazyllm.tools import ToolManager
-from lazyllm.tools.agent import ToolPermissionError
+from lazyllm.tools.agent import ToolExecutionError
 from lazyllm.tools.agent.file_tool import (read_file, write_file, list_dir, search_in_files,
                                            move_file, delete_file)
 from lazyllm.tools.agent.shell_tool import shell_tool
@@ -45,7 +45,7 @@ class TestShellTool(object):
         assert 'hello' in res['stdout']
 
     def test_shell_tool_needs_approval(self):
-        with pytest.raises(ToolPermissionError, match='dangerous token'):
+        with pytest.raises(ToolExecutionError, match='dangerous token'):
             shell_tool('rm -rf /tmp/does_not_exist')
 
     def test_shell_tool_permission_failure_is_structured(self):
@@ -59,15 +59,16 @@ class TestShellTool(object):
 
         result = manager(call)[0]
 
-        assert result['error']['category'] == 'PERMISSION_ERROR'
-        assert result['error']['code'] == 'SHELL_COMMAND_REQUIRES_APPROVAL'
+        assert 'requires approval' in result['message']
+        assert result['needs_approval'] is True
+        assert set(result) == {'ok', 'message', 'needs_approval'}
 
 
 class TestDownloadTool(object):
     def test_download_tool_needs_approval(self):
         with tempfile.TemporaryDirectory() as tmp:
             dst = os.path.join(tmp, 'a.txt')
-            with pytest.raises(ToolPermissionError, match='requires approval'):
+            with pytest.raises(ToolExecutionError, match='requires approval'):
                 download_file('http://example.com/a.txt', dst, root=tmp)
 
     def test_download_tool(self, monkeypatch):

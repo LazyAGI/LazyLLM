@@ -6,7 +6,7 @@ import tempfile
 import lazyllm
 import pytest
 from lazyllm.tools import ReactAgent
-from lazyllm.tools.agent import ToolDomainError
+from lazyllm.tools.agent import ToolExecutionError
 from lazyllm.cli.skills import skills as skills_cli
 from lazyllm.tools.agent.skill_manager import SkillManager
 from lazyllm.tools.fs.base import LazyLLMFSBase
@@ -272,14 +272,13 @@ class TestSkills(object):
             manager = SkillManager(dir=tmp)
 
             ok_result = manager.run_script('script-skill', 'scripts/ok.py', allow_unsafe=True)
-            with pytest.raises(ToolDomainError) as exc_info:
+            with pytest.raises(ToolExecutionError) as exc_info:
                 manager.run_script('script-skill', 'scripts/fail.py', allow_unsafe=True)
 
             assert ok_result['status'] == 'ok'
             assert ok_result['exit_code'] == 0
-            assert exc_info.value.code == 'SKILL_SCRIPT_EXECUTION_FAILED'
-            assert exc_info.value.details['exit_code'] == 7
-            assert 'bad' in exc_info.value.details['stdout']
+            assert 'exit code 7' in str(exc_info.value)
+            assert 'bad' in str(exc_info.value)
 
     def test_run_script_reports_missing_cwd_as_tool_error(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -291,13 +290,11 @@ class TestSkills(object):
                 f.write('print("ok")\n')
 
             manager = SkillManager(dir=tmp)
-            with pytest.raises(ToolDomainError) as exc_info:
+            with pytest.raises(ToolExecutionError) as exc_info:
                 manager.run_script('cwd-skill', 'scripts/ok.py', allow_unsafe=True, cwd='missing')
 
-            assert exc_info.value.code == 'SKILL_SCRIPT_PATH_NOT_FOUND'
-            assert exc_info.value.details['error_type'] == 'FileNotFoundError'
-            assert exc_info.value.details['rel_path'] == 'scripts/ok.py'
-            assert exc_info.value.details['cwd'].endswith(os.path.join('cwd-skill', 'missing'))
+            assert 'scripts/ok.py' in str(exc_info.value)
+            assert 'missing' in str(exc_info.value)
             assert 'cwd not found' in str(exc_info.value)
 
     def test_materialize_dir_preserves_paths_when_root_is_empty(self):

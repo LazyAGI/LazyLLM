@@ -23,22 +23,6 @@ from typing import *  # noqa F403, to import all types for compile_func(), do no
 
 _TOOL_CONCURRENCY_ATTR = '__lazyllm_tool_concurrency__'
 _FILE_RESOURCE_NAMESPACE = 'file'
-def _json_type(value):
-    if value is None:
-        return 'null'
-    if isinstance(value, bool):
-        return 'boolean'
-    if isinstance(value, str):
-        return 'string'
-    if isinstance(value, int):
-        return 'integer'
-    if isinstance(value, float):
-        return 'number'
-    if isinstance(value, list):
-        return 'array'
-    if isinstance(value, dict):
-        return 'object'
-    return type(value).__name__
 
 
 def _levenshtein(left, right):
@@ -61,10 +45,10 @@ def _levenshtein(left, right):
 def _closest_tool_name(requested, available):
     ranked = sorted((_levenshtein(requested, name), name) for name in set(available))
     if not ranked:
-        return None, None
+        return None
     distance, name = ranked[0]
     threshold = min(3, max(1, len(requested) // 3))
-    return (name, distance) if distance <= threshold else (None, None)
+    return name if distance <= threshold else None
 
 
 def _normalize_resource_key(key: Any):
@@ -926,27 +910,13 @@ class ToolManager(ModuleBase):
         try:
             return entry._validate_input(tool_arguments), None
         except ValidationError as error:
-            violations = []
             summaries = []
             for item in error.errors(include_url=False, include_context=True, include_input=True):
                 path = tuple(item.get('loc') or ())
                 path_text = '.'.join(str(part) for part in path) or '$'
-                violation = {
-                    'path': path_text,
-                    'type': str(item.get('type') or 'validation_error'),
-                    'message': str(item.get('msg') or 'Invalid value'),
-                }
-                if 'input' in item:
-                    violation['input'] = item['input']
-                if item.get('ctx'):
-                    violation['context'] = item['ctx']
-                violations.append(violation)
                 summaries.append(f'{path_text}: {item.get("msg") or "Invalid value"}')
             message = 'Invalid arguments: ' + '; '.join(summaries)
-            return None, tool_failure(
-                'INVALID_ARGS', 'SCHEMA_VALIDATION_FAILED', tool_name, message,
-                details={'violations': violations},
-            )
+            return None, tool_failure(message)
 
     def _format_tools(self):
         if isinstance(self._tools, List):
@@ -1025,9 +995,7 @@ class ToolManager(ModuleBase):
         name = func.get('name') if isinstance(func, dict) else None
         if not isinstance(func, dict) or not isinstance(name, str) or not name.strip() \
                 or 'arguments' not in func:
-            tool_name = str(func.get('name') or '') if isinstance(func, dict) else ''
             failure = tool_failure(
-                'INVALID_ARGS', 'TOOL_CALL_FORMAT_INVALID', tool_name,
                 f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}',
             )
             return None, failure, None
@@ -1037,17 +1005,11 @@ class ToolManager(ModuleBase):
             item for item in allowed_tool_names if item
         )
         if name not in visible_names:
-            suggested_tool, distance = _closest_tool_name(name, visible_names)
-            details = {'suggested_tool': suggested_tool}
-            if distance is not None:
-                details['edit_distance'] = distance
+            suggested_tool = _closest_tool_name(name, visible_names)
             message = f'Tool [{name}] was not exposed in this turn.'
             if suggested_tool:
                 message += f' Did you mean [{suggested_tool}]? Call it explicitly.'
-            failure = tool_failure(
-                'UNKNOWN_TOOL', 'TOOL_NOT_EXPOSED', name, message,
-                details=details,
-            )
+            failure = tool_failure(message)
             lazyllm.LOG.warning(
                 f'[ToolManager] tool {name!r} was not exposed. Visible: {visible_names}'
             )
@@ -1056,29 +1018,18 @@ class ToolManager(ModuleBase):
             arguments = ToolManager._safe_parse_json(raw_args) if isinstance(raw_args, str) else raw_args
         except (TypeError, ValueError):
             failure = tool_failure(
-                'INVALID_ARGS', 'ARGUMENTS_JSON_INVALID', name,
                 'Invalid arguments: arguments must be valid JSON.',
-                details={'violations': [{
-                    'path': '$', 'type': 'json_invalid',
-                    'message': 'Arguments must be valid JSON.', 'input': raw_args,
-                }]},
             )
             return None, failure, None
         if not isinstance(arguments, dict):
             failure = tool_failure(
-                'INVALID_ARGS', 'ARGUMENTS_NOT_OBJECT', name,
-                f'Invalid arguments: Tool [{name}] arguments must be a JSON object.',
-                details={'violations': [{
-                    'path': '$', 'type': 'type_error',
-                    'message': 'Arguments must be a JSON object.',
-                    'input': arguments, 'input_type': _json_type(arguments),
-                }]},
+                f'Invalid arguments: Tool [{name}] arguments must be a JSON object, '
+                f'got {type(arguments).__name__}.',
             )
             return None, failure, None
         tool = self._tool_call.get(name)
         if tool is None:
             failure = tool_failure(
-                'UNKNOWN_TOOL', 'TOOL_NOT_REGISTERED', name,
                 f'Tool [{name}] is no longer registered.',
             )
             return None, failure, None

@@ -4,7 +4,7 @@ import subprocess
 from typing import Dict, Optional
 
 from .toolsManager import register
-from .toolError import ToolDomainError, ToolInvalidArgumentsError, ToolPermissionError, ToolTransientError
+from .toolError import ToolExecutionError
 
 _DANGEROUS_WORD_TOKENS = [
     'rm', 'sudo', 'chmod', 'chown', 'mkfs', 'dd', 'shutdown', 'reboot', 'poweroff',
@@ -55,25 +55,15 @@ def shell_tool(cmd: str, cwd: Optional[str] = None, timeout: int = 30,
     '''
     cmd = cmd.strip()
     if not cmd:
-        raise ToolInvalidArgumentsError('cmd cannot be empty.', code='EMPTY_COMMAND')
+        raise ToolExecutionError('cmd cannot be empty.')
     if cwd is not None and not os.path.isdir(cwd):
-        raise ToolDomainError(
-            f'cwd not found: {cwd}',
-            code='WORKING_DIRECTORY_NOT_FOUND',
-            details={'cwd': cwd},
-        )
+        raise ToolExecutionError(f'cwd not found: {cwd}')
 
     dangerous = _detect_dangerous_command(cmd)
     if dangerous and not allow_unsafe:
-        raise ToolPermissionError(
-            f'Command contains potentially dangerous token: {dangerous}',
-            code='SHELL_COMMAND_REQUIRES_APPROVAL',
-            details={
-                'command': cmd,
-                'cwd': cwd or os.getcwd(),
-                'dangerous_token': dangerous,
-                'authorization_required': True,
-            },
+        raise ToolExecutionError.approval_required(
+            f'Command {cmd!r} in {cwd or os.getcwd()} contains potentially dangerous token '
+            f'{dangerous!r} and requires approval.'
         )
 
     try:
@@ -87,10 +77,8 @@ def shell_tool(cmd: str, cwd: Optional[str] = None, timeout: int = 30,
             timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
-        raise ToolTransientError(
-            f'Shell command timed out after {timeout} seconds.',
-            code='SHELL_COMMAND_TIMEOUT',
-            details={'command': cmd, 'cwd': cwd or os.getcwd(), 'timeout': timeout},
+        raise ToolExecutionError(
+            f'Shell command {cmd!r} in {cwd or os.getcwd()} timed out after {timeout} seconds.',
         ) from exc
     return {
         'status': 'ok',

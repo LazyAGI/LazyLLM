@@ -1,101 +1,29 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from lazyllm.common import HandledException
 
 
-_CATEGORY_RECOVERY_ACTION = {
-    'UNKNOWN_TOOL': 'choose_tool',
-    'INVALID_ARGS': 'fix_arguments',
-    'TRANSIENT_ERROR': 'retry_later',
-    'PERMISSION_ERROR': 'request_authorization',
-    'DOMAIN_FAILURE': 'change_plan',
-    'POLICY_ERROR': 'change_plan',
-}
-_RECOVERY_ACTIONS = frozenset(_CATEGORY_RECOVERY_ACTION.values())
-
-_TRANSIENT_ERROR_NAMES = {
-    'ConnectTimeout', 'ConnectTimeoutError', 'ConnectionError', 'ConnectionResetError',
-    'ReadTimeout', 'ReadTimeoutError', 'Timeout', 'TimeoutError',
-}
-
-
-def tool_failure(category: str, code: str, tool_name: str, message: str, *,
-                 recovery_action: Optional[str] = None,
-                 details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    if category not in _CATEGORY_RECOVERY_ACTION:
-        raise ValueError(f'unsupported tool error category: {category}')
-    action = recovery_action or _CATEGORY_RECOVERY_ACTION[category]
-    if action not in _RECOVERY_ACTIONS:
-        raise ValueError(f'unsupported tool recovery action: {action}')
-    error = {
-        'category': category,
-        'code': code,
-        'tool': tool_name,
-        'message': message,
-        'recovery_action': action,
-        'details': dict(details or {}),
-    }
-    # ``msg`` is retained as a deprecated compatibility alias. New consumers
-    # must read ``error.message``.
-    return {'ok': False, 'value': None, 'error': error, 'msg': message}
+def tool_failure(message: str, *, needs_approval: bool = False) -> Dict[str, Any]:
+    result = {'ok': False, 'message': message}
+    if needs_approval:
+        result['needs_approval'] = True
+    return result
 
 
 def tool_failure_message(result: Any, default: str = 'Tool call failed') -> str:
-    if isinstance(result, dict):
-        error = result.get('error')
-        if isinstance(error, dict) and error.get('message'):
-            return str(error['message'])
-        if result.get('msg'):
-            return str(result['msg'])
+    if isinstance(result, dict) and result.get('message'):
+        return str(result['message'])
     return default
 
 
 class ToolExecutionError(HandledException):
-    category = 'DOMAIN_FAILURE'
-    default_code = 'TOOL_EXECUTION_FAILED'
-    recovery_action = 'change_plan'
+    needs_approval = False
 
-    def __init__(self, message: str, code: Optional[str] = None,
-                 details: Optional[Dict[str, Any]] = None,
-                 recovery_action: Optional[str] = None):
-        action = recovery_action or type(self).recovery_action
-        if action not in _RECOVERY_ACTIONS:
-            raise ValueError(f'unsupported tool recovery action: {action}')
-        super().__init__(message, code, details, recovery_action)
-        self.message = message
-        self.code = code or self.default_code
-        self.details = dict(details or {})
-        self.recovery_action = action
-
-    def __str__(self) -> str:
-        return self.message
-
-
-class ToolInvalidArgumentsError(ToolExecutionError):
-    category = 'INVALID_ARGS'
-    default_code = 'INVALID_TOOL_ARGUMENTS'
-    recovery_action = 'fix_arguments'
-
-
-class ToolTransientError(ToolExecutionError):
-    category = 'TRANSIENT_ERROR'
-    default_code = 'TEMPORARY_TOOL_FAILURE'
-    recovery_action = 'retry_later'
-
-
-class ToolPermissionError(ToolExecutionError):
-    category = 'PERMISSION_ERROR'
-    default_code = 'PERMISSION_DENIED'
-    recovery_action = 'request_authorization'
-
-
-class ToolDomainError(ToolExecutionError):
-    default_code = 'TOOL_DOMAIN_FAILURE'
-
-
-class ToolPolicyError(ToolExecutionError):
-    category = 'POLICY_ERROR'
-    default_code = 'TOOL_POLICY_VIOLATION'
+    @classmethod
+    def approval_required(cls, message: str) -> 'ToolExecutionError':
+        error = cls(message)
+        error.needs_approval = True
+        return error
 
 
 def exception_failure(tool_name: str, error: Exception) -> Dict[str, Any]:
@@ -123,16 +51,12 @@ def exception_failure(tool_name: str, error: Exception) -> Dict[str, Any]:
     typed_error = next((item for item in causes if isinstance(item, ToolExecutionError)), None)
     if typed_error is not None:
         return tool_failure(
-            typed_error.category,
-            typed_error.code,
-            tool_name,
-            str(typed_error),
-            recovery_action=typed_error.recovery_action,
-            details=typed_error.details,
+            str(typed_error) or type(typed_error).__name__,
+            needs_approval=typed_error.needs_approval,
         )
 
-    error_names = {type(item).__name__ for item in causes}
-    error_text = str(causes[-1]) if causes else str(error)
+    semantic_error = causes[-1] if causes else error
+    error_text = str(semantic_error) or type(semantic_error).__name__
     status_codes = set()
     for item in causes:
         status_code = getattr(item, 'status_code', None)
@@ -141,26 +65,5 @@ def exception_failure(tool_name: str, error: Exception) -> Dict[str, Any]:
         if isinstance(status_code, int):
             status_codes.add(status_code)
 
-    if any(isinstance(item, PermissionError) for item in causes) or any(
-        'Permission' in name or 'Forbidden' in name for name in error_names
-    ) or bool(status_codes & {401, 403}):
-        details = {'status_code': min(status_codes)} if status_codes else {}
-        if 401 in status_codes:
-            details['authorization_required'] = True
-        return tool_failure(
-            'PERMISSION_ERROR', 'PERMISSION_DENIED', tool_name,
-            f'{tool_name} is not permitted: {error_text}', details=details,
-        )
-
-    if any(isinstance(item, (TimeoutError, ConnectionError)) for item in causes) or \
-            bool(error_names & _TRANSIENT_ERROR_NAMES) or bool(status_codes & {408, 429, 502, 503, 504}):
-        details = {'status_code': min(status_codes)} if status_codes else {}
-        return tool_failure(
-            'TRANSIENT_ERROR', 'TEMPORARY_TOOL_FAILURE', tool_name,
-            f'{tool_name} failed temporarily: {error_text}', details=details,
-        )
-
-    return tool_failure(
-        'DOMAIN_FAILURE', 'TOOL_EXECUTION_FAILED', tool_name,
-        f'{tool_name} failed: {error_text}',
-    )
+    status = f' (HTTP {min(status_codes)})' if status_codes else ''
+    return tool_failure(f'{tool_name} failed{status}: {error_text}')

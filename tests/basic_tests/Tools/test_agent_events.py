@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import lazyllm
 from lazyllm.tools import PlanAndSolveAgent, ReactAgent
-from lazyllm.tools.agent import ToolDomainError
+from lazyllm.tools.agent import ToolExecutionError
 from lazyllm.tools.agent.functionCall import FunctionCall
 from lazyllm.tools.agent.toolsManager import ToolManager
 
@@ -48,7 +48,7 @@ def exposed_failure(query: str) -> str:
     Args:
         query (str): Search query.
     '''
-    raise ToolDomainError('search failed', code='SEARCH_FAILED', details={'query': query})
+    raise ToolExecutionError(f'Search failed for query {query!r}.')
 
 
 def _private_tool_group():
@@ -493,12 +493,11 @@ class TestReactAgentEvents(object):
         assert agent('calculate') == 'I corrected the plan.'
         events = _read_agent_events()
         result_event = next(event for event in events if event.tag == 'tool_results')
-        error = result_event.tool_results[0]['result']['error']
-        assert error['category'] == 'INVALID_ARGS'
-        assert error['details']['violations'][0]['path'] == 'value'
+        failure = result_event.tool_results[0]['result']
+        assert 'value:' in failure['message']
         tool_message = llm.inputs[1]['input'][0]
         visible_error = json.loads(tool_message['content'].split('\n\n', 1)[0])
-        assert visible_error == {'ok': False, 'error': error}
+        assert visible_error == failure
 
     def test_prefixed_failure_keeps_exposed_name_in_error_event_and_history(self):
         exposed_name = 'github_exposed_failure'
@@ -538,16 +537,13 @@ class TestReactAgentEvents(object):
 
         assert tool_result['name'] == exposed_name
         assert tool_result['result']['ok'] is False
-        assert tool_result['result']['value'] is None
-        assert tool_result['result']['error']['tool'] == exposed_name
-        assert tool_result['result']['error']['code'] == 'SEARCH_FAILED'
-        assert tool_result['result']['error']['details'] == {'query': 'LazyLLM'}
+        assert tool_result['result'] == {
+            'ok': False,
+            'message': "Search failed for query 'LazyLLM'.",
+        }
         assert tool_message['name'] == exposed_name
         visible_result = json.loads(tool_message['content'].split('\n\n', 1)[0])
-        assert visible_result == {
-            'ok': False,
-            'error': tool_result['result']['error'],
-        }
+        assert visible_result == tool_result['result']
 
     def test_react_agent_reuses_one_tool_snapshot_per_round(self):
         llm = _FakeLLM([
@@ -592,8 +588,7 @@ class TestReactAgentEvents(object):
         first_round = result_events[0].tool_results
         assert first_round[0]['result']['ok'] is True
         assert first_round[0]['result']['value'].startswith('Activated Toolkit "private"')
-        assert first_round[1]['result']['error']['category'] == 'UNKNOWN_TOOL'
-        assert first_round[1]['result']['error']['details']['suggested_tool'] is None
+        assert 'private_status' in first_round[1]['result']['message']
         assert result_events[1].tool_results[0]['result'] == {
             'ok': True,
             'value': 'private status',

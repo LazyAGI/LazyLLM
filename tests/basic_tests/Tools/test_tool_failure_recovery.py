@@ -4,15 +4,10 @@ from typing import Dict, Literal
 
 import pytest
 
-from lazyllm.tools.agent import (
-    ToolDomainError,
-    ToolInvalidArgumentsError,
-    ToolPermissionError,
-    ToolPolicyError,
-    ToolTransientError,
-)
+from lazyllm.tools.agent import ToolExecutionError
 from lazyllm.tools.agent.toolsManager import ToolManager
 from lazyllm.tools.git import GitLab, LocalGit
+from lazyllm.tools.git.review.poster import _submit_review
 
 
 def typed_search(query: str, limit: int = 10, mode: Literal['semantic', 'keyword'] = 'semantic'):
@@ -73,11 +68,7 @@ def typed_domain_failure(resource: str):
     Args:
         resource (str): Resource name.
     '''
-    raise ToolDomainError(
-        'resource does not exist',
-        code='RESOURCE_NOT_FOUND',
-        details={'resource_type': 'document', 'resource': resource},
-    )
+    raise ToolExecutionError(f'Document resource {resource!r} does not exist.')
 
 
 def typed_policy_failure(operation: str):
@@ -86,11 +77,7 @@ def typed_policy_failure(operation: str):
     Args:
         operation (str): Rejected operation.
     '''
-    raise ToolPolicyError(
-        'operation was blocked by runtime policy',
-        code='REPEATED_TOOL_CALL',
-        details={'operation': operation},
-    )
+    raise ToolExecutionError(f'Operation {operation!r} was blocked by runtime policy.')
 
 
 def flexible_search(query: str, **kwargs):
@@ -109,8 +96,8 @@ def translated_permission_failure(resource: str):
         resource (str): Protected resource.
     '''
     try:
-        raise ToolDomainError('resource does not exist', code='RESOURCE_NOT_FOUND')
-    except ToolDomainError:
+        raise ToolExecutionError('Resource does not exist.')
+    except ToolExecutionError:
         raise PermissionError(f'access denied: {resource}') from None
 
 
@@ -128,15 +115,8 @@ def test_unknown_tool_precedes_argument_validation_and_suggests_visible_tool():
 
     result = manager(call, allowed_tool_names={'typed_search'})[0]
 
-    assert result['error']['category'] == 'UNKNOWN_TOOL'
-    assert result['error']['code'] == 'TOOL_NOT_EXPOSED'
-    assert result['error']['details'] == {
-        'suggested_tool': 'typed_search',
-        'edit_distance': 1,
-    }
-    assert result['error']['recovery_action'] == 'choose_tool'
-    assert 'retryable' not in result['error']
-    assert 'recovery_attempts_remaining' not in result['error']
+    assert 'Did you mean [typed_search]?' in result['message']
+    assert set(result) == {'ok', 'message'}
 
 
 @pytest.mark.parametrize('tool_call', [
@@ -154,8 +134,8 @@ def test_malformed_tool_call_returns_structured_format_failure(tool_call):
     result = ToolManager([typed_search])(tool_call)[0]
 
     assert result['ok'] is False
-    assert result['error']['category'] == 'INVALID_ARGS'
-    assert result['error']['code'] == 'TOOL_CALL_FORMAT_INVALID'
+    assert 'tool call' in result['message'].lower()
+    assert set(result) == {'ok', 'message'}
 
 
 def test_tool_manager_normalizes_missing_and_dictionary_arguments():
@@ -169,7 +149,7 @@ def test_tool_manager_normalizes_missing_and_dictionary_arguments():
     dictionary_result = manager(dictionary_arguments)[0]
 
     assert missing_arguments['function']['arguments'] == '{}'
-    assert missing_result['error']['code'] == 'SCHEMA_VALIDATION_FAILED'
+    assert 'query: Field required' in missing_result['message']
     assert dictionary_arguments['function']['arguments'] == '{"query": "LazyLLM"}'
     assert dictionary_result == {
         'ok': True,
@@ -182,16 +162,9 @@ def test_invalid_args_return_missing_and_type_violations():
 
     result = manager(_call('typed_search', {'limit': 'many'}))[0]
 
-    assert result['error']['category'] == 'INVALID_ARGS'
-    assert result['error']['code'] == 'SCHEMA_VALIDATION_FAILED'
-    violations = result['error']['details']['violations']
-    assert [(item['path'], item['type']) for item in violations] == [
-        ('query', 'missing'),
-        ('limit', 'int_parsing'),
-    ]
-    assert all(item['message'] for item in violations)
-    assert result['error']['recovery_action'] == 'fix_arguments'
-    assert 'query: Field required' in result['error']['message']
+    assert 'query: Field required' in result['message']
+    assert 'limit:' in result['message']
+    assert set(result) == {'ok', 'message'}
 
 
 def test_invalid_args_return_enum_and_nested_paths():
@@ -205,14 +178,12 @@ def test_invalid_args_return_enum_and_nested_paths():
         'query': 'LazyLLM', 'filters': {'limit': 'many'},
     }))[0]
 
-    enum_violation = enum_result['error']['details']['violations'][0]
-    nested_violation = nested_result['error']['details']['violations'][0]
-    assert (enum_violation['path'], enum_violation['type']) == ('mode', 'literal_error')
-    assert enum_violation['context']['expected'] == "'semantic' or 'keyword'"
-    assert (nested_violation['path'], nested_violation['type']) == ('filters.limit', 'int_parsing')
+    assert 'mode:' in enum_result['message']
+    assert "'semantic' or 'keyword'" in enum_result['message']
+    assert 'filters.limit:' in nested_result['message']
 
 
-def test_invalid_json_and_non_object_arguments_are_classified():
+def test_invalid_json_and_non_object_arguments_return_clear_messages():
     manager = ToolManager([typed_search])
     invalid_json = {
         'function': {'name': 'typed_search', 'arguments': '{not-json'},
@@ -224,9 +195,8 @@ def test_invalid_json_and_non_object_arguments_are_classified():
     invalid_result = manager(invalid_json)[0]
     object_result = manager(not_object)[0]
 
-    assert invalid_result['error']['code'] == 'ARGUMENTS_JSON_INVALID'
-    assert object_result['error']['code'] == 'ARGUMENTS_NOT_OBJECT'
-    assert object_result['error']['details']['violations'][0]['input_type'] == 'array'
+    assert 'valid JSON' in invalid_result['message']
+    assert 'JSON object, got list' in object_result['message']
 
 
 def test_repairable_json_is_parsed_before_schema_validation():
@@ -253,25 +223,22 @@ def test_fixed_schema_forbids_extra_but_kwargs_accepts_it():
         _call('flexible_search', {'query': 'LazyLLM', 'provider': 'github'}),
     )[0]
 
-    violation = fixed['error']['details']['violations'][0]
-    assert (violation['path'], violation['type']) == ('qurey', 'extra_forbidden')
+    assert 'qurey:' in fixed['message']
     assert flexible == {
         'ok': True,
         'value': {'query': 'LazyLLM', 'provider': 'github'},
     }
 
 
-def test_execution_exceptions_are_classified_without_runtime_retry():
+def test_execution_exceptions_return_clear_messages_without_runtime_retry():
     permission_manager = ToolManager([permission_tool])
     transient_manager = ToolManager([timeout_tool])
 
     permission_result = permission_manager(_call('permission_tool', {'path': '/root'}))[0]
     transient_result = transient_manager(_call('timeout_tool', {'query': 'status'}))[0]
 
-    assert permission_result['error']['category'] == 'PERMISSION_ERROR'
-    assert permission_result['error']['recovery_action'] == 'request_authorization'
-    assert transient_result['error']['category'] == 'TRANSIENT_ERROR'
-    assert transient_result['error']['recovery_action'] == 'retry_later'
+    assert 'outside the allowed scope' in permission_result['message']
+    assert 'upstream timed out' in transient_result['message']
 
 
 def test_exception_translation_from_none_hides_suppressed_context():
@@ -279,9 +246,7 @@ def test_exception_translation_from_none_hides_suppressed_context():
 
     result = manager(_call('translated_permission_failure', {'resource': 'secret'}))[0]
 
-    assert result['error']['category'] == 'PERMISSION_ERROR'
-    assert result['error']['code'] == 'PERMISSION_DENIED'
-    assert 'access denied' in result['error']['message']
+    assert 'access denied' in result['message']
 
 
 def test_returned_business_dict_is_success_and_typed_failure_is_wrapped():
@@ -290,35 +255,21 @@ def test_returned_business_dict_is_success_and_typed_failure_is_wrapped():
     )[0]
     failure = ToolManager([typed_domain_failure])(
         _call('typed_domain_failure', {'resource': 'missing'}),
-    )[0]['error']
+    )[0]
 
     assert business == {
         'ok': True,
         'value': {'success': False, 'status': 'error', 'resource': 'missing'},
     }
-    assert failure == {
-        'category': 'DOMAIN_FAILURE',
-        'code': 'RESOURCE_NOT_FOUND',
-        'tool': 'typed_domain_failure',
-        'message': 'resource does not exist',
-        'recovery_action': 'change_plan',
-        'details': {'resource_type': 'document', 'resource': 'missing'},
-    }
+    assert failure == {'ok': False, 'message': "Document resource 'missing' does not exist."}
 
 
 def test_typed_policy_failure_is_wrapped():
     failure = ToolManager([typed_policy_failure])(
         _call('typed_policy_failure', {'operation': 'search'}),
-    )[0]['error']
+    )[0]
 
-    assert failure == {
-        'category': 'POLICY_ERROR',
-        'code': 'REPEATED_TOOL_CALL',
-        'tool': 'typed_policy_failure',
-        'message': 'operation was blocked by runtime policy',
-        'recovery_action': 'change_plan',
-        'details': {'operation': 'search'},
-    }
+    assert failure == {'ok': False, 'message': "Operation 'search' was blocked by runtime policy."}
 
 
 def test_git_sdk_and_tool_manager_share_typed_failure_contract():
@@ -336,14 +287,13 @@ def test_git_sdk_and_tool_manager_share_typed_failure_contract():
     manager = ToolManager([add_issue_comment])
     call = _call('add_issue_comment', {'number': 1, 'body': 'comment'})
 
-    with pytest.raises(ToolPolicyError) as exc_info:
+    with pytest.raises(ToolExecutionError) as exc_info:
         backend.add_issue_comment(1, 'comment')
     result = manager(call)[0]
 
-    assert exc_info.value.code == 'GIT_OPERATION_NOT_SUPPORTED'
-    assert result['error']['category'] == 'POLICY_ERROR'
-    assert result['error']['code'] == 'GIT_OPERATION_NOT_SUPPORTED'
-    assert result['error']['details']['operation'] == 'add_issue_comment'
+    assert 'add_issue_comment' in str(exc_info.value)
+    assert 'add_issue_comment' in result['message']
+    assert set(result) == {'ok', 'message'}
 
 
 def test_git_success_remains_normal_business_data():
@@ -364,6 +314,15 @@ class _GitFailureStub(LocalGit):
         response = SimpleNamespace(status_code=503, text='provider-specific outage', reason='')
         return self._http_failure(response)
 
+    def rate_limit_failure(self):
+        response = SimpleNamespace(
+            status_code=403,
+            text='API rate limit exceeded',
+            reason='',
+            headers={'X-RateLimit-Remaining': '0'},
+        )
+        return self._http_failure(response)
+
     def domain_failure(self):
         return {'success': False, 'message': 'reference was not found', 'status_code': 404}
 
@@ -371,18 +330,18 @@ class _GitFailureStub(LocalGit):
         raise ValueError('invalid provider response')
 
 
-@pytest.mark.parametrize(('method_name', 'error_type', 'code'), [
-    ('permission_failure', ToolPermissionError, 'GIT_PERMISSION_DENIED'),
-    ('transient_failure', ToolTransientError, 'GIT_TEMPORARY_FAILURE'),
-    ('domain_failure', ToolDomainError, 'GIT_OPERATION_FAILED'),
-    ('runtime_value_error', ToolDomainError, 'GIT_OPERATION_FAILED'),
+@pytest.mark.parametrize('method_name', [
+    'permission_failure',
+    'transient_failure',
+    'rate_limit_failure',
+    'domain_failure',
+    'runtime_value_error',
 ])
-def test_git_sdk_classifies_failures_at_direct_call_boundary(method_name, error_type, code):
-    with pytest.raises(error_type) as exc_info:
+def test_git_sdk_normalizes_failures_at_direct_call_boundary(method_name):
+    with pytest.raises(ToolExecutionError) as exc_info:
         getattr(_GitFailureStub(), method_name)()
 
-    assert exc_info.value.code == code
-    assert exc_info.value.details['operation'] == method_name
+    assert method_name in str(exc_info.value)
 
 
 def test_git_base_public_apis_and_explicit_validation_use_typed_failures():
@@ -393,21 +352,17 @@ def test_git_base_public_apis_and_explicit_validation_use_typed_failures():
     ):
         assert getattr(getattr(backend, method_name), '__git_failure_boundary__', False)
 
-    with pytest.raises(ToolInvalidArgumentsError) as stash_error:
+    with pytest.raises(ToolExecutionError) as stash_error:
         backend.stash_review_comment(1, 'comment', 'file.py')
-    with pytest.raises(ToolInvalidArgumentsError) as remote_error:
+    with pytest.raises(ToolExecutionError) as remote_error:
         backend.push_branch('feature', remote_name='ext::helper')
 
-    assert stash_error.value.code == 'GIT_REPOSITORY_REQUIRED'
-    assert remote_error.value.code == 'INVALID_GIT_REMOTE_NAME'
+    assert 'repo is not set' in str(stash_error.value)
+    assert 'ext::helper' in str(remote_error.value)
 
 
-@pytest.mark.parametrize(('status_code', 'error_type', 'code'), [
-    (403, ToolPermissionError, 'GIT_PERMISSION_DENIED'),
-    (503, ToolTransientError, 'GIT_TEMPORARY_FAILURE'),
-])
-def test_git_provider_http_status_drives_failure_category(
-        monkeypatch, status_code, error_type, code):
+@pytest.mark.parametrize('status_code', [403, 503])
+def test_git_provider_http_status_is_preserved_in_message(monkeypatch, status_code):
     backend = GitLab(token='token', repo='owner/repo')
     response = SimpleNamespace(
         status_code=status_code,
@@ -416,20 +371,15 @@ def test_git_provider_http_status_drives_failure_category(
     )
     monkeypatch.setattr(backend, '_req', lambda *args, **kwargs: response)
 
-    with pytest.raises(error_type) as exc_info:
+    with pytest.raises(ToolExecutionError) as exc_info:
         backend.create_pull_request('feature', 'main', 'title')
 
-    assert exc_info.value.code == code
-    assert exc_info.value.details['status_code'] == status_code
-    assert exc_info.value.details['operation'] == 'create_pull_request'
+    assert f'HTTP {status_code}' in str(exc_info.value)
+    assert 'create_pull_request' in str(exc_info.value)
 
 
-@pytest.mark.parametrize(('status_code', 'error_type', 'code'), [
-    (403, ToolPermissionError, 'GIT_PERMISSION_DENIED'),
-    (503, ToolTransientError, 'GIT_TEMPORARY_FAILURE'),
-])
-def test_git_provider_helper_preserves_http_failure_category(
-        monkeypatch, status_code, error_type, code):
+@pytest.mark.parametrize('status_code', [403, 503])
+def test_git_provider_helper_preserves_http_status_message(monkeypatch, status_code):
     backend = GitLab(token='token')
     response = SimpleNamespace(
         status_code=status_code,
@@ -438,24 +388,20 @@ def test_git_provider_helper_preserves_http_failure_category(
     )
     monkeypatch.setattr(backend._session, 'get', lambda *args, **kwargs: response)
 
-    with pytest.raises(error_type) as exc_info:
+    with pytest.raises(ToolExecutionError) as exc_info:
         backend.list_user_starred_repos()
 
-    assert exc_info.value.code == code
-    assert exc_info.value.details['status_code'] == status_code
-    assert exc_info.value.details['operation'] == 'list_user_starred_repos'
+    assert f'HTTP {status_code}' in str(exc_info.value)
+    assert 'list_user_starred_repos' in str(exc_info.value)
 
 
 @pytest.mark.parametrize('submit_kwargs', [
     {'body': 'review body'},
     {'comments': [{'body': 'fallback comment'}]},
 ])
-@pytest.mark.parametrize(('status_code', 'error_type', 'code'), [
-    (403, ToolPermissionError, 'GIT_PERMISSION_DENIED'),
-    (503, ToolTransientError, 'GIT_TEMPORARY_FAILURE'),
-])
+@pytest.mark.parametrize('status_code', [403, 503])
 def test_gitlab_submit_review_checks_note_write_failures(
-        monkeypatch, submit_kwargs, status_code, error_type, code):
+        monkeypatch, submit_kwargs, status_code):
     backend = GitLab(token='token', repo='owner/repo')
     response = SimpleNamespace(
         status_code=status_code,
@@ -464,12 +410,11 @@ def test_gitlab_submit_review_checks_note_write_failures(
     )
     monkeypatch.setattr(backend, '_req', lambda *args, **kwargs: response)
 
-    with pytest.raises(error_type) as exc_info:
+    with pytest.raises(ToolExecutionError) as exc_info:
         backend.submit_review(1, 'COMMENT', **submit_kwargs)
 
-    assert exc_info.value.code == code
-    assert exc_info.value.details['status_code'] == status_code
-    assert exc_info.value.details['operation'] == 'submit_review'
+    assert f'HTTP {status_code}' in str(exc_info.value)
+    assert 'submit_review' in str(exc_info.value)
 
 
 def test_batch_review_comments_preserves_typed_failure_and_partial_progress(monkeypatch):
@@ -482,16 +427,26 @@ def test_batch_review_comments_preserves_typed_failure_and_partial_progress(monk
     backend.stash_review_comment(1, 'first', 'first.py', 1)
     backend.stash_review_comment(1, 'second', 'second.py', 2)
 
-    with pytest.raises(ToolPermissionError) as exc_info:
+    with pytest.raises(ToolExecutionError) as exc_info:
         backend.batch_commit_review_comments()
 
     error = exc_info.value
-    assert error.code == 'GIT_PERMISSION_DENIED'
-    assert error.recovery_action == 'request_authorization'
-    assert error.details['status_code'] == 403
-    assert error.details['operation'] == 'create_review_comment'
-    assert error.details['batch_operation'] == 'batch_commit_review_comments'
-    assert error.details['batch_created'] == 1
-    assert error.details['batch_failed'] == 1
-    assert error.details['batch_failures'][0]['category'] == 'PERMISSION_ERROR'
+    assert '1 created and 1 failed' in str(error)
+    assert 'HTTP 403' in str(error)
+    assert 'create_review_comment' in str(error)
     assert backend._stashed_comments() == []
+
+
+def test_review_submit_reports_failure_without_classification():
+    class Backend:
+        def __init__(self):
+            self.calls = 0
+
+        def submit_review(self, **_kwargs):
+            self.calls += 1
+            raise ToolExecutionError('GitHub API rate limit exceeded.')
+
+    backend = Backend()
+
+    assert _submit_review(backend, 1, 'sha', [], 'body') is False
+    assert backend.calls == 1

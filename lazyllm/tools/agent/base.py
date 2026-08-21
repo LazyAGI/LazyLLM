@@ -31,20 +31,18 @@ def _write_agent_data(tag: str, **kwargs):
 def _unwrap_tool_result(result: Any) -> Any:
     # Unpack structured tool results produced by ToolManager._call_tool.
     # {'ok': True,  'value': v}  → v
-    # {'ok': False, 'msg':   m}  → m  (already a human-readable error string)
+    # {'ok': False, 'message': m}  → {'ok': False, 'message': m}
     # anything else              → result  (sandbox output, parse errors, etc.)
     if isinstance(result, dict) and 'ok' in result:
         if result['ok']:
             return result.get('value', '')
-        if isinstance(result.get('error'), dict):
-            return {'ok': False, 'error': result['error']}
-        return tool_failure_message(result, repr(result))
+        return {'ok': False, 'message': tool_failure_message(result, 'Tool call failed')}
     return result
 
 
 def _stringify_tool_result(result: Any) -> str:
-    if isinstance(result, dict) and result.get('ok') is False and isinstance(result.get('error'), dict):
-        return json.dumps({'ok': False, 'error': result['error']}, ensure_ascii=False, default=str)
+    if isinstance(result, dict) and result.get('ok') is False:
+        return json.dumps(_unwrap_tool_result(result), ensure_ascii=False, default=str)
     value = _unwrap_tool_result(result)
     return str(value)
 

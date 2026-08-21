@@ -20,9 +20,7 @@ class _FailureToolManagerStub(_ToolManagerStub):
         self.calls.append(tool_calls)
         return [{
             'ok': False,
-            'value': None,
-            'error': {'message': 'canonical failure'},
-            'msg': 'legacy failure',
+            'message': 'canonical failure',
         }]
 
 

@@ -146,16 +146,7 @@ def _handle_info(manager, args):
     try:
         res = manager.get_skill(args.name, allow_large=args.allow_large)
     except ToolExecutionError as exc:
-        if exc.code == 'SKILL_NOT_FOUND':
-            lazyllm.LOG.error(f'Skill not found: {args.name}')
-        elif exc.code == 'SKILL_CONTENT_TOO_LARGE':
-            limit = exc.details.get('limit')
-            extra = f' (limit: {limit} bytes)' if limit else ''
-            lazyllm.LOG.error(
-                f'SKILL.md is too large for \'{args.name}\'. Use --allow-large to override.{extra}'
-            )
-        else:
-            lazyllm.LOG.error(f'Failed to load skill \'{args.name}\': {exc}')
+        lazyllm.LOG.error(str(exc))
         sys.exit(1)
     if res.get('status') != 'ok':
         status = res.get('status', 'error')

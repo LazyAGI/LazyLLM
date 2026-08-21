@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 import requests
-from lazyllm.tools.agent.toolError import ToolInvalidArgumentsError, ToolPolicyError
+from lazyllm.tools.agent.toolError import ToolExecutionError
 
 from ..base import LazyLLMGitBase, PrInfo, ReviewCommentInfo, _sanitize_path
 
@@ -271,10 +271,9 @@ class GitLab(LazyLLMGitBase):
 
     def list_repo_stargazers(self, page: int = 1, per_page: int = 20) -> Dict[str, Any]:
         self._require_repo()
-        raise ToolPolicyError(
-            'GitLab API does not provide an endpoint to list users who starred a project.',
-            code='GIT_OPERATION_NOT_SUPPORTED',
-            details={'operation': 'list_repo_stargazers'},
+        raise ToolExecutionError(
+            'GitLab API does not support list_repo_stargazers because it provides no endpoint '
+            'to list users who starred a project.'
         )
 
     def reply_to_review_comment(self, number: int, comment_id: Any, body: str,
@@ -295,10 +294,8 @@ class GitLab(LazyLLMGitBase):
                                discussion_id: Optional[Any] = None) -> Dict[str, Any]:
         self._require_repo()
         if not discussion_id:
-            raise ToolInvalidArgumentsError(
-                'GitLab requires discussion_id (pass as keyword argument) to resolve a discussion.',
-                code='INVALID_GIT_ARGUMENTS',
-                details={'operation': 'resolve_review_comment', 'argument': 'discussion_id'},
+            raise ToolExecutionError(
+                'GitLab resolve_review_comment requires discussion_id; pass it as a keyword argument.'
             )
         r = self._req('PUT', f'/merge_requests/{number}/discussions/{discussion_id}',
                       json={'resolved': True})

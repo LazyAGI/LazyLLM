@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import requests
 from lazyllm import config
 from lazyllm.thirdparty import jwt
-from lazyllm.tools.agent.toolError import ToolPolicyError
+from lazyllm.tools.agent.toolError import ToolExecutionError
 
 from ..base import LazyLLMGitBase, PrInfo, ReviewCommentInfo, _sanitize_path
 
@@ -380,10 +380,8 @@ class GitHub(LazyLLMGitBase):
 
     def resolve_review_comment(self, number: int, comment_id: Any) -> Dict[str, Any]:
         self._require_repo()
-        raise ToolPolicyError(
-            'GitHub REST API does not support resolving review comments; use GraphQL or the web UI.',
-            code='GIT_OPERATION_NOT_SUPPORTED',
-            details={'operation': 'resolve_review_comment'},
+        raise ToolExecutionError(
+            'GitHub REST API does not support resolve_review_comment; use GraphQL or the web UI.'
         )
 
     def get_user_info(self, username: Optional[str] = None) -> Dict[str, Any]:
