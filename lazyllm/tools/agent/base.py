@@ -151,7 +151,7 @@ class LazyLLMAgentBase(ModuleBase):
             'id': tool_call.get('id'),
             'name': tool_call.get('function', {}).get('name'),
             'arguments': tool_call.get('function', {}).get('arguments'),
-            'result': _unwrap_tool_result(tool_result),
+            'result': tool_result,
         } for tool_call, tool_result in zip(tool_calls, tool_calls_results)]
 
     def _assert_tools(self):

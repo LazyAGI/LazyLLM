@@ -48,7 +48,7 @@ def exposed_failure(query: str) -> str:
     Args:
         query (str): Search query.
     '''
-    raise ToolDomainError('search failed', code='SEARCH_FAILED')
+    raise ToolDomainError('search failed', code='SEARCH_FAILED', details={'query': query})
 
 
 def _private_tool_group():
@@ -455,8 +455,11 @@ class TestReactAgentEvents(object):
         result_event = next(event for event in events if event.tag == 'tool_results')
 
         assert result_event.tool_results[0]['result'] == {
-            'status': 'ok',
-            'content': 'Error handling reference',
+            'ok': True,
+            'value': {
+                'status': 'ok',
+                'content': 'Error handling reference',
+            },
         }
         tool_message = llm.inputs[1]['input'][0]
 
@@ -534,8 +537,17 @@ class TestReactAgentEvents(object):
         tool_message = llm.inputs[1]['input'][0]
 
         assert tool_result['name'] == exposed_name
+        assert tool_result['result']['ok'] is False
+        assert tool_result['result']['value'] is None
         assert tool_result['result']['error']['tool'] == exposed_name
+        assert tool_result['result']['error']['code'] == 'SEARCH_FAILED'
+        assert tool_result['result']['error']['details'] == {'query': 'LazyLLM'}
         assert tool_message['name'] == exposed_name
+        visible_result = json.loads(tool_message['content'].split('\n\n', 1)[0])
+        assert visible_result == {
+            'ok': False,
+            'error': tool_result['result']['error'],
+        }
 
     def test_react_agent_reuses_one_tool_snapshot_per_round(self):
         llm = _FakeLLM([
@@ -578,10 +590,14 @@ class TestReactAgentEvents(object):
         result_events = [event for event in _read_agent_events() if event.tag == 'tool_results']
 
         first_round = result_events[0].tool_results
-        assert first_round[0]['result'].startswith('Activated Toolkit "private"')
+        assert first_round[0]['result']['ok'] is True
+        assert first_round[0]['result']['value'].startswith('Activated Toolkit "private"')
         assert first_round[1]['result']['error']['category'] == 'UNKNOWN_TOOL'
         assert first_round[1]['result']['error']['details']['suggested_tool'] is None
-        assert result_events[1].tool_results[0]['result'] == 'private status'
+        assert result_events[1].tool_results[0]['result'] == {
+            'ok': True,
+            'value': 'private status',
+        }
 
     def test_function_call_round_snapshot_is_session_local(self):
         manager = ToolManager([_private_tool_group()])
@@ -596,7 +612,7 @@ class TestReactAgentEvents(object):
                     lazyllm.locals['_lazyllm_agent'] = {
                         'workspace': {'_active_groups': ['private'] if active else []},
                     }
-                    function_call._resolve_current_tools()
+                    function_call._get_current_tools(refresh=True)
                     barrier.wait()
                     snapshots[label] = function_call._get_visible_tool_names()
             except Exception as exc:

@@ -21,19 +21,6 @@ Don\'t make assumptions about what values to plug into functions.
 Ask for clarification if a user request is ambiguous.\n
 '''
 
-
-def _normalize_tool_call_arguments(tool_calls):
-    for tool_call in tool_calls if isinstance(tool_calls, list) else [tool_calls]:
-        function = tool_call.get('function') if isinstance(tool_call, dict) else None
-        if not isinstance(function, dict):
-            continue
-        arguments = function.get('arguments')
-        if arguments is None or (isinstance(arguments, str) and not arguments.strip()):
-            function['arguments'] = '{}'
-        elif isinstance(arguments, dict):
-            function['arguments'] = json.dumps(arguments, ensure_ascii=False)
-
-
 class StreamResponse():
     def __init__(self, prefix: str, prefix_color: str = None, color: str = None, stream: bool = False):
         self.stream = stream
@@ -127,19 +114,14 @@ class FunctionCall(ModuleBase):
         if hasattr(self, '_tools_manager') and self._tools_manager is not None:
             self._tools_manager.sandbox = sandbox
 
-    def _resolve_current_tools(self):
-        tools = tuple(self._tools_manager.tools_description)
+    def _get_current_tools(self, refresh: bool = False):
         snapshots = locals.get(_ROUND_TOOLS_KEY)
         if not isinstance(snapshots, dict):
             snapshots = {}
             locals[_ROUND_TOOLS_KEY] = snapshots
-        snapshots[self._module_id] = tools
-        return tools
-
-    def _get_current_tools(self):
-        snapshots = locals.get(_ROUND_TOOLS_KEY, {})
-        tools = snapshots.get(self._module_id) if isinstance(snapshots, dict) else None
-        return list(tools if tools is not None else self._resolve_current_tools())
+        if refresh or self._module_id not in snapshots:
+            snapshots[self._module_id] = tuple(self._tools_manager.tools_description)
+        return list(snapshots[self._module_id])
 
     def _get_visible_tool_names(self):
         return {
@@ -149,7 +131,7 @@ class FunctionCall(ModuleBase):
         }
 
     def _build_history(self, input: Union[str, dict, list]):
-        self._resolve_current_tools()
+        self._get_current_tools(refresh=True)
         workspace = locals['_lazyllm_agent']['workspace']
         history_idx = len(workspace.setdefault('history', []))
         budget_notice = None
@@ -212,7 +194,7 @@ class FunctionCall(ModuleBase):
                 except Exception: pass
         if tool_calls := llm_output.get('tool_calls'):
             if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
-            _normalize_tool_call_arguments(tool_calls)
+            tool_calls = self._tools_manager.normalize_tool_calls(tool_calls)
             if self._stream:
                 _write_agent_data('tool_calls', tool_calls=tool_calls)
             tool_calls_results = self._tools_manager(

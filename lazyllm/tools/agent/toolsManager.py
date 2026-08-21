@@ -1,6 +1,7 @@
 import ast
 import copy
 from dataclasses import dataclass
+import json as std_json
 import json5 as json
 import lazyllm
 import docstring_parser
@@ -865,6 +866,20 @@ class ToolManager(ModuleBase):
     def tools_info(self):
         return self._tool_call
 
+    @staticmethod
+    def normalize_tool_calls(tool_calls: Any) -> Any:
+        '''Normalize provider tool-call arguments at the ToolManager boundary.'''
+        for tool_call in tool_calls if isinstance(tool_calls, list) else [tool_calls]:
+            function = tool_call.get('function') if isinstance(tool_call, dict) else None
+            if not isinstance(function, dict):
+                continue
+            arguments = function.get('arguments')
+            if arguments is None or (isinstance(arguments, str) and not arguments.strip()):
+                function['arguments'] = '{}'
+            elif isinstance(arguments, dict):
+                function['arguments'] = std_json.dumps(arguments, ensure_ascii=False)
+        return tool_calls
+
     def sync_active_groups(self, input: Any = None, history: Optional[List[Dict[str, Any]]] = None) -> Set[str]:  # noqa C901
         '''Activate lazy Toolkits from registered input rules and structured gateway calls in history.'''
         try:
@@ -1172,7 +1187,7 @@ class ToolManager(ModuleBase):
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False,
                 allowed_tool_names: Optional[Set[str]] = None):
         if isinstance(tools, list) and not tools: return []
-        tool_calls = [tools] if isinstance(tools, dict) else tools
+        tool_calls = self.normalize_tool_calls([tools] if isinstance(tools, dict) else tools)
         if not isinstance(tool_calls, list):
             tool_calls = [tool_calls]
         invocations = [

@@ -158,6 +158,25 @@ def test_malformed_tool_call_returns_structured_format_failure(tool_call):
     assert result['error']['code'] == 'TOOL_CALL_FORMAT_INVALID'
 
 
+def test_tool_manager_normalizes_missing_and_dictionary_arguments():
+    manager = ToolManager([typed_search])
+    missing_arguments = {'function': {'name': 'typed_search'}}
+    dictionary_arguments = {
+        'function': {'name': 'typed_search', 'arguments': {'query': 'LazyLLM'}},
+    }
+
+    missing_result = manager(missing_arguments)[0]
+    dictionary_result = manager(dictionary_arguments)[0]
+
+    assert missing_arguments['function']['arguments'] == '{}'
+    assert missing_result['error']['code'] == 'SCHEMA_VALIDATION_FAILED'
+    assert dictionary_arguments['function']['arguments'] == '{"query": "LazyLLM"}'
+    assert dictionary_result == {
+        'ok': True,
+        'value': {'query': 'LazyLLM', 'limit': 10, 'mode': 'semantic'},
+    }
+
+
 def test_invalid_args_return_missing_and_type_violations():
     manager = ToolManager([typed_search])
 
