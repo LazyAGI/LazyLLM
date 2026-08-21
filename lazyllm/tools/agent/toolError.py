@@ -4,16 +4,10 @@ from lazyllm.common import HandledException
 
 
 def tool_failure(message: str, *, needs_approval: bool = False) -> Dict[str, Any]:
-    result = {'ok': False, 'message': message}
+    result = {'ok': False, 'value': str(message)}
     if needs_approval:
         result['needs_approval'] = True
     return result
-
-
-def tool_failure_message(result: Any, default: str = 'Tool call failed') -> str:
-    if isinstance(result, dict) and result.get('message'):
-        return str(result['message'])
-    return default
 
 
 class ToolExecutionError(HandledException):

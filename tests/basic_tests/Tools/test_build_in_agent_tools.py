@@ -59,9 +59,9 @@ class TestShellTool(object):
 
         result = manager(call)[0]
 
-        assert 'requires approval' in result['message']
+        assert 'requires approval' in result['value']
         assert result['needs_approval'] is True
-        assert set(result) == {'ok', 'message', 'needs_approval'}
+        assert set(result) == {'ok', 'value', 'needs_approval'}
 
 
 class TestDownloadTool(object):

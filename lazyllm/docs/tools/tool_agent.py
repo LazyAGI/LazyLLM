@@ -166,7 +166,9 @@ ToolManager是一个工具管理类，用于提供工具信息和工具调用给
 
 工具组支持多级嵌套，子节点可以是普通工具或另一个工具组（通过嵌套 ``dict`` 定义）。
 
-工具执行结果统一为 ``{'ok': True, 'value': ...}`` 或 ``{'ok': False, 'message': ...}``。
+工具执行结果统一为 ``{'ok': True, 'value': ...}`` 或 ``{'ok': False, 'value': ...}``。
+成功时 ``value`` 是工具的业务返回值，失败时 ``value`` 是提供给 Agent 的异常消息字符串；
+``ok`` 和其他外层字段由程序事件、调用追踪和渲染层使用。
 需要用户确认的失败是唯一特例，额外包含 ``'needs_approval': True``。
 普通执行路径中的工具应对正常业务数据使用 ``return``，对可预期失败抛出 ``ToolExecutionError``。
 失败消息必须自包含；工具名由外层 tool call/event 提供。参数经过兼容性 JSON 修复后仍无法解析时，
@@ -205,7 +207,9 @@ Tool groups (``ToolGroup``) support three modes:
 Tool groups support multi-level nesting; child nodes can be plain tools or another tool group (defined via a nested ``dict``).
 
 Tool execution always returns either ``{'ok': True, 'value': ...}`` or
-``{'ok': False, 'message': ...}``. On the direct execution path, tools should return normal business data and raise
+``{'ok': False, 'value': ...}``. On success, ``value`` is the tool's business return value. On failure, ``value`` is the
+exception message string exposed to the Agent; ``ok`` and the other envelope fields are consumed by program events, traces,
+and renderers. On the direct execution path, tools should return normal business data and raise
 ``ToolExecutionError`` for predictable failures. The failure message must be self-contained; the outer tool call or event
 already carries the tool name. Approval-required failures are the sole exception and additionally include
 ``'needs_approval': True``. Arguments that remain unparseable after compatibility JSON repair return a clear message;

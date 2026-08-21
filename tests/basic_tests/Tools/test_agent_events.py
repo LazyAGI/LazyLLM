@@ -51,6 +51,15 @@ def exposed_failure(query: str) -> str:
     raise ToolExecutionError(f'Search failed for query {query!r}.')
 
 
+def approval_failure(path: str) -> str:
+    '''Require approval before changing a path.
+
+    Args:
+        path (str): Path that would be changed.
+    '''
+    raise ToolExecutionError.approval_required(f'Changing {path} requires approval.')
+
+
 def _private_tool_group():
     return {
         'name': 'private',
@@ -469,7 +478,7 @@ class TestReactAgentEvents(object):
             '[Internal runtime notice] Internal ReAct rounds left: 2.'
         )
 
-    def test_react_agent_exposes_structured_tool_failure_to_next_round(self):
+    def test_react_agent_exposes_only_tool_failure_value_to_next_round(self):
         llm = _FakeLLM([
             {
                 'role': 'assistant',
@@ -494,10 +503,12 @@ class TestReactAgentEvents(object):
         events = _read_agent_events()
         result_event = next(event for event in events if event.tag == 'tool_results')
         failure = result_event.tool_results[0]['result']
-        assert 'value:' in failure['message']
+        assert failure['ok'] is False
+        assert 'value:' in failure['value']
         tool_message = llm.inputs[1]['input'][0]
-        visible_error = json.loads(tool_message['content'].split('\n\n', 1)[0])
-        assert visible_error == failure
+        visible_error = tool_message['content'].split('\n\n', 1)[0]
+        assert visible_error == failure['value']
+        assert not visible_error.startswith('{"ok"')
 
     def test_prefixed_failure_keeps_exposed_name_in_error_event_and_history(self):
         exposed_name = 'github_exposed_failure'
@@ -539,11 +550,49 @@ class TestReactAgentEvents(object):
         assert tool_result['result']['ok'] is False
         assert tool_result['result'] == {
             'ok': False,
-            'message': "Search failed for query 'LazyLLM'.",
+            'value': "Search failed for query 'LazyLLM'.",
         }
         assert tool_message['name'] == exposed_name
-        visible_result = json.loads(tool_message['content'].split('\n\n', 1)[0])
-        assert visible_result == tool_result['result']
+        visible_result = tool_message['content'].split('\n\n', 1)[0]
+        assert visible_result == tool_result['result']['value']
+
+    def test_react_agent_hides_approval_metadata_from_tool_observation(self):
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'I need to change the file.',
+                'tool_calls': [{
+                    'id': 'call-approval',
+                    'type': 'function',
+                    'function': {
+                        'name': 'approval_failure',
+                        'arguments': '{"path": "/workspace/a.txt"}',
+                    },
+                }],
+            },
+            {'role': 'assistant', 'content': 'Approval is required.'},
+        ])
+        agent = ReactAgent(
+            llm=llm,
+            tools=[approval_failure],
+            max_retries=3,
+            stream=True,
+            enable_builtin_tools=False,
+        )
+
+        assert agent('change the file') == 'Approval is required.'
+        event = next(item for item in _read_agent_events() if item.tag == 'tool_results')
+        result = event.tool_results[0]['result']
+        tool_message = llm.inputs[1]['input'][0]
+
+        assert result == {
+            'ok': False,
+            'value': 'Changing /workspace/a.txt requires approval.',
+            'needs_approval': True,
+        }
+        visible_result = tool_message['content'].split('\n\n', 1)[0]
+        assert visible_result == result['value']
+        assert 'needs_approval' not in visible_result
 
     def test_react_agent_reuses_one_tool_snapshot_per_round(self):
         llm = _FakeLLM([
@@ -588,7 +637,7 @@ class TestReactAgentEvents(object):
         first_round = result_events[0].tool_results
         assert first_round[0]['result']['ok'] is True
         assert first_round[0]['result']['value'].startswith('Activated Toolkit "private"')
-        assert 'private_status' in first_round[1]['result']['message']
+        assert 'private_status' in first_round[1]['result']['value']
         assert result_events[1].tool_results[0]['result'] == {
             'ok': True,
             'value': 'private status',

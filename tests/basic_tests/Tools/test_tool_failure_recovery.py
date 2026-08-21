@@ -115,8 +115,8 @@ def test_unknown_tool_precedes_argument_validation_and_suggests_visible_tool():
 
     result = manager(call, allowed_tool_names={'typed_search'})[0]
 
-    assert 'Did you mean [typed_search]?' in result['message']
-    assert set(result) == {'ok', 'message'}
+    assert 'Did you mean [typed_search]?' in result['value']
+    assert set(result) == {'ok', 'value'}
 
 
 @pytest.mark.parametrize('tool_call', [
@@ -134,8 +134,8 @@ def test_malformed_tool_call_returns_structured_format_failure(tool_call):
     result = ToolManager([typed_search])(tool_call)[0]
 
     assert result['ok'] is False
-    assert 'tool call' in result['message'].lower()
-    assert set(result) == {'ok', 'message'}
+    assert 'tool call' in result['value'].lower()
+    assert set(result) == {'ok', 'value'}
 
 
 def test_tool_manager_normalizes_missing_and_dictionary_arguments():
@@ -149,7 +149,7 @@ def test_tool_manager_normalizes_missing_and_dictionary_arguments():
     dictionary_result = manager(dictionary_arguments)[0]
 
     assert missing_arguments['function']['arguments'] == '{}'
-    assert 'query: Field required' in missing_result['message']
+    assert 'query: Field required' in missing_result['value']
     assert dictionary_arguments['function']['arguments'] == '{"query": "LazyLLM"}'
     assert dictionary_result == {
         'ok': True,
@@ -162,9 +162,9 @@ def test_invalid_args_return_missing_and_type_violations():
 
     result = manager(_call('typed_search', {'limit': 'many'}))[0]
 
-    assert 'query: Field required' in result['message']
-    assert 'limit:' in result['message']
-    assert set(result) == {'ok', 'message'}
+    assert 'query: Field required' in result['value']
+    assert 'limit:' in result['value']
+    assert set(result) == {'ok', 'value'}
 
 
 def test_invalid_args_return_enum_and_nested_paths():
@@ -178,9 +178,9 @@ def test_invalid_args_return_enum_and_nested_paths():
         'query': 'LazyLLM', 'filters': {'limit': 'many'},
     }))[0]
 
-    assert 'mode:' in enum_result['message']
-    assert "'semantic' or 'keyword'" in enum_result['message']
-    assert 'filters.limit:' in nested_result['message']
+    assert 'mode:' in enum_result['value']
+    assert "'semantic' or 'keyword'" in enum_result['value']
+    assert 'filters.limit:' in nested_result['value']
 
 
 def test_invalid_json_and_non_object_arguments_return_clear_messages():
@@ -195,8 +195,8 @@ def test_invalid_json_and_non_object_arguments_return_clear_messages():
     invalid_result = manager(invalid_json)[0]
     object_result = manager(not_object)[0]
 
-    assert 'valid JSON' in invalid_result['message']
-    assert 'JSON object, got list' in object_result['message']
+    assert 'valid JSON' in invalid_result['value']
+    assert 'JSON object, got list' in object_result['value']
 
 
 def test_repairable_json_is_parsed_before_schema_validation():
@@ -223,7 +223,7 @@ def test_fixed_schema_forbids_extra_but_kwargs_accepts_it():
         _call('flexible_search', {'query': 'LazyLLM', 'provider': 'github'}),
     )[0]
 
-    assert 'qurey:' in fixed['message']
+    assert 'qurey:' in fixed['value']
     assert flexible == {
         'ok': True,
         'value': {'query': 'LazyLLM', 'provider': 'github'},
@@ -237,8 +237,8 @@ def test_execution_exceptions_return_clear_messages_without_runtime_retry():
     permission_result = permission_manager(_call('permission_tool', {'path': '/root'}))[0]
     transient_result = transient_manager(_call('timeout_tool', {'query': 'status'}))[0]
 
-    assert 'outside the allowed scope' in permission_result['message']
-    assert 'upstream timed out' in transient_result['message']
+    assert 'outside the allowed scope' in permission_result['value']
+    assert 'upstream timed out' in transient_result['value']
 
 
 def test_exception_translation_from_none_hides_suppressed_context():
@@ -246,7 +246,7 @@ def test_exception_translation_from_none_hides_suppressed_context():
 
     result = manager(_call('translated_permission_failure', {'resource': 'secret'}))[0]
 
-    assert 'access denied' in result['message']
+    assert 'access denied' in result['value']
 
 
 def test_returned_business_dict_is_success_and_typed_failure_is_wrapped():
@@ -261,7 +261,7 @@ def test_returned_business_dict_is_success_and_typed_failure_is_wrapped():
         'ok': True,
         'value': {'success': False, 'status': 'error', 'resource': 'missing'},
     }
-    assert failure == {'ok': False, 'message': "Document resource 'missing' does not exist."}
+    assert failure == {'ok': False, 'value': "Document resource 'missing' does not exist."}
 
 
 def test_typed_policy_failure_is_wrapped():
@@ -269,7 +269,7 @@ def test_typed_policy_failure_is_wrapped():
         _call('typed_policy_failure', {'operation': 'search'}),
     )[0]
 
-    assert failure == {'ok': False, 'message': "Operation 'search' was blocked by runtime policy."}
+    assert failure == {'ok': False, 'value': "Operation 'search' was blocked by runtime policy."}
 
 
 def test_git_sdk_and_tool_manager_share_typed_failure_contract():
@@ -292,8 +292,8 @@ def test_git_sdk_and_tool_manager_share_typed_failure_contract():
     result = manager(call)[0]
 
     assert 'add_issue_comment' in str(exc_info.value)
-    assert 'add_issue_comment' in result['message']
-    assert set(result) == {'ok', 'message'}
+    assert 'add_issue_comment' in result['value']
+    assert set(result) == {'ok', 'value'}
 
 
 def test_git_success_remains_normal_business_data():

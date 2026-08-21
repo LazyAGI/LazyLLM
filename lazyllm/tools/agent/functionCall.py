@@ -3,7 +3,7 @@ from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import LOG, globals as lazyllm_globals, pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable, Optional
-from .base import LazyLLMAgentBase, _write_agent_data, _stringify_tool_result, _unwrap_tool_result
+from .base import LazyLLMAgentBase, _write_agent_data
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
@@ -41,8 +41,14 @@ _COMPACTION_TRUNCATE_LEN = 200  # chars kept per old tool result
 _ROUND_TOOLS_KEY = '_function_call_round_tools'
 
 
+def _tool_result_observation(result: Any) -> Any:
+    if isinstance(result, dict) and 'ok' in result:
+        return result.get('value', '')
+    return result
+
+
 def _tool_result_stop_text(result: Any) -> Optional[str]:
-    value = _unwrap_tool_result(result)
+    value = _tool_result_observation(result)
     if not isinstance(value, dict):
         return None
     control = value.get('_agent_control')
@@ -173,7 +179,7 @@ class FunctionCall(ModuleBase):
             tool_call_results = [
                 {
                     'role': 'tool',
-                    'content': _stringify_tool_result(tool_call['tool_call_result']),
+                    'content': str(_tool_result_observation(tool_call['tool_call_result'])),
                     'tool_call_id': tool_call['id'],
                     'name': tool_call['function']['name'],
                 } for tool_call in workspace['tool_call_trace']
@@ -242,7 +248,7 @@ class FunctionCall(ModuleBase):
                         and (tc.get('function') or {}).get('name') in self._stop_tools
                     )
                     if not stop_failed:
-                        return '\n'.join(str(_unwrap_tool_result(r)) for r in tool_calls_results)
+                        return '\n'.join(str(_tool_result_observation(r)) for r in tool_calls_results)
         else:
             llm_output = llm_output['content']
         return llm_output

@@ -19,32 +19,12 @@ from .file_tool import (  # noqa: F401
 )
 from .shell_tool import shell_tool  # noqa: F401
 from .download_tool import download_file  # noqa: F401
-from .toolError import tool_failure_message
 
 
 def _write_agent_data(tag: str, **kwargs):
     payload = {'tag': tag, **kwargs}
     lazyllm.FileSystemQueue().enqueue(
         json.dumps(payload, ensure_ascii=False, default=str))
-
-
-def _unwrap_tool_result(result: Any) -> Any:
-    # Unpack structured tool results produced by ToolManager._call_tool.
-    # {'ok': True,  'value': v}  → v
-    # {'ok': False, 'message': m}  → {'ok': False, 'message': m}
-    # anything else              → result  (sandbox output, parse errors, etc.)
-    if isinstance(result, dict) and 'ok' in result:
-        if result['ok']:
-            return result.get('value', '')
-        return {'ok': False, 'message': tool_failure_message(result, 'Tool call failed')}
-    return result
-
-
-def _stringify_tool_result(result: Any) -> str:
-    if isinstance(result, dict) and result.get('ok') is False:
-        return json.dumps(_unwrap_tool_result(result), ensure_ascii=False, default=str)
-    value = _unwrap_tool_result(result)
-    return str(value)
 
 
 class LazyLLMAgentBase(ModuleBase):

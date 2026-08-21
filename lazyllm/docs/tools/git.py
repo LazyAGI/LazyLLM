@@ -19,7 +19,7 @@ Git 平台统一基类，借助 registry 注册各平台实现（如 GitHub、Gi
 子类需实现：认证方式、API 根地址、以及抽象方法。
 Agent 可通过 lazyllm.git.github / lazyllm.git.gitlab 等获取实例并调用接口。
 Git SDK 与 Agent 工具使用同一失败协议：成功返回正常结果，失败抛出 ``ToolExecutionError``。
-ToolManager 对外只返回失败消息。
+ToolManager 将结果包装为 ``ok/value`` 结构；Agent 消费 ``value``，事件和渲染层保留完整包装。
 
 Args:
     token (str): 平台 Access Token / Private Token。
@@ -34,7 +34,8 @@ Unified Git platform base; implementations (GitHub, GitLab, Gitee, GitCode) are 
 Subclasses implement auth, API base URL, and abstract methods.
 Agents get instances via lazyllm.git.github / lazyllm.git.gitlab etc.
 The Git SDK and Agent tools share one failure contract: successful calls return normal results, while failures raise
-``ToolExecutionError``. ToolManager exposes only the failure message.
+``ToolExecutionError``. ToolManager wraps results in an ``ok/value`` envelope; Agents consume ``value`` while events and
+renderers preserve the complete envelope.
 
 Args:
     token (str): Platform access token or private token.
