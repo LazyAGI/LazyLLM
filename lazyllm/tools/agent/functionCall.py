@@ -54,6 +54,38 @@ def _tool_result_stop_text(result: Any) -> Optional[str]:
     return final_text.strip()
 
 
+def _split_current_tool_input(
+    chat_history: List[Dict[str, Any]],
+    tool_call_results: List[Dict[str, Any]],
+) -> tuple:
+    # Compacted history includes current-round tools; ChatPrompter also extends
+    # `input` onto history. Split those tools out so they are not duplicated.
+    id_order = [item.get('tool_call_id') for item in tool_call_results]
+    id_set = {item_id for item_id in id_order if item_id is not None}
+    by_id = {}
+    remainder = []
+    unmatched_tools = []
+    for message in chat_history:
+        tool_id = message.get('tool_call_id')
+        if message.get('role') == 'tool' and tool_id in id_set:
+            by_id[tool_id] = message
+        elif message.get('role') == 'tool' and not tool_id and id_set:
+            unmatched_tools.append(message)
+        else:
+            remainder.append(message)
+    ordered = []
+    unused = list(unmatched_tools)
+    for original in tool_call_results:
+        tool_id = original.get('tool_call_id')
+        if tool_id in by_id:
+            ordered.append(by_id[tool_id])
+        elif unused:
+            ordered.append(unused.pop(0))
+        else:
+            ordered.append(original)
+    return remainder, ordered
+
+
 def _compact_chat_history(history: List[Dict[str, Any]], keep_full_turns: int) -> List[Dict[str, Any]]:
     # identify tool-result message indices (role == 'tool'), from oldest to newest
     tool_indices = [i for i, m in enumerate(history) if m.get('role') == 'tool']
@@ -85,7 +117,9 @@ class FunctionCall(ModuleBase):
                  stream: bool = False, _prompt: str = None, _tool_manager: Optional[ToolManager] = None,
                  skill_manager=None, sandbox: Optional[LazyLLMSandboxBase] = None,
                  keep_full_turns: int = 0, stop_tools: Optional[List[str]] = None,
-                 round_limit: Optional[int] = None):
+                 round_limit: Optional[int] = None,
+                 history_compactor: Optional[Callable[[List[Dict[str, Any]], int], List[Dict[str, Any]]]] = None,
+                 runtime_observer: Optional[Callable[..., Any]] = None):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
@@ -97,8 +131,10 @@ class FunctionCall(ModuleBase):
         self._skill_manager = skill_manager
         self._stream = stream
         self._keep_full_turns = keep_full_turns
+        self._history_compactor = history_compactor
         self._stop_tools: set = set(stop_tools) if stop_tools else set()
         self._round_limit = round_limit
+        self._runtime_observer = runtime_observer
         prompt = _prompt or FC_PROMPT
         self._prompter = ChatPrompter(
             instruction={'system': prompt, 'user': ''},
@@ -125,20 +161,89 @@ class FunctionCall(ModuleBase):
         if hasattr(self, '_tools_manager') and self._tools_manager is not None:
             self._tools_manager.sandbox = sandbox
 
+    def _observe_runtime(self, event: str, **payload):
+        if self._runtime_observer is None:
+            return
+        try:
+            self._runtime_observer(event, **payload, sid=lazyllm_globals._sid)
+        except Exception:
+            pass
+
+    def _prepare_round(self, workspace: Dict[str, Any]) -> tuple:
+        if self._round_limit is None:
+            return None, None
+        current_round = int(workspace.get('_react_round_number', 0)) + 1
+        workspace['_react_round_number'] = current_round
+        round_limit = int(workspace.get('_react_round_limit', self._round_limit))
+        remaining_rounds = max(0, round_limit - current_round)
+        LOG.info(
+            f'[ReactAgent] [ROUND_BUDGET] sid={lazyllm_globals._sid} current_round={current_round} '
+            f'round_limit={round_limit} remaining_rounds={remaining_rounds}'
+        )
+        self._observe_runtime(
+            'turn_start',
+            round=current_round,
+            round_limit=round_limit,
+            remaining_rounds=remaining_rounds,
+        )
+        return current_round, f'[Internal runtime notice] Internal ReAct rounds left: {remaining_rounds}.'
+
+    def _compact_history(self, history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if self._history_compactor is not None:
+            return self._history_compactor(history, self._keep_full_turns)
+        if self._keep_full_turns > 0:
+            return _compact_chat_history(history, self._keep_full_turns)
+        return history
+
+    def _notify_history_ready(
+        self,
+        workspace: Dict[str, Any],
+        current_round: Optional[int],
+        history: List[Dict[str, Any]],
+    ):
+        self._observe_runtime(
+            'history_ready',
+            round=current_round or workspace.get('_react_round_number'),
+            history=history,
+        )
+
+    def _build_tool_call_input(
+        self,
+        input: Dict[str, Any],
+        workspace: Dict[str, Any],
+        budget_notice: Optional[str],
+        current_round: Optional[int],
+    ) -> Dict[str, Any]:
+        tool_call_results = [
+            {
+                'role': 'tool',
+                'content': str(_unwrap_tool_result(tool_call['tool_call_result'])),
+                'tool_call_id': tool_call['id'],
+                'name': tool_call['function']['name'],
+            } for tool_call in workspace['tool_call_trace']
+        ]
+        if budget_notice and tool_call_results:
+            tool_call_results[-1] = {
+                **tool_call_results[-1],
+                'content': f'{tool_call_results[-1]["content"]}\n\n{budget_notice}',
+            }
+        workspace['history'].append({
+            'role': 'assistant',
+            'content': input.get('content', ''),
+            'tool_calls': input.get('tool_calls', []),
+            'reasoning_content': input.get('reasoning_content', ''),
+        })
+        workspace['history'].extend(tool_call_results)
+        chat_history = self._compact_history(workspace['history'][:])
+        remainder, compacted_tools = _split_current_tool_input(chat_history, tool_call_results)
+        locals['chat_history'][self._llm._module_id] = remainder
+        self._notify_history_ready(workspace, current_round, remainder + compacted_tools)
+        return {'input': compacted_tools}
+
     def _build_history(self, input: Union[str, dict, list]):
         workspace = locals['_lazyllm_agent']['workspace']
         history_idx = len(workspace.setdefault('history', []))
-        budget_notice = None
-        if self._round_limit is not None:
-            current_round = int(workspace.get('_react_round_number', 0)) + 1
-            workspace['_react_round_number'] = current_round
-            round_limit = int(workspace.get('_react_round_limit', self._round_limit))
-            remaining_rounds = max(0, round_limit - current_round)
-            LOG.info(
-                f'[ReactAgent] [ROUND_BUDGET] sid={lazyllm_globals._sid} current_round={current_round} '
-                f'round_limit={round_limit} remaining_rounds={remaining_rounds}'
-            )
-            budget_notice = f'[Internal runtime notice] Internal ReAct rounds left: {remaining_rounds}.'
+        current_round, budget_notice = self._prepare_round(workspace)
 
         if isinstance(input, str):
             workspace['history'].append({'role': 'user', 'content': input})
@@ -151,32 +256,10 @@ class FunctionCall(ModuleBase):
                 {'role': 'user', 'content': input.get('content', '')}
             )
         elif isinstance(input, dict):
-            tool_call_results = [
-                {
-                    'role': 'tool',
-                    'content': str(_unwrap_tool_result(tool_call['tool_call_result'])),
-                    'tool_call_id': tool_call['id'],
-                    'name': tool_call['function']['name'],
-                } for tool_call in workspace['tool_call_trace']
-            ]
-            if budget_notice and tool_call_results:
-                tool_call_results[-1] = {
-                    **tool_call_results[-1],
-                    'content': f'{tool_call_results[-1]["content"]}\n\n{budget_notice}',
-                }
-            workspace['history'].append({
-                'role': 'assistant',
-                'content': input.get('content', ''),
-                'tool_calls': input.get('tool_calls', []),
-                'reasoning_content': input.get('reasoning_content', ''),
-            })
-            input = {'input': tool_call_results}
-            history_idx += 1
-            workspace['history'].extend(tool_call_results)
-        chat_history = workspace['history'][:history_idx]
-        if self._keep_full_turns > 0:
-            chat_history = _compact_chat_history(chat_history, self._keep_full_turns)
+            return self._build_tool_call_input(input, workspace, budget_notice, current_round)
+        chat_history = self._compact_history(workspace['history'][:history_idx])
         locals['chat_history'][self._llm._module_id] = chat_history
+        self._notify_history_ready(workspace, current_round, chat_history)
         return input
 
     def _post_action(self, llm_output: Dict[str, Any]):  # noqa: C901
@@ -186,6 +269,7 @@ class FunctionCall(ModuleBase):
                     llm_output['tool_calls'] = [{'function': {'name': match.group(1),
                                                               'arguments': json.loads(match.group(2))}}]
                 except Exception: pass
+        has_tools = bool(llm_output.get('tool_calls'))
         if tool_calls := llm_output.get('tool_calls'):
             if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
             tool_calls = self._tools_manager._normalize_tool_calls(tool_calls)
@@ -220,9 +304,33 @@ class FunctionCall(ModuleBase):
                         and (tc.get('function') or {}).get('name') in self._stop_tools
                     )
                     if not stop_failed:
+                        if self._runtime_observer:
+                            try:
+                                workspace = locals['_lazyllm_agent']['workspace']
+                                self._runtime_observer(
+                                    'turn_end',
+                                    round=workspace.get('_react_round_number'),
+                                    has_tools=True,
+                                    stop_tool=True,
+                                    sid=lazyllm_globals._sid,
+                                )
+                            except Exception:
+                                pass
                         return '\n'.join(str(_unwrap_tool_result(r)) for r in tool_calls_results)
         else:
             llm_output = llm_output['content']
+        if self._runtime_observer:
+            try:
+                workspace = locals['_lazyllm_agent']['workspace']
+                self._runtime_observer(
+                    'turn_end',
+                    round=workspace.get('_react_round_number'),
+                    has_tools=has_tools,
+                    final=not has_tools,
+                    sid=lazyllm_globals._sid,
+                )
+            except Exception:
+                pass
         return llm_output
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
