@@ -30,6 +30,17 @@ from ..utils import (
 )
 
 
+_IMAGE_RESOURCE_FACT_PATTERN = re.compile(
+    r'^\s*[^:\n]+\.(?:avif|gif|jpe?g|png|svg|webp)\s*:\s*',
+    re.IGNORECASE,
+)
+_VISUAL_DIRECTIVE_PATTERN = re.compile(
+    r'(?:必须|务必|只能|仅限|禁止|不得|不要|插入|放入|嵌入|复用|生成|改用|替换|替代|图片位置)'
+    r'|\b(?:must|only|never|insert|embed|reuse|generate|replace|substitute)\b',
+    re.IGNORECASE,
+)
+
+
 class WriterPlanningTools(WriterToolBase):
     __public_apis__ = [
         'generate_outline',
@@ -779,7 +790,11 @@ class WriterPlanningTools(WriterToolBase):
             self._normalize_cross_references(
                 instruction, node_id_by_ref, visual_targets,
             )
-            self._bind_visual_references(instruction, needs_by_ref.get(key, []))
+            section_needs = needs_by_ref.get(key, [])
+            self._bind_visual_references(instruction, section_needs)
+            self._drop_out_of_scope_visual_constraints(
+                instruction, section_needs, visual_targets,
+            )
             normalized.append(instruction)
 
         self._set_cross_reference_targets(
@@ -865,6 +880,22 @@ class WriterPlanningTools(WriterToolBase):
                 'caption': need.purpose or instruction.section_title,
             })
         instruction.meta['cross_references'] = references
+
+    @staticmethod
+    def _drop_out_of_scope_visual_constraints(
+        instruction: SectionInstruction,
+        section_needs: List[Any],
+        visual_targets: set[str],
+    ) -> None:
+        if not visual_targets or section_needs:
+            return
+        instruction.fact_constraints = [
+            constraint for constraint in instruction.fact_constraints
+            if not (
+                _IMAGE_RESOURCE_FACT_PATTERN.search(constraint)
+                and _VISUAL_DIRECTIVE_PATTERN.search(constraint)
+            )
+        ]
 
     @classmethod
     def _normalize_cross_references(
@@ -1165,6 +1196,9 @@ class WriterPlanningTools(WriterToolBase):
             instruction, node_id_by_original, visual_targets,
         )
         self._bind_visual_references(instruction, section_needs)
+        self._drop_out_of_scope_visual_constraints(
+            instruction, section_needs, visual_targets,
+        )
         return instruction
 
     @staticmethod
