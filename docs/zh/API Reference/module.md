@@ -196,6 +196,10 @@
     options:
       members:
 
+::: lazyllm.module.llms.onlinemodule.supplier.orcarouter.OrcaRouterChat
+    options:
+      members:
+
 ::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoText2Image
     options:
       members:

@@ -456,6 +456,12 @@ MODEL_MAPPING = {
     'deepseek-v4-flash': 'llm',
     'deepseek-v4-pro': 'llm',
 
+    # ===== OrcaRouter (gateway) =====
+    'orcarouter/auto': 'llm',
+    'orcarouter/fusion': 'llm',
+    'orcarouter/fusion-flash': 'llm',
+    'orcarouter/fusion-mini': 'llm',
+
     # ===== SiliconFlow =====
     # free speech2text model
     'FunAudioLLM/SenseVoiceSmall': 'stt',

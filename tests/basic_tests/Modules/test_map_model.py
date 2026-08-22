@@ -9,7 +9,11 @@ test_models = {
         'sensechat-128k',
         'glm-4-5-airx',
         'qwen3-coder-plus-2025-09-23',
-        'deepseek-v3-1-terminus'
+        'deepseek-v3-1-terminus',
+        'orcarouter/auto',
+        'orcarouter/fusion',
+        'orcarouter/fusion-flash',
+        'orcarouter/fusion-mini'
     ],
     'vlm': [
         'moonshot-v1-128k-vision-preview',

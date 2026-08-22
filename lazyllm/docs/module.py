@@ -2683,6 +2683,47 @@ Args:
     **kwargs: Other parameters passed to base class
 """)
 
+add_chinese_doc('llms.onlinemodule.supplier.orcarouter.OrcaRouterChat', """\
+OrcaRouter 在线聊天模块，继承自 OnlineChatModuleBase。
+封装了对 [OrcaRouter](https://www.orcarouter.ai) API 的调用，用于进行多轮问答交互。
+OrcaRouter 是一个多模型统一网关，默认使用智能路由模型 `orcarouter/auto`，支持流式输出和调用链追踪。
+OrcaRouter 提供 OpenAI 兼容的 API 接口。It also runs gateway-level, zero-trust security for AI agents on the same endpoint.
+
+Args:
+    model (str): 使用的模型名称，默认为 `orcarouter/auto`。
+    base_url (str): API 基础 URL，默认为 "https://api.orcarouter.ai/v1/"。
+    api_key (Optional[str]): OrcaRouter API Key（`sk-orca-` 前缀），若未提供，则从 lazyllm.config['orcarouter_api_key'] 读取。
+    stream (bool): 是否启用流式输出，默认为 True。
+    return_trace (bool): 是否返回调用链追踪信息，默认为 False。
+    **kwargs: 其他传递给基类 OnlineChatModuleBase 的参数。
+""")
+
+add_english_doc('llms.onlinemodule.supplier.orcarouter.OrcaRouterChat', """\
+OrcaRouter online chat module, inheriting from OnlineChatModuleBase.
+Wraps the [OrcaRouter](https://www.orcarouter.ai) API for multi-turn Q&A interactions.
+OrcaRouter is a unified multi-model gateway. Defaults to the smart-routing model `orcarouter/auto`,
+supporting streaming and optional trace return. OrcaRouter provides an OpenAI-compatible API interface.
+It also runs gateway-level, zero-trust security for AI agents on the same endpoint — screening every
+prompt/response and governing every tool call on a default-deny basis, with no application code changes.
+
+Args:
+    model (str): The model name to use. Defaults to `orcarouter/auto`.
+    base_url (str): Base URL of the API, default is "https://api.orcarouter.ai/v1/".
+    api_key (Optional[str]): OrcaRouter API key (prefixed `sk-orca-`). If not provided, it is read from `lazyllm.config['orcarouter_api_key']`.
+    stream (bool): Whether to enable streaming output. Defaults to True.
+    return_trace (bool): Whether to return trace information. Defaults to False.
+    **kwargs: Additional arguments passed to the base class OnlineChatModuleBase.
+""")
+
+add_example('llms.onlinemodule.supplier.orcarouter.OrcaRouterChat', """\
+>>> import lazyllm
+>>> # Set environment variable: export LAZYLLM_ORCAROUTER_API_KEY=your_api_key
+>>> # Or create config file ~/.lazyllm/config.json: {"orcarouter_api_key": "your_api_key"}
+>>> chat = lazyllm.OnlineChatModule(source='orcarouter', model='orcarouter/auto')
+>>> response = chat('Hello, how are you?')
+>>> print(response)
+""")
+
 add_chinese_doc('llms.onlinemodule.supplier.glm.GLMEmbed', """\
 GLM嵌入模型接口类，用于调用智谱AI的文本嵌入服务。
 
