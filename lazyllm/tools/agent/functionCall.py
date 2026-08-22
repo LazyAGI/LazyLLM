@@ -9,6 +9,7 @@ from lazyllm.common.deprecated import deprecated
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
 import re
 import json
+import inspect
 
 FC_PROMPT = f'''# Tools
 
@@ -172,7 +173,7 @@ class FunctionCall(ModuleBase):
 
     def _prepare_round(self, workspace: Dict[str, Any]) -> tuple:
         if self._round_limit is None:
-            return None, None
+            return None, None, None
         current_round = int(workspace.get('_react_round_number', 0)) + 1
         workspace['_react_round_number'] = current_round
         round_limit = int(workspace.get('_react_round_limit', self._round_limit))
@@ -187,12 +188,18 @@ class FunctionCall(ModuleBase):
             round_limit=round_limit,
             remaining_rounds=remaining_rounds,
         )
-        return current_round, f'[Internal runtime notice] Internal ReAct rounds left: {remaining_rounds}.'
+        return (
+            current_round,
+            f'[Internal runtime notice] Internal ReAct rounds left: {remaining_rounds}.',
+            remaining_rounds,
+        )
 
     def _compact_history(
         self,
         history: List[Dict[str, Any]],
         current_input: Any = None,
+        workspace: Optional[Dict[str, Any]] = None,
+        remaining_rounds: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         if self._history_compactor is not None:
             prefix = _model_facing_prefix(
@@ -200,11 +207,30 @@ class FunctionCall(ModuleBase):
                 self._tools_manager,
                 self._skill_manager,
             )
+            kwargs = {
+                'prefix': prefix,
+                'current_input': current_input,
+            }
+            try:
+                signature = inspect.signature(self._history_compactor)
+                accepts_kwargs = any(
+                    parameter.kind == inspect.Parameter.VAR_KEYWORD
+                    for parameter in signature.parameters.values()
+                )
+                if workspace is not None and (
+                    accepts_kwargs or 'runtime_state' in signature.parameters
+                ):
+                    kwargs['runtime_state'] = workspace.setdefault('_history_projection_state', {})
+                if remaining_rounds is not None and (
+                    accepts_kwargs or 'remaining_rounds' in signature.parameters
+                ):
+                    kwargs['remaining_rounds'] = remaining_rounds
+            except (TypeError, ValueError):
+                pass
             return self._history_compactor(
                 history,
                 self._keep_full_turns,
-                prefix=prefix,
-                current_input=current_input,
+                **kwargs,
             )
         if self._keep_full_turns > 0:
             return _compact_chat_history(history, self._keep_full_turns)
@@ -228,6 +254,7 @@ class FunctionCall(ModuleBase):
         workspace: Dict[str, Any],
         budget_notice: Optional[str],
         current_round: Optional[int],
+        remaining_rounds: Optional[int],
     ) -> Dict[str, Any]:
         tool_call_results = [
             {
@@ -249,7 +276,12 @@ class FunctionCall(ModuleBase):
             'reasoning_content': input.get('reasoning_content', ''),
         })
         workspace['history'].extend(tool_call_results)
-        chat_history = self._compact_history(workspace['history'][:], current_input='')
+        chat_history = self._compact_history(
+            workspace['history'][:],
+            current_input='',
+            workspace=workspace,
+            remaining_rounds=remaining_rounds,
+        )
         remainder, compacted_tools = _split_current_tool_input(chat_history, tool_call_results)
         locals['chat_history'][self._llm._module_id] = remainder
         self._notify_history_ready(workspace, current_round, remainder + compacted_tools)
@@ -258,7 +290,7 @@ class FunctionCall(ModuleBase):
     def _build_history(self, input: Union[str, dict, list]):
         workspace = locals['_lazyllm_agent']['workspace']
         history_idx = len(workspace.setdefault('history', []))
-        current_round, budget_notice = self._prepare_round(workspace)
+        current_round, budget_notice, remaining_rounds = self._prepare_round(workspace)
 
         current_input = None
         if isinstance(input, str):
@@ -275,10 +307,18 @@ class FunctionCall(ModuleBase):
             )
             current_input = input.get('content', '')
         elif isinstance(input, dict):
-            return self._build_tool_call_input(input, workspace, budget_notice, current_round)
+            return self._build_tool_call_input(
+                input,
+                workspace,
+                budget_notice,
+                current_round,
+                remaining_rounds,
+            )
         chat_history = self._compact_history(
             workspace['history'][:history_idx],
             current_input=current_input,
+            workspace=workspace,
+            remaining_rounds=remaining_rounds,
         )
         locals['chat_history'][self._llm._module_id] = chat_history
         self._notify_history_ready(workspace, current_round, chat_history)
