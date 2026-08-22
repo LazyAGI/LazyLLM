@@ -4,8 +4,8 @@ from lazyllm import LOG, globals as lazyllm_globals, locals, loop, once_wrapper
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 
-from .base import LazyLLMAgentBase, _write_agent_data
-from .functionCall import FunctionCall, _compact_chat_history
+from .base import LazyLLMAgentBase, _model_facing_prefix, _write_agent_data
+from .functionCall import FunctionCall
 
 INSTRUCTION = f'''
 ## Role
@@ -114,17 +114,16 @@ class ReactAgent(LazyLLMAgentBase):
         '''Apply the identical tool-activation policy for execution and context inspection.'''
         self._tools_manager.sync_active_groups(current_input, llm_chat_history)
 
+    def _model_facing_prefix(self) -> Dict[str, Any]:
+        return _model_facing_prefix(self._prompt, self._tools_manager, self._skill_manager)
+
     def describe_context(self, llm_chat_history: Optional[List[Dict[str, Any]]] = None,
                          current_input: Any = None) -> Dict[str, Any]:
         '''Return the model-facing static context without invoking the model or tools.'''
         self._prepare_tool_context(current_input, llm_chat_history)
-        description = super().describe_context()
-        description['system_prompt'] = self._prompt
+        description = self._model_facing_prefix()
+        description['workspace'] = self._workspace
         history = list(llm_chat_history or [])
-        if self._history_compactor is not None:
-            history = self._history_compactor(history, self._keep_full_turns)
-        elif self._keep_full_turns > 0:
-            history = _compact_chat_history(history, self._keep_full_turns)
         description['history'] = history
         return description
 

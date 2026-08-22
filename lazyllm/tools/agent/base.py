@@ -37,6 +37,18 @@ def _unwrap_tool_result(result: Any) -> Any:
             return result.get('value', '')
         return str(result.get('msg', repr(result)))
     return result
+
+
+def _model_facing_prefix(system_prompt: str, tools_manager: Any, skill_manager: Any = None) -> Dict[str, Any]:
+    skills_prompt = skill_manager.build_prompt() if skill_manager else ''
+    return {
+        'system_prompt': system_prompt,
+        'tool_definitions': tools_manager.tools_description,
+        'skills_prompt': skills_prompt or '',
+        'skill_prompt_parts': skill_manager.describe_prompt() if skill_manager else [],
+    }
+
+
 class LazyLLMAgentBase(ModuleBase):
     def __init__(self, llm=None, tools: Optional[List[Union[str, Callable, Dict]]] = None,
                  max_retries: int = 5, return_trace: bool = False,
@@ -185,11 +197,8 @@ class LazyLLMAgentBase(ModuleBase):
 
     def describe_context(self) -> Dict[str, Any]:
         '''Return the model-facing static context without invoking the model or tools.'''
-        skills_prompt = self._skill_manager.build_prompt() if self._skill_manager else ''
         return {
-            'tool_definitions': self._tools_manager.tools_description,
-            'skills_prompt': skills_prompt or '',
-            'skill_prompt_parts': self._skill_manager.describe_prompt() if self._skill_manager else [],
+            **_model_facing_prefix('', self._tools_manager, self._skill_manager),
             'workspace': self._workspace,
         }
 

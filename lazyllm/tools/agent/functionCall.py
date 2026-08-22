@@ -3,7 +3,7 @@ from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import LOG, globals as lazyllm_globals, pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable, Optional
-from .base import LazyLLMAgentBase, _write_agent_data, _unwrap_tool_result
+from .base import LazyLLMAgentBase, _model_facing_prefix, _write_agent_data, _unwrap_tool_result
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
@@ -118,7 +118,7 @@ class FunctionCall(ModuleBase):
                  skill_manager=None, sandbox: Optional[LazyLLMSandboxBase] = None,
                  keep_full_turns: int = 0, stop_tools: Optional[List[str]] = None,
                  round_limit: Optional[int] = None,
-                 history_compactor: Optional[Callable[[List[Dict[str, Any]], int], List[Dict[str, Any]]]] = None,
+                 history_compactor: Optional[Callable[..., List[Dict[str, Any]]]] = None,
                  runtime_observer: Optional[Callable[..., Any]] = None):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
@@ -136,6 +136,7 @@ class FunctionCall(ModuleBase):
         self._round_limit = round_limit
         self._runtime_observer = runtime_observer
         prompt = _prompt or FC_PROMPT
+        self._system_prompt = prompt
         self._prompter = ChatPrompter(
             instruction={'system': prompt, 'user': ''},
             tools=lambda: self._tools_manager.tools_description,
@@ -188,9 +189,23 @@ class FunctionCall(ModuleBase):
         )
         return current_round, f'[Internal runtime notice] Internal ReAct rounds left: {remaining_rounds}.'
 
-    def _compact_history(self, history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _compact_history(
+        self,
+        history: List[Dict[str, Any]],
+        current_input: Any = None,
+    ) -> List[Dict[str, Any]]:
         if self._history_compactor is not None:
-            return self._history_compactor(history, self._keep_full_turns)
+            prefix = _model_facing_prefix(
+                self._system_prompt,
+                self._tools_manager,
+                self._skill_manager,
+            )
+            return self._history_compactor(
+                history,
+                self._keep_full_turns,
+                prefix=prefix,
+                current_input=current_input,
+            )
         if self._keep_full_turns > 0:
             return _compact_chat_history(history, self._keep_full_turns)
         return history
@@ -234,7 +249,7 @@ class FunctionCall(ModuleBase):
             'reasoning_content': input.get('reasoning_content', ''),
         })
         workspace['history'].extend(tool_call_results)
-        chat_history = self._compact_history(workspace['history'][:])
+        chat_history = self._compact_history(workspace['history'][:], current_input='')
         remainder, compacted_tools = _split_current_tool_input(chat_history, tool_call_results)
         locals['chat_history'][self._llm._module_id] = remainder
         self._notify_history_ready(workspace, current_round, remainder + compacted_tools)
@@ -245,19 +260,26 @@ class FunctionCall(ModuleBase):
         history_idx = len(workspace.setdefault('history', []))
         current_round, budget_notice = self._prepare_round(workspace)
 
+        current_input = None
         if isinstance(input, str):
             workspace['history'].append({'role': 'user', 'content': input})
+            current_input = input
         elif isinstance(input, dict) and 'input' in input:
             workspace['history'].append(
                 {'role': 'user', 'content': input.get('input', '')}
             )
+            current_input = input.get('input', '')
         elif isinstance(input, dict) and input.get('role') == 'user':
             workspace['history'].append(
                 {'role': 'user', 'content': input.get('content', '')}
             )
+            current_input = input.get('content', '')
         elif isinstance(input, dict):
             return self._build_tool_call_input(input, workspace, budget_notice, current_round)
-        chat_history = self._compact_history(workspace['history'][:history_idx])
+        chat_history = self._compact_history(
+            workspace['history'][:history_idx],
+            current_input=current_input,
+        )
         locals['chat_history'][self._llm._module_id] = chat_history
         self._notify_history_ready(workspace, current_round, chat_history)
         return input
