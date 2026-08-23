@@ -313,7 +313,7 @@ agent = ReactAgent(
 - 默认注入一组通用工具（文件读写/检索、Shell 执行、下载等）。
 
 危险操作的审批流程：
-- 工具对高风险操作返回 `{"status": "needs_approval", ...}`。
+- 工具对高风险操作抛出 `ToolExecutionError.approval_required(...)`；ToolManager 将其转换为包含 `ok=false` 和 `needs_approval=true` 的失败结果。
 - 由前端/编排层进行用户确认。
 - 用户确认后再以 `allow_unsafe=True` 重新调用工具。
 

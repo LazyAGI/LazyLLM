@@ -269,7 +269,7 @@ What changes when skills are enabled:
 - A default toolset is auto-added for common operations (read/list/search/write/delete/move files, shell, download).
 
 Approval flow for risky operations:
-- Tools return `{"status": "needs_approval", ...}` for dangerous actions.
+- Tools raise `ToolExecutionError.approval_required(...)` for dangerous actions; ToolManager converts it into an `ok=false`, `needs_approval=true` failure.
 - The front-end (or orchestrator) should ask for confirmation.
 - Re-run the tool with `allow_unsafe=True` only after explicit user approval.
 

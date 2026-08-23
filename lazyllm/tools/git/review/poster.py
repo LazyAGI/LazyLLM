@@ -4,13 +4,13 @@ from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import lazyllm
+from lazyllm.tools.agent.toolError import ToolExecutionError
 
 from ..base import LazyLLMGitBase
 from .utils import _Progress
 
 _BATCH_SIZE = 30          # comments per submit_review call (GitHub limit is ~50)
 _BATCH_INTERVAL = 5.0     # seconds between batches to avoid secondary rate limit
-_RATE_LIMIT_BACKOFF = [60, 120, 300]  # retry waits (seconds) on 403
 
 
 def _build_commentable_lines(hunks: List[Tuple[str, int, int, str]]) -> Dict[str, Set[int]]:
@@ -84,9 +84,10 @@ def _comment_body_text(c: Dict[str, Any], model_name: str) -> str:
 
 
 def _fetch_existing_pr_comments(backend: LazyLLMGitBase, pr_number: int) -> List[Dict[str, Any]]:
-    res = backend.list_review_comments(pr_number)
-    if not res.get('success'):
-        lazyllm.LOG.warning(f'Failed to fetch existing PR comments: {res.get("message", "unknown")}')
+    try:
+        res = backend.list_review_comments(pr_number)
+    except ToolExecutionError as error:
+        lazyllm.LOG.warning(f'Failed to fetch existing PR comments: {error}')
         return []
     raw_comments = res.get('comments') or []
     result = []
@@ -108,31 +109,25 @@ def _fetch_existing_pr_comments(backend: LazyLLMGitBase, pr_number: int) -> List
     return result
 
 
-def _submit_with_retry(
+def _submit_review(
     backend: LazyLLMGitBase,
     pr_number: int,
     head_sha: Optional[str],
     batch: List[Dict[str, Any]],
     body: str,
 ) -> bool:
-    for wait in _RATE_LIMIT_BACKOFF + [None]:
-        r = backend.submit_review(
+    try:
+        backend.submit_review(
             number=pr_number,
             event='COMMENT',
             body=body,
             comments=batch,
             commit_id=head_sha,
         )
-        if r.get('success'):
-            return True
-        status = r.get('status_code', 0)
-        if status == 403 and wait is not None:
-            lazyllm.LOG.warning(f'Rate limited (403), retrying after {wait}s...')
-            time.sleep(wait)
-            continue
-        lazyllm.LOG.warning(f'submit_review failed: {r.get("message", "unknown")[:200]}')
+        return True
+    except ToolExecutionError as error:
+        lazyllm.LOG.warning(f'submit_review failed: {str(error)[:200]}')
         return False
-    return False
 
 
 def _build_general_body(general_comments: List[Dict[str, Any]]) -> str:
@@ -212,7 +207,7 @@ def _post_review_comments(
 
     if not comments_payload:
         # Only general comments — send as a single review with no inline comments
-        ok = _submit_with_retry(backend, pr_number, head_sha, [], combined_review_body)
+        ok = _submit_review(backend, pr_number, head_sha, [], combined_review_body)
         posted = len(general_comments) if ok else 0
         return posted, ok
 
@@ -228,7 +223,7 @@ def _post_review_comments(
             prog.update(f'batch {idx + 1}/{len(batches)}: skipped (already posted)')
             continue
         body = combined_review_body if not first_sent else ''
-        ok = _submit_with_retry(backend, pr_number, head_sha, batch, body)
+        ok = _submit_review(backend, pr_number, head_sha, batch, body)
         if ok:
             first_sent = True
             posted += len(batch)

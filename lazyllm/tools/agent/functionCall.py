@@ -8,6 +8,7 @@ from .base import (
     TOOL_OBSERVATION_KEY,
     _model_facing_prefix,
     attachable_tool_observation,
+    is_tool_result_envelope,
     strip_tool_observations,
     _write_agent_data,
     _unwrap_tool_result,
@@ -47,11 +48,21 @@ class StreamResponse():
         return package(*inputs)
 
 
-_COMPACTION_TRUNCATE_LEN = 200  # chars kept per old tool result
+_ROUND_TOOLS_KEY = '_function_call_round_tools'
+
+
+def _tool_result_observation(result: Any) -> Any:
+    if is_tool_result_envelope(result):
+        if result['ok']:
+            return result.get('value', '')
+        if 'value' in result:
+            return result.get('value', '')
+        return str(result.get('msg', repr(result)))
+    return _unwrap_tool_result(result)
 
 
 def _tool_result_stop_text(result: Any) -> Optional[str]:
-    value = _unwrap_tool_result(result)
+    value = _tool_result_observation(result)
     if not isinstance(value, dict):
         return None
     control = value.get('_agent_control')
@@ -61,63 +72,6 @@ def _tool_result_stop_text(result: Any) -> Optional[str]:
     if not isinstance(final_text, str) or not final_text.strip():
         return None
     return final_text.strip()
-
-
-def _split_current_tool_input(
-    chat_history: List[Dict[str, Any]],
-    tool_call_results: List[Dict[str, Any]],
-) -> tuple:
-    # Compacted history includes current-round tools; ChatPrompter also extends
-    # `input` onto history. Split those tools out so they are not duplicated.
-    id_order = [item.get('tool_call_id') for item in tool_call_results]
-    id_set = {item_id for item_id in id_order if item_id is not None}
-    by_id = {}
-    remainder = []
-    unmatched_tools = []
-    for message in chat_history:
-        tool_id = message.get('tool_call_id')
-        if message.get('role') == 'tool' and tool_id in id_set:
-            by_id[tool_id] = message
-        elif message.get('role') == 'tool' and not tool_id and id_set:
-            unmatched_tools.append(message)
-        else:
-            remainder.append(message)
-    ordered = []
-    unused = list(unmatched_tools)
-    for original in tool_call_results:
-        tool_id = original.get('tool_call_id')
-        if tool_id in by_id:
-            ordered.append(by_id[tool_id])
-        elif unused:
-            ordered.append(unused.pop(0))
-        else:
-            ordered.append(original)
-    return remainder, ordered
-
-
-def _compact_chat_history(history: List[Dict[str, Any]], keep_full_turns: int) -> List[Dict[str, Any]]:
-    # identify tool-result message indices (role == 'tool'), from oldest to newest
-    tool_indices = [i for i, m in enumerate(history) if m.get('role') == 'tool']
-    # keep the last keep_full_turns tool results intact; truncate the rest
-    cutoff = len(tool_indices) - keep_full_turns
-    if cutoff <= 0:
-        return list(history)
-    to_truncate = set(tool_indices[:cutoff])
-    result = []
-    for i, msg in enumerate(history):
-        if i in to_truncate:
-            content = msg.get('content', '')
-            if content is None:
-                content = ''
-            if isinstance(content, list):
-                content = ' '.join(
-                    p.get('text', '') if isinstance(p, dict) else str(p) for p in content
-                )
-            if isinstance(content, str) and len(content) > _COMPACTION_TRUNCATE_LEN:
-                truncated = content[:_COMPACTION_TRUNCATE_LEN]
-                msg = dict(msg, content=f'[truncated {len(content)} chars] {truncated}...')
-        result.append(msg)
-    return result
 
 
 class FunctionCall(ModuleBase):
@@ -133,7 +87,9 @@ class FunctionCall(ModuleBase):
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
             self._sandbox = sandbox or create_sandbox()
-            self._tools_manager = ToolManager(tools, return_trace=return_trace, sandbox=self._sandbox)
+            self._tools_manager = ToolManager(
+                tools, return_trace=return_trace, sandbox=self._sandbox,
+            )
         else:
             self._tools_manager = _tool_manager
             self._sandbox = _tool_manager.sandbox
@@ -148,7 +104,7 @@ class FunctionCall(ModuleBase):
         self._system_prompt = prompt
         self._prompter = ChatPrompter(
             instruction={'system': prompt, 'user': ''},
-            tools=lambda: self._tools_manager.tools_description,
+            tools=self._get_current_tools,
             skills=self._skill_manager.build_prompt() if self._skill_manager else '',
         )
         self._llm = llm.share(
@@ -170,6 +126,22 @@ class FunctionCall(ModuleBase):
         self._sandbox = sandbox
         if hasattr(self, '_tools_manager') and self._tools_manager is not None:
             self._tools_manager.sandbox = sandbox
+
+    def _get_current_tools(self, refresh: bool = False):
+        snapshots = locals.get(_ROUND_TOOLS_KEY)
+        if not isinstance(snapshots, dict):
+            snapshots = {}
+            locals[_ROUND_TOOLS_KEY] = snapshots
+        if refresh or self._module_id not in snapshots:
+            snapshots[self._module_id] = tuple(self._tools_manager.tools_description)
+        return list(snapshots[self._module_id])
+
+    def _get_visible_tool_names(self):
+        return {
+            item.get('function', {}).get('name')
+            for item in self._get_current_tools()
+            if item.get('function', {}).get('name')
+        }
 
     def _observe_runtime(self, event: str, **payload):
         if self._runtime_observer is None:
@@ -204,46 +176,57 @@ class FunctionCall(ModuleBase):
 
     def _compact_history(
         self,
-        history: List[Dict[str, Any]],
+        prior_history: List[Dict[str, Any]],
         current_input: Any = None,
+        current_round_messages: Optional[List[Dict[str, Any]]] = None,
         workspace: Optional[Dict[str, Any]] = None,
         remaining_rounds: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
-        if self._history_compactor is not None:
-            prefix = _model_facing_prefix(
-                self._system_prompt,
-                self._tools_manager,
-                self._skill_manager,
+    ) -> tuple:
+        current = list(current_round_messages or [])
+        if self._history_compactor is None:
+            return strip_tool_observations(prior_history), strip_tool_observations(current)
+        prefix = _model_facing_prefix(
+            self._system_prompt,
+            self._tools_manager,
+            self._skill_manager,
+        )
+        kwargs = {
+            'prefix': prefix,
+            'current_input': current_input,
+            'current_round_messages': current,
+        }
+        try:
+            signature = inspect.signature(self._history_compactor)
+            accepts_kwargs = any(
+                parameter.kind == inspect.Parameter.VAR_KEYWORD
+                for parameter in signature.parameters.values()
             )
-            kwargs = {
-                'prefix': prefix,
-                'current_input': current_input,
-            }
-            try:
-                signature = inspect.signature(self._history_compactor)
-                accepts_kwargs = any(
-                    parameter.kind == inspect.Parameter.VAR_KEYWORD
-                    for parameter in signature.parameters.values()
-                )
-                if workspace is not None and (
-                    accepts_kwargs or 'runtime_state' in signature.parameters
-                ):
-                    kwargs['runtime_state'] = workspace.setdefault('_history_projection_state', {})
-                if remaining_rounds is not None and (
-                    accepts_kwargs or 'remaining_rounds' in signature.parameters
-                ):
-                    kwargs['remaining_rounds'] = remaining_rounds
-            except (TypeError, ValueError):
-                pass
-            compacted = self._history_compactor(
-                history,
-                self._keep_full_turns,
-                **kwargs,
-            )
-            return strip_tool_observations(compacted)
-        if self._keep_full_turns > 0:
-            history = _compact_chat_history(history, self._keep_full_turns)
-        return strip_tool_observations(history)
+            if workspace is not None and (
+                accepts_kwargs or 'runtime_state' in signature.parameters
+            ):
+                kwargs['runtime_state'] = workspace.setdefault('_history_projection_state', {})
+            if remaining_rounds is not None and (
+                accepts_kwargs or 'remaining_rounds' in signature.parameters
+            ):
+                kwargs['remaining_rounds'] = remaining_rounds
+            if not accepts_kwargs and 'current_round_messages' not in signature.parameters:
+                kwargs.pop('current_round_messages', None)
+            if not accepts_kwargs and 'current_input' not in signature.parameters:
+                kwargs.pop('current_input', None)
+            if not accepts_kwargs and 'prefix' not in signature.parameters:
+                kwargs.pop('prefix', None)
+        except (TypeError, ValueError):
+            pass
+        compacted = self._history_compactor(
+            prior_history,
+            self._keep_full_turns,
+            **kwargs,
+        )
+        compacted = strip_tool_observations(compacted)
+        prior_len = len(prior_history)
+        if current and len(compacted) == prior_len + len(current):
+            return compacted[:prior_len], compacted[prior_len:]
+        return compacted, strip_tool_observations(current)
 
     def _notify_history_ready(
         self,
@@ -257,20 +240,17 @@ class FunctionCall(ModuleBase):
             history=history,
         )
 
-    def _build_tool_call_input(
+    def _build_current_tool_messages(
         self,
-        input: Dict[str, Any],
         workspace: Dict[str, Any],
         budget_notice: Optional[str],
-        current_round: Optional[int],
-        remaining_rounds: Optional[int],
-    ) -> Dict[str, Any]:
+    ) -> List[Dict[str, Any]]:
         tool_call_results = []
         for tool_call in workspace['tool_call_trace']:
             raw_result = tool_call['tool_call_result']
             tool_message = {
                 'role': 'tool',
-                'content': str(_unwrap_tool_result(raw_result)),
+                'content': str(_tool_result_observation(raw_result)),
                 'tool_call_id': tool_call['id'],
                 'name': tool_call['function']['name'],
             }
@@ -283,25 +263,38 @@ class FunctionCall(ModuleBase):
                 **tool_call_results[-1],
                 'content': f'{tool_call_results[-1]["content"]}\n\n{budget_notice}',
             }
+        return tool_call_results
+
+    def _build_tool_call_input(
+        self,
+        input: Dict[str, Any],
+        workspace: Dict[str, Any],
+        budget_notice: Optional[str],
+        current_round: Optional[int],
+        remaining_rounds: Optional[int],
+    ) -> Dict[str, Any]:
+        current_round_messages = self._build_current_tool_messages(workspace, budget_notice)
         workspace['history'].append({
             'role': 'assistant',
             'content': input.get('content', ''),
             'tool_calls': input.get('tool_calls', []),
             'reasoning_content': input.get('reasoning_content', ''),
         })
-        workspace['history'].extend(tool_call_results)
-        chat_history = self._compact_history(
-            workspace['history'][:],
+        prior_history = workspace['history'][:]
+        workspace['history'].extend(current_round_messages)
+        compacted_prior, compacted_current = self._compact_history(
+            prior_history,
             current_input='',
+            current_round_messages=current_round_messages,
             workspace=workspace,
             remaining_rounds=remaining_rounds,
         )
-        remainder, compacted_tools = _split_current_tool_input(chat_history, tool_call_results)
-        locals['chat_history'][self._llm._module_id] = remainder
-        self._notify_history_ready(workspace, current_round, remainder + compacted_tools)
-        return {'input': compacted_tools}
+        locals['chat_history'][self._llm._module_id] = compacted_prior
+        self._notify_history_ready(workspace, current_round, compacted_prior + compacted_current)
+        return {'input': compacted_current}
 
     def _build_history(self, input: Union[str, dict, list]):
+        self._get_current_tools(refresh=True)
         workspace = locals['_lazyllm_agent']['workspace']
         history_idx = len(workspace.setdefault('history', []))
         current_round, budget_notice, remaining_rounds = self._prepare_round(workspace)
@@ -328,14 +321,14 @@ class FunctionCall(ModuleBase):
                 current_round,
                 remaining_rounds,
             )
-        chat_history = self._compact_history(
+        compacted_prior, _compacted_current = self._compact_history(
             workspace['history'][:history_idx],
             current_input=current_input,
             workspace=workspace,
             remaining_rounds=remaining_rounds,
         )
-        locals['chat_history'][self._llm._module_id] = chat_history
-        self._notify_history_ready(workspace, current_round, chat_history)
+        locals['chat_history'][self._llm._module_id] = compacted_prior
+        self._notify_history_ready(workspace, current_round, compacted_prior)
         return input
 
     def _post_action(self, llm_output: Dict[str, Any]):  # noqa: C901
@@ -348,11 +341,14 @@ class FunctionCall(ModuleBase):
         has_tools = bool(llm_output.get('tool_calls'))
         if tool_calls := llm_output.get('tool_calls'):
             if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
-            tool_calls = self._tools_manager._normalize_tool_calls(tool_calls)
+            tool_calls = self._tools_manager.normalize_tool_calls(tool_calls)
             llm_output['tool_calls'] = tool_calls
             if self._stream:
                 _write_agent_data('tool_calls', tool_calls=tool_calls)
-            tool_calls_results = self._tools_manager(tool_calls)
+            tool_calls_results = self._tools_manager(
+                tool_calls,
+                allowed_tool_names=self._get_visible_tool_names(),
+            )
             if self._stream:
                 _write_agent_data('tool_results',
                                   tool_results=LazyLLMAgentBase._normalize_tool_results(tool_calls,
@@ -392,7 +388,7 @@ class FunctionCall(ModuleBase):
                                 )
                             except Exception:
                                 pass
-                        return '\n'.join(str(_unwrap_tool_result(r)) for r in tool_calls_results)
+                        return '\n'.join(str(_tool_result_observation(r)) for r in tool_calls_results)
         else:
             llm_output = llm_output['content']
         if self._runtime_observer:
