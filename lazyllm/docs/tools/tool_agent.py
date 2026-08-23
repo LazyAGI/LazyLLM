@@ -973,6 +973,22 @@ Notes:
     The base class invokes it lazily on first use.
 ''')
 
+add_chinese_doc('LazyLLMAgentBase.describe_context', '''\
+返回当前面向模型的静态上下文，不调用模型或工具。
+
+**返回值：**
+
+- Dict[str, Any]: 包含 ``system_prompt``、``tool_definitions``、``skills_prompt``、``skill_prompt_parts`` 和 ``workspace``。
+''')
+
+add_english_doc('LazyLLMAgentBase.describe_context', '''\
+Return the current model-facing static context without invoking the model or tools.
+
+**Returns:**
+
+- Dict[str, Any]: Includes ``system_prompt``, ``tool_definitions``, ``skills_prompt``, ``skill_prompt_parts``, and ``workspace``.
+''')
+
 add_chinese_doc('ReactAgent', '''\
 ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
 
@@ -1062,6 +1078,30 @@ add_chinese_doc('ReactAgent.build_agent', '''\
 
 add_english_doc('ReactAgent.build_agent', '''\
 Build the internal reasoning and tool-calling loop for ReactAgent.
+''')
+
+add_chinese_doc('ReactAgent.describe_context', '''\
+返回当前面向模型的上下文预览，不调用模型、工具或 history_compactor。
+
+Args:
+    llm_chat_history (Optional[List[Dict[str, Any]]]): 已有对话历史。默认为空。
+    current_input (Any): 当前用户输入，用于同步工具组可见性。默认为 ``None``。
+
+**返回值：**
+
+- Dict[str, Any]: 在基类字段之上增加 ``history``（原始 history 的浅拷贝）。
+''')
+
+add_english_doc('ReactAgent.describe_context', '''\
+Return a model-facing context preview without invoking the model, tools, or history_compactor.
+
+Args:
+    llm_chat_history (Optional[List[Dict[str, Any]]]): Existing chat history. Defaults to empty.
+    current_input (Any): Current user input, used to sync visible tool groups. Defaults to ``None``.
+
+**Returns:**
+
+- Dict[str, Any]: Base context fields plus ``history`` (a shallow copy of the raw history).
 ''')
 
 add_chinese_doc('ReactAgent.set_stop_tools', '''\
