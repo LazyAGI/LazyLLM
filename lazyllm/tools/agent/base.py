@@ -21,22 +21,64 @@ from .shell_tool import shell_tool  # noqa: F401
 from .download_tool import download_file  # noqa: F401
 
 
+TOOL_OBSERVATION_KEY = '_lazyllm_tool_observation'
+TOOL_OBSERVATION_VERSION = 1
+
+
 def _write_agent_data(tag: str, **kwargs):
     payload = {'tag': tag, **kwargs}
     lazyllm.FileSystemQueue().enqueue(
         json.dumps(payload, ensure_ascii=False, default=str))
 
 
+def is_tool_result_envelope(result: Any) -> bool:
+    # ToolManager._call_tool envelopes: {'ok': True, 'value': v} or {'ok': False, 'msg': m}.
+    if not isinstance(result, dict):
+        return False
+    ok = result.get('ok')
+    if ok is True:
+        return 'value' in result
+    return ok is False
+
+
 def _unwrap_tool_result(result: Any) -> Any:
-    # Unpack structured tool results produced by ToolManager._call_tool.
-    # {'ok': True,  'value': v}  → v
-    # {'ok': False, 'msg':   m}  → m  (already a human-readable error string)
-    # anything else              → result  (sandbox output, parse errors, etc.)
-    if isinstance(result, dict) and 'ok' in result:
+    if is_tool_result_envelope(result):
         if result['ok']:
             return result.get('value', '')
         return str(result.get('msg', repr(result)))
     return result
+
+
+def normalize_tool_observation(result: Any) -> Dict[str, Any]:
+    if is_tool_result_envelope(result):
+        ok = bool(result.get('ok'))
+        return {
+            'version': TOOL_OBSERVATION_VERSION,
+            'ok': ok,
+            'value': result.get('value') if ok else None,
+            'error': '' if ok else str(result.get('msg', repr(result))),
+        }
+    return {
+        'version': TOOL_OBSERVATION_VERSION,
+        'ok': None,
+        'value': result,
+        'error': '',
+    }
+
+
+def attachable_tool_observation(result: Any) -> Optional[Dict[str, Any]]:
+    # Skip strings/scalars: compactors already read model-facing content.
+    if not isinstance(result, (dict, list)):
+        return None
+    return normalize_tool_observation(result)
+
+
+def strip_tool_observations(history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        {key: value for key, value in message.items() if key != TOOL_OBSERVATION_KEY}
+        if TOOL_OBSERVATION_KEY in message else message
+        for message in history
+    ]
 
 
 def _model_facing_prefix(system_prompt: str, tools_manager: Any, skill_manager: Any = None) -> Dict[str, Any]:
@@ -196,7 +238,7 @@ class LazyLLMAgentBase(ModuleBase):
         return self._workspace
 
     def describe_context(self) -> Dict[str, Any]:
-        '''Return the model-facing static context without invoking the model or tools.'''
+        # Model-facing static context; does not invoke the model or tools.
         return {
             **_model_facing_prefix('', self._tools_manager, self._skill_manager),
             'workspace': self._workspace,

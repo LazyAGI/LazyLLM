@@ -6,6 +6,11 @@ from types import SimpleNamespace
 
 import lazyllm
 from lazyllm.tools import PlanAndSolveAgent, ReactAgent
+from lazyllm.tools.agent.base import (
+    TOOL_OBSERVATION_KEY,
+    is_tool_result_envelope,
+    normalize_tool_observation,
+)
 
 
 def add_one(value: int) -> int:
@@ -434,6 +439,76 @@ class TestReactAgentEvents(object):
             f'{str({"status": "ok", "content": "Error handling reference"})}\n\n'
             '[Internal runtime notice] Internal ReAct rounds left: 2.'
         )
+
+    def test_history_compactor_receives_structured_observation_without_model_leak(self):
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'Let me read the status.',
+                'tool_calls': [{
+                    'id': 'call-status',
+                    'type': 'function',
+                    'function': {'name': 'get_status', 'arguments': '{}'},
+                }],
+            },
+            {'role': 'assistant', 'content': 'Done.'},
+        ])
+        captured = []
+
+        def capture(history, _keep, **_kwargs):
+            captured.append(copy.deepcopy(history))
+            return history
+
+        agent = ReactAgent(
+            llm=llm,
+            tools=[get_status],
+            max_retries=3,
+            history_compactor=capture,
+            enable_builtin_tools=False,
+        )
+
+        assert agent('read status') == 'Done.'
+        captured_tool = next(
+            message
+            for history in captured
+            for message in history
+            if message.get('role') == 'tool'
+        )
+        assert captured_tool[TOOL_OBSERVATION_KEY] == {
+            'version': 1,
+            'ok': True,
+            'value': {'status': 'ok', 'content': 'Error handling reference'},
+            'error': '',
+        }
+        assert all(
+            TOOL_OBSERVATION_KEY not in message
+            for invocation in llm.inputs
+            if isinstance(invocation, dict)
+            for message in invocation.get('input', [])
+        )
+        persisted_tool = next(
+            message for message in lazyllm.locals['_lazyllm_agent']['history']
+            if message.get('role') == 'tool'
+        )
+        assert persisted_tool[TOOL_OBSERVATION_KEY] == captured_tool[TOOL_OBSERVATION_KEY]
+        assert normalize_tool_observation({
+            'ok': False,
+            'value': None,
+            'msg': '[Tool Error] failed',
+        }) == {
+            'version': 1,
+            'ok': False,
+            'value': None,
+            'error': '[Tool Error] failed',
+        }
+        incidental = {'ok': 'yes', 'path': '/tmp/file', 'content': 'not an envelope'}
+        assert is_tool_result_envelope(incidental) is False
+        assert normalize_tool_observation(incidental) == {
+            'version': 1,
+            'ok': None,
+            'value': incidental,
+            'error': '',
+        }
 
     def test_react_agent_stream_emits_text_reasoning_and_tool_events(self):
         llm = _FakeLLM([

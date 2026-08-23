@@ -1,6 +1,14 @@
 from .functionCall import FunctionCall, FunctionCallAgent
 from .toolsManager import register, tool_concurrency, ToolManager
-from .base import LazyLLMAgentBase
+from .base import (
+    LazyLLMAgentBase,
+    TOOL_OBSERVATION_KEY,
+    TOOL_OBSERVATION_VERSION,
+    attachable_tool_observation,
+    is_tool_result_envelope,
+    normalize_tool_observation,
+    strip_tool_observations,
+)
 from .reactAgent import ReactAgent
 from .planAndSolveAgent import PlanAndSolveAgent
 from .rewooAgent import ReWOOAgent
@@ -11,6 +19,12 @@ from .skill_hub import install_skill
 from .todo_tool import todo_write
 
 __all__ = [
+    'TOOL_OBSERVATION_KEY',
+    'TOOL_OBSERVATION_VERSION',
+    'attachable_tool_observation',
+    'is_tool_result_envelope',
+    'normalize_tool_observation',
+    'strip_tool_observations',
     'ToolManager',
     'FunctionCall',
     'FunctionCallAgent',

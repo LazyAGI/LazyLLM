@@ -3,7 +3,15 @@ from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import LOG, globals as lazyllm_globals, pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable, Optional
-from .base import LazyLLMAgentBase, _model_facing_prefix, _write_agent_data, _unwrap_tool_result
+from .base import (
+    LazyLLMAgentBase,
+    TOOL_OBSERVATION_KEY,
+    _model_facing_prefix,
+    attachable_tool_observation,
+    strip_tool_observations,
+    _write_agent_data,
+    _unwrap_tool_result,
+)
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
@@ -227,14 +235,15 @@ class FunctionCall(ModuleBase):
                     kwargs['remaining_rounds'] = remaining_rounds
             except (TypeError, ValueError):
                 pass
-            return self._history_compactor(
+            compacted = self._history_compactor(
                 history,
                 self._keep_full_turns,
                 **kwargs,
             )
+            return strip_tool_observations(compacted)
         if self._keep_full_turns > 0:
-            return _compact_chat_history(history, self._keep_full_turns)
-        return history
+            history = _compact_chat_history(history, self._keep_full_turns)
+        return strip_tool_observations(history)
 
     def _notify_history_ready(
         self,
@@ -256,14 +265,19 @@ class FunctionCall(ModuleBase):
         current_round: Optional[int],
         remaining_rounds: Optional[int],
     ) -> Dict[str, Any]:
-        tool_call_results = [
-            {
+        tool_call_results = []
+        for tool_call in workspace['tool_call_trace']:
+            raw_result = tool_call['tool_call_result']
+            tool_message = {
                 'role': 'tool',
-                'content': str(_unwrap_tool_result(tool_call['tool_call_result'])),
+                'content': str(_unwrap_tool_result(raw_result)),
                 'tool_call_id': tool_call['id'],
                 'name': tool_call['function']['name'],
-            } for tool_call in workspace['tool_call_trace']
-        ]
+            }
+            observation = attachable_tool_observation(raw_result)
+            if observation is not None:
+                tool_message[TOOL_OBSERVATION_KEY] = observation
+            tool_call_results.append(tool_message)
         if budget_notice and tool_call_results:
             tool_call_results[-1] = {
                 **tool_call_results[-1],

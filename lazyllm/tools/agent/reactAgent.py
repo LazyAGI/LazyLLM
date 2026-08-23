@@ -111,7 +111,6 @@ class ReactAgent(LazyLLMAgentBase):
 
     def _prepare_tool_context(self, current_input: Any = None,
                               llm_chat_history: Optional[List[Dict[str, Any]]] = None) -> None:
-        '''Apply the identical tool-activation policy for execution and context inspection.'''
         self._tools_manager.sync_active_groups(current_input, llm_chat_history)
 
     def _model_facing_prefix(self) -> Dict[str, Any]:
@@ -119,7 +118,7 @@ class ReactAgent(LazyLLMAgentBase):
 
     def describe_context(self, llm_chat_history: Optional[List[Dict[str, Any]]] = None,
                          current_input: Any = None) -> Dict[str, Any]:
-        '''Return the model-facing static context without invoking the model or tools.'''
+        # Model-facing static context; does not invoke the model, tools, or history compactors.
         self._prepare_tool_context(current_input, llm_chat_history)
         description = self._model_facing_prefix()
         description['workspace'] = self._workspace
