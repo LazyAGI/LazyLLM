@@ -4,8 +4,8 @@ from lazyllm import LOG, globals as lazyllm_globals, locals, loop, once_wrapper
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 
-from .base import LazyLLMAgentBase, _write_agent_data
-from .functionCall import FunctionCall, _compact_chat_history
+from .base import LazyLLMAgentBase, _model_facing_prefix, _write_agent_data
+from .functionCall import FunctionCall
 
 INSTRUCTION = f'''
 ## Role
@@ -81,7 +81,9 @@ class ReactAgent(LazyLLMAgentBase):
                  keep_full_turns: int = 0, fs: Optional[Any] = None, skills_dir: Optional[str] = None,
                  enable_builtin_tools: bool = True,
                  extra_stop_condition: Optional[Callable] = None,
-                 on_max_retries: Optional[Callable] = None):
+                 on_max_retries: Optional[Callable] = None,
+                 history_compactor: Optional[Callable] = None,
+                 runtime_observer: Optional[Callable] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
                          desc=desc, workspace=workspace, sandbox=sandbox, fs=fs, skills_dir=skills_dir,
@@ -95,6 +97,8 @@ class ReactAgent(LazyLLMAgentBase):
         self._force_summarize = force_summarize
         self._force_summarize_context = force_summarize_context
         self._keep_full_turns = keep_full_turns
+        self._history_compactor = history_compactor
+        self._runtime_observer = runtime_observer
         self._extra_stop_condition = extra_stop_condition
         self._on_max_retries = on_max_retries
         self._stop_tools: set = set()
@@ -107,18 +111,18 @@ class ReactAgent(LazyLLMAgentBase):
 
     def _prepare_tool_context(self, current_input: Any = None,
                               llm_chat_history: Optional[List[Dict[str, Any]]] = None) -> None:
-        '''Apply the identical tool-activation policy for execution and context inspection.'''
         self._tools_manager.sync_active_groups(current_input, llm_chat_history)
+
+    def _model_facing_prefix(self) -> Dict[str, Any]:
+        return _model_facing_prefix(self._prompt, self._tools_manager, self._skill_manager)
 
     def describe_context(self, llm_chat_history: Optional[List[Dict[str, Any]]] = None,
                          current_input: Any = None) -> Dict[str, Any]:
-        '''Return the model-facing static context without invoking the model or tools.'''
+        # Model-facing static context; does not invoke the model, tools, or history compactors.
         self._prepare_tool_context(current_input, llm_chat_history)
-        description = super().describe_context()
-        description['system_prompt'] = self._prompt
+        description = self._model_facing_prefix()
+        description['workspace'] = self._workspace
         history = list(llm_chat_history or [])
-        if self._keep_full_turns > 0:
-            history = _compact_chat_history(history, self._keep_full_turns)
         description['history'] = history
         return description
 
@@ -131,8 +135,10 @@ class ReactAgent(LazyLLMAgentBase):
                           stream=self._stream, _tool_manager=self._tools_manager,
                           skill_manager=self._skill_manager,
                           keep_full_turns=self._keep_full_turns,
+                          history_compactor=self._history_compactor,
                           stop_tools=list(self._stop_tools) if self._stop_tools else None,
-                          round_limit=self._max_retries + 1)
+                          round_limit=self._max_retries + 1,
+                          runtime_observer=self._runtime_observer)
         agent = loop(
             fc,
             stop_condition=self._stop,
@@ -195,7 +201,7 @@ class ReactAgent(LazyLLMAgentBase):
         )
         return summary if summary else None
 
-    def _post_process(self, ret):
+    def _post_process(self, ret):  # noqa: C901
         if isinstance(ret, str):
             completed = self._pop_tool_calls()
             if completed is not None:

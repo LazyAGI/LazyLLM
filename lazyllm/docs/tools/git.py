@@ -18,6 +18,8 @@ _add_git_chinese('LazyLLMGitBase', '''\
 Git 平台统一基类，借助 registry 注册各平台实现（如 GitHub、GitLab、Gitee、GitCode）。
 子类需实现：认证方式、API 根地址、以及抽象方法。
 Agent 可通过 lazyllm.git.github / lazyllm.git.gitlab 等获取实例并调用接口。
+Git SDK 与 Agent 工具使用同一失败协议：成功返回正常结果，失败抛出 ``ToolExecutionError``。
+ToolManager 将结果包装为 ``ok/value`` 结构；Agent 消费 ``value``，事件和渲染层保留完整包装。
 
 Args:
     token (str): 平台 Access Token / Private Token。
@@ -31,6 +33,9 @@ _add_git_english('LazyLLMGitBase', '''\
 Unified Git platform base; implementations (GitHub, GitLab, Gitee, GitCode) are registered via registry.
 Subclasses implement auth, API base URL, and abstract methods.
 Agents get instances via lazyllm.git.github / lazyllm.git.gitlab etc.
+The Git SDK and Agent tools share one failure contract: successful calls return normal results, while failures raise
+``ToolExecutionError``. ToolManager wraps results in an ``ok/value`` envelope; Agents consume ``value`` while events and
+renderers preserve the complete envelope.
 
 Args:
     token (str): Platform access token or private token.
@@ -1162,29 +1167,33 @@ _add_local_example('LocalGit.get_origin_repo', '''\
 ''')
 
 _add_local_chinese('LocalGit.add_issue_comment', '''\
-本地模式不支持向平台发布评论，调用此方法始终返回失败。
+本地模式不支持向平台发布评论，调用此方法会抛出工具执行错误。
 
 Args:
     number (int): 占位参数，本地模式无意义。
     body (str): 占位参数，本地模式无意义。
 
-Returns:
-    dict: ``{'success': False, 'message': 'add_issue_comment is not supported in local mode'}``
+Raises:
+    ToolExecutionError: 本地 Git 不支持该操作。
 ''')
 
 _add_local_english('LocalGit.add_issue_comment', '''\
-Not supported in local mode. Always returns a failure response.
+Not supported in local mode. Calling this method raises a tool execution error.
 
 Args:
     number (int): Placeholder; unused in local mode.
     body (str): Placeholder; unused in local mode.
 
-Returns:
-    dict: ``{'success': False, 'message': 'add_issue_comment is not supported in local mode'}``
+Raises:
+    ToolExecutionError: Local Git does not support this operation.
 ''')
 
 _add_local_example('LocalGit.add_issue_comment', '''\
 >>> backend = Git(backend='local', repo_path='.')
->>> backend.add_issue_comment(0, 'hello')
-... {'success': False, 'message': 'add_issue_comment is not supported in local mode'}
+>>> from lazyllm.tools.agent import ToolExecutionError
+>>> try:
+...     backend.add_issue_comment(0, 'hello')
+... except ToolExecutionError as error:
+...     print(error)
+Git operation add_issue_comment failed: add_issue_comment is not supported in local mode
 ''')

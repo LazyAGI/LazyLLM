@@ -1,9 +1,11 @@
 import os
+import urllib.error
 import urllib.request
 from typing import Optional
 
 from .toolsManager import register
 from .file_tool import _check_root, _resolve_path
+from .toolError import ToolExecutionError
 
 
 @register('builtin_tools', execute_in_sandbox=False)
@@ -23,20 +25,15 @@ def download_file(url: str, dst: str, timeout: int = 30, root: Optional[str] = N
         dict: Status result.
     '''
     if not url or not url.startswith(('http://', 'https://')):
-        return {'status': 'error', 'reason': 'Only http/https URLs are supported.', 'url': url}
+        raise ToolExecutionError(f'Only http/https URLs are supported, got: {url!r}.')
 
-    guard = _check_root(dst, root)
-    if guard:
-        return guard
+    _check_root(dst, root)
 
     dst_abs = _resolve_path(dst)
     if not allow_unsafe:
-        return {
-            'status': 'needs_approval',
-            'reason': 'Downloading remote files requires approval.',
-            'url': url,
-            'path': dst_abs,
-        }
+        raise ToolExecutionError.approval_required(
+            f'Downloading {url} to {dst_abs} requires approval.'
+        )
 
     parent = os.path.dirname(dst_abs)
     if parent:
@@ -46,5 +43,21 @@ def download_file(url: str, dst: str, timeout: int = 30, root: Optional[str] = N
             data = resp.read()
             f.write(data)
         return {'status': 'ok', 'path': dst_abs, 'bytes': len(data)}
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            raise ToolExecutionError(
+                f'Download from {url} to {dst_abs} is not permitted (HTTP {exc.code}): {exc}',
+            ) from exc
+        if exc.code in (408, 429, 502, 503, 504):
+            raise ToolExecutionError(
+                f'Download from {url} to {dst_abs} failed temporarily (HTTP {exc.code}): {exc}',
+            ) from exc
+        raise ToolExecutionError(
+            f'Download from {url} to {dst_abs} failed (HTTP {exc.code}): {exc}',
+        ) from exc
+    except (TimeoutError, ConnectionError, urllib.error.URLError) as exc:
+        raise ToolExecutionError(
+            f'Download from {url} to {dst_abs} failed temporarily: {exc}',
+        ) from exc
     except Exception as exc:
-        return {'status': 'error', 'reason': str(exc), 'url': url, 'path': dst_abs}
+        raise ToolExecutionError(f'Download from {url} to {dst_abs} failed: {exc}') from exc

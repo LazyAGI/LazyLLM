@@ -4,6 +4,7 @@ import subprocess
 from typing import Dict, Optional
 
 from .toolsManager import register
+from .toolError import ToolExecutionError
 
 _DANGEROUS_WORD_TOKENS = [
     'rm', 'sudo', 'chmod', 'chown', 'mkfs', 'dd', 'shutdown', 'reboot', 'poweroff',
@@ -54,28 +55,31 @@ def shell_tool(cmd: str, cwd: Optional[str] = None, timeout: int = 30,
     '''
     cmd = cmd.strip()
     if not cmd:
-        raise ValueError('cmd cannot be empty.')
+        raise ToolExecutionError('cmd cannot be empty.')
     if cwd is not None and not os.path.isdir(cwd):
-        raise FileNotFoundError(f'cwd not found: {cwd}')
+        raise ToolExecutionError(f'cwd not found: {cwd}')
 
     dangerous = _detect_dangerous_command(cmd)
     if dangerous and not allow_unsafe:
-        return {
-            'status': 'needs_approval',
-            'reason': f'Command contains potentially dangerous token: {dangerous}',
-            'command': cmd,
-            'cwd': cwd or os.getcwd(),
-        }
+        raise ToolExecutionError.approval_required(
+            f'Command {cmd!r} in {cwd or os.getcwd()} contains potentially dangerous token '
+            f'{dangerous!r} and requires approval.'
+        )
 
-    completed = subprocess.run(
-        cmd,
-        cwd=cwd,
-        env=env,
-        shell=True,
-        text=True,
-        capture_output=True,
-        timeout=timeout,
-    )
+    try:
+        completed = subprocess.run(
+            cmd,
+            cwd=cwd,
+            env=env,
+            shell=True,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ToolExecutionError(
+            f'Shell command {cmd!r} in {cwd or os.getcwd()} timed out after {timeout} seconds.',
+        ) from exc
     return {
         'status': 'ok',
         'stdout': completed.stdout,

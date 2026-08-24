@@ -38,7 +38,9 @@ class GitCode(LazyLLMGitBase):
             return self._current_user_login
         r = self._session.get(self._user_api_url('', use_current=True))
         if r.status_code != 200:
-            raise RuntimeError(f'Failed to get current user: {r.text or r.reason}')
+            self._raise_http_error(
+                r, message=f'Failed to get current user: {r.text or r.reason}'
+            )
         data = r.json()
         self._current_user_login = data.get('login', data.get('name', ''))
         return self._current_user_login
@@ -63,7 +65,7 @@ class GitCode(LazyLLMGitBase):
         }
         r = self._req_repo('POST', '/pulls', json=payload)
         if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         data = r.json()
         return {
             'success': True,
@@ -86,21 +88,21 @@ class GitCode(LazyLLMGitBase):
             return {'success': True, 'message': 'nothing to update'}
         r = self._req_repo('PATCH', f'/pulls/{number}', json=payload)
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         return {'success': True, 'message': 'updated'}
 
     def add_pr_labels(self, number: int, labels: List[str]) -> Dict[str, Any]:
         self._require_repo()
         r = self._req_repo('PATCH', f'/pulls/{number}', json={'labels': labels})
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         return {'success': True, 'message': 'labels updated'}
 
     def get_pull_request(self, number: int) -> Dict[str, Any]:
         self._require_repo()
         r = self._req_repo('GET', f'/pulls/{number}')
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         data = r.json()
         pr = PrInfo(
             number=data.get('number', data.get('id')),
@@ -127,7 +129,7 @@ class GitCode(LazyLLMGitBase):
         while len(out) < max_results:
             r = self._req_repo('GET', '/pulls', params=params)
             if r.status_code != 200:
-                return {'success': False, 'message': r.text or r.reason}
+                return self._http_failure(r)
             page_data = r.json()
             if not page_data:
                 break
@@ -153,7 +155,7 @@ class GitCode(LazyLLMGitBase):
         self._require_repo()
         r = self._req_repo('GET', f'/pulls/{number}')
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         data = r.json()
         diff_url = data.get('diff_url') or data.get('patch_url')
         if diff_url and diff_url.startswith((self._api_base.rstrip('/'), 'https://gitcode.com')):
@@ -162,7 +164,7 @@ class GitCode(LazyLLMGitBase):
                 return {'success': True, 'diff': rr.text}
         r2 = self._req_repo('GET', f'/pulls/{number}/files')
         if r2.status_code != 200:
-            return {'success': False, 'message': r2.text or 'no diff available'}
+            return self._http_failure(r2, message=r2.text or 'no diff available')
         parts = [f.get('patch', '') for f in r2.json()]
         return {'success': True, 'diff': '\n'.join(parts)}
 
@@ -170,7 +172,7 @@ class GitCode(LazyLLMGitBase):
         self._require_repo()
         r = self._req_repo('GET', f'/pulls/{number}/comments')
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         out = []
         for c in r.json():
             user = c.get('user', {})
@@ -189,7 +191,7 @@ class GitCode(LazyLLMGitBase):
         self._require_repo()
         r = self._req_repo('GET', f'/issues/{number}/comments')
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         out = []
         for c in r.json():
             user = c.get('user', {})
@@ -212,7 +214,7 @@ class GitCode(LazyLLMGitBase):
             payload['commit_id'] = commit_id
         r = self._req_repo('POST', f'/pulls/{number}/comments', json=payload)
         if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         data = r.json()
         return {'success': True, 'comment_id': data.get('id'), 'message': 'created'}
 
@@ -235,7 +237,7 @@ class GitCode(LazyLLMGitBase):
                 )
         r = self._req_repo('POST', f'/pulls/{number}/review', json=payload)
         if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         return {'success': True, 'message': 'submitted'}
 
     def approve_pull_request(self, number: int) -> Dict[str, Any]:
@@ -252,7 +254,7 @@ class GitCode(LazyLLMGitBase):
             payload['merge_commit_message'] = (payload.get('merge_commit_message') or '') + '\n\n' + commit_message
         r = self._req_repo('PUT', f'/pulls/{number}/merge', json=payload)
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         data = r.json() if r.content else {}
         return {'success': True, 'sha': data.get('sha'), 'message': 'merged'}
 
@@ -262,7 +264,7 @@ class GitCode(LazyLLMGitBase):
         self._require_repo()
         r = self._req_repo('GET', '/stargazers', params={'page': page, 'per_page': per_page})
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         return {'success': True, 'list': r.json()}
 
     def reply_to_review_comment(self, number: int, comment_id: Any, body: str,
@@ -276,7 +278,7 @@ class GitCode(LazyLLMGitBase):
             payload['commit_id'] = commit_id
         r = self._req_repo('POST', f'/pulls/{number}/comments', json=payload)
         if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         data = r.json()
         return {'success': True, 'comment_id': data.get('id'), 'message': 'replied'}
 
@@ -284,10 +286,9 @@ class GitCode(LazyLLMGitBase):
         self._require_repo()
         r = self._req_repo('PATCH', f'/pulls/{number}/comments/{comment_id}', json={'resolved': True})
         if r.status_code != 200:
-            return {
-                'success': False,
-                'message': r.text or r.reason or 'Resolve may not be supported by this API.',
-            }
+            return self._http_failure(
+                r, message=r.text or r.reason or 'Resolve may not be supported by this API.'
+            )
         return {'success': True, 'message': 'resolved'}
 
     # ---------- User-related (default to current user when user not set) ----------
@@ -302,7 +303,7 @@ class GitCode(LazyLLMGitBase):
             else:
                 r = self._session.get(f'{self._api_base}/user')
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         return {'success': True, 'user': r.json()}
 
     def list_user_starred_repos(self, username: Optional[str] = None,
@@ -313,5 +314,5 @@ class GitCode(LazyLLMGitBase):
             url = f'{self._api_base}/user/starred' if not self._user else f'{self._api_base}/users/{self._user}/starred'
         r = self._session.get(url, params={'page': page, 'per_page': per_page})
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._http_failure(r)
         return {'success': True, 'list': r.json()}
