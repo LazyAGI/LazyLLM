@@ -41,6 +41,20 @@ def test_long_first_page_is_split_from_top_to_bottom(tmp_path):
     assert tuple(float(value) for value in normalized.pages[4].mediabox) == (0.0, 0.0, 100.0, 150.0)
 
 
+def test_mixed_short_and_long_pages_are_all_checked_and_split(tmp_path):
+    source = tmp_path / 'mixed.pdf'
+    output = tmp_path / 'normalized.pdf'
+    _write_pdf(source, [(100, 150), (100, 450), (100, 650)])
+
+    result = normalize_long_pdf(source, output, max_aspect_ratio=3, target_aspect_ratio=2)
+    normalized = pypdf.PdfReader(str(output))
+
+    assert result.changed is True
+    assert [round(float(page.mediabox.height)) for page in normalized.pages] == [150, 200, 200, 50, 200, 200, 200, 50]
+    assert [segment.source_page for segment in result.segments] == [0, 1, 1, 1, 2, 2, 2, 2]
+    assert [round(segment.top_offset) for segment in result.segments] == [0, 0, 200, 400, 0, 200, 400, 600]
+
+
 def test_long_pdf_is_replaced_inplace(tmp_path):
     source = tmp_path / 'long.pdf'
     _write_pdf(source, [(100, 500)])

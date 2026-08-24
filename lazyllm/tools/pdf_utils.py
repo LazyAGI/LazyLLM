@@ -31,6 +31,10 @@ def _page_size(page) -> tuple:
     return float(box.width), float(box.height)
 
 
+def _is_oversized_page(width: float, height: float, rotation: int, max_aspect_ratio: float) -> bool:
+    return width > 0 and height / width > max_aspect_ratio and rotation not in (90, 270)
+
+
 def _write_pdf(writer, output_path: Path) -> None:
     fd, temp_name = tempfile.mkstemp(prefix=f'.{output_path.name}.', suffix='.tmp', dir=output_path.parent)
     try:
@@ -63,10 +67,11 @@ def normalize_long_pdf(
     if not reader.pages:
         return LongPdfNormalization(input_path, [], False)
 
-    first_width, first_height = _page_size(reader.pages[0])
-    first_rotation = int(reader.pages[0].rotation or 0) % 360
-    if first_width <= 0 or first_height / first_width <= max_aspect_ratio or first_rotation in (90, 270):
-        segments = [PdfPageSegment(i, 0.0, *_page_size(page)) for i, page in enumerate(reader.pages)]
+    pages = list(reader.pages)
+    page_specs = [(*_page_size(page), int(page.rotation or 0) % 360) for page in pages]
+    if not any(_is_oversized_page(*spec, max_aspect_ratio) for spec in page_specs):
+        segments = [PdfPageSegment(i, 0.0, width, height)
+                    for i, (width, height, _) in enumerate(page_specs)]
         return LongPdfNormalization(input_path, segments, False)
 
     output_path = Path(output_path) if output_path else input_path.with_suffix('.normalized.pdf')
@@ -76,10 +81,9 @@ def normalize_long_pdf(
 
     writer = pypdf.PdfWriter()
     segments = []
-    for source_page, page in enumerate(reader.pages):
-        width, height = _page_size(page)
-        rotation = int(page.rotation or 0) % 360
-        if width <= 0 or height / width <= max_aspect_ratio or rotation in (90, 270):
+    for source_page, (page, spec) in enumerate(zip(pages, page_specs)):
+        width, height, rotation = spec
+        if not _is_oversized_page(width, height, rotation, max_aspect_ratio):
             writer.add_page(page)
             segments.append(PdfPageSegment(source_page, 0.0, width, height))
             continue
