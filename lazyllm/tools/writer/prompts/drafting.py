@@ -148,3 +148,95 @@ Section instruction:
 Draft body:
 {draft_body}
 '''
+
+
+GENERATE_SHORT_DOCUMENT_MARKDOWN_PROMPT = '''Write one complete short article from its whole-document writing plan.
+
+Requirements:
+- Output Markdown body text only. Do not wrap the response in an outer code fence.
+- Do not output the article title; the system adds the single H1 title.
+- Do not output headings or subheadings of any level.
+- Write the complete article in one pass as continuous prose. Paragraph breaks are allowed.
+- Use prose paragraphs rather than lists, tables, block quotes, or planning labels.
+- short_visuals contains resolved visuals for the complete article. For every item, output exactly one
+  standalone Markdown image at a natural paragraph boundary using its exact need_id:
+  ![concise caption](media-placeholder://<need_id>)
+- Use purpose and placement_hint to choose the caption and location. Do not output unplanned images,
+  asset paths, URLs, HTML anchors, or prose links to the image. When short_visuals is empty, output no images.
+- Treat expected_blocks as an internal order and coverage guide. Do not copy its entries as headings,
+  labels, a checklist, or separately generated fragments.
+- Express core_viewpoint clearly while covering required_points within the available length.
+- Respect fact_constraints and style_constraints.
+- Use relevant references as source guidance, but do not copy reference metadata into the article.
+- Do not invent facts that conflict with the writing context.
+- task.constraints.target_chars is the preferred body length and task.constraints.max_chars is a hard
+  non-whitespace body limit when present. The hard limit takes precedence over exhaustive coverage.
+- Return substantial finished prose, not an outline, summary, review, or planning notes.
+
+Writing task:
+{task_json}
+
+Whole-document writing plan:
+{short_writing_plan_json}
+
+Writing context:
+{context_json}
+
+Resolved short-document visuals:
+{short_visuals_json}
+
+Write only the finished article body now.
+'''
+
+
+GENERATE_SHORT_DOCUMENT_IR_PROMPT = '''Generate one complete short document as a WriterDocument.
+
+Requirements:
+- Return one WriterDocument object with stage="draft".
+- Put the exact article title in the document title field. Do not create a heading block
+  for the title or any other subsection heading.
+- Put the article body in the document blocks. Use paragraph blocks for prose and choose
+  other block types only when they materially help the requested content.
+- The document must be flat: do not create blocks with type="heading" anywhere in the body.
+- Each block and child block must have a stable non-empty node_id. The system may normalize
+  the document id, stage, title, and editability metadata after generation.
+- Respect the writing plan's required_points, references, fact_constraints, style_constraints,
+  expected_blocks, and length limits. Do not copy planning metadata into visible prose.
+- Do not invent facts that conflict with the writing context. Do not return reasoning, review
+  notes, or planning commentary.
+- For each resolved visual need in short_visuals, you may insert an image block at the most
+  appropriate position. Its node_id must equal the need_id and its references must contain
+  exactly one {{"type":"media_asset","id":"..."}} entry using an asset id listed for that
+  need. Do not invent image blocks, asset ids, paths, or URLs for unresolved needs.
+- Keep prose within short_writing_plan.meta.max_chars when that limit is present.
+
+Writing task:
+{task_json}
+
+Short writing plan:
+{short_writing_plan_json}
+
+Writing context:
+{context_json}
+
+Resolved short-document visuals:
+{short_visuals_json}
+
+Return only the WriterDocument object now.
+'''
+
+
+CONDENSE_SHORT_DOCUMENT_IR_PROMPT = '''Condense this short WriterDocument without changing its flat structure.
+
+Requirements:
+- Return one WriterDocument with the same title, stage, and document meaning.
+- Keep the main argument, conclusion, tone, required points, and existing image blocks.
+- Do not add headings, new facts, planning notes, or unresolved media references.
+- The combined non-whitespace prose in body blocks must not exceed {max_chars} characters.
+
+Short writing plan:
+{short_writing_plan_json}
+
+Draft WriterDocument:
+{draft_document_json}
+'''

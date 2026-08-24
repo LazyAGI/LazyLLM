@@ -8,7 +8,7 @@ from ..utils.artifact import ArtifactModel
 from .writer_ir import ContentRef
 
 
-class SectionInstruction(BaseModel):
+class WritingInstructionBase(BaseModel):
     instruction_id: str
     content_ref: ContentRef
     section_title: str
@@ -17,12 +17,20 @@ class SectionInstruction(BaseModel):
     references: List[Dict[str, Any]] = Field(default_factory=list)
     fact_constraints: List[str] = Field(default_factory=list)
     style_constraints: List[str] = Field(default_factory=list)
-    relation_constraints: List[str] = Field(default_factory=list)
     visual_needs: List[Dict[str, Any]] = Field(default_factory=list)
     expected_blocks: List[str] = Field(default_factory=list)
     pending_subtasks: List[str] = Field(default_factory=list)
     revision_notes: List[str] = Field(default_factory=list)
     meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SectionInstruction(WritingInstructionBase):
+    relation_constraints: List[str] = Field(default_factory=list)
+
+
+class ShortWritingPlan(WritingInstructionBase):
+    core_viewpoint: str
+
 
 class SectionInstructionList(ArtifactModel):
     instruction_set_id: Optional[str] = None
@@ -31,4 +39,4 @@ class SectionInstructionList(ArtifactModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
-__all__ = ['SectionInstruction', 'SectionInstructionList']
+__all__ = ['SectionInstruction', 'SectionInstructionList', 'ShortWritingPlan']

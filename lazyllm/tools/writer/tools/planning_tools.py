@@ -9,13 +9,15 @@ from ..data_models.multimodal import VisualPlan
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import ContentRef, WriterBlock, WriterDocument
-from ..data_models.planning import SectionInstruction, SectionInstructionList
+from ..data_models.planning import SectionInstruction, SectionInstructionList, ShortWritingPlan
 from ..prompts import (
     GENERATE_OUTLINE_MARKDOWN_PROMPT,
     GENERATE_OUTLINE_PROMPT,
     GENERATE_REWRITE_OUTLINE_PROMPT,
     GENERATE_REWRITE_SECTION_INSTRUCTIONS_PROMPT,
     GENERATE_SECTION_INSTRUCTIONS_PROMPT,
+    GENERATE_SHORT_VISUAL_PLAN_PROMPT,
+    GENERATE_SHORT_WRITING_PLAN_PROMPT,
     GENERATE_VISUAL_PLAN_MARKDOWN_PROMPT,
     GENERATE_VISUAL_PLAN_PROMPT,
 )
@@ -47,6 +49,8 @@ class WriterPlanningTools(WriterToolBase):
         'generate_rewrite_outline',
         'generate_rewrite_section_instructions',
         'generate_section_instructions',
+        'generate_short_visual_plan',
+        'generate_short_writing_plan',
     ]
 
     def generate_outline(
@@ -227,6 +231,86 @@ class WriterPlanningTools(WriterToolBase):
             },
         ).model_dump()
 
+    def generate_short_writing_plan(
+        self,
+        task: Any,
+        context: Any,
+        execution_results: Any = None,
+    ) -> dict:
+        writing_task = self._unified_model(task, WritingTask)
+        writing_context = self._unified_model(context, WritingContext)
+        execution_data = self._unified_raw_data(execution_results)
+        prompt = GENERATE_SHORT_WRITING_PLAN_PROMPT.format(
+            task_json=to_prompt_json(writing_task),
+            context_json=to_prompt_json(writing_context),
+            execution_results_json=to_prompt_json(execution_data),
+        )
+        plan = self._normalize_short_writing_plan(
+            self._call_llm_structured(prompt, ShortWritingPlan),
+            writing_task,
+            writing_context,
+            execution_data,
+        )
+        return self._save_artifacts(
+            {'short_writing_plan': plan},
+            step_name='generate_short_writing_plan',
+            primary_key='short_writing_plan',
+            context_key=None,
+            summary='Generated a whole-document writing plan for a short article.',
+            counts={
+                'required_points': len(plan.required_points),
+                'expected_blocks': len(plan.expected_blocks),
+            },
+            extra={
+                'representation': plan.meta['representation'],
+                'document_title': plan.section_title,
+            },
+            artifact_meta={
+                'task_id': writing_task.task_id,
+                'context_id': writing_context.context_id,
+                'has_execution_results': execution_data is not None,
+            },
+        ).model_dump()
+
+    def generate_short_visual_plan(
+        self,
+        task: Any,
+        short_writing_plan: Any,
+        context: Any,
+    ) -> dict:
+        writing_task = self._unified_model(task, WritingTask)
+        writing_plan = self._unified_model(short_writing_plan, ShortWritingPlan)
+        writing_context = self._unified_model(context, WritingContext)
+        prompt = GENERATE_SHORT_VISUAL_PLAN_PROMPT.format(
+            task_json=to_prompt_json(writing_task),
+            short_writing_plan_json=to_prompt_json(writing_plan),
+            context_json=to_prompt_json(writing_context),
+        )
+        visual_plan = self._normalize_short_visual_plan(
+            self._call_llm_structured(
+                prompt,
+                VisualPlan,
+                trace_label='short_visual_plan',
+            ),
+        )
+        return self._save_artifacts(
+            {'visual_plan': visual_plan},
+            step_name='generate_short_visual_plan',
+            primary_key='visual_plan',
+            context_key=None,
+            summary='Generated a visual plan for a flat short article.',
+            counts={'visual_instructions': len(visual_plan.instructions)},
+            extra={
+                'representation': writing_plan.meta.get('representation', 'markdown'),
+                'document_root': True,
+            },
+            artifact_meta={
+                'task_id': writing_task.task_id,
+                'context_id': writing_context.context_id,
+                'short_writing_plan_id': writing_plan.instruction_id,
+            },
+        ).model_dump()
+
     def generate_visual_plan(self, task: Any, outline: Any, context: Any) -> dict:
         writing_task = self._unified_model(task, WritingTask)
         writing_outline = self._unified_document(outline)
@@ -267,6 +351,77 @@ class WriterPlanningTools(WriterToolBase):
             counts={'visual_instructions': len(visual_plan.instructions)},
             extra={'representation': 'ir' if isinstance(writing_outline, WriterDocument) else 'markdown'},
         ).model_dump()
+
+    @classmethod
+    def _normalize_short_writing_plan(
+        cls,
+        plan: ShortWritingPlan,
+        task: WritingTask,
+        context: WritingContext,
+        execution_results: Any,
+    ) -> ShortWritingPlan:
+        title = str(
+            task.target_document.title
+            if task.target_document and task.target_document.title
+            else plan.section_title
+        ).strip()
+        if not title:
+            raise ValueError('Short writing plan requires a document title.')
+        if not plan.section_goal.strip():
+            raise ValueError('Short writing plan requires a section_goal.')
+        if not plan.core_viewpoint.strip():
+            raise ValueError('Short writing plan requires a core_viewpoint.')
+
+        valid_reference_ids = {
+            value
+            for fact in context.facts
+            for value in [fact.fact_id, *fact.source]
+            if value
+        }
+        plan.instruction_id = f'{context.context_id}-short-writing-plan'
+        plan.content_ref = ContentRef(document_root=True)
+        plan.section_title = strip_heading_numbering(title)
+        plan.section_goal = plan.section_goal.strip()
+        plan.core_viewpoint = plan.core_viewpoint.strip()
+        plan.references = [
+            dict(reference)
+            for reference in plan.references
+            if isinstance(reference, dict) and reference.get('id') in valid_reference_ids
+        ]
+        plan.visual_needs = []
+        cls._normalize_fact_constraints(plan, bool(context.facts))
+
+        representation = cls._resolve_representation(task, None)
+        plan.meta.update({
+            'source': 'llm',
+            'representation': representation,
+            'document_title': plan.section_title,
+            'context_id': context.context_id,
+            'has_execution_results': execution_results is not None,
+        })
+        for key in ('target_chars', 'max_chars'):
+            value = task.constraints.get(key)
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                plan.meta[key] = value
+        return plan
+
+    @staticmethod
+    def _normalize_short_visual_plan(visual_plan: VisualPlan) -> VisualPlan:
+        for index, need in enumerate(visual_plan.instructions, start=1):
+            ref = need.content_ref
+            if ref.node_id or ref.heading_path or ref.placeholder_id or not ref.document_root:
+                raise ValueError('Short visual plan must target document_root only.')
+            need.purpose = need.purpose.strip()
+            if not need.purpose:
+                raise ValueError(f'Short visual need {index} has an empty purpose.')
+            placement_hint = str(need.meta.get('placement_hint') or '').strip()
+            if placement_hint:
+                need.meta['placement_hint'] = placement_hint
+            else:
+                need.meta.pop('placement_hint', None)
+            need.need_id = f'visual-document-{index}'
+            need.content_ref = ContentRef(document_root=True)
+        return visual_plan
 
     def generate_section_instructions(
         self,
@@ -777,8 +932,7 @@ class WriterPlanningTools(WriterToolBase):
             self._validate_instruction(instruction, '/'.join(heading_path))
             instruction.section_title = strip_heading_numbering(heading_path[-1])
             instruction.references = []
-            if not context.facts:
-                instruction.fact_constraints = []
+            self._normalize_fact_constraints(instruction, bool(context.facts))
             instruction.meta.update({
                 'representation': 'markdown',
                 'outline_heading_level': level,
@@ -1070,8 +1224,7 @@ class WriterPlanningTools(WriterToolBase):
                     occurrence=seen_titles[instruction.section_title],
                 )
             instruction.references = []
-            if not context.facts:
-                instruction.fact_constraints = []
+            cls._normalize_fact_constraints(instruction, bool(context.facts))
             instruction.meta.update({
                 'representation': representation,
                 'rewrite': True,
@@ -1183,8 +1336,7 @@ class WriterPlanningTools(WriterToolBase):
         instruction.content_ref.node_id = outline_node_id
         instruction.references = [dict(reference) for reference in block.references]
         instruction.visual_needs = []
-        if not has_available_facts:
-            instruction.fact_constraints = []
+        self._normalize_fact_constraints(instruction, has_available_facts)
         instruction.meta.update({
             'representation': 'ir',
             'outline_node_level': block.numbering.get('level'),
@@ -1230,3 +1382,11 @@ class WriterPlanningTools(WriterToolBase):
             raise ValueError(f'Section instruction for {target!r} has an empty instruction_id.')
         if not instruction.section_goal.strip():
             raise ValueError(f'Section instruction for {target!r} has an empty section_goal.')
+
+    @staticmethod
+    def _normalize_fact_constraints(
+        instruction: SectionInstruction | ShortWritingPlan,
+        has_available_facts: bool,
+    ) -> None:
+        if not has_available_facts:
+            instruction.fact_constraints = []

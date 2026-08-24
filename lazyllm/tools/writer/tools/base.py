@@ -8,12 +8,17 @@ from pydantic import BaseModel
 from lazyllm.components.formatter import JsonFormatter
 from lazyllm.module import ModuleBase
 from lazyllm.thirdparty import json_repair
+from lazyllm.tracing import finish_span, set_span_attributes, set_span_error, set_span_output, start_span
 from ..data_models.planning import SectionInstructionList
 from ..data_models.writer_ir import WriterBlock, WriterDocument
 from ..prompts.structured_output import STRUCTURED_OUTPUT_SYSTEM_PROMPT
 from ..utils.artifact import ToolResult, load_artifact_json, save_artifact_json
 
 T = TypeVar('T', bound=BaseModel)
+
+
+def _writer_structured_llm_attempt_trace():
+    """Name the diagnostic span emitted around selected structured Writer calls."""
 
 
 def _strip_leading_think_blocks(text: str) -> str:
@@ -248,22 +253,73 @@ class WriterToolBase(ModuleBase):
         prompt: str,
         schema: Type[T],
         stream_output: Any = False,
+        *,
+        trace_label: Optional[str] = None,
     ) -> T:
         if self.llm is None:
             raise ValueError('llm is not set')
 
         system_prompt = self._structured_output_prompt(schema)
-        model = self._build_structured_llm(system_prompt, stream_output=stream_output)
+        model = self._build_structured_llm(
+            system_prompt,
+            stream_output=stream_output,
+            apply_formatter=not bool(trace_label),
+        )
         attempts = 1 if stream_output else 2
         for attempt in range(attempts):
+            span = None
+            if trace_label:
+                span = start_span(
+                    span_kind='callable',
+                    target=_writer_structured_llm_attempt_trace,
+                    args=(),
+                    kwargs={
+                        'trace_label': trace_label,
+                        'schema': schema.__name__,
+                        'attempt': attempt + 1,
+                    },
+                )
+            failure_stage = 'model_call'
             try:
                 response = model(prompt)
-                return self._validate_structured_response(response, schema)
-            except Exception:
+                if span:
+                    set_span_output(span, response)
+                    set_span_attributes(span, {
+                        'writer.structured.trace_label': trace_label,
+                        'writer.structured.schema': schema.__name__,
+                        'writer.structured.attempt': attempt + 1,
+                        'writer.structured.response_type': type(response).__name__,
+                        'writer.structured.response_empty': (
+                            not response.strip() if isinstance(response, str)
+                            else len(response) == 0 if isinstance(response, (dict, list))
+                            else response is None
+                        ),
+                    })
+                failure_stage = 'validation'
+                result = self._validate_structured_response(response, schema)
+                if span:
+                    instructions = getattr(result, 'instructions', None)
+                    set_span_attributes(span, {
+                        'writer.structured.validation': 'success',
+                        'writer.structured.instruction_count': (
+                            len(instructions) if isinstance(instructions, list) else -1
+                        ),
+                    })
+                return result
+            except Exception as exc:
+                if span:
+                    set_span_attributes(span, {
+                        'writer.structured.validation': 'error',
+                        'writer.structured.failure_stage': failure_stage,
+                    })
+                    set_span_error(span, exc)
                 if attempt + 1 >= attempts:
                     raise
                 # Keep transient calls and malformed structured output local to the
                 # Writer tool instead of repeating completed Workspace steps.
+            finally:
+                if span:
+                    finish_span(span)
         raise RuntimeError('Structured Writer call exhausted without a result.')
 
     def _call_llm_text(self, prompt: str, stream_output: Any = False) -> str:
@@ -296,6 +352,8 @@ class WriterToolBase(ModuleBase):
         self,
         system_prompt: str,
         stream_output: Any = False,
+        *,
+        apply_formatter: bool = True,
     ) -> Any:
         model = self.llm
         if hasattr(model, 'share'):
@@ -309,7 +367,7 @@ class WriterToolBase(ModuleBase):
             raise TypeError('llm must support share(stream=...) for structured streaming.')
         if hasattr(model, 'prompt'):
             model = model.prompt(system_prompt)
-        if hasattr(model, 'formatter'):
+        if apply_formatter and hasattr(model, 'formatter'):
             model = model.formatter(_WriterJsonFormatter())
         return model
 
