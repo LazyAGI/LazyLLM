@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from lazyllm import globals as lazyllm_globals
+from lazyllm.tools.pdf_utils import normalize_long_pdf_inplace
 
 from ..pdfReader import PDFReader
 from ..readerBase import LazyLLMReaderBase
@@ -100,12 +103,26 @@ class DynamicPDFReader(LazyLLMReaderBase):
             self._reader_cache[cache_key] = self._build_reader(reader_type, ocr_url)
         return self._reader_cache[cache_key]
 
+    @staticmethod
+    def _normalize_long_pdf(file) -> None:
+        path = Path(file)
+        if path.suffix.lower() == '.pdf' and path.is_file():
+            normalize_long_pdf_inplace(path)
+
     def _load_data(self, file, extra_info=None, **kwargs):
         ocr_type, ocr_url = self._resolve_route(extra_info)
         reader_type, ocr_url = self._reader_cache_key(ocr_type, ocr_url, file)
         reader = self._get_reader(reader_type, ocr_url)
         if isinstance(reader, PDFReader):
-            return reader.forward(file)
+            try:
+                # Sliced pages share the original content stream, and pypdf ignores page boxes while extracting
+                # text. Parse the original PDF first, then replace it so later consumers display the sliced file.
+                return reader.forward(file)
+            finally:
+                self._normalize_long_pdf(file)
+
+        # OCR services must receive the sliced PDF because they render the page boxes before recognition.
+        self._normalize_long_pdf(file)
         return reader.forward(
             file,
             extra_info=extra_info,
