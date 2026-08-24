@@ -1,4 +1,5 @@
 import io
+import copy
 import json
 import os
 import re
@@ -19,12 +20,13 @@ import lazyllm
 from lazyllm.common import AuthStrategy, retry_transient
 from lazyllm.tools.http_request import post_sync, get_sync
 from lazyllm import LOG
+from lazyllm.tools.pdf_utils import normalize_long_pdf_inplace
 
 from ...doc_node import DocNode
 from .ocr_ir import (
     Block, BBox, PageRef,
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
-    FigureBlock, CodeBlock, ListBlock, normalize_bbox,
+    FigureBlock, CodeBlock, ListBlock,
 )
 from .ocr_reader_base import _OcrReaderBase
 from .ocr_service import OcrServiceVariant, default_online_url, resolve_ocr_variant
@@ -42,7 +44,7 @@ _IMAGE_REF_PATTERN = re.compile(
     r'images/[^\s\)"\'\]<]+\.(?:jpg|jpeg|png|gif|bmp|webp|tiff|tif)',
     re.IGNORECASE,
 )
-# Official MinerU content_list bbox is in OCR raster space; normalize to PDF points.
+# Use the official layout artifact for PDF-point block and line bboxes.
 DEFAULT_BBOX = [0, 0, 0, 0]
 
 
@@ -92,6 +94,12 @@ class MineruPDFReader(_OcrReaderBase):
     def _online_request_kwargs(self) -> Dict:
         return {'verify': lazyllm.config['mineru_ssl_verify']}
 
+    def _online_model_version(self) -> str:
+        # The official API exposes only pipeline and vlm. Keep pipeline aligned
+        # with a self-hosted pipeline deployment; map every VLM engine variant
+        # (including hybrid engines) to the official vlm model.
+        return 'pipeline' if self._backend == 'pipeline' else 'vlm'
+
     def _http_execute(self, method: str, url: str, **kwargs):
         kwargs.setdefault('verify', lazyllm.config['mineru_ssl_verify'])
         return super()._http_execute(method, url, **kwargs)
@@ -107,6 +115,11 @@ class MineruPDFReader(_OcrReaderBase):
         file_path = Path(file)
         merged_info = dict(extra_info) if extra_info else {}
         _t0 = time.time()
+        try:
+            if normalize_long_pdf_inplace(file_path):
+                LOG.info(f'[MineruPDFReader] Replaced oversized PDF in place: {file_path}')
+        except Exception as exc:
+            LOG.warning(f'[MineruPDFReader] Long PDF normalization skipped: {file_path}: {exc}')
         if self._offline_mode:
             response_text = self._fetch_sync(file_path, use_cache)
             task_dir = self._image_cache_dir / str(uuid.uuid4())
@@ -345,7 +358,7 @@ class MineruPDFReader(_OcrReaderBase):
         # Step 1: Request presigned upload URL
         payload = {
             'files': [{'name': fname}],
-            'model_version': 'vlm',
+            'model_version': self._online_model_version(),
         }
         resp = self._request(
             'POST',
@@ -412,66 +425,98 @@ class MineruPDFReader(_OcrReaderBase):
                 raise ValueError('No *_content_list.json found in zip')
             content = json.loads(zf.read(json_members[0]))
             layout = None
-            model = None
             for member in zf.infolist():
                 name = Path(member.filename).name
                 if name == 'layout.json':
                     layout = json.loads(zf.read(member))
-                elif name.endswith('_model.json'):
-                    model = json.loads(zf.read(member))
-            if layout is not None and model is not None:
-                content = self._normalize_online_content_bboxes(content, layout, model)
+            if layout is not None:
+                content = self._apply_online_layout_metadata(content, layout)
             for member in zf.infolist():
                 if not member.filename.endswith('_content_list.json'):
                     zf.extract(member, task_dir)
         return json.dumps(content), task_dir
 
     @staticmethod
-    def _normalize_online_content_bboxes(content_list: List[dict], layout: dict,
-                                         model_pages: List) -> List[dict]:
-        '''Rewrite official content_list bboxes from OCR raster space into PDF points.
+    def _layout_lines(block: dict, page_idx: int) -> List[dict]:
+        lines = []
+        for line in block.get('lines') or []:
+            for span in line.get('spans') or []:
+                if not isinstance(span, dict):
+                    continue
+                line_meta = copy.deepcopy(span)
+                line_meta.pop('score', None)
+                cross_page = line_meta.pop('cross_page', None)
+                line_meta['page'] = page_idx + 1 if cross_page is True else page_idx
+                lines.append(line_meta)
+        if not lines:
+            for child in block.get('blocks') or []:
+                if isinstance(child, dict):
+                    lines.extend(MineruPDFReader._layout_lines(child, page_idx))
+        return lines
 
-        layout.json provides PDF page_size; model.json provides 0-1 normalized bboxes.
-        content_list absolute coords ≈ normalized * OCR canvas, so
-        pdf_bbox = content_bbox * page_size / canvas.
-        '''
-        page_sizes = {
-            int(p['page_idx']): p['page_size']
-            for p in (layout.get('pdf_info') or [])
-            if 'page_idx' in p and p.get('page_size')
-        }
-        if not page_sizes or not isinstance(model_pages, list):
+    @staticmethod
+    def _apply_online_layout_metadata(content_list: List[dict], layout: dict) -> List[dict]:
+        if not isinstance(content_list, list):
             return content_list
-
-        by_page: Dict[int, List[dict]] = {}
+        content_by_page: Dict[int, List[dict]] = {}
         for item in content_list:
-            if not isinstance(item, dict) or item.get('bbox') is None:
+            if not isinstance(item, dict) or item.get('page_idx') is None:
                 continue
-            page_idx = item.get('page_idx')
-            if page_idx is None:
-                continue
-            by_page.setdefault(int(page_idx), []).append(item)
+            content_by_page.setdefault(int(item['page_idx']), []).append(item)
 
-        for page_idx, items in by_page.items():
-            page_size = page_sizes.get(page_idx)
-            if not page_size or page_idx >= len(model_pages):
+        for page_info in layout.get('pdf_info') or []:
+            page_idx = page_info.get('page_idx')
+            page_size = page_info.get('page_size')
+            if page_idx is None or not page_size or len(page_size) != 2:
                 continue
-            dets = model_pages[page_idx]
-            if not isinstance(dets, list) or not dets:
-                continue
-            try:
-                max_nx = max(float(d['bbox'][2]) for d in dets if isinstance(d, dict) and d.get('bbox'))
-                max_ny = max(float(d['bbox'][3]) for d in dets if isinstance(d, dict) and d.get('bbox'))
-                max_cx = max(float(it['bbox'][2]) for it in items)
-                max_cy = max(float(it['bbox'][3]) for it in items)
-            except (KeyError, TypeError, ValueError):
-                continue
-            if max_nx <= 0 or max_ny <= 0:
-                continue
-            src_size = (max_cx / max_nx, max_cy / max_ny)
-            dst_size = (float(page_size[0]), float(page_size[1]))
-            for it in items:
-                it['bbox'] = normalize_bbox(it['bbox'], src_size, dst_size)
+            page_idx = int(page_idx)
+            items = content_by_page.get(page_idx, [])
+            blocks = page_info.get('para_blocks') or []
+            group_sizes = [
+                len(item.get('list_items') or [])
+                if item.get('type') == 'list' and item.get('list_items') else 1
+                for item in items
+            ]
+            can_group = sum(group_sizes) == len(blocks)
+            if len(items) != len(blocks) and not can_group:
+                LOG.warning(
+                    f'[MineruPDFReader] layout/content count mismatch on page {page_idx}: '
+                    f'{len(blocks)} != {len(items)}'
+                )
+            block_offset = 0
+            for item, group_size in zip(items, group_sizes):
+                item['page_width'] = float(page_size[0])
+                item['page_height'] = float(page_size[1])
+                if not can_group and len(items) != len(blocks):
+                    bbox = item.get('bbox')
+                    if isinstance(bbox, list) and len(bbox) == 4:
+                        item['bbox'] = [
+                            bbox[0] * float(page_size[0]) / 1000,
+                            bbox[1] * float(page_size[1]) / 1000,
+                            bbox[2] * float(page_size[0]) / 1000,
+                            bbox[3] * float(page_size[1]) / 1000,
+                        ]
+                    continue
+                group = blocks[block_offset:block_offset + group_size]
+                block_offset += group_size
+                bboxes = [
+                    block['bbox'] for block in group
+                    if isinstance(block, dict)
+                    and isinstance(block.get('bbox'), list)
+                    and len(block['bbox']) == 4
+                ]
+                if bboxes:
+                    item['bbox'] = [
+                        min(bbox[0] for bbox in bboxes),
+                        min(bbox[1] for bbox in bboxes),
+                        max(bbox[2] for bbox in bboxes),
+                        max(bbox[3] for bbox in bboxes),
+                    ]
+                item['lines'] = [
+                    line
+                    for block in group if isinstance(block, dict)
+                    for line in MineruPDFReader._layout_lines(block, page_idx)
+                ]
         return content_list
 
     @override
@@ -487,7 +532,7 @@ class MineruPDFReader(_OcrReaderBase):
         for item in content_list:
             block = self._adapt_one(item)
             if block is not None:
-                if self._offline_mode and 'lines' in item:
+                if 'lines' in item:
                     block.lines = self._normalize_content(item['lines'])
                 blocks.append(block)
         return blocks
