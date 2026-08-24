@@ -9,6 +9,8 @@ from typing import List, NamedTuple, Optional
 
 from lazyllm.thirdparty import pypdf
 
+_DEFAULT_TARGET_ASPECT_RATIO = math.sqrt(2)
+
 
 class PdfPageSegment(NamedTuple):
     source_page: int
@@ -28,11 +30,29 @@ def _page_size(page) -> tuple:
     return float(box.width), float(box.height)
 
 
+def _write_pdf(writer, output_path: Path) -> None:
+    fd, temp_name = tempfile.mkstemp(prefix=f'.{output_path.name}.', suffix='.tmp', dir=output_path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            writer.write(stream)
+        os.replace(temp_name, output_path)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(temp_name)
+        except OSError:
+            pass
+        raise
+
+
 def normalize_long_pdf(
     input_path: Path,
     output_path: Optional[Path] = None,
     max_aspect_ratio: float = 3.0,
-    target_aspect_ratio: float = math.sqrt(2),
+    target_aspect_ratio: float = _DEFAULT_TARGET_ASPECT_RATIO,
 ) -> LongPdfNormalization:
     input_path = Path(input_path)
     if max_aspect_ratio <= 0 or target_aspect_ratio <= 0:
@@ -79,28 +99,14 @@ def normalize_long_pdf(
             writer.add_page(segment_page)
             segments.append(PdfPageSegment(source_page, segment_index * segment_height, width, height))
 
-    fd, temp_name = tempfile.mkstemp(prefix=f'.{output_path.name}.', suffix='.tmp', dir=output_path.parent)
-    try:
-        with os.fdopen(fd, 'wb') as stream:
-            writer.write(stream)
-        os.replace(temp_name, output_path)
-    except Exception:
-        try:
-            os.close(fd)
-        except OSError:
-            pass
-        try:
-            os.unlink(temp_name)
-        except OSError:
-            pass
-        raise
+    _write_pdf(writer, output_path)
     return LongPdfNormalization(output_path, segments, True)
 
 
 def normalize_long_pdf_inplace(
     input_path: Path,
     max_aspect_ratio: float = 3.0,
-    target_aspect_ratio: float = math.sqrt(2),
+    target_aspect_ratio: float = _DEFAULT_TARGET_ASPECT_RATIO,
 ) -> bool:
     input_path = Path(input_path)
     source_mode = stat.S_IMODE(input_path.stat().st_mode)
