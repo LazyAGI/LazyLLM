@@ -675,8 +675,9 @@ locator kind per reference. Return valid JSON only.
         content.type = 'image'
         references = {'type': 'media_asset', 'id': asset_id}
         asset = media_assets.assets[asset_id]
-        if asset.uri:
-            references['path'] = asset.uri
+        path = asset.local_path or asset.uri
+        if path:
+            references['path'] = path
         content.references = [references]
         return [content]
 
@@ -1098,8 +1099,10 @@ locator kind per reference. Return valid JSON only.
         if visual is not None:
             if instruction.modify_type != 'create':
                 raise ValueError('visual_instruction is only valid for create instructions.')
-            if visual.visual_type != 'image':
-                raise ValueError('revision visual_instruction.visual_type must be "image".')
+            if visual.visual_type not in {'image', 'diagram', 'chart', 'table'}:
+                raise ValueError(
+                    'revision visual_instruction.visual_type must be image, diagram, chart, or table.'
+                )
             if not visual.purpose.strip():
                 raise ValueError('revision visual_instruction.purpose must not be empty.')
             if not visual.required:
@@ -1112,9 +1115,12 @@ locator kind per reference. Return valid JSON only.
                 raise ValueError(
                     'visual_instruction.content_ref must equal instruction.content_ref.'
                 )
-            if visual.preferred_strategy not in {None, 'image_generation'}:
+            allowed_strategies = {None, 'image_generation'}
+            if visual.visual_type in {'image', 'diagram'}:
+                allowed_strategies.add('web_search')
+            if visual.preferred_strategy not in allowed_strategies:
                 raise ValueError(
-                    'revision image preferred_strategy must be null or image_generation.'
+                    'revision visual preferred_strategy is not supported for its visual_type.'
                 )
 
         if document is None or instruction.modify_type not in {'update', 'move'}:

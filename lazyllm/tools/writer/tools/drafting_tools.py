@@ -233,8 +233,10 @@ class WriterDraftingTools(WriterToolBase):
                 if image_block.type == 'image':
                     for ref in image_block.references or []:
                         asset = library.assets.get(ref.get('id'))
-                        if asset is not None and asset.uri:
-                            ref.setdefault('path', asset.uri)
+                        if asset is not None:
+                            path = asset.local_path or asset.uri
+                            if path:
+                                ref.setdefault('path', path)
         result = self._save_artifacts(
             {'draft_block': draft_block},
             step_name='generate_draft_section',
