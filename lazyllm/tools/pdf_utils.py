@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 from typing import List, NamedTuple, Optional
 
+from lazyllm import LOG
 from lazyllm.thirdparty import pypdf
 
 _DEFAULT_TARGET_ASPECT_RATIO = math.sqrt(2)
@@ -122,6 +123,7 @@ def normalize_long_pdf_inplace(
             return False
         os.chmod(result.path, source_mode)
         os.replace(result.path, input_path)
+        LOG.info(f'[pdf_utils] Replaced oversized PDF in place: {input_path}')
         return True
     finally:
         try:

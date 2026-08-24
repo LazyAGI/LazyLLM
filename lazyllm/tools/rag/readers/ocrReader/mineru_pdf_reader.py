@@ -115,11 +115,7 @@ class MineruPDFReader(_OcrReaderBase):
         file_path = Path(file)
         merged_info = dict(extra_info) if extra_info else {}
         _t0 = time.time()
-        try:
-            if normalize_long_pdf_inplace(file_path):
-                LOG.info(f'[MineruPDFReader] Replaced oversized PDF in place: {file_path}')
-        except Exception as exc:
-            LOG.warning(f'[MineruPDFReader] Long PDF normalization skipped: {file_path}: {exc}')
+        normalize_long_pdf_inplace(file_path)
         if self._offline_mode:
             response_text = self._fetch_sync(file_path, use_cache)
             task_dir = self._image_cache_dir / str(uuid.uuid4())
