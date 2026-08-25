@@ -23,6 +23,7 @@ package_name_map = {
     'mem0': 'mem0ai',
     'pptx': 'python-pptx',
     'docx': 'python-docx',
+    'multipart': 'python-multipart',
     'bs4': 'beautifulsoup4',
     'Stemmer': 'pystemmer',
     'ahocorasick': 'pyahocorasick',
