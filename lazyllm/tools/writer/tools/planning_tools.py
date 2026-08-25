@@ -1,9 +1,11 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Literal
+import re
+from typing import Any, Dict, List, Literal, Optional
 
 from .base import WriterToolBase
+from .stream_tools import DraftPreviewStream, build_outline_stream
 from ..data_models.context import WritingContext
-from ..data_models.multimodal import VisualPlan, _VISUAL_STRATEGY_ORDER
+from ..data_models.multimodal import VisualPlan
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import ContentRef, WriterBlock, WriterDocument
@@ -14,6 +16,7 @@ from ..prompts import (
     GENERATE_REWRITE_OUTLINE_PROMPT,
     GENERATE_REWRITE_SECTION_INSTRUCTIONS_PROMPT,
     GENERATE_SECTION_INSTRUCTIONS_PROMPT,
+    GENERATE_VISUAL_PLAN_MARKDOWN_PROMPT,
     GENERATE_VISUAL_PLAN_PROMPT,
 )
 from ..utils import (
@@ -22,6 +25,7 @@ from ..utils import (
     parse_markdown_sections,
     render_block_markdown,
     render_document_markdown,
+    strip_heading_numbering,
     to_prompt_json,
 )
 
@@ -56,6 +60,7 @@ class WriterPlanningTools(WriterToolBase):
                 execution_results_json=to_prompt_json(execution_data),
             )
             outline = self._call_llm_text(prompt).strip() + '\n'
+            outline = self._normalize_markdown_outline(outline)
             _, targets = get_markdown_outline_targets(outline)
             path = self._write_markdown_artifact('outline.md', outline)
             return make_markdown_tool_result(
@@ -108,6 +113,26 @@ class WriterPlanningTools(WriterToolBase):
             },
         )
         return result.model_dump()
+
+    def stream_outline(
+        self,
+        task: Any,
+        context: Any,
+        resource_profiles: Any = None,
+        execution_results: Any = None,
+        representation: Literal['ir', 'markdown'] | None = None,
+        *,
+        idle_timeout: float | None = None,
+    ) -> DraftPreviewStream:
+        return build_outline_stream(
+            self,
+            task,
+            context,
+            resource_profiles,
+            execution_results,
+            representation,
+            idle_timeout=idle_timeout,
+        )
 
     def generate_rewrite_outline(
         self,
@@ -172,6 +197,7 @@ class WriterPlanningTools(WriterToolBase):
             source_title,
             source_sections,
             writing_context,
+            writing_task,
         )
         return self._save_artifacts(
             {'section_instructions': instructions},
@@ -203,6 +229,24 @@ class WriterPlanningTools(WriterToolBase):
             )
             visual_plan = self._normalize_visual_plan(
                 self._call_llm_structured(prompt, VisualPlan), writing_outline)
+        else:
+            _, targets = get_markdown_outline_targets(writing_outline)
+            target_payload = [
+                {
+                    'content_ref': {'heading_path': heading_path, 'occurrence': occurrence},
+                    'section_title': heading_path[-1],
+                    'outline_heading_level': level,
+                }
+                for level, heading_path, occurrence, _ in targets
+            ]
+            prompt = GENERATE_VISUAL_PLAN_MARKDOWN_PROMPT.format(
+                task_json=to_prompt_json(writing_task),
+                context_json=to_prompt_json(writing_context),
+                outline_json=writing_outline,
+                target_sections_json=to_prompt_json(target_payload),
+            )
+            visual_plan = self._normalize_markdown_visual_plan(
+                self._call_llm_structured(prompt, VisualPlan), targets)
         return self._save_artifacts(
             {'visual_plan': visual_plan},
             step_name='generate_visual_plan',
@@ -219,9 +263,11 @@ class WriterPlanningTools(WriterToolBase):
         context: Any,
         visual_plan: Any = None,
         execution_results: Any = None,
+        task: Any = None,
     ) -> dict:
         writing_outline = self._unified_document(outline)
         writing_context = self._unified_model(context, WritingContext)
+        writing_task = self._unified_model(task, WritingTask) if task is not None else None
         execution_data = self._unified_raw_data(execution_results)
         writing_visual_plan = self._unified_optional_model(visual_plan, VisualPlan) or VisualPlan()
 
@@ -254,14 +300,23 @@ class WriterPlanningTools(WriterToolBase):
             outline_payload = writing_outline
             representation = 'markdown'
 
-        prompt = GENERATE_SECTION_INSTRUCTIONS_PROMPT.format(
-            outline_json=to_prompt_json(outline_payload),
-            target_outline_blocks_json=to_prompt_json(target_payload),
-            context_json=to_prompt_json(writing_context),
-            execution_results_json=to_prompt_json(execution_data),
-            visual_plan_json=to_prompt_json(writing_visual_plan),
+        deterministic = self._use_deterministic_short_instructions(
+            writing_task, len(target_payload),
         )
-        instruction_list = self._call_llm_structured(prompt, SectionInstructionList)
+        if deterministic:
+            instruction_list = self._build_deterministic_section_instructions(
+                target_payload, writing_context, writing_task,
+            )
+        else:
+            prompt = GENERATE_SECTION_INSTRUCTIONS_PROMPT.format(
+                task_json=to_prompt_json(writing_task),
+                outline_json=to_prompt_json(outline_payload),
+                target_outline_blocks_json=to_prompt_json(target_payload),
+                context_json=to_prompt_json(writing_context),
+                execution_results_json=to_prompt_json(execution_data),
+                visual_plan_json=to_prompt_json(writing_visual_plan),
+            )
+            instruction_list = self._call_llm_structured(prompt, SectionInstructionList)
         if isinstance(writing_outline, WriterDocument):
             instruction_list = self._normalize_ir_section_instructions(
                 instruction_list,
@@ -269,6 +324,8 @@ class WriterPlanningTools(WriterToolBase):
                 target_blocks,
                 writing_context,
                 execution_data,
+                writing_task,
+                writing_visual_plan,
             )
             outline_id = writing_outline.document_id
         else:
@@ -277,8 +334,12 @@ class WriterPlanningTools(WriterToolBase):
                 targets,
                 writing_context,
                 execution_data,
+                writing_task,
+                writing_visual_plan,
             )
             outline_id = instruction_list.outline_id
+        if deterministic:
+            instruction_list.meta['source'] = 'deterministic_short'
 
         result = self._save_artifacts(
             {'section_instructions': instruction_list},
@@ -300,8 +361,117 @@ class WriterPlanningTools(WriterToolBase):
         return result.model_dump()
 
     @staticmethod
+    def _use_deterministic_short_instructions(
+        task: WritingTask | None,
+        section_count: int,
+    ) -> bool:
+        if task is None or task.task_type != 'write' or section_count <= 0:
+            return False
+        target_chars = task.constraints.get('target_chars')
+        max_chars = task.constraints.get('max_chars')
+        limits = [
+            value for value in (target_chars, max_chars)
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0
+        ]
+        return bool(limits) and max(limits) <= 1200
+
+    @classmethod
+    def _build_deterministic_section_instructions(
+        cls,
+        targets: List[Dict[str, Any]],
+        context: WritingContext,
+        task: WritingTask,
+    ) -> SectionInstructionList:
+        fact_constraints = [
+            f'{fact.key}: {fact.value}'
+            for fact in context.facts
+            if str(fact.key).strip() and str(fact.value).strip()
+        ]
+        style_constraints: List[str] = []
+        if context.style_profile is not None:
+            for label, value in (
+                ('tone', context.style_profile.tone),
+                ('formality', context.style_profile.formality),
+                ('audience', context.style_profile.audience),
+            ):
+                if str(value or '').strip():
+                    style_constraints.append(f'{label}: {value}')
+            style_constraints.extend(
+                str(note).strip() for note in context.style_profile.notes
+                if str(note).strip()
+            )
+
+        instructions = []
+        titles = [str(target.get('section_title') or '').strip() for target in targets]
+        for index, target in enumerate(targets):
+            title = titles[index] or f'Section {index + 1}'
+            points = cls._deterministic_outline_points(target)
+            relations = []
+            if index > 0:
+                relations.append(f'承接上一节“{titles[index - 1]}”，避免重复其主体内容。')
+            if index + 1 < len(targets):
+                relations.append(f'为下一节“{titles[index + 1]}”保留清晰衔接。')
+            instructions.append(SectionInstruction(
+                instruction_id=f'short-section-{index + 1}',
+                content_ref=ContentRef.model_validate(target['content_ref']),
+                section_title=title,
+                section_goal=(
+                    f'围绕“{title}”完成本节，覆盖大纲要点并遵守全文约束。'
+                ),
+                required_points=points,
+                fact_constraints=list(fact_constraints),
+                style_constraints=list(style_constraints),
+                relation_constraints=relations,
+                expected_blocks=points,
+                meta={
+                    'target_chars': max(1, cls._deterministic_target_weight(target, points)),
+                    'cross_references': [],
+                },
+            ))
+        return SectionInstructionList(
+            instructions=instructions,
+            meta={'source': 'deterministic_short', 'task_id': task.task_id},
+        )
+
+    @staticmethod
+    def _deterministic_outline_points(target: Dict[str, Any]) -> List[str]:
+        body = target.get('outline_body')
+        if body is None:
+            outline_content = target.get('outline_content')
+            if isinstance(outline_content, dict):
+                values = []
+                pending = list(outline_content.get('children') or [])
+                while pending:
+                    block = pending.pop(0)
+                    if not isinstance(block, dict):
+                        continue
+                    content = str(block.get('content') or '').strip()
+                    if content:
+                        values.append(content)
+                    pending[0:0] = list(block.get('children') or [])
+                return values
+            return []
+        points = []
+        for line in str(body).splitlines():
+            value = re.sub(r'^\s*(?:#{3,6}\s+|[-*+]\s+|\d+[.)]\s+)', '', line).strip()
+            if value:
+                points.append(value)
+        return points
+
+    @staticmethod
+    def _deterministic_target_weight(
+        target: Dict[str, Any],
+        points: List[str],
+    ) -> int:
+        body = target.get('outline_body')
+        if body is not None:
+            return len(re.sub(r'\s+', '', str(body))) or len(points) or 1
+        return sum(len(re.sub(r'\s+', '', point)) for point in points) or 1
+
+    @staticmethod
     def _normalize_visual_plan(visual_plan: VisualPlan, outline: WriterDocument) -> VisualPlan:
         node_ids = {block.node_id for block in outline.blocks if block.type == 'heading'}
+        canonical_ids = WriterPlanningTools._ir_outline_node_ids_from_outline(outline)
         counts: Dict[str, int] = {}
         for need in visual_plan.instructions:
             ref = need.content_ref
@@ -313,10 +483,48 @@ class WriterPlanningTools(WriterToolBase):
                 raise ValueError('Visual plan must target a top-level outline node_id.')
             if not need.purpose.strip():
                 raise ValueError(f'Visual need for {node_id!r} has an empty purpose.')
-            if need.preferred_strategy is None:
-                need.preferred_strategy = _VISUAL_STRATEGY_ORDER[need.visual_type][0]
-            counts[node_id] = counts.get(node_id, 0) + 1
-            need.need_id = f'visual-{node_id}-{counts[node_id]}'
+            canonical_id = canonical_ids[node_id]
+            counts[canonical_id] = counts.get(canonical_id, 0) + 1
+            need.need_id = f'visual-{canonical_id}-{counts[canonical_id]}'
+            need.content_ref.node_id = canonical_id
+        return visual_plan
+
+    @staticmethod
+    def _normalize_markdown_visual_plan(
+        visual_plan: VisualPlan,
+        targets: List[tuple[int, List[str], int, str]],
+    ) -> VisualPlan:
+        target_by_ref = {
+            (tuple(heading_path), occurrence): (level, heading_path)
+            for level, heading_path, occurrence, _ in targets
+        }
+        for index, need in enumerate(visual_plan.instructions, start=1):
+            ref = need.content_ref
+            if ref.node_id or ref.document_root or not ref.heading_path:
+                raise ValueError('Markdown visual plan must target an H2 section via heading_path.')
+            requested_heading_path = list(ref.heading_path)
+            heading_path = requested_heading_path[:2]
+            key = (tuple(heading_path), ref.occurrence)
+            if key not in target_by_ref:
+                suffix_matches = [
+                    candidate
+                    for candidate in target_by_ref
+                    if candidate[1] == ref.occurrence
+                    and tuple(candidate[0][-len(requested_heading_path):])
+                    == tuple(requested_heading_path)
+                ]
+                if len(suffix_matches) != 1:
+                    raise ValueError(
+                        f'Visual plan targets unknown Markdown H2 section {key!r}.'
+                    )
+                key = suffix_matches[0]
+                _, heading_path = target_by_ref[key]
+            if not need.purpose.strip():
+                raise ValueError(f'Visual need for {key!r} has an empty purpose.')
+            ref.heading_path = list(heading_path)
+            ref.occurrence = key[1]
+            ref.placeholder_id = f'IMAGE-{index}'
+            need.need_id = ref.placeholder_id
         return visual_plan
 
     @staticmethod
@@ -328,6 +536,73 @@ class WriterPlanningTools(WriterToolBase):
         if resolved not in {'ir', 'markdown'}:
             raise ValueError("representation must be 'ir' or 'markdown'.")
         return resolved
+
+    @staticmethod
+    def _normalize_markdown_outline(outline: str) -> str:
+        lines: List[str] = []
+        for line, in_fence in WriterPlanningTools._markdown_lines_with_fence_state(outline):
+            if in_fence:
+                lines.append(line)
+                continue
+            had_content = bool(line.strip())
+            line = WriterPlanningTools._remove_outline_image_markup(line)
+            if had_content and not line.strip():
+                continue
+            heading = re.match(r'^(#{1,6})\s+(.+?)\s*$', line)
+            if heading:
+                title = strip_heading_numbering(heading.group(2))
+                lines.append(f'{heading.group(1)} {title}')
+                continue
+            lines.append(line)
+        return WriterPlanningTools._materialize_markdown_outline_anchors(
+            '\n'.join(lines).rstrip() + '\n',
+        )
+
+    @staticmethod
+    def _remove_outline_image_markup(line: str) -> str:
+        '''Keep generated outlines structural; visual placement has a separate owner.'''
+        line = re.sub(
+            r'(?<!\\)!\[(?:\\.|[^\]\\])*\]\('
+            r'(?:\\.|[^()\\]|\([^()\n]*\))*\)',
+            '',
+            line,
+        )
+        line = re.sub(
+            r'(?<!\\)!\[(?:\\.|[^\]\\])*\]\s*\[(?:\\.|[^\]\\])*\]',
+            '',
+            line,
+        )
+        line = re.sub(
+            r'(?<!\\)!\[(?:\\.|[^\]\\])+\](?!\s*[\[(])',
+            '',
+            line,
+        )
+        return re.sub(r'<img\b[^>]*>', '', line, flags=re.IGNORECASE)
+
+    @staticmethod
+    def _materialize_markdown_outline_anchors(outline: str) -> str:
+        _, targets = get_markdown_outline_targets(outline)
+        target_ids = iter(
+            WriterPlanningTools._markdown_outline_node_ids(targets).values()
+        )
+        lines: List[str] = []
+        for line, in_fence in WriterPlanningTools._markdown_lines_with_fence_state(outline):
+            if not in_fence and re.match(r'^##\s+.+?\s*$', line):
+                lines.append(f'<a id="block-{next(target_ids)}"></a>')
+            lines.append(line)
+        return '\n'.join(lines).rstrip() + '\n'
+
+    @staticmethod
+    def _markdown_lines_with_fence_state(markdown: str):
+        fence: Optional[str] = None
+        for line in markdown.splitlines():
+            fence_match = re.match(r'^\s*(```+|~~~+)', line)
+            if fence_match:
+                marker = fence_match.group(1)[0]
+                yield line, True
+                fence = marker if fence is None else None if fence == marker else fence
+                continue
+            yield line, fence is not None
 
     def _normalize_outline(
         self,
@@ -352,6 +627,8 @@ class WriterPlanningTools(WriterToolBase):
             block, level = pending.pop()
             block.stage = 'outline'
             block.numbering['level'] = level
+            if block.type == 'heading':
+                block.content = strip_heading_numbering(block.content)
             block.references = [
                 reference
                 for reference in block.references
@@ -372,8 +649,11 @@ class WriterPlanningTools(WriterToolBase):
         target_blocks: List[WriterBlock],
         context: WritingContext,
         execution_results: Any,
+        task: WritingTask | None,
+        visual_plan: VisualPlan | None = None,
     ) -> SectionInstructionList:
         target_by_id = {block.node_id: block for block in target_blocks}
+        node_id_by_original = self._ir_outline_node_ids_from_outline(outline)
         instruction_by_node_id: Dict[str, SectionInstruction] = {}
 
         for instruction in instruction_list.instructions:
@@ -397,6 +677,14 @@ class WriterPlanningTools(WriterToolBase):
                 + ', '.join(missing_node_ids)
             )
 
+        needs_by_section: Dict[str, List[Any]] = {}
+        for need in (visual_plan or VisualPlan()).instructions:
+            needs_by_section.setdefault(need.content_ref.node_id, []).append(need)
+        visual_targets = {
+            need.need_id
+            for needs in needs_by_section.values()
+            for need in needs
+        }
         instruction_list.outline_id = outline.document_id
         instruction_list.instruction_set_id = f'{outline.document_id}-section-instructions'
         instruction_list.instructions = [
@@ -405,9 +693,17 @@ class WriterPlanningTools(WriterToolBase):
                 block,
                 outline,
                 bool(context.facts),
+                node_id_by_original,
+                node_id_by_original[block.node_id],
+                visual_targets,
+                needs_by_section.get(node_id_by_original[block.node_id], []),
             )
             for block in target_blocks
         ]
+        self._set_cross_reference_targets(
+            instruction_list.instructions,
+            [*node_id_by_original.values(), *visual_targets],
+        )
         instruction_list.meta.update({
             'source': 'llm',
             'representation': 'ir',
@@ -415,8 +711,12 @@ class WriterPlanningTools(WriterToolBase):
             'outline_title': outline.title,
             'context_id': context.context_id,
             'has_execution_results': execution_results is not None,
+            'cross_reference_count': sum(
+                len(instruction.meta.get('cross_references') or [])
+                for instruction in instruction_list.instructions
+            ),
         })
-        return instruction_list
+        return self._normalize_section_length_budgets(instruction_list, task)
 
     def _normalize_markdown_section_instructions(
         self,
@@ -424,6 +724,8 @@ class WriterPlanningTools(WriterToolBase):
         targets: List[tuple[int, List[str], int, str]],
         context: WritingContext,
         execution_results: Any,
+        task: WritingTask | None,
+        visual_plan: VisualPlan,
     ) -> SectionInstructionList:
         target_by_ref = {
             (tuple(heading_path), occurrence): (level, heading_path)
@@ -450,12 +752,19 @@ class WriterPlanningTools(WriterToolBase):
             raise ValueError(f'Missing section instructions for Markdown headings: {missing_refs!r}.')
 
         outline_id = f'{context.context_id}-outline-markdown'
+        node_id_by_ref = self._markdown_outline_node_ids(targets)
+        needs_by_ref = self._markdown_visual_needs_by_ref(visual_plan)
+        visual_targets = {
+            need.need_id
+            for needs in needs_by_ref.values()
+            for need in needs
+        }
         normalized = []
         for level, heading_path, occurrence, _ in targets:
             key = (tuple(heading_path), occurrence)
             instruction = instruction_by_ref[key]
             self._validate_instruction(instruction, '/'.join(heading_path))
-            instruction.section_title = heading_path[-1]
+            instruction.section_title = strip_heading_numbering(heading_path[-1])
             instruction.references = []
             if not context.facts:
                 instruction.fact_constraints = []
@@ -464,8 +773,19 @@ class WriterPlanningTools(WriterToolBase):
                 'outline_heading_level': level,
                 'outline_id': outline_id,
                 'outline_title': heading_path[0],
+                'outline_node_id': node_id_by_ref[key],
             })
+            instruction.visual_needs = []
+            self._normalize_cross_references(
+                instruction, node_id_by_ref, visual_targets,
+            )
+            self._bind_visual_references(instruction, needs_by_ref.get(key, []))
             normalized.append(instruction)
+
+        self._set_cross_reference_targets(
+            normalized,
+            [*node_id_by_ref.values(), *visual_targets],
+        )
 
         instruction_list.outline_id = outline_id
         instruction_list.instruction_set_id = f'{outline_id}-section-instructions'
@@ -477,8 +797,142 @@ class WriterPlanningTools(WriterToolBase):
             'outline_title': targets[0][1][0],
             'context_id': context.context_id,
             'has_execution_results': execution_results is not None,
+            'cross_reference_count': sum(
+                len(instruction.meta.get('cross_references') or [])
+                for instruction in instruction_list.instructions
+            ),
         })
-        return instruction_list
+        return self._normalize_section_length_budgets(instruction_list, task)
+
+    @staticmethod
+    def _set_cross_reference_targets(
+        instructions: List[SectionInstruction],
+        targets: List[str],
+    ) -> None:
+        normalized = list(dict.fromkeys(targets))
+        for instruction in instructions:
+            instruction.meta['cross_reference_targets'] = normalized
+
+    @staticmethod
+    def _markdown_outline_node_ids(
+        targets: List[tuple[int, List[str], int, str]],
+    ) -> Dict[tuple[tuple[str, ...], int], str]:
+        ids: Dict[tuple[tuple[str, ...], int], str] = {}
+        counters: List[int] = []
+        for level, heading_path, occurrence, _ in targets:
+            depth = level - 1
+            counters = counters[:depth]
+            counters.extend([0] * (depth - len(counters)))
+            counters[-1] += 1
+            node_id = 'sec-' + '-'.join(f'{value:03d}' for value in counters)
+            ids[(tuple(heading_path), occurrence)] = node_id
+        return ids
+
+    @staticmethod
+    def _markdown_visual_needs_by_ref(
+        visual_plan: VisualPlan,
+    ) -> Dict[tuple[tuple[str, ...], int], List[Any]]:
+        needs: Dict[tuple[tuple[str, ...], int], List[Any]] = {}
+        for need in visual_plan.instructions:
+            key = (tuple(need.content_ref.heading_path), need.content_ref.occurrence)
+            needs.setdefault(key, []).append(need)
+        return needs
+
+    @staticmethod
+    def _bind_visual_references(
+        instruction: SectionInstruction,
+        needs: List[Any],
+    ) -> None:
+        references = [
+            dict(item) for item in instruction.meta.get('cross_references') or []
+            if isinstance(item, dict) and not item.get('must_create')
+        ]
+        references_by_target = {
+            str(item.get('target')): item for item in references
+        }
+        for need in needs:
+            reference = references_by_target.get(need.need_id)
+            if reference is None:
+                reference = {
+                    'target': need.need_id,
+                    'kind': 'image',
+                    'guidance': need.purpose,
+                }
+                references.append(reference)
+            reference.update({
+                'required': bool(reference.get('required')) or need.required,
+                'must_create': True,
+                'caption': need.purpose or instruction.section_title,
+            })
+        instruction.meta['cross_references'] = references
+
+    @classmethod
+    def _normalize_cross_references(
+        cls,
+        instruction: SectionInstruction,
+        section_ids: Dict[tuple[tuple[str, ...], int], str] | Dict[str, str],
+        visual_targets: set[str] | None = None,
+    ) -> None:
+        raw_references = instruction.meta.get('cross_references')
+        if raw_references is None:
+            instruction.meta['cross_references'] = []
+            return
+        if not isinstance(raw_references, list):
+            raise ValueError(
+                f'Section instruction {instruction.instruction_id!r} '
+                'cross_references must be a list.'
+            )
+
+        normalized: List[Dict[str, Any]] = []
+        for item in raw_references:
+            if not isinstance(item, dict):
+                raise ValueError('Each cross-reference must be an object.')
+            must_create = bool(item.get('must_create'))
+            if must_create:
+                raise ValueError('Created image cross-references are owned by the visual plan.')
+            target_ref = item.get('target_ref')
+            target = cls._resolve_cross_reference_target(
+                target_ref, section_ids, visual_targets or set(),
+            )
+            kind = (
+                'image'
+                if target in (visual_targets or set())
+                else str(item.get('kind') or 'section')
+            )
+            if kind not in {'section', 'image'}:
+                raise ValueError(f'Unsupported cross-reference kind {kind!r}.')
+
+            normalized.append({
+                'target': target,
+                'kind': kind,
+                'required': bool(item.get('required', True)),
+                'must_create': False,
+                'caption': str(item.get('caption') or '').strip(),
+                'guidance': str(item.get('guidance') or '').strip(),
+            })
+        instruction.meta['cross_references'] = normalized
+
+    @staticmethod
+    def _resolve_cross_reference_target(
+        target_ref: Any,
+        section_ids: Dict[tuple[tuple[str, ...], int], str] | Dict[str, str],
+        visual_targets: set[str],
+    ) -> str:
+        if isinstance(target_ref, dict) and isinstance(section_ids, dict):
+            node_id = target_ref.get('node_id')
+            if isinstance(node_id, str):
+                mapped = section_ids.get(node_id)
+                if mapped is not None:
+                    return mapped
+                if node_id in visual_targets:
+                    return node_id
+            heading_path = target_ref.get('heading_path')
+            occurrence = int(target_ref.get('occurrence') or 1)
+            if isinstance(heading_path, list):
+                target = section_ids.get((tuple(heading_path), occurrence))
+                if target is not None:
+                    return target
+        raise ValueError(f'Unknown cross-reference target: {target_ref!r}')
 
     @staticmethod
     def _rewrite_source_sections(
@@ -549,6 +1003,7 @@ class WriterPlanningTools(WriterToolBase):
         source_title: str,
         source_sections: List[Dict[str, Any]],
         context: WritingContext,
+        task: WritingTask,
     ) -> SectionInstructionList:
         if not instruction_list.instructions:
             raise ValueError('Rewrite section instructions must contain at least one section.')
@@ -612,7 +1067,60 @@ class WriterPlanningTools(WriterToolBase):
             'document_title': document_title,
             'context_id': context.context_id,
         })
+        return cls._normalize_section_length_budgets(instruction_list, task)
+
+    @classmethod
+    def _normalize_section_length_budgets(
+        cls,
+        instruction_list: SectionInstructionList,
+        task: WritingTask | None,
+    ) -> SectionInstructionList:
+        if task is None:
+            return instruction_list
+        target_chars = task.constraints.get('target_chars')
+        max_chars = task.constraints.get('max_chars')
+        if not isinstance(target_chars, int) or not isinstance(max_chars, int):
+            return instruction_list
+
+        weights = []
+        for instruction in instruction_list.instructions:
+            value = instruction.meta.get('target_chars')
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+                raise ValueError(
+                    'Every section instruction must provide a positive meta.target_chars '
+                    'when the writing task has a document length budget.'
+                )
+            weights.append(float(value))
+
+        targets = cls._allocate_by_weight(target_chars, weights)
+        headroom = cls._allocate_by_weight(max_chars - target_chars, weights)
+        for instruction, target, extra in zip(
+            instruction_list.instructions, targets, headroom,
+        ):
+            instruction.meta['target_chars'] = target
+            instruction.meta['max_chars'] = target + extra
+        instruction_list.meta.update({
+            'target_chars': target_chars,
+            'max_chars': max_chars,
+        })
         return instruction_list
+
+    @staticmethod
+    def _allocate_by_weight(total: int, weights: List[float]) -> List[int]:
+        if total <= 0:
+            return [0] * len(weights)
+        weight_sum = sum(weights)
+        raw = [total * weight / weight_sum for weight in weights]
+        allocated = [int(value) for value in raw]
+        remainder = total - sum(allocated)
+        order = sorted(
+            range(len(weights)),
+            key=lambda index: raw[index] - allocated[index],
+            reverse=True,
+        )
+        for index in order[:remainder]:
+            allocated[index] += 1
+        return allocated
 
     @staticmethod
     def _rewrite_source_ref_key(reference: Dict[str, Any]) -> tuple[Any, ...]:
@@ -634,9 +1142,14 @@ class WriterPlanningTools(WriterToolBase):
         block: WriterBlock,
         outline: WriterDocument,
         has_available_facts: bool,
+        node_id_by_original: Dict[str, str],
+        outline_node_id: str,
+        visual_targets: set[str],
+        section_needs: List[Any],
     ) -> SectionInstruction:
         self._validate_instruction(instruction, block.node_id)
         instruction.section_title = block.content
+        instruction.content_ref.node_id = outline_node_id
         instruction.references = [dict(reference) for reference in block.references]
         instruction.visual_needs = []
         if not has_available_facts:
@@ -646,8 +1159,36 @@ class WriterPlanningTools(WriterToolBase):
             'outline_node_level': block.numbering.get('level'),
             'outline_id': outline.document_id,
             'outline_title': outline.title,
+            'outline_node_id': outline_node_id,
         })
+        self._normalize_cross_references(
+            instruction, node_id_by_original, visual_targets,
+        )
+        self._bind_visual_references(instruction, section_needs)
         return instruction
+
+    @staticmethod
+    def _ir_outline_node_ids_from_outline(outline: WriterDocument) -> Dict[str, str]:
+        ids: Dict[str, str] = {}
+
+        def walk(blocks: List[WriterBlock], counters: List[int]) -> None:
+            for block in blocks:
+                if block.type == 'heading':
+                    level = int(block.numbering.get('level') or 1)
+                    del counters[level:]
+                    if len(counters) < level:
+                        counters.extend([0] * (level - len(counters)))
+                    counters[level - 1] += 1
+                    node_id = 'sec-' + '-'.join(
+                        f'{value:03d}' for value in counters
+                    )
+                    ids[block.node_id] = node_id
+                    walk(block.children, counters)
+                else:
+                    walk(block.children, counters)
+
+        walk(outline.blocks, [])
+        return ids
 
     @staticmethod
     def _validate_instruction(instruction: SectionInstruction, target: str) -> None:

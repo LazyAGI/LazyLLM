@@ -10,6 +10,7 @@ import yaml
 
 from lazyllm import config, LOG, ModuleBase, globals as lazyllm_globals
 from lazyllm.thirdparty import fsspec
+from .toolError import ToolExecutionError
 
 DEFAULT_SKILLS_DIR = os.path.join(config['home'], 'skills')
 os.makedirs(DEFAULT_SKILLS_DIR, exist_ok=True)
@@ -539,41 +540,61 @@ class SkillManager(ModuleBase):
     def get_skill(self, name: str, allow_large: bool = False) -> Dict[str, str]:
         info, error = self._get_visible_skill_info(name)
         if error:
-            return error
+            self._raise_skill_lookup_error(name, error)
         if not info:
-            return {'status': 'missing', 'name': name}
+            raise ToolExecutionError(f'Skill not found: {name}')
         skill_md = info['skill_md']
         size = self._fs_getsize(skill_md)
         if size is not None and size > self._max_skill_md_bytes and not allow_large:
-            return {'status': 'too_large', 'name': name, 'path': skill_md,
-                    'size': size, 'limit': self._max_skill_md_bytes}
+            raise ToolExecutionError(
+                f'Skill {name} is {size} bytes and exceeds the configured '
+                f'{self._max_skill_md_bytes}-byte size limit. Set allow_large=True to read it.'
+            )
         try:
             content = self._fs_read(skill_md)
         except Exception as e:
-            return {'status': 'error', 'name': name, 'error': str(e)}
+            raise ToolExecutionError(
+                f'Failed to read skill {name} at {skill_md}: {e}'
+            ) from e
         if size is None:
             size = len(content.encode('utf-8'))
         if size > self._max_skill_md_bytes and not allow_large:
-            return {'status': 'too_large', 'name': name, 'path': skill_md,
-                    'size': size, 'limit': self._max_skill_md_bytes}
+            raise ToolExecutionError(
+                f'Skill {name} is {size} bytes and exceeds the configured '
+                f'{self._max_skill_md_bytes}-byte size limit. Set allow_large=True to read it.'
+            )
         return {'status': 'ok', 'name': name, 'path': skill_md, 'content': content}
 
     def read_file(self, name: str, rel_path: str, **kwargs) -> Dict[str, str]:
         info, error = self._get_visible_skill_info(name)
         if error:
-            return error
+            self._raise_skill_lookup_error(name, error)
         if not info:
-            return {'status': 'missing', 'name': name}
+            raise ToolExecutionError(f'Skill not found: {name}')
         try:
             normalized_rel_path = self._normalize_skill_rel_path(rel_path)
         except ValueError as exc:
-            return {'status': 'error', 'name': name, 'error': str(exc)}
+            raise ToolExecutionError(
+                f'Invalid reference path {rel_path!r} for skill {name}: {exc}'
+            ) from exc
         base = info['path']
         path = self._fs_join(base, normalized_rel_path)
         try:
             return {'status': 'ok', 'path': path, 'content': self._fs_read(path)}
         except Exception as e:
-            return {'status': 'error', 'path': path, 'error': str(e)}
+            raise ToolExecutionError(
+                f'Failed to read reference {normalized_rel_path!r} for skill {name} at {path}: {e}'
+            ) from e
+
+    @staticmethod
+    def _raise_skill_lookup_error(name: str, error: Dict[str, str]) -> None:
+        status = error.get('status')
+        if status == 'ambiguous':
+            matches = error.get('matches') or []
+            raise ToolExecutionError(
+                str(error.get('error') or f'Ambiguous skill name {name!r}; matches: {matches}')
+            )
+        raise ToolExecutionError(f'Skill not found: {name}')
 
     def _materialize_script_base(self, base: str, rel_path: str) -> Tuple[str, Optional[tempfile.TemporaryDirectory]]:
         remote_script_path = self._fs_join(base, rel_path)
@@ -587,49 +608,58 @@ class SkillManager(ModuleBase):
             raise RuntimeError(f'Failed to materialize remote skill directory {base!r}: {exc}') from exc
         return str(materialized.get('local_dir') or temp_dir.name), temp_dir
 
-    def _run_script_exception(self, name: str, rel_path: str, cwd: Optional[str],
-                              run_cwd: Optional[str], exc: Exception) -> Dict[str, str]:
+    def _raise_run_script_exception(self, name: str, rel_path: str, cwd: Optional[str],
+                                    run_cwd: Optional[str], exc: Exception) -> None:
         error_cwd = run_cwd or cwd
-        extra = {}
+        context = f'skill {name}, script {rel_path!r}, cwd {error_cwd!r}'
         if isinstance(exc, ValueError):
-            error_cwd = cwd
-            message = f'Invalid run_script path argument: {exc}'
-        elif isinstance(exc, FileNotFoundError):
-            message = f'run_script filesystem path not found: {exc}'
-        elif isinstance(exc, subprocess.TimeoutExpired):
-            message = f'run_script timed out after {exc.timeout} seconds.'
-            extra['timeout'] = exc.timeout
-        else:
-            message = f'run_script execution failed: {exc}'
-        return {
-            'status': 'error',
-            'name': name,
-            'rel_path': rel_path,
-            'cwd': error_cwd,
-            'error_type': exc.__class__.__name__,
-            'error': message,
-            **extra,
-        }
+            raise ToolExecutionError(
+                f'Invalid run_script path argument for skill {name}, script {rel_path!r}, cwd {cwd!r}: {exc}'
+            ) from exc
+        if isinstance(exc, FileNotFoundError):
+            raise ToolExecutionError(f'run_script filesystem path not found for {context}: {exc}') from exc
+        if isinstance(exc, subprocess.TimeoutExpired):
+            raise ToolExecutionError(
+                f'run_script timed out after {exc.timeout} seconds for {context}.'
+            ) from exc
+        raise ToolExecutionError(f'run_script execution failed for {context}: {exc}') from exc
+
+    @staticmethod
+    def _normalize_script_result(result: Dict) -> Dict:
+        if result.get('status') == 'ok' and result.get('exit_code', 0) != 0:
+            result['status'] = 'failed'
+        if result.get('status') == 'needs_approval':
+            raise ToolExecutionError.approval_required(
+                str(result.get('reason') or 'Skill script execution requires approval.')
+            )
+        if result.get('status') in ('error', 'failed', 'missing'):
+            reason = str(
+                result.get('error') or result.get('stderr')
+                or result.get('stdout') or 'Skill script execution failed.'
+            )
+            exit_code = result.get('exit_code')
+            if exit_code is not None:
+                reason = f'Skill script execution failed with exit code {exit_code}: {reason}'
+            raise ToolExecutionError(reason)
+        return result
 
     def run_script(self, name: str, rel_path: str, args: Optional[List[str]] = None,
                    allow_unsafe: bool = False, cwd: Optional[str] = None) -> Dict[str, str]:
         info, error = self._get_visible_skill_info(name)
         if error:
-            return error
+            self._raise_skill_lookup_error(name, error)
         if not info:
-            return {'status': 'missing', 'name': name}
+            raise ToolExecutionError(f'Skill not found: {name}')
         try:
             normalized_rel_path = self._normalize_skill_rel_path(rel_path)
         except ValueError as exc:
-            return {'status': 'error', 'name': name, 'error': str(exc)}
+            raise ToolExecutionError(
+                f'Invalid script path {rel_path!r} for skill {name}: {exc}'
+            ) from exc
         if not normalized_rel_path.startswith('scripts/'):
-            return {
-                'status': 'error',
-                'name': name,
-                'rel_path': normalized_rel_path,
-                'error_type': 'InvalidRelPath',
-                'error': 'run_script rel_path must be under scripts/.',
-            }
+            raise ToolExecutionError(
+                f'run_script path {normalized_rel_path!r} for skill {name} must be under scripts/.'
+            )
         base = info['path']
         temp_dir = None
         run_cwd = None
@@ -639,15 +669,14 @@ class SkillManager(ModuleBase):
             run_cwd = self._resolve_run_cwd(base, cwd)
             script_exists = os.path.exists(script_path) if temp_dir is not None else self._fs.exists(script_path)
             if not script_exists:
-                return {'status': 'missing', 'name': name, 'path': script_path, 'rel_path': normalized_rel_path}
+                raise ToolExecutionError(
+                    f'Skill script {normalized_rel_path!r} for skill {name} was not found at {script_path}.'
+                )
             if self._sandbox is None or not hasattr(self._sandbox, 'execute_script'):
-                return {
-                    'status': 'error',
-                    'name': name,
-                    'rel_path': normalized_rel_path,
-                    'error_type': 'SandboxUnavailable',
-                    'error': 'The configured sandbox does not support skill script execution.',
-                }
+                raise ToolExecutionError(
+                    f'The configured sandbox does not support executing skill {name} script '
+                    f'{normalized_rel_path!r}.'
+                )
             script_env = {
                 str(key): str(value)
                 for key, value in (lazyllm_globals.get('dynamic_env_vars', {}) or {}).items()
@@ -660,11 +689,11 @@ class SkillManager(ModuleBase):
                 allow_unsafe=allow_unsafe,
                 env=script_env,
             )
-            if result.get('status') == 'ok' and result.get('exit_code', 0) != 0:
-                result['status'] = 'failed'
-            return result
+            return self._normalize_script_result(result)
+        except ToolExecutionError:
+            raise
         except Exception as exc:
-            return self._run_script_exception(name, normalized_rel_path, cwd, run_cwd, exc)
+            self._raise_run_script_exception(name, normalized_rel_path, cwd, run_cwd, exc)
         finally:
             if temp_dir is not None:
                 temp_dir.cleanup()

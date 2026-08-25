@@ -4,7 +4,9 @@ import shutil
 import tempfile
 
 import lazyllm
+import pytest
 from lazyllm.tools import ReactAgent
+from lazyllm.tools.agent import ToolExecutionError
 from lazyllm.cli.skills import skills as skills_cli
 from lazyllm.tools.agent.skill_manager import SkillManager
 from lazyllm.tools.fs.base import LazyLLMFSBase
@@ -270,13 +272,13 @@ class TestSkills(object):
             manager = SkillManager(dir=tmp)
 
             ok_result = manager.run_script('script-skill', 'scripts/ok.py', allow_unsafe=True)
-            fail_result = manager.run_script('script-skill', 'scripts/fail.py', allow_unsafe=True)
+            with pytest.raises(ToolExecutionError) as exc_info:
+                manager.run_script('script-skill', 'scripts/fail.py', allow_unsafe=True)
 
             assert ok_result['status'] == 'ok'
             assert ok_result['exit_code'] == 0
-            assert fail_result['status'] == 'failed'
-            assert fail_result['exit_code'] == 7
-            assert 'bad' in fail_result['stdout']
+            assert 'exit code 7' in str(exc_info.value)
+            assert 'bad' in str(exc_info.value)
 
     def test_run_script_uses_dynamic_env_vars(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -311,13 +313,12 @@ class TestSkills(object):
                 f.write('print("ok")\n')
 
             manager = SkillManager(dir=tmp)
-            result = manager.run_script('cwd-skill', 'scripts/ok.py', allow_unsafe=True, cwd='missing')
+            with pytest.raises(ToolExecutionError) as exc_info:
+                manager.run_script('cwd-skill', 'scripts/ok.py', allow_unsafe=True, cwd='missing')
 
-            assert result['status'] == 'error'
-            assert result['error_type'] == 'FileNotFoundError'
-            assert result['rel_path'] == 'scripts/ok.py'
-            assert result['cwd'].endswith(os.path.join('cwd-skill', 'missing'))
-            assert 'cwd not found' in result['error']
+            assert 'scripts/ok.py' in str(exc_info.value)
+            assert 'missing' in str(exc_info.value)
+            assert 'cwd not found' in str(exc_info.value)
 
     def test_materialize_dir_preserves_paths_when_root_is_empty(self):
         fs = _MemoryCloudFS(

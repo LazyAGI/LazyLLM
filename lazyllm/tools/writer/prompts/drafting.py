@@ -7,14 +7,22 @@ Requirements:
 - The section's actual prose lives in the block's children. Use paragraph blocks for prose.
 - A paragraph child usually represents one substantial paragraph or paragraph group.
 - The section instruction is a writing plan, not a list of visible headings.
+- Write headings without visible numbering; the system renders numbers.
 - Use expected_blocks to guide coverage and ordering, but do not copy them verbatim as headings.
-- expected_blocks are minimum coverage cues, not a maximum block count. Expand them when needed.
+- Treat expected_blocks as priorities, not minimum paragraph counts. Combine or omit
+  secondary cues when necessary to fit the section budget.
 - Choose a reasonable number of paragraph children based on section complexity, expected_blocks, and required_points.
 - Each paragraph child's content must contain complete prose with multiple meaningful sentences unless the block is intentionally non-textual.
 - Keep text blocks substantial enough to carry their intended idea.
-- Do not generate short summary-like or placeholder-like blocks just to match the expected_blocks count.
-- If expected_blocks is too coarse, add additional content blocks for setup, transition, evidence/detail, consequence, or closing as appropriate.
+- Do not generate placeholder-like blocks just to match the expected_blocks count.
+- section_instruction.meta.target_chars is the preferred prose length and
+  section_instruction.meta.max_chars is a hard prose limit when present.
+- The length limit takes precedence over exhaustive source coverage or prose expansion.
 - Respect required_points, fact_constraints, style_constraints, and relation_constraints.
+- Sections may be drafted independently and in parallel. Treat document-global point of view,
+  tense, narrative voice, character identity, and naming constraints as strict. Do not invent a
+  proper name for an unnamed protagonist. If multiple POV options remain without an explicit
+  selection, use third-person limited consistently.
 - When section_instruction.meta.rewrite=true, treat meta.source_content as the authoritative
   source material for this section and meta.source_format as formatting guidance. Rewrite it
   according to the instruction without exposing source metadata in the result.
@@ -28,7 +36,19 @@ Requirements:
   Its content is the final Chinese caption and references must contain exactly one
   {{"type": "media_asset", "id": "..."}} entry from section_media. Do not invent asset IDs,
   paths, URLs, tokens, placeholders, or image blocks for unresolved needs.
-- Omit spans, provider_binding and provider_payload; the system manages them.
+  The image block node_id is both the visual need_id and cross-reference target; its
+  media_asset id is separate and must be copied from section_media.
+- Omit provider_binding and provider_payload; the system manages them.
+- Use section_instruction.meta.cross_references as the authoritative cross-reference plan.
+  For each item, the normalized "target" is the exact node_id to use.
+  If must_create=true, create one child WriterBlock with type="image",
+  node_id=target, and content=caption.
+  To reference a target, use a non-empty internal_ref span for the natural words that
+  carry the link, with target_node_id=target. All spans together must contain the complete sentence.
+  Example: {{"text":"架构设计","style":{{"link":{{"type":"internal_ref","target_node_id":"sec-2"}}}}}}.
+  A required image item produces both its image child block and one internal_ref span in prose.
+  Include each required target exactly once, and use no references beyond this plan.
+  Do not use target_node_id values outside section_instruction.meta.cross_reference_targets.
 - Emit WriterBlock fields in schema order. In particular, emit numbering and references before content.
 
 Writing task:
@@ -55,7 +75,17 @@ Requirements:
 - Do not output reasoning, analysis, review notes, or <think> tags.
 - Do not output the section title or its heading; the system adds the heading.
 - Follow the section instruction as a writing plan, not as a list of visible headings.
+- Treat expected_blocks as coverage priorities, not minimum paragraph counts. Combine or
+  omit secondary cues when necessary to fit the section budget.
+- section_instruction.meta.target_chars is the preferred prose length and
+  section_instruction.meta.max_chars is a hard prose limit when present.
+- The length limit takes precedence over exhaustive source coverage or prose expansion.
+- Write headings without visible numbering; the system renders numbers.
 - Respect required_points, fact_constraints, style_constraints, and relation_constraints.
+- Sections may be drafted independently and in parallel. Treat document-global point of view,
+  tense, narrative voice, character identity, and naming constraints as strict. Do not invent a
+  proper name for an unnamed protagonist. If multiple POV options remain without an explicit
+  selection, use third-person limited consistently.
 - When section_instruction.meta.rewrite=true, treat meta.source_content as the authoritative
   source material for this section and meta.source_format as formatting guidance. Rewrite it
   according to the instruction without exposing source metadata in the result.
@@ -64,7 +94,13 @@ Requirements:
 - If previous Markdown is provided, maintain continuity and avoid repetition.
 - Use ordinary Markdown paragraphs, lists, quotes, fenced code, tables, images, and
   subheadings only when they help the requested content.
+- Use section_instruction.meta.cross_references as the authoritative cross-reference plan.
+  Each item's "target" is the exact system key; an image target equals its visual need_id.
+  For a required target, use its guidance to link natural, non-empty wording as
+  [reference wording](#block-<target>) exactly once inside a complete sentence.
+  Do not use target keys outside section_instruction.meta.cross_reference_targets.
 - Return substantial finished prose, not a summary, placeholder, or planning notes.
+- The system places planned images after the prose link. Do not output image markup.
 
 Writing task:
 {task_json}
@@ -79,6 +115,36 @@ Current section instruction:
 {section_instruction_json}
 
 Write only the body of the current section now. Begin directly with its finished
-prose and follow the current section instruction, even when the previous Markdown
+prose and follow the current section instruction even when the previous Markdown
 covers a different section.
+'''
+
+
+CONDENSE_DRAFT_SECTION_PROMPT = '''Condense this WriterBlock draft section.
+
+Requirements:
+- Return one WriterBlock with the same root node_id, heading, and stage="draft".
+- Keep the main plot or argument, ending, point of view, tone, and required non-text blocks.
+- Do not add new facts, scenes, claims, headings, or planning notes.
+- The combined non-whitespace prose in the returned block's descendants must not exceed {max_chars} characters.
+
+Section instruction:
+{section_instruction_json}
+
+Draft section:
+{draft_section_json}
+'''
+
+
+CONDENSE_DRAFT_SECTION_MARKDOWN_PROMPT = '''Condense this Markdown section body to at most {max_chars} non-whitespace characters.
+
+Preserve the main plot or argument, ending, point of view, tone, and essential Markdown.
+Do not add new content, a section heading, reasoning, or planning notes.
+Return only the condensed section body.
+
+Section instruction:
+{section_instruction_json}
+
+Draft body:
+{draft_body}
 '''

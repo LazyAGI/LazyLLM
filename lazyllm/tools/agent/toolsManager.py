@@ -1,6 +1,7 @@
 import ast
 import copy
 from dataclasses import dataclass
+import json as std_json
 import json5 as json
 import lazyllm
 import docstring_parser
@@ -13,14 +14,41 @@ from lazyllm.flow.flow import FlowException
 from typing import Callable, Any, Union, Optional, get_type_hints, List, Dict, Type, Set
 import inspect
 import re
-from pydantic import create_model, BaseModel, ValidationError
+from pydantic import create_model, BaseModel, ConfigDict, ValidationError
 from lazyllm import LOG, locals as lazyllm_locals
+from .toolError import exception_failure, tool_failure
 from typing import *  # noqa F403, to import all types for compile_func(), do not remove
 
 # ---------------------------------------------------------------------------- #
 
 _TOOL_CONCURRENCY_ATTR = '__lazyllm_tool_concurrency__'
 _FILE_RESOURCE_NAMESPACE = 'file'
+
+
+def _levenshtein(left, right):
+    left, right = left.lower(), right.lower()
+    if len(left) < len(right):
+        left, right = right, left
+    previous = list(range(len(right) + 1))
+    for index, left_char in enumerate(left, 1):
+        current = [index]
+        for offset, right_char in enumerate(right, 1):
+            current.append(min(
+                current[-1] + 1,
+                previous[offset] + 1,
+                previous[offset - 1] + (left_char != right_char),
+            ))
+        previous = current
+    return previous[-1]
+
+
+def _closest_tool_name(requested, available):
+    ranked = sorted((_levenshtein(requested, name), name) for name in set(available))
+    if not ranked:
+        return None
+    distance, name = ranked[0]
+    threshold = min(3, max(1, len(requested) // 3))
+    return name if distance <= threshold else None
 
 
 def _normalize_resource_key(key: Any):
@@ -166,7 +194,6 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self._output_files = []
         self._concurrency_spec = _get_tool_concurrency_spec(
             metadata_func or schema_func or apply_func or self.__class__.apply)
-
         self._params_schema = self._load_function_schema(schema_func or self.__class__.apply)
 
     @staticmethod
@@ -218,6 +245,9 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         has_var_args = any(
             p.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
             for p in signature.parameters.values())
+        has_var_keyword = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD
+            for p in signature.parameters.values())
 
         if has_var_args:
             self._type_hints = doc_type_hints
@@ -232,7 +262,11 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
                 for name, param in signature.parameters.items() if name != 'self'}
 
         self._return_type = self._type_hints.get('return') if self._type_hints else None
-        return create_model(self._name, **fields)
+        return create_model(
+            self._name,
+            __config__=ConfigDict(extra='allow' if has_var_keyword else 'forbid'),
+            **fields,
+        )
 
     @property
     def name(self):
@@ -419,7 +453,8 @@ class MethodModuleTool(ModuleTool):
         object.__setattr__(self, '_input_adapter', input_adapter)
         bound = getattr(instance, method_name)
 
-        def _apply(**kwargs): return bound(**kwargs)
+        def _apply(**kwargs):
+            return bound(**kwargs)
         _apply.__doc__ = bound.__doc__ or self._find_inherited_docstring(instance, method_name)
         _apply.__name__ = method_name
 
@@ -765,12 +800,13 @@ def _build_tool_from_element(
             return ToolGroupWrapper(group, key_source)
         return group
     if callable(element):
+        schema_func = element
         register('tmp_tool')(element)
         try:
             # The registry wraps callables in a generated method whose module globals
             # differ from the callable's defining module. Keep the original callable
             # as the schema source so forward references and structured models resolve.
-            return lazyllm.tmp_tool.resolve(element.__name__)(schema_func=element)
+            return lazyllm.tmp_tool.resolve(element.__name__)(schema_func=schema_func)
         finally:
             lazyllm.tmp_tool.remove(element.__name__)
     raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, got {type(element)}')
@@ -814,6 +850,20 @@ class ToolManager(ModuleBase):
     def tools_info(self):
         return self._tool_call
 
+    @staticmethod
+    def normalize_tool_calls(tool_calls: Any) -> Any:
+        '''Normalize provider tool-call arguments at the ToolManager boundary.'''
+        for tool_call in tool_calls if isinstance(tool_calls, list) else [tool_calls]:
+            function = tool_call.get('function') if isinstance(tool_call, dict) else None
+            if not isinstance(function, dict):
+                continue
+            arguments = function.get('arguments')
+            if arguments is None or (isinstance(arguments, str) and not arguments.strip()):
+                function['arguments'] = '{}'
+            elif isinstance(arguments, dict):
+                function['arguments'] = std_json.dumps(arguments, ensure_ascii=False)
+        return tool_calls
+
     def sync_active_groups(self, input: Any = None, history: Optional[List[Dict[str, Any]]] = None) -> Set[str]:  # noqa C901
         '''Activate lazy Toolkits from registered input rules and structured gateway calls in history.'''
         try:
@@ -856,13 +906,17 @@ class ToolManager(ModuleBase):
         entry = self._tool_call.get(tool_name)
         if not entry:
             LOG.error(f'cannot find tool named [{tool_name}]')
-            return None
-        if len(entry.required_args.difference(set(tool_arguments.keys()))) != 0:
-            return None
+            return None, None
         try:
-            return entry._validate_input(tool_arguments)
-        except ValidationError:
-            return None
+            return entry._validate_input(tool_arguments), None
+        except ValidationError as error:
+            summaries = []
+            for item in error.errors(include_url=False, include_context=True, include_input=True):
+                path = tuple(item.get('loc') or ())
+                path_text = '.'.join(str(part) for part in path) or '$'
+                summaries.append(f'{path_text}: {item.get("msg") or "Invalid value"}')
+            message = 'Invalid arguments: ' + '; '.join(summaries)
+            return None, tool_failure(message)
 
     def _format_tools(self):
         if isinstance(self._tools, List):
@@ -936,45 +990,71 @@ class ToolManager(ModuleBase):
         s = s + (']' * max(0, opens_sq)) + ('}' * max(0, opens))
         return json.loads(s)
 
-    def _parse_tool_call(self, tc):
+    def _parse_tool_call(self, tc, allowed_tool_names=None):
         func = tc.get('function') if isinstance(tc, dict) else None
-        if not func or 'name' not in func or 'arguments' not in func:
-            return None, f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}', None
-        name = func['name']
+        name = func.get('name') if isinstance(func, dict) else None
+        if not isinstance(func, dict) or not isinstance(name, str) or not name.strip() \
+                or 'arguments' not in func:
+            failure = tool_failure(
+                f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}',
+            )
+            return None, failure, None
+        name = name.strip()
         raw_args = func['arguments']
-        arguments = ToolManager._safe_parse_json(raw_args) if isinstance(raw_args, str) else raw_args
+        visible_names = list(self._tool_call) if allowed_tool_names is None else sorted(
+            item for item in allowed_tool_names if item
+        )
+        if name not in visible_names:
+            suggested_tool = _closest_tool_name(name, visible_names)
+            message = f'Tool [{name}] was not exposed in this turn.'
+            if suggested_tool:
+                message += f' Did you mean [{suggested_tool}]? Call it explicitly.'
+            failure = tool_failure(message)
+            lazyllm.LOG.warning(
+                f'[ToolManager] tool {name!r} was not exposed. Visible: {visible_names}'
+            )
+            return None, failure, None
+        try:
+            arguments = ToolManager._safe_parse_json(raw_args) if isinstance(raw_args, str) else raw_args
+        except (TypeError, ValueError):
+            failure = tool_failure(
+                'Invalid arguments: arguments must be valid JSON.',
+            )
+            return None, failure, None
         if not isinstance(arguments, dict):
-            return None, f'Tool [{name}] arguments format error.', None
+            failure = tool_failure(
+                f'Invalid arguments: Tool [{name}] arguments must be a JSON object, '
+                f'got {type(arguments).__name__}.',
+            )
+            return None, failure, None
         tool = self._tool_call.get(name)
         if tool is None:
-            lazyllm.LOG.warning(
-                f'[ToolManager] tool {name!r} not found. '
-                f'Available: {list(self._tool_call.keys())}'
+            failure = tool_failure(
+                f'Tool [{name}] is no longer registered.',
             )
-            return None, f'Tool [{name}] is not available. Please choose from the available tools.', None
-        validated_arguments = self._validate_tool(name, arguments)
+            return None, failure, None
+        validated_arguments, validation_failure = self._validate_tool(name, arguments)
         if validated_arguments is None:
-            return None, f'Tool [{name}] parameters error.', None
+            return None, validation_failure, None
         return tool, arguments, validated_arguments
 
     @staticmethod
-    def _call_tool(tool, arguments):
+    def _call_tool(tool, arguments, exposed_name):
         try:
-            return {'ok': True, 'value': tool(arguments)}
+            value = tool(arguments)
+            return {'ok': True, 'value': value}
         except Exception as error:
             lazyllm.LOG.warning(
-                f'[ToolCall] tool={tool.name!r} raised: {type(error).__name__}: {error}')
-            return {
-                'ok': False,
-                'value': None,
-                'msg': f'[Tool Error] {type(error).__name__}: {error}',
-            }
+                f'[ToolCall] tool={exposed_name!r} raised: {type(error).__name__}: {error}')
+            return exception_failure(exposed_name, error)
 
-    def _build_tool_invocation(self, tool_call):
-        tool, arguments, validated_arguments = self._parse_tool_call(tool_call)
+    def _build_tool_invocation(self, tool_call, allowed_tool_names=None):
+        function = tool_call.get('function') if isinstance(tool_call, dict) else None
+        exposed_name = str(function.get('name') or '') if isinstance(function, dict) else ''
+        tool, arguments, validated_arguments = self._parse_tool_call(tool_call, allowed_tool_names)
         if tool is None:
             return (
-                lambda *_, _e=arguments: {'ok': False, 'value': None, 'msg': _e},
+                lambda *_, _failure=arguments: _failure,
                 {},
                 _ConcurrencyAccess(),
             )
@@ -984,7 +1064,7 @@ class ToolManager(ModuleBase):
             return self._sandbox, sandbox_arguments, access
 
         def _safe_call(args):
-            return self._call_tool(tool, args)
+            return self._call_tool(tool, args, exposed_name)
 
         return _safe_call, arguments, access
 
@@ -1055,9 +1135,15 @@ class ToolManager(ModuleBase):
             raise min(errors, key=lambda item: item[0])[1]
         return lazyllm.package(ordered_results)
 
-    def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False):
-        if not tools: return []
-        tool_calls = [tools] if isinstance(tools, dict) else tools
-        invocations = [self._build_tool_invocation(tool_call) for tool_call in tool_calls]
+    def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False,
+                allowed_tool_names: Optional[Set[str]] = None):
+        if isinstance(tools, list) and not tools: return []
+        tool_calls = self.normalize_tool_calls([tools] if isinstance(tools, dict) else tools)
+        if not isinstance(tool_calls, list):
+            tool_calls = [tool_calls]
+        invocations = [
+            self._build_tool_invocation(tool_call, allowed_tool_names)
+            for tool_call in tool_calls
+        ]
         callables, call_arguments, accesses = map(list, zip(*invocations))
         return self._execute_tool_calls(tool_calls, callables, call_arguments, accesses)

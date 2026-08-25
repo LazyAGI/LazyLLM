@@ -3,7 +3,7 @@ import lazyllm
 from typing import Dict, List, Union, Optional
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
-    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase,
+    ModelFailureCode, OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase,
     LazyLLMOnlineMultimodalEmbedModuleBase, LazyLLMOnlineText2ImageModuleBase,
     LazyLLMOnlineText2VideoModuleBase,
 )
@@ -15,6 +15,25 @@ from lazyllm import LOG
 
 
 class DoubaoChat(OnlineChatModuleBase):
+    PROVIDER_NAME = 'doubao'
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(
+        code_map={
+            'AuthenticationError': ModelFailureCode.AUTHENTICATION_FAILED,
+            'InvalidEndpointOrModel.NotFound': ModelFailureCode.NOT_FOUND,
+            'PermissionDenied': ModelFailureCode.PERMISSION_DENIED,
+            'QuotaExceeded': ModelFailureCode.QUOTA_EXHAUSTED,
+            'AccountQuotaExceeded': ModelFailureCode.QUOTA_EXHAUSTED,
+            'RequestBurstTooFast': ModelFailureCode.RATE_LIMITED,
+            'ServerOverloaded': ModelFailureCode.PROVIDER_OVERLOADED,
+            'SensitiveContentDetected': ModelFailureCode.INPUT_FILTERED,
+            'SensitiveContentDetected.SevereViolation': ModelFailureCode.INPUT_FILTERED,
+            'SensitiveContentDetected.Violence': ModelFailureCode.INPUT_FILTERED,
+        },
+        type_map={
+            'Unauthorized': ModelFailureCode.AUTHENTICATION_FAILED,
+            'TooManyRequests': ModelFailureCode.RATE_LIMITED,
+        },
+    )
     MODEL_NAME = 'doubao-1-5-pro-32k-250115'
     VLM_MODEL_PREFIX = ['doubao-seed-1-6-vision', 'doubao-1-5-ui-tars']
 

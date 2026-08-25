@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
-    OnlineChatModuleBase,
+    ModelFailureCode, ModelFinish, OnlineChatModuleBase,
     LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase,
     LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase
 )
@@ -17,7 +17,63 @@ from lazyllm.components.utils.file_operate import bytes_to_file
 from lazyllm.components.formatter import encode_query_with_filepaths
 
 
+_GLM_ERROR_CODE_MAP = {
+    '500': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    '1000': ModelFailureCode.AUTHENTICATION_FAILED,
+    '1001': ModelFailureCode.AUTHENTICATION_FAILED,
+    '1002': ModelFailureCode.AUTHENTICATION_FAILED,
+    '1003': ModelFailureCode.AUTHENTICATION_FAILED,
+    '1004': ModelFailureCode.AUTHENTICATION_FAILED,
+    '1005': ModelFailureCode.AUTHENTICATION_FAILED,
+    '1100': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    '1110': ModelFailureCode.PERMISSION_DENIED,
+    '1111': ModelFailureCode.AUTHENTICATION_FAILED,
+    '1112': ModelFailureCode.PERMISSION_DENIED,
+    '1113': ModelFailureCode.BALANCE_EXHAUSTED,
+    '1120': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    '1121': ModelFailureCode.PERMISSION_DENIED,
+    '1200': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    '1210': ModelFailureCode.INVALID_REQUEST,
+    '1211': ModelFailureCode.NOT_FOUND,
+    '1212': ModelFailureCode.INVALID_REQUEST,
+    '1213': ModelFailureCode.INVALID_REQUEST,
+    '1214': ModelFailureCode.INVALID_REQUEST,
+    '1215': ModelFailureCode.INVALID_REQUEST,
+    '1220': ModelFailureCode.PERMISSION_DENIED,
+    '1221': ModelFailureCode.NOT_FOUND,
+    '1222': ModelFailureCode.NOT_FOUND,
+    '1230': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    '1231': ModelFailureCode.CONFLICT,
+    '1234': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    '1261': ModelFailureCode.TOKEN_LIMIT,
+    '1300': ModelFailureCode.PROVIDER_REJECTED,
+    '1301': ModelFailureCode.INPUT_FILTERED,
+    '1302': ModelFailureCode.RATE_LIMITED,
+    '1304': ModelFailureCode.QUOTA_EXHAUSTED,
+    '1305': ModelFailureCode.PROVIDER_OVERLOADED,
+    '1308': ModelFailureCode.QUOTA_EXHAUSTED,
+    '1309': ModelFailureCode.QUOTA_EXHAUSTED,
+    '1310': ModelFailureCode.QUOTA_EXHAUSTED,
+    '1311': ModelFailureCode.PERMISSION_DENIED,
+    '1313': ModelFailureCode.RATE_LIMITED,
+    '1314': ModelFailureCode.QUOTA_EXHAUSTED,
+    '1315': ModelFailureCode.PERMISSION_DENIED,
+    '1316': ModelFailureCode.QUOTA_EXHAUSTED,
+    '1317': ModelFailureCode.QUOTA_EXHAUSTED,
+    '1318': ModelFailureCode.QUOTA_EXHAUSTED,
+    '1319': ModelFailureCode.QUOTA_EXHAUSTED,
+    '1320': ModelFailureCode.QUOTA_EXHAUSTED,
+    '1321': ModelFailureCode.QUOTA_EXHAUSTED,
+}
+
+
 class GLMChat(OnlineChatModuleBase, FileHandlerBase):
+    PROVIDER_NAME = 'glm'
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(
+        code_map=_GLM_ERROR_CODE_MAP,
+        http_map={435: ModelFailureCode.INVALID_REQUEST},
+        finish_map={'sensitive': ModelFinish.CONTENT_FILTER},
+    )
     TRAINABLE_MODEL_LIST = ['chatglm3-6b', 'chatglm_12b', 'chatglm_32b', 'chatglm_66b', 'chatglm_130b']
     VLM_MODEL_PREFIX = ['glm-4.5v', 'glm-4.1v', 'glm-4v']
     MODEL_NAME = 'glm-4'

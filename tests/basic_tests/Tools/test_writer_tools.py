@@ -15,6 +15,8 @@ from lazyllm.tools.writer.data_models import (
     DocumentSummary,
     MaterialStyle,
     ResourceProfile,
+    VisualInstruction,
+    VisualPlan,
     WriterBlock,
     WriterDocument,
     WriterSpan,
@@ -137,6 +139,7 @@ def test_stream_markdown_draft_is_isolated_and_returns_tool_result():
             task=task,
             section_instruction=instruction,
             context=context,
+            visual_plan=VisualPlan(),
             idle_timeout=1,
         ) as stream:
             markdown = ''.join(stream)
@@ -913,6 +916,56 @@ def test_generate_rewrite_section_instructions_supports_markdown():
     assert instructions.meta['representation'] == 'markdown'
 
 
+def test_section_length_budgets_preserve_planner_proportions():
+    task = WritingTask(
+        task_id='task-budget', query='写800字', task_type='write',
+        constraints={'target_chars': 800, 'max_chars': 880},
+    )
+    instructions = SectionInstructionList(instructions=[
+        SectionInstruction(
+            instruction_id=f'section-{index}',
+            content_ref=ContentRef(node_id=f'section-{index}'),
+            section_title=f'第{index}章', section_goal='写作',
+            meta={'target_chars': weight},
+        )
+        for index, weight in enumerate((2, 5, 3), start=1)
+    ])
+
+    WriterPlanningTools._normalize_section_length_budgets(instructions, task)
+
+    assert [item.meta for item in instructions.instructions] == [
+        {'target_chars': 160, 'max_chars': 176},
+        {'target_chars': 400, 'max_chars': 440},
+        {'target_chars': 240, 'max_chars': 264},
+    ]
+    assert instructions.meta == {'target_chars': 800, 'max_chars': 880}
+
+
+def test_overlong_ir_and_markdown_drafts_are_condensed_once():
+    tool = WriterDraftingTools()
+    instruction = SectionInstruction(
+        instruction_id='section-1', content_ref=ContentRef(node_id='section-1'),
+        section_title='第一章', section_goal='写作', meta={'max_chars': 10},
+    )
+
+    def block(text):
+        return WriterBlock(
+            node_id='section-1', type='heading', content='第一章',
+            children=[WriterBlock(node_id='p-1', type='paragraph', content=text)],
+        )
+
+    with patch.object(tool, '_call_llm_structured', return_value=block('压缩后。')) as ir_call:
+        condensed_ir = tool._condense_ir_section_if_needed(block('这是明显超过上限的初稿。'), instruction)
+    with patch.object(tool, '_call_llm_text', return_value='简短正文。') as md_call:
+        condensed_md = tool._condense_markdown_section_if_needed(
+            '这是明显超过上限的 Markdown 初稿。', instruction,
+        )
+
+    assert condensed_ir.children[0].content == '压缩后。'
+    assert condensed_md == '简短正文。'
+    assert ir_call.call_count == md_call.call_count == 1
+
+
 def test_generate_ir_draft_document_is_ui_editable_without_outline():
     context = WritingContext(context_id='ctx-rewrite-draft')
     block = WriterBlock(
@@ -1043,11 +1096,134 @@ def test_generate_markdown_draft_without_ir_conversion():
     assert final == draft
 
 
+def test_generate_markdown_visual_plan_assigns_section_placeholders():
+    task = WritingTask(task_id='task-md-visual', query='为第一章增加一张示意图', task_type='write')
+    context = WritingContext(context_id='ctx-md-visual')
+    outline = '# 测试文档\n\n## 第一章\n\n## 第二章\n'
+    llm_plan = VisualPlan(instructions=[VisualInstruction(
+        need_id='model-id',
+        content_ref=ContentRef(heading_path=['测试文档', '第一章']),
+        visual_type='diagram',
+        purpose='展示第一章的步骤关系',
+    )])
+
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterPlanningTools(artifact_store=directory)
+        with patch.object(tool, '_call_llm_structured', return_value=llm_plan) as mocked:
+            result = tool.generate_visual_plan(task, outline, context)
+        plan = load_artifact_json(result['artifact_path'], VisualPlan)
+
+    prompt = mocked.call_args.args[0]
+    need = plan.instructions[0]
+    assert 'Target H2 sections' in prompt
+    assert need.need_id == 'IMAGE-1'
+    assert need.content_ref == ContentRef(
+        heading_path=['测试文档', '第一章'], placeholder_id='IMAGE-1',
+    )
+    assert need.preferred_strategy == 'code_render'
+
+
+def test_markdown_draft_receives_its_section_visual_needs():
+    task, instruction, context = _markdown_draft_inputs()
+    plan = VisualPlan(instructions=[
+        VisualInstruction(
+            need_id='IMAGE-1',
+            content_ref=instruction.content_ref,
+            visual_type='image',
+            purpose='说明方案的关键关系',
+        ),
+        VisualInstruction(
+            need_id='IMAGE-2',
+            content_ref=ContentRef(heading_path=['测试文档', '第二章']),
+            visual_type='diagram',
+            purpose='说明第二章的关系',
+        ),
+    ])
+
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterDraftingTools(artifact_store=directory)
+        with patch.object(
+            tool,
+            '_call_llm_text',
+            return_value='正文。\n\n![关键关系](media-placeholder://IMAGE-1)',
+        ) as mocked:
+            result = tool.generate_draft_section(
+                task, instruction, context, visual_plan=plan,
+            )
+        markdown = Path(result['artifact_path']).read_text(encoding='utf-8')
+
+    prompt = mocked.call_args.args[0]
+    assert 'media-placeholder://<need_id>' in prompt
+    assert 'IMAGE-1' in prompt
+    assert '说明方案的关键关系' in prompt
+    assert '"required": true' in prompt
+    assert 'IMAGE-2' not in prompt
+    assert 'asset-1' not in prompt
+    assert 'Resolved section media:' not in prompt
+    assert markdown.endswith('![关键关系](media-placeholder://IMAGE-1)\n')
+
+
+def test_markdown_draft_system_owns_required_image_reference():
+    _, instruction, _ = _markdown_draft_inputs()
+    instruction.meta['cross_references'] = [{
+        'target': 'IMAGE-1',
+        'kind': 'image',
+        'caption': '图 1 关键关系',
+        'required': True,
+        'must_create': True,
+    }]
+    instruction.meta['cross_reference_targets'] = ['IMAGE-1']
+
+    markdown = WriterDraftingTools._normalize_markdown_cross_references(
+        '引言正文。\n\n后续正文。', instruction,
+    )
+
+    assert markdown.count('[关键关系](#block-IMAGE-1)') == 1
+    assert markdown.count('<a id="block-IMAGE-1"></a>') == 1
+    assert markdown.count('media-placeholder://IMAGE-1') == 1
+    assert markdown.index('media-placeholder://IMAGE-1') < markdown.index('后续正文')
+
+    existing = WriterDraftingTools._normalize_markdown_cross_references(
+        '引言正文 ![](#block-IMAGE-1)。\n\n后续正文。', instruction,
+    )
+    assert existing.count('[关键关系](#block-IMAGE-1)') == 1
+    assert '![](#block-IMAGE-1)' not in existing
+    assert existing.count('media-placeholder://IMAGE-1') == 1
+
+
+def test_markdown_draft_keeps_non_image_references_strict():
+    _, instruction, _ = _markdown_draft_inputs()
+    instruction.meta['cross_references'] = [{
+        'target': 'SECTION-1',
+        'kind': 'section',
+        'required': True,
+    }]
+    instruction.meta['cross_reference_targets'] = ['SECTION-1']
+
+    with pytest.raises(ValueError, match='Missing required cross-references'):
+        WriterDraftingTools._normalize_markdown_cross_references(
+            '正文没有交叉引用。', instruction,
+        )
+
+
 def test_markdown_outline_requires_title_and_section():
     with pytest.raises(ValueError, match='exactly one H1'):
         get_markdown_outline_targets('## 第一章\n')
     with pytest.raises(ValueError, match='at least one H2'):
         get_markdown_outline_targets('# 测试文档\n')
+
+
+def test_generated_markdown_outline_does_not_own_images():
+    outline = WriterPlanningTools._normalize_markdown_outline(
+        '# 测试文档\n\n## 概述\n\n'
+        '![上传图片](01_local-upload-lm-2048.png)\n\n'
+        '保留的结构说明。<img src="duplicate.png">\n'
+    )
+
+    assert '![' not in outline
+    assert '<img' not in outline
+    assert '保留的结构说明。' in outline
+    assert '<a id="block-' in outline
 
 
 def test_generate_markdown_draft_document_preserves_repeated_heading_order():

@@ -8,6 +8,7 @@ Requirements:
 - Add at least one H2 section directly under the H1 title.
 - Every H2 section title must be unique.
 - Use H3-H6 only for optional subsection planning under an H2 section.
+- Write titles and section titles without visible numbering; the system renders numbers.
 - Treat the outline as the exact structural skeleton of the final deliverable: every H2
   will become a visible section in the drafted document.
 - Do not create meta-planning H2 sections such as background and setting, character
@@ -19,7 +20,15 @@ Requirements:
   them as standalone planning sections.
 - For non-fiction, reports, and articles, use H2 only for sections that should appear in
   the final document.
+- Do not create image-annotation headings such as "图片：..." or "Image: ..." at any level.
+  Image needs are planned by the visual plan step; the outline must stay pure text structure.
+- Do not emit Markdown image syntax, HTML image tags, image paths, or image placeholders.
+  The visual plan and media resolver exclusively own image selection and placement.
 - Keep the outline concise but concrete enough to guide drafting.
+- Treat task.constraints.target_chars and task.constraints.max_chars as limits for the
+  entire final document, not for each section.
+- When max_chars is at most 1200 and the user did not explicitly request multiple
+  chapters or sections, prefer one H2 section and merge the essential material into it.
 - Use resource profiles and execution results as constraints, not as text to copy blindly.
 - Do not invent facts that conflict with the writing context.
 
@@ -42,7 +51,12 @@ GENERATE_OUTLINE_PROMPT = '''Generate a writing outline from the given writing t
 Requirements:
 - Return a WriterDocument object with stage="outline".
 - Set document_id to the exact document_id below.
-- Generate at least 3 top-level blocks unless the task explicitly asks for fewer.
+- Generate at least 3 top-level blocks unless the task asks for a short document or
+  explicitly asks for fewer.
+- Treat task.constraints.target_chars and task.constraints.max_chars as limits for the
+  entire final document, not for each section.
+- When max_chars is at most 1200 and the user did not explicitly request multiple
+  chapters or sections, generate one top-level block and merge the essential material into it.
 - Each top-level block is a section. Use type="heading" for section blocks.
 - Treat the outline as the exact structural skeleton of the final deliverable: every
   top-level heading block will become a visible section in the drafted document.
@@ -55,12 +69,15 @@ Requirements:
   character, setting, theme, and style requirements into the relevant chapters.
 - For non-fiction, reports, and articles, use top-level heading blocks only for sections
   that should appear in the final document.
+- Do not create heading blocks named "图片：..." or "Image: ..." for image planning; visual
+  needs are handled by the visual plan step, not by outline headings.
 - All user-visible outline text MUST use the same document tree contract as draft and final content:
   put section titles in heading block.content, and put section descriptions and key points in
   paragraph or list_item blocks under block.children.
 - Fill node_id for every block. Use stable ids such as section-1, section-2, section-1-1.
 - Use block.numbering.level for the heading level: 1 for top-level sections, incrementing for children.
   Put child sections under block.children as heading blocks alongside any visible description blocks.
+- Write titles and section titles without visible numbering; the system renders numbers.
 - block.references holds identifiers for facts or resources the section depends on.
 - Each element of block.references is an object with at least an "id" field. The id must match a
   DocumentFact.fact_id or ResourceProfile.resource_id present in the input.
@@ -125,9 +142,21 @@ Requirements:
 - meta.document_title must be the title of the rewritten document. Preserve the source title unless
   the task explicitly requests a new title.
 - Produce one SectionInstruction for every top-level section in the rewritten document, in final order.
+- Treat task.constraints.target_chars and task.constraints.max_chars as limits for the
+  entire final document, not for each section.
+- When max_chars is at most 1200 and the user did not explicitly request multiple
+  chapters or sections, normally produce one SectionInstruction and merge source sections.
+- When multiple sections are necessary, set each SectionInstruction.meta.target_chars to
+  a positive relative length budget based on its narrative or explanatory importance.
+  Do not divide the budget evenly unless the sections are genuinely equally important.
 - instruction_id must be stable and unique. section_title and section_goal must be non-empty.
 - required_points must retain the source facts, plot points, terminology, and details needed by drafting.
 - expected_blocks must be a concise content plan, not visible headings.
+- Sections may be drafted independently and in parallel. Preserve one document-global point
+  of view, tense, narrative voice, character identity, and naming policy by copying the same
+  continuity constraints into every relevant section. Do not invent a proper name for an
+  unnamed protagonist, and do not leave mutually exclusive POV choices unresolved.
+- Keep required_points and expected_blocks selective enough to fit the final length budget.
 - references must contain only exact source_ref objects copied from source_sections. Use them to identify
   which source sections inform each rewritten section; do not invent reference fields or values.
 - For representation="ir", content_ref must contain only a unique node_id such as rewrite-section-1.
@@ -176,11 +205,42 @@ Outline:
 '''
 
 
+GENERATE_VISUAL_PLAN_MARKDOWN_PROMPT = '''Generate a visual plan for this Markdown outline.
+
+Requirements:
+- Return a VisualPlan object.
+- Create a visual only when the user explicitly requires it or it materially improves the section.
+- Each content_ref must target exactly one H2 section from target_sections: use its exact
+  heading_path and occurrence. Do not use node_id or document_root.
+- Use the most appropriate visual_type. preferred_strategy is optional; if omitted, the system
+  derives it from visual_type. Do not use image_generation for chart or table.
+- purpose must state what the visual communicates for its section.
+- Set required=true only when the user explicitly requires the visual.
+- Do not change the outline. Do not generate asset IDs, paths, URLs, captions, placeholders, or upload details.
+
+Writing task:
+{task_json}
+
+Writing context:
+{context_json}
+
+Outline:
+{outline_json}
+
+Target H2 sections:
+{target_sections_json}
+'''
+
+
 GENERATE_SECTION_INSTRUCTIONS_PROMPT = '''Generate section-level writing instructions from the outline and writing context.
 
 Requirements:
 - Return a SectionInstructionList object.
 - Generate exactly one SectionInstruction for every item listed in target_outline_blocks.
+- Treat writing_task.constraints.target_chars and writing_task.constraints.max_chars as
+  limits for the entire final document, not for each section.
+- Set each SectionInstruction.meta.target_chars to a positive relative length budget based
+  on the section's importance. Do not divide evenly unless the sections are genuinely equal.
 - Copy each target's content_ref exactly. For Writer IR this contains node_id; for Markdown it
   contains heading_path and occurrence. Do not mix locator types.
 - section_title MUST equal the corresponding target's section_title.
@@ -192,14 +252,39 @@ Requirements:
 - fact_constraints MUST only contain factual statements actually present in the writing context.
 - references are owned by the authoritative outline. Omit references; the system normalizes them.
 - style_constraints should include tone, pov, audience, and style requirements when applicable.
-- relation_constraints should describe dependencies on previous or later sections when useful.
+- Sections may be drafted independently and in parallel. Resolve document-global narrative
+  choices during planning: choose one point of view, tense, narrative voice, and protagonist
+  naming policy, then copy those exact continuity constraints into every relevant section.
+  If the task, context, and outline do not name a protagonist, do not invent a proper name.
+  If they allow multiple points of view without choosing one, select one and use it throughout.
+- relation_constraints should describe ordinary continuity with neighboring sections;
+  the drafting model expresses that continuity in prose.
 - Use the visual plan to shape section goals, ordering, and transitions when its content_ref targets
-  the same section. Do not copy visual needs into SectionInstruction or generate asset IDs, paths,
-  placeholders, captions, or acquisition instructions.
+  the same section. Keep acquisition details out of SectionInstruction; the system binds every
+  planned visual need to its created-image cross-reference target.
 - expected_blocks should be a concise block-level content plan for the draft tool.
-- For a normal section, expected_blocks should usually contain 3 to 6 planned content blocks unless the section is explicitly very short.
+- For a normal-length section, expected_blocks should usually contain 3 to 6 planned content
+  blocks. Use fewer and merge coverage cues when the total document budget is short.
 - expected_blocks are planning labels for coverage and ordering, not visible headings that must appear in final text.
+- Plan a section cross-reference when this section's text will point readers to
+   another section for a specific definition, result, or method - for example a
+   conclusion citing the experiments it summarizes. This is expected when the writing
+   task asks for cross-references; in that case include at least one section reference.
+   Represent every planned reference in SectionInstruction.meta.cross_references as
+   an object with target_ref, kind, required, and guidance.
+   Background continuity readers are assumed to know
+   (such as narrative chapters building on earlier events) belongs in relation_constraints.
+   For Writer IR, target_ref is {{"node_id": "..."}} copied from the outline.
+   For Markdown, target_ref is the target section's {{"heading_path": [...], "occurrence": 1}}.
+   Its guidance names the information the reader needs from that target.
+- Visual plan needs own created images. Do not add must_create image objects; the system adds them.
+   To reference a planned image in this or another section, use
+   target_ref: {{"node_id": "<that visual need_id>"}} with must_create=false and kind="image".
+- Use guidance to describe what natural wording should carry each reference link.
 - Do not invent facts that conflict with writing context.
+
+Writing task:
+{task_json}
 
 Outline (authoritative structure):
 {outline_json}

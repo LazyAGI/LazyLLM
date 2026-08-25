@@ -263,22 +263,77 @@ class TestDynamicPDFReader:
         assert block.page.index == 2
         assert block.page.bbox.to_list() == [10.0, 20.0, 100.0, 50.0]
 
-    def test_normalize_online_content_bboxes_to_pdf_space(self):
+    def test_online_content_uses_layout_block_and_line_bboxes(self):
         content = [
             {'type': 'text', 'text': 'title', 'page_idx': 0, 'bbox': [361, 80, 636, 99]},
             {'type': 'text', 'text': 'body', 'page_idx': 0, 'bbox': [174, 224, 825, 502]},
         ]
-        layout = {'pdf_info': [{'page_idx': 0, 'page_size': [595, 841]}]}
-        model = [[
-            {'type': 'doc_title', 'bbox': [0.363, 0.081, 0.637, 0.101], 'content': 'title'},
-            {'type': 'text', 'bbox': [0.175, 0.225, 0.826, 0.503], 'content': 'body'},
-        ]]
-        out = MineruPDFReader._normalize_online_content_bboxes(content, layout, model)
-        # OCR canvas inferred from max extent ≈ 1000; result should be near PDF points.
-        assert out[0]['bbox'][0] == pytest.approx(215.0, abs=2.0)
-        assert out[0]['bbox'][1] == pytest.approx(67.5, abs=2.0)
-        assert out[0]['bbox'][2] == pytest.approx(379.0, abs=2.0)
-        assert out[0]['bbox'][3] == pytest.approx(83.5, abs=2.0)
+        layout = {'pdf_info': [{
+            'page_idx': 0,
+            'page_size': [595, 841],
+            'para_blocks': [
+                {
+                    'bbox': [215, 67, 379, 83],
+                    'lines': [{'spans': [{
+                        'bbox': [215, 67, 379, 83],
+                        'type': 'text',
+                        'content': 'title',
+                        'score': 0.99,
+                    }]}],
+                },
+                {
+                    'bbox': [104, 188, 491, 422],
+                    'lines': [{'spans': [{
+                        'bbox': [104, 188, 491, 205],
+                        'type': 'text',
+                        'content': 'body',
+                        'cross_page': False,
+                    }]}],
+                },
+            ],
+        }]}
+
+        out = MineruPDFReader._apply_online_layout_metadata(content, layout)
+
+        assert out[0]['bbox'] == [215, 67, 379, 83]
+        assert out[0]['lines'] == [{
+            'bbox': [215, 67, 379, 83],
+            'type': 'text',
+            'content': 'title',
+            'page': 0,
+        }]
+        assert out[1]['bbox'] == [104, 188, 491, 422]
+        assert out[1]['lines'][0]['page'] == 0
+        assert out[1]['page_width'] == 595.0
+        assert out[1]['page_height'] == 841.0
+
+    def test_online_layout_expands_grouped_list_items(self):
+        content = [{
+            'type': 'list',
+            'list_items': ['first', 'second'],
+            'page_idx': 0,
+            'bbox': [100, 100, 900, 900],
+        }]
+        layout = {'pdf_info': [{
+            'page_idx': 0,
+            'page_size': [600, 800],
+            'para_blocks': [
+                {
+                    'bbox': [50, 100, 250, 130],
+                    'lines': [{'spans': [{'bbox': [50, 100, 250, 130], 'content': 'first'}]}],
+                },
+                {
+                    'bbox': [300, 50, 550, 90],
+                    'lines': [{'spans': [{'bbox': [300, 50, 550, 90], 'content': 'second'}]}],
+                },
+            ],
+        }]}
+
+        out = MineruPDFReader._apply_online_layout_metadata(content, layout)
+
+        assert out[0]['bbox'] == [50, 50, 550, 130]
+        assert [line['content'] for line in out[0]['lines']] == ['first', 'second']
+        assert all(line['page'] == 0 for line in out[0]['lines'])
 
     def test_pdf_offline_missing_bbox_still_skipped(self):
         reader = MineruPDFReader(url='http://local-mineru:8000/api/v1/pdf_parse')
@@ -288,3 +343,11 @@ class TestDynamicPDFReader:
         monkeypatch.setenv('LAZYLLM_MINERU_SSL_VERIFY', 'false')
         reader = MineruPDFReader(url='https://mineru.net')
         assert reader._online_request_kwargs() == {'verify': False}
+
+    def test_online_model_version_matches_pipeline_backend(self):
+        reader = MineruPDFReader(url='https://mineru.net', backend='pipeline')
+        assert reader._online_model_version() == 'pipeline'
+
+    def test_online_model_version_maps_engine_variants_to_vlm(self):
+        reader = MineruPDFReader(url='https://mineru.net', backend='hybrid-auto-engine')
+        assert reader._online_model_version() == 'vlm'

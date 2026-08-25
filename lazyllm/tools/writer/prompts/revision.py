@@ -12,6 +12,8 @@ Output semantics:
 - For Writer IR, each content_ref must be exactly {{"node_id": "<string copied from a candidate>"}}.
 - node_id must be a string. Never put an object inside node_id, and do not add
   heading_path, document_root, occurrence, or other fields when node_id is present.
+- For Markdown, copy heading_path and occurrence exactly from one candidate. Never add
+  node_id or placeholder_id to a Markdown heading reference.
 - Plain text without headings uses content_ref.document_root=true.
 - summary describes the revision scope in one sentence.
 - A body revision has one or more targets.
@@ -52,7 +54,7 @@ Plan semantics:
     equal the create instruction's content_ref.
   - visual_instruction.visual_type must be "image" for this revision workflow.
   - visual_instruction.purpose is the semantic image requirement used to match an
-    uploaded asset or request image generation. required must be true.
+    uploaded asset or acquire a new image. required must be true.
   - visual_instruction.preferred_strategy must be null or "image_generation"
     for a revision image create.
   - A delete instruction targeting an existing image must not include visual_instruction.
@@ -61,14 +63,23 @@ Plan semantics:
 - A contiguous insertion uses one create instruction so its blocks share one destination
   and retain their final document order.
 - content_ref identifies the located content involved in the operation.
+- Every content_ref and destination_ref must copy exactly one reference from locate_result
+  or the visible document. Locator kinds are mutually exclusive; never combine node_id,
+  heading_path, placeholder_id, or document_root in one reference. Describe a fragment
+  inside a Markdown section in instruction while retaining the section heading_path.
 - Create must provide position; content_ref and position identify the insertion location.
 - For move, content_ref identifies the content being moved, while destination_ref and
   position identify its destination. Move must provide both destination_ref and position.
 - instruction describes the complete visible result of the operation.
+- Preserve existing cross-reference links. Do not plan to remove or rewrite an
+  internal reference unless the user explicitly asks to change that reference.
 - Preserve every explicit structural constraint from task.query in instruction itself,
   including paragraph count, list-item count, heading level, and ordering. Render distinct
   Markdown paragraphs with blank lines and render lists/headings with their Markdown syntax;
   do not record required structure only in meta.
+- When task.query requires inserted or updated content to reference an existing section or
+  image, keep that requirement in instruction; the content writer emits an internal_ref span
+  for the existing target.
 - For an image create, describe one image block and its final caption in instruction;
   do not invent media_asset IDs, file paths, URLs, or provider identifiers.
 - instruction_id is unique, and instructions follow execution order.
@@ -104,6 +115,19 @@ Output semantics:
   counts/order. In particular, distinct paragraphs are separated by a blank line; do not
   collapse them into sentences in one paragraph even if replacement meta describes them.
 - Replacements are returned in application order and preserve unaffected Markdown exactly.
+- Preserve existing <a id="block-..."></a> anchors and internal links exactly.
+  Do not rename or drop them unless the instruction explicitly targets that reference.
+- Image handling:
+  - When an instruction creates an image, put exactly `![<caption>](media-placeholder://<need_id>)`
+    in new_string at the insertion position. Use the need_id from that create instruction's
+    visual_instruction; do not reuse a need_id from a different instruction.
+    Never use Obsidian/wiki syntax such as `![[...]]`, a local filename/path, a raw URL,
+    or any other image syntax.
+  - When an instruction deletes an image, old_string must be the complete image line
+    (a line beginning with `![` and ending with `)`, including its complete image target/path). Identify
+    the intended image line by caption or document order when the request references
+    "first"/"second"/a caption.
+  - Never invent need_id values, asset IDs, paths, or URLs.
 
 Markdown document:
 {document_content}
@@ -122,6 +146,7 @@ Return one StringReplace. Copy the selected block exactly into old_string and
 return the complete replacement paragraph in new_string. Set content_ref to
 document_root=true.
 Preserve unaffected inline formatting.
+Preserve existing internal links and any inline formatting inside the selected block.
 Do not return surrounding document content or explanations.
 
 Instruction:
@@ -151,6 +176,13 @@ Output semantics:
 - For an image create, return exactly one new block with type="image". Its content is
   the final caption. Do not invent references or asset IDs; the system adds the single
   resolved media_asset reference after generation.
+- Preserve existing internal_ref spans in updated text blocks. Do not invent new
+  target_node_id values; to reference an existing heading or image block, copy its exact
+  node_id from the visible document into a non-empty internal_ref span containing the
+  natural words that carry the link.
+- content equals the concatenation of all span text. Example:
+  spans=[{{"text":"详见"}},{{"text":"架构设计","style":{{"link":{{"type":"internal_ref","target_node_id":"sec-related"}}}}}},{{"text":"中的定义。"}}]
+  with content="详见架构设计中的定义。".
 
 Visible document:
 {document_json}

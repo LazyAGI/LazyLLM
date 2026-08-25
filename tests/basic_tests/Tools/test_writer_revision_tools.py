@@ -565,6 +565,59 @@ def test_generate_modify_plan_supports_markdown_content_ref():
     assert modified_plan.instructions[0].content_ref == content_ref
 
 
+def test_generate_markdown_replace_set_uses_modify_plan_image_need():
+    content_ref = ContentRef(heading_path=['测试文档', '第一章'])
+    instruction = ModifyInstruction(
+        instruction_id='IMAGE-1',
+        content_ref=content_ref,
+        modify_type='create',
+        position='after',
+        instruction='在正文后加入一张关键关系示意图',
+        visual_instruction=VisualInstruction(
+            need_id='IMAGE-1',
+            content_ref=content_ref,
+            visual_type='image',
+            purpose='说明正文的关键关系',
+        ),
+    )
+    plan = ModifyPlan(scope='section', instructions=[instruction])
+    replace_set = StringReplaceSet(replacements=[StringReplace(
+        content_ref=content_ref,
+        old_string='原始正文。',
+        new_string='原始正文。\n\n![关键关系](media-placeholder://IMAGE-1)',
+    )])
+    markdown = '# 测试文档\n\n## 第一章\n\n原始正文。\n'
+
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterRevisionTools(llm=MagicMock(), artifact_store=directory)
+        with patch.object(tool, '_call_llm_structured', return_value=replace_set) as mocked:
+            output = tool.generate_string_replace_set(
+                markdown,
+                plan,
+                WritingContext(context_id='ctx-md-image'),
+            )
+        generated = load_artifact_json(output['artifact_path'], StringReplaceSet)
+
+    prompt = mocked.call_args.args[0]
+    assert 'media-placeholder://<need_id>' in prompt
+    assert 'IMAGE-1' in prompt
+    assert 'asset-image-1' not in prompt
+    assert 'Resolved section media:' not in prompt
+    assert generated.replacements[0].new_string.endswith('media-placeholder://IMAGE-1)')
+
+
+def test_markdown_replace_rejects_partial_image_old_string():
+    markdown = '# 测试文档\n\n## 第一章\n\n![原图](media-asset://asset-1|/tmp/image.png)\n'
+    replace_set = StringReplaceSet(replacements=[StringReplace(
+        content_ref=ContentRef(heading_path=['测试文档', '第一章']),
+        old_string='![原图](media-asset://asset-1|/tmp/image.png) 附加文字',
+        new_string='',
+    )])
+
+    with pytest.raises(ValueError, match='complete image line'):
+        WriterRevisionTools()._validate_string_replace_images(replace_set, markdown)
+
+
 def test_apply_string_replace_updates_markdown_section():
     markdown = '# 第一章\n\n原始正文\n\n# 第二章\n\n保持不变'
     replace_set = StringReplaceSet(replacements=[StringReplace(
