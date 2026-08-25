@@ -183,6 +183,27 @@ def _make_mock_response() -> str:
 
 class TestPaddleOCRPDFReaderMock:
 
+    def test_load_data_normalizes_long_pdf_before_fetch(self):
+        pdf = _make_test_pdf()
+        reader = PaddleOCRPDFReader()
+        calls = []
+
+        def normalize(path):
+            calls.append(('normalize', path))
+
+        def fetch(path):
+            calls.append(('fetch', path))
+            return _make_mock_response(), None
+
+        with patch(
+            'lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.normalize_long_pdf_inplace',
+            side_effect=normalize,
+        ), patch.object(reader, '_fetch_async', side_effect=fetch), \
+                patch.object(PaddleOCRPDFReader, '_download_images'):
+            reader._load_data(str(pdf))
+
+        assert calls == [('normalize', Path(pdf)), ('fetch', Path(pdf))]
+
     def test_load_data_mock(self):
         pdf = _make_test_pdf()
         reader = PaddleOCRPDFReader()
