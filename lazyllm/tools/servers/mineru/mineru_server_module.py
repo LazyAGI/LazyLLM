@@ -17,6 +17,7 @@ from lazyllm.thirdparty import fastapi
 from lazyllm import LOG
 from lazyllm import FastapiApp as app
 from lazyllm.module import ServerModule
+from lazyllm.tools.pdf_utils import normalize_long_pdf_inplace
 
 from lazyllm.thirdparty import mineru
 
@@ -1030,6 +1031,18 @@ class MineruServerBase:
                     f'[{req_id}] Conversion cache hits: '
                     f'{conversion_cache_hits}/{len(files_to_process)} files'
                 )
+
+            for pdf_path in pdf_paths:
+                try:
+                    normalized = await asyncio.to_thread(
+                        normalize_long_pdf_inplace,
+                        pdf_path,
+                    )
+                except Exception as exc:
+                    LOG.warning(f'[{req_id}] Long PDF normalization skipped: {pdf_path}: {exc}')
+                    normalized = None
+                if normalized:
+                    LOG.info(f'[{req_id}] Replaced oversized PDF in place: {pdf_path}')
 
             LOG.info(f'[{req_id}] Starting parsing {len(pdf_paths)} PDFs with {effective_backend}...')
             pdf_file_names = [p.stem for p in pdf_paths]
