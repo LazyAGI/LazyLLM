@@ -39,7 +39,7 @@ _FORBID_IMAGE_GENERATION = re.compile(
 
 
 def parse_writer_request_constraints(query: str) -> dict[str, Any]:
-    """Parse stable Writer request constraints for every Writer entry point."""
+    '''Parse stable Writer request constraints for every Writer entry point.'''
     constraints: dict[str, Any] = {}
     match = _CHINESE_CHAR_LIMIT_RE.search(query or '')
     if match is not None:
@@ -64,4 +64,3 @@ def parse_writer_request_constraints(query: str) -> dict[str, Any]:
             'allow_image_generation': not (no_visuals or require_reuse or forbid_generation),
         }
     return constraints
-

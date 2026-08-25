@@ -18,7 +18,7 @@ T = TypeVar('T', bound=BaseModel)
 
 
 def _writer_structured_llm_attempt_trace():
-    """Name the diagnostic span emitted around selected structured Writer calls."""
+    '''Name the diagnostic span emitted around selected structured Writer calls.'''
 
 
 def _strip_leading_think_blocks(text: str) -> str:
