@@ -598,9 +598,6 @@ class WriterDraftingTools(WriterToolBase):
         if not body:
             raise ValueError('Short document body must not be empty.')
         body = self._normalize_short_visual_placeholders(body, short_visuals)
-        max_chars = task.constraints.get('max_chars', plan.meta.get('max_chars'))
-        if isinstance(max_chars, int) and self._short_prose_chars(body) > max_chars:
-            raise ValueError(f'Short document exceeds max_chars={max_chars}.')
         title = strip_heading_numbering(plan.section_title.strip())
         markdown = f'# {title}\n\n{body}\n'
         sections = parse_markdown_sections(markdown)

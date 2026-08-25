@@ -137,6 +137,9 @@ def test_stream_short_document(representation, tmp_path):
     task, context, plan = _short_inputs(representation)
     tool = WriterDraftingTools(artifact_store=str(tmp_path))
     if representation == 'markdown':
+        task.constraints['max_chars'] = 3
+        plan.meta['max_chars'] = 3
+
         def stream_text(_prompt, stream_output=False):
             sink = stream_output['_stream_sink']
             sink({'tag': 'text', 'delta': '第一段。'})
