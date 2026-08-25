@@ -4,19 +4,32 @@ import re
 from typing import Any, Dict, List, Optional
 
 from .base import WriterToolBase
-from .stream_tools import DraftIRStream, DraftMarkdownStream
+from .stream_tools import DraftIRStream, DraftMarkdownStream, resolve_stream_idle_timeout
 from ..data_models.context import WritingContext
 from ..data_models.multimodal import MediaAssetLibrary, VisualPlan
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import WriterBlock, WriterDocument
 from ..data_models.planning import SectionInstruction
-from ..prompts import GENERATE_DRAFT_SECTION_MARKDOWN_PROMPT, GENERATE_DRAFT_SECTION_PROMPT
+from ..numbering import (
+    MARKDOWN_ANCHOR_RE,
+    build_numbering_view_from_ir,
+    build_numbering_view_from_markdown,
+    compute_numbering,
+)
+from ..prompts import (
+    CONDENSE_DRAFT_SECTION_MARKDOWN_PROMPT,
+    CONDENSE_DRAFT_SECTION_PROMPT,
+    GENERATE_DRAFT_SECTION_MARKDOWN_PROMPT,
+    GENERATE_DRAFT_SECTION_PROMPT,
+)
 from ..utils import (
     get_markdown_outline_targets,
     make_markdown_tool_result,
     parse_markdown_sections,
-    render_document_markdown,
+    strip_caption_numbering,
+    strip_heading_numbering,
     to_prompt_json,
+    writer_document_to_markdown,
 )
 
 class WriterDraftingTools(WriterToolBase):
@@ -25,6 +38,12 @@ class WriterDraftingTools(WriterToolBase):
         'generate_draft_document',
         'generate_final_document',
     ]
+
+    _MARKDOWN_INTERNAL_LINK_RE = re.compile(r'!?\[([^\]]*)\]\(#((?:block-)?[^)]+)\)')
+    _MARKDOWN_ANCHOR_RE = MARKDOWN_ANCHOR_RE
+    _MARKDOWN_MEDIA_PLACEHOLDER_RE = re.compile(
+        r'!\[[^\]]*\]\(media-placeholder://([A-Za-z0-9_-]+)\)'
+    )
 
     def generate_draft_section(
         self, task: Any, section_instruction: Any,
@@ -45,6 +64,7 @@ class WriterDraftingTools(WriterToolBase):
                 instruction,
                 writing_context,
                 previous_blocks,
+                visual_plan,
                 result_extra,
             )
 
@@ -64,6 +84,7 @@ class WriterDraftingTools(WriterToolBase):
         section_instruction: Any,
         context: Any,
         previous_blocks: Any = None,
+        visual_plan: Any = None,
         *,
         idle_timeout: Optional[float] = None,
     ) -> DraftMarkdownStream:
@@ -80,7 +101,8 @@ class WriterDraftingTools(WriterToolBase):
             writing_task, instruction, writing_context, previous_blocks,
         )
         heading = self._markdown_draft_heading(instruction)
-        timeout = self._draft_stream_idle_timeout(idle_timeout)
+        prefix = self._markdown_draft_prefix(instruction, heading)
+        timeout = resolve_stream_idle_timeout(self.llm, idle_timeout)
         return DraftMarkdownStream(
             call=lambda sink: self._call_llm_text(
                 prompt,
@@ -89,7 +111,7 @@ class WriterDraftingTools(WriterToolBase):
             finalize=lambda body: self._finalize_markdown_draft_section(
                 body, instruction, result_extra,
             ),
-            prefix=f'{heading}\n\n',
+            prefix=prefix,
             idle_timeout=timeout,
         )
 
@@ -127,10 +149,21 @@ class WriterDraftingTools(WriterToolBase):
                 WriterBlock,
                 stream_output={'_stream_sink': sink},
             ),
-            normalize=lambda block: self._normalize_draft_block(block, instruction),
-            finalize=lambda block: self._save_ir_draft_section(block, result_extra, media_assets),
+            normalize=lambda block: self._normalize_draft_block(
+                block, instruction, allow_deferred_create=True,
+            ),
+            finalize=lambda block: self._save_ir_draft_section(
+                self._normalize_draft_block(
+                    self._attach_section_media(
+                        block, instruction, visual_plan, media_assets,
+                    ),
+                    instruction,
+                ),
+                result_extra,
+                media_assets,
+            ),
             instruction=instruction,
-            idle_timeout=self._draft_stream_idle_timeout(idle_timeout),
+            idle_timeout=resolve_stream_idle_timeout(self.llm, idle_timeout),
         )
 
     def _generate_ir_draft_section(
@@ -152,10 +185,16 @@ class WriterDraftingTools(WriterToolBase):
             media_assets,
         )
         block = self._normalize_draft_block(
-            self._call_llm_structured(prompt, WriterBlock),
+            self._attach_section_media(
+                self._call_llm_structured(prompt, WriterBlock),
+                instruction,
+                visual_plan,
+                media_assets,
+            ),
             instruction,
         )
-        return self._save_ir_draft_section(block, result_extra)
+        block = self._condense_ir_section_if_needed(block, instruction)
+        return self._save_ir_draft_section(block, result_extra, media_assets)
 
     def _ir_draft_prompt(
         self,
@@ -218,11 +257,115 @@ class WriterDraftingTools(WriterToolBase):
         instruction: SectionInstruction,
         context: WritingContext,
         previous_blocks: Any,
+        visual_plan: Any,
         result_extra: Dict[str, Any],
     ) -> dict:
-        prompt = self._markdown_draft_prompt(task, instruction, context, previous_blocks)
+        prompt = self._markdown_draft_prompt(
+            task, instruction, context, previous_blocks,
+        )
         body = self._call_llm_text(prompt)
+        body = self._condense_markdown_section_if_needed(body, instruction)
         return self._finalize_markdown_draft_section(body, instruction, result_extra)
+
+    def _condense_ir_section_if_needed(
+        self,
+        block: WriterBlock,
+        instruction: SectionInstruction,
+    ) -> WriterBlock:
+        max_chars = instruction.meta.get('max_chars')
+        if not isinstance(max_chars, int) or self._ir_prose_chars(block) <= max_chars:
+            return block
+        prompt = CONDENSE_DRAFT_SECTION_PROMPT.format(
+            max_chars=max_chars,
+            section_instruction_json=to_prompt_json(instruction),
+            draft_section_json=to_prompt_json(block),
+        )
+        condensed = self._normalize_draft_block(
+            self._call_llm_structured(prompt, WriterBlock),
+            instruction,
+        )
+        if self._ir_prose_chars(condensed) > max_chars:
+            raise ValueError(f'Condensed draft section still exceeds max_chars={max_chars}.')
+        return condensed
+
+    def _attach_section_media(
+        self,
+        draft_block: WriterBlock,
+        instruction: SectionInstruction,
+        visual_plan: Any,
+        media_assets: Any,
+    ) -> WriterBlock:
+        resolved_plan = self._unified_optional_model(visual_plan, VisualPlan) or VisualPlan()
+        library = self._unified_optional_model(media_assets, MediaAssetLibrary)
+        if library is None:
+            return draft_block
+        section_id = instruction.content_ref.node_id
+        needs = [
+            need for need in resolved_plan.instructions
+            if need.content_ref.node_id == section_id
+        ]
+        needs_by_id = {need.need_id: need for need in needs}
+        block_by_id = {block.node_id: block for block in draft_block.iter_blocks()}
+        for item in instruction.meta.get('cross_references') or []:
+            if not item.get('must_create') or item.get('kind') != 'image':
+                continue
+            target = str(item.get('target'))
+            need = needs_by_id.get(target)
+            if need is None:
+                continue
+            asset_ids = [
+                asset_id for asset_id in library.visual_need_asset_ids.get(need.need_id, [])
+                if asset_id in library.assets
+            ]
+            if len(asset_ids) != 1:
+                continue
+            image = block_by_id.get(target)
+            if image is not None:
+                if image.type == 'image' and not any(
+                    reference.get('type') == 'media_asset' and reference.get('id')
+                    for reference in image.references or []
+                ):
+                    image.references = [{'type': 'media_asset', 'id': asset_ids[0]}]
+                continue
+            image = WriterBlock(
+                node_id=target,
+                type='image',
+                content=strip_caption_numbering(str(item.get('caption') or '图')),
+                stage='draft',
+                references=[{'type': 'media_asset', 'id': asset_ids[0]}],
+            )
+            draft_block.children.append(image)
+            block_by_id[target] = image
+        return draft_block
+
+    def _condense_markdown_section_if_needed(
+        self,
+        body: str,
+        instruction: SectionInstruction,
+    ) -> str:
+        max_chars = instruction.meta.get('max_chars')
+        if not isinstance(max_chars, int) or self._text_chars(body) <= max_chars:
+            return body
+        condensed = self._call_llm_text(CONDENSE_DRAFT_SECTION_MARKDOWN_PROMPT.format(
+            max_chars=max_chars,
+            section_instruction_json=to_prompt_json(instruction),
+            draft_body=body,
+        )).strip()
+        if self._text_chars(condensed) > max_chars:
+            raise ValueError(f'Condensed draft section still exceeds max_chars={max_chars}.')
+        return condensed
+
+    @classmethod
+    def _ir_prose_chars(cls, block: WriterBlock) -> int:
+        return sum(
+            cls._text_chars(item.content)
+            for item in block.iter_blocks()
+            if item is not block and item.type != 'heading'
+        )
+
+    @staticmethod
+    def _text_chars(text: str) -> int:
+        return len(re.sub(r'\s+', '', text))
 
     def _markdown_draft_prompt(
         self,
@@ -248,8 +391,14 @@ class WriterDraftingTools(WriterToolBase):
         body = body.strip()
         if not body:
             raise ValueError('Markdown draft section body must not be empty.')
+        body = self._normalize_markdown_draft_body(body)
+        body = self._strip_system_section_anchors(body)
+        if not body:
+            raise ValueError('Markdown draft section body contains only headings, no content.')
         heading = self._markdown_draft_heading(instruction)
-        markdown = f'{heading}\n\n{body}\n'
+        body = self._normalize_markdown_cross_references(body, instruction)
+        prefix = self._markdown_draft_prefix(instruction, heading)
+        markdown = f'{prefix}{body}\n'
         self._validate_markdown_draft_section(markdown, instruction)
 
         filename = self._safe_artifact_component(instruction.instruction_id)
@@ -273,17 +422,12 @@ class WriterDraftingTools(WriterToolBase):
             raise ValueError('Markdown draft sections must target an H2 outline section.')
         return f'## {instruction.section_title.strip()}'
 
-    def _draft_stream_idle_timeout(self, idle_timeout: Optional[float]) -> float:
-        value: Any = idle_timeout
-        if value is None:
-            value = getattr(self.llm, '_timeout', None)
-        if isinstance(value, (tuple, list)):
-            value = value[-1] if value else None
-        if value is None:
-            value = 180.0
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-            raise ValueError('idle_timeout must be a positive number.')
-        return float(value)
+    @staticmethod
+    def _markdown_draft_prefix(instruction: SectionInstruction, heading: str) -> str:
+        outline_node_id = instruction.meta.get('outline_node_id')
+        if outline_node_id:
+            return f'<a id="block-{outline_node_id}"></a>\n{heading}\n\n'
+        return f'{heading}\n\n'
 
     @staticmethod
     def _draft_result_extra(
@@ -334,6 +478,10 @@ class WriterDraftingTools(WriterToolBase):
         for block in writer_blocks:
             for item in block.iter_blocks():
                 item.stage = 'draft'
+                if item.type == 'heading':
+                    item.content = strip_heading_numbering(item.content)
+                elif item.type == 'image':
+                    item.content = strip_caption_numbering(item.content)
         draft_document = WriterDocument(
             document_id=f'draft-document-{context.context_id}',
             stage='draft',
@@ -347,6 +495,7 @@ class WriterDraftingTools(WriterToolBase):
                 'outline_title': writing_outline.title if writing_outline else None,
             },
         )
+        compute_numbering(build_numbering_view_from_ir(draft_document))
         draft_block_count = len(list(draft_document.iter_blocks())) - len(draft_document.blocks)
         result = self._save_artifacts(
             {'draft_document': draft_document},
@@ -409,6 +558,8 @@ class WriterDraftingTools(WriterToolBase):
             section.strip() for section in section_markdown
         )
         markdown = markdown.rstrip() + '\n'
+        markdown = self._ensure_markdown_outline_anchors(markdown)
+        compute_numbering(build_numbering_view_from_markdown(markdown))
         assembled_sections = [
             section for section in parse_markdown_sections(markdown)
             if section[0] == 2
@@ -478,7 +629,7 @@ class WriterDraftingTools(WriterToolBase):
             result['output_file_path'] = path
             return result
 
-        content = render_document_markdown(draft_document)
+        content = writer_document_to_markdown(draft_document)
         final_document = WriterDocument(
             document_id=f'output-{draft_document.document_id}',
             stage='final',
@@ -541,6 +692,61 @@ class WriterDraftingTools(WriterToolBase):
         return '\n\n'.join(section.strip() for section in sections if isinstance(section, str))
 
     @staticmethod
+    def _normalize_markdown_draft_body(body: str) -> str:
+        '''Strip leading H1/H2 and downgrade stray H1/H2 to H3.'''
+        lines = body.split('\n')
+        result: List[str] = []
+        in_fence = False
+        seen_content = False
+
+        for line in lines:
+            stripped = line.strip()
+            if stripped[:3] in ('```', '~~~'):
+                in_fence = not in_fence
+                result.append(line)
+                seen_content = True
+                continue
+            if in_fence:
+                result.append(line)
+                continue
+
+            m = re.match(r'^(#{1,2})\s+(.+?)\s*$', line)
+            if m:
+                title = strip_heading_numbering(m.group(2))
+                if seen_content:
+                    result.append(f'### {title}')
+                continue
+
+            subheading = re.match(r'^(#{3,6})\s+(.+?)\s*$', line)
+            if subheading:
+                result.append(
+                    f'{subheading.group(1)} '
+                    f'{strip_heading_numbering(subheading.group(2))}'
+                )
+                seen_content = True
+                continue
+
+            line = re.sub(
+                r'!\[([^\]]*)\]',
+                lambda image: f'![{strip_caption_numbering(image.group(1))}]',
+                line,
+            )
+
+            if stripped:
+                seen_content = True
+            result.append(line)
+
+        return '\n'.join(result).strip()
+
+    @staticmethod
+    def _strip_system_section_anchors(body: str) -> str:
+        '''Remove LLM-created section anchors; the prefix emits the only section anchor.'''
+        def remove_anchor(match: re.Match[str]) -> str:
+            return '' if match.group(1).startswith('block-sec-') else match.group(0)
+
+        return WriterDraftingTools._MARKDOWN_ANCHOR_RE.sub(remove_anchor, body)
+
+    @staticmethod
     def _validate_markdown_draft_section(
         markdown: str,
         instruction: SectionInstruction,
@@ -549,7 +755,10 @@ class WriterDraftingTools(WriterToolBase):
         top_sections = [section for section in sections if section[0] <= 2]
         if len(top_sections) != 1 or top_sections[0][0] != 2:
             raise ValueError('Markdown draft section must contain exactly one H2 root heading.')
-        if top_sections[0][1][-1] != instruction.content_ref.heading_path[-1]:
+        if (
+            strip_heading_numbering(top_sections[0][1][-1])
+            != strip_heading_numbering(instruction.content_ref.heading_path[-1])
+        ):
             raise ValueError('Markdown draft section heading does not match its content_ref.')
 
     @staticmethod
@@ -562,10 +771,12 @@ class WriterDraftingTools(WriterToolBase):
             raise ValueError('Markdown draft section body must not be empty.')
         return top_sections[0][1][-1]
 
-    @staticmethod
     def _normalize_draft_block(
+        self,
         draft_block: WriterBlock,
         instruction: SectionInstruction,
+        *,
+        allow_deferred_create: bool = False,
     ) -> WriterBlock:
         section_id = instruction.content_ref.node_id
         if not section_id:
@@ -573,12 +784,322 @@ class WriterDraftingTools(WriterToolBase):
         draft_block.node_id = section_id
         draft_block.stage = 'draft'
         draft_block.type = 'heading'
-        draft_block.content = instruction.section_title
+        draft_block.content = strip_heading_numbering(instruction.section_title)
         draft_block.numbering['level'] = 1
         for block in draft_block.iter_blocks():
             block.stage = 'draft'
+            if block.type == 'heading':
+                block.content = strip_heading_numbering(block.content)
+            elif block.type == 'image':
+                block.content = strip_caption_numbering(block.content)
         draft_block.references = [dict(reference) for reference in instruction.references]
+        self._normalize_ir_cross_references(
+            draft_block, instruction, allow_deferred_create=allow_deferred_create,
+        )
         return draft_block
+
+    @staticmethod
+    def _normalize_ir_cross_references(  # noqa: C901
+        draft_block: WriterBlock,
+        instruction: SectionInstruction,
+        *,
+        allow_deferred_create: bool = False,
+    ) -> None:
+        references, allowed_targets = WriterDraftingTools._cross_reference_plan(instruction)
+        block_by_id = {block.node_id: block for block in draft_block.iter_blocks()}
+        for item in references:
+            if not item.get('must_create'):
+                continue
+            target = str(item.get('target'))
+            target_block = block_by_id.get(target)
+            if target_block is None or target_block.type != str(item.get('kind')):
+                if allow_deferred_create or not item.get('required', True):
+                    continue
+                raise ValueError(f'Missing created cross-reference target {target!r}.')
+            if target_block.type == 'image':
+                media_ids = [
+                    reference.get('id') for reference in target_block.references
+                    if reference.get('type') == 'media_asset' and reference.get('id')
+                ]
+                if len(media_ids) != 1:
+                    if not allow_deferred_create:
+                        raise ValueError(
+                            f'Created image {target!r} requires exactly one media_asset reference.'
+                        )
+
+        found_targets: set[str] = set()
+        for block in draft_block.iter_blocks():
+            has_internal_ref = False
+            for span in block.spans:
+                link = span.style.get('link')
+                if not isinstance(link, dict) or link.get('type') != 'internal_ref':
+                    continue
+                has_internal_ref = True
+                target = link.get('target_node_id')
+                if target not in allowed_targets:
+                    raise ValueError(f'Unplanned IR cross-reference {target!r}.')
+                found_targets.add(str(target))
+            if has_internal_ref and (
+                ''.join(span.text for span in block.spans) != block.content
+            ):
+                raise ValueError('IR cross-reference spans must reproduce the complete block content.')
+
+        missing = [
+            str(item.get('target')) for item in references
+            if item.get('required', True)
+            and str(item.get('target')) not in found_targets
+            and not (
+                allow_deferred_create
+                and item.get('must_create')
+                and item.get('kind') == 'image'
+            )
+        ]
+        if missing:
+            raise ValueError(f'Missing required cross-references: {missing!r}.')
+
+    @classmethod
+    def _normalize_markdown_cross_references(  # noqa: C901
+        cls,
+        body: str,
+        instruction: SectionInstruction,
+    ) -> str:
+        references, allowed_targets = cls._cross_reference_plan(instruction)
+        found_targets: set[str] = set()
+        reference_lines: Dict[str, int] = {}
+        found_anchors: set[str] = set()
+        created_targets = {
+            str(item.get('target')): item
+            for item in references
+            if item.get('must_create')
+        }
+        references_by_target = {
+            str(item.get('target')): item for item in references
+        }
+        media_lines: Dict[str, int] = {}
+        output: List[str] = []
+        fence: str | None = None
+        for line in body.splitlines():
+            fence_match = re.match(r'^\s*(```+|~~~+)', line)
+            if fence_match:
+                marker = fence_match.group(1)[0]
+                if fence is None:
+                    fence = marker
+                elif fence == marker:
+                    fence = None
+                output.append(line)
+                continue
+            if fence is not None:
+                output.append(line)
+                continue
+            raw_anchors = cls._MARKDOWN_ANCHOR_RE.findall(line)
+            anchors = []
+            for raw_target in raw_anchors:
+                if raw_target.startswith('block-'):
+                    target = raw_target[len('block-'):]
+                    if target in allowed_targets:
+                        anchors.append(target)
+                elif raw_target in allowed_targets:
+                    anchors.append(raw_target)
+            found_anchors.update(f'block-{target}' for target in anchors)
+            for target in cls._MARKDOWN_MEDIA_PLACEHOLDER_RE.findall(line):
+                if target in media_lines:
+                    raise ValueError(f'Duplicate media placeholder {target!r}.')
+                if target not in created_targets:
+                    raise ValueError(f'Unplanned media placeholder {target!r}.')
+                media_lines[target] = len(output)
+
+            def replace_link(match: re.Match[str]) -> str:
+                target = match.group(2).removeprefix('block-')
+                if target not in allowed_targets:
+                    raise ValueError(f'Unplanned Markdown cross-reference {target!r}.')
+                found_targets.add(target)
+                reference_lines.setdefault(target, len(output))
+                text = match.group(1).strip() or cls._markdown_reference_text(
+                    references_by_target[target], target,
+                )
+                return f'[{text}](#block-{target})'
+
+            line = cls._MARKDOWN_INTERNAL_LINK_RE.sub(replace_link, line)
+            output.append(line)
+
+        fallback_reference_line: int | None = None
+        for item in references:
+            target = str(item.get('target'))
+            if (
+                item.get('must_create')
+                and item.get('kind') == 'image'
+                and target not in found_targets
+            ):
+                if fallback_reference_line is None:
+                    fallback_reference_line = cls._markdown_reference_fallback_line(output)
+                output[fallback_reference_line] = (
+                    f'{output[fallback_reference_line].rstrip()} '
+                    f'[{cls._markdown_reference_text(item, target)}](#block-{target})'
+                )
+                found_targets.add(target)
+                reference_lines[target] = fallback_reference_line
+
+        # A model may produce an otherwise complete section while omitting a
+        # planned required link. Preserve the strict plan boundary (unplanned
+        # links still fail above), but deterministically materialize required
+        # planned links instead of discarding the completed section.
+        for item in references:
+            target = str(item.get('target'))
+            if not item.get('required', True) or target in found_targets:
+                continue
+            if fallback_reference_line is None:
+                fallback_reference_line = cls._markdown_reference_fallback_line(output)
+            output[fallback_reference_line] = (
+                f'{output[fallback_reference_line].rstrip()} '
+                f'[{cls._markdown_reference_text(item, target)}](#block-{target})'
+            )
+            found_targets.add(target)
+            reference_lines[target] = fallback_reference_line
+
+        missing = [
+            str(item.get('target')) for item in references
+            if item.get('required', True)
+            and str(item.get('target')) not in found_targets
+        ]
+        if missing:
+            raise ValueError(f'Missing required cross-references: {missing!r}.')
+
+        insertions: List[tuple[int, str]] = []
+        for item in references:
+            target = str(item.get('target'))
+            if item.get('must_create'):
+                if target not in media_lines:
+                    if target not in found_targets:
+                        continue
+                    caption = strip_caption_numbering(str(item.get('caption') or '图'))
+                    insertions.append((
+                        reference_lines[target] + 1,
+                        f'\n<a id="block-{target}"></a>\n'
+                        f'![{caption}](media-placeholder://{target})',
+                    ))
+                    continue
+                if f'block-{target}' not in found_anchors:
+                    pattern = re.compile(
+                        r'!\[[^\]]*\]\(media-placeholder://'
+                        + re.escape(target) + r'\)'
+                    )
+                    media = pattern.search(output[media_lines[target]])
+                    if media is None:
+                        raise ValueError(f'Invalid media placeholder {target!r}.')
+                    start = media.start()
+                    output[media_lines[target]] = (
+                        output[media_lines[target]][:start]
+                        + f'<a id="block-{target}"></a>\n'
+                        + output[media_lines[target]][start:]
+                    )
+                    found_anchors.add(f'block-{target}')
+        for index, markdown in reversed(insertions):
+            output.insert(index, markdown)
+        return '\n'.join(output).strip()
+
+    @staticmethod
+    def _markdown_reference_text(reference: Dict[str, Any], target: str) -> str:
+        return strip_caption_numbering(str(
+            reference.get('caption') or reference.get('guidance') or target
+        ).strip())
+
+    @classmethod
+    def _markdown_reference_fallback_line(cls, lines: List[str]) -> int:  # noqa: C901
+        paragraph_end: int | None = None
+        first_content: int | None = None
+        fence: str | None = None
+        for index, line in enumerate(lines):
+            fence_match = re.match(r'^\s*(```+|~~~+)', line)
+            if fence_match:
+                marker = fence_match.group(1)[0]
+                if fence is None:
+                    fence = marker
+                elif fence == marker:
+                    fence = None
+                continue
+            if fence is not None:
+                continue
+            stripped = line.strip()
+            if not stripped:
+                if paragraph_end is not None:
+                    return paragraph_end
+                continue
+            if first_content is None:
+                first_content = index
+            if stripped.startswith('#') or cls._MARKDOWN_ANCHOR_RE.fullmatch(stripped):
+                if paragraph_end is not None:
+                    return paragraph_end
+                continue
+            paragraph_end = index
+        if paragraph_end is not None:
+            return paragraph_end
+        if first_content is not None:
+            return first_content
+        raise ValueError('Markdown draft section body must not be empty.')
+
+    @staticmethod
+    def _cross_reference_plan(
+        instruction: SectionInstruction,
+    ) -> tuple[List[Dict[str, Any]], set[str]]:
+        references = [
+            item for item in instruction.meta.get('cross_references') or []
+            if isinstance(item, dict)
+        ]
+        allowed_targets = {str(item.get('target')) for item in references}
+        document_targets = instruction.meta.get('cross_reference_targets')
+        if isinstance(document_targets, list):
+            allowed_targets.update(str(target) for target in document_targets)
+        return references, allowed_targets
+
+    @staticmethod
+    def _ensure_markdown_outline_anchors(markdown: str) -> str:
+        output: List[str] = []
+        pending_anchors: List[str] = []
+        counters: List[int] = []
+        fence: str | None = None
+        for line in markdown.splitlines():
+            fence_match = re.match(r'^\s*(```+|~~~+)', line)
+            if fence_match:
+                marker = fence_match.group(1)[0]
+                if fence is None:
+                    fence = marker
+                elif fence == marker:
+                    fence = None
+                output.append(line)
+                continue
+            if fence is not None:
+                output.append(line)
+                continue
+
+            anchors = [
+                target
+                for target in WriterDraftingTools._MARKDOWN_ANCHOR_RE.findall(line)
+                if target.startswith('block-sec-')
+            ]
+            if anchors:
+                pending_anchors.extend(anchors)
+                output.append(line)
+                continue
+            heading = re.match(r'^(#{2,6})\s+(.+?)\s*$', line)
+            if heading:
+                depth = len(heading.group(1)) - 1
+                counters = counters[:depth]
+                counters.extend([0] * (depth - len(counters)))
+                counters[-1] += 1
+                expected = 'block-sec-' + '-'.join(
+                    f'{value:03d}' for value in counters
+                )
+                if not pending_anchors:
+                    output.append(f'<a id="{expected}"></a>')
+                elif pending_anchors[0] != expected:
+                    raise ValueError(
+                        f'Unexpected heading anchor {pending_anchors[0]!r}; expected {expected!r}.'
+                    )
+                pending_anchors = []
+            elif line.strip() and pending_anchors:
+                pending_anchors = []
+            output.append(line)
+        return '\n'.join(output)
 
     @staticmethod
     def _media_assets_for_section(

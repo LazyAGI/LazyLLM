@@ -10,6 +10,7 @@ from typing_extensions import override
 
 import lazyllm
 from lazyllm.tools.http_request import get_sync
+from lazyllm.tools.pdf_utils import normalize_long_pdf_inplace
 from lazyllm.common import ApiKeyHeaderStrategy, AuthStrategy, retry_transient
 from lazyllm import LOG
 
@@ -82,6 +83,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         file_path = Path(file)
         merged_info = dict(extra_info) if extra_info else {}
         _t0 = time.time()
+        normalize_long_pdf_inplace(file_path)
         response_text, task_dir = self._fetch_async(file_path)
         _t_fetch = time.time() - _t0
         if task_dir is not None:

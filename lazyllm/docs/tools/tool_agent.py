@@ -12,6 +12,32 @@ add_toolsmgr_chinese_doc = functools.partial(utils.add_chinese_doc, module=impor
 add_toolsmgr_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 add_toolsmgr_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 
+add_agent_chinese_doc('ToolExecutionError', '''\
+可预期工具执行失败的基础异常。
+
+工具实现应在能够明确描述失败原因时抛出该异常，由 ``ToolManager`` 统一转换为结构化 ToolResult。
+消息必须自包含 Agent 或用户理解和恢复失败所需的信息。
+该异常不维护 Agent 的重试次数，也不会触发程序化自动重试。
+
+Args:
+    message (str): 提供给 Agent 的错误说明。
+
+需要用户确认时，使用 ``ToolExecutionError.approval_required(message)``。
+''')
+
+add_agent_english_doc('ToolExecutionError', '''\
+Base exception for predictable tool execution failures.
+
+Tool implementations should raise this exception when they can describe the failure explicitly. ``ToolManager`` converts it
+into a structured ToolResult. The message must contain all information that an Agent or user needs to understand and recover
+from the failure. The exception does not track the Agent's retry budget or trigger an automatic retry.
+
+Args:
+    message (str): Error description exposed to the Agent.
+
+Use ``ToolExecutionError.approval_required(message)`` when user confirmation is required.
+''')
+
 add_chinese_doc('IntentClassifier', '''\
 意图分类模块，用于根据输入文本在给定的意图列表中进行分类。
 支持中英文自动选择提示模板，并可通过示例、提示、约束和注意事项增强分类效果。
@@ -140,6 +166,16 @@ ToolManager是一个工具管理类，用于提供工具信息和工具调用给
 
 工具组支持多级嵌套，子节点可以是普通工具或另一个工具组（通过嵌套 ``dict`` 定义）。
 
+工具执行结果统一为 ``{'ok': True, 'value': ...}`` 或 ``{'ok': False, 'value': ...}``。
+成功时 ``value`` 是工具的业务返回值，失败时 ``value`` 是提供给 Agent 的异常消息字符串；
+``ok`` 和其他外层字段由程序事件、调用追踪和渲染层使用。
+需要用户确认的失败是唯一特例，额外包含 ``'needs_approval': True``。
+普通执行路径中的工具应对正常业务数据使用 ``return``，对可预期失败抛出 ``ToolExecutionError``。
+失败消息必须自包含；工具名由外层 tool call/event 提供。参数经过兼容性 JSON 修复后仍无法解析时，
+ToolManager 返回清晰的参数错误消息；可修复的尾逗号或截断输入会继续进入参数校验。
+``ToolExecutionError`` 表示本次工具调用失败，因此仍会触发工具模块的 ERROR 日志与 ``on_error`` hook，
+但 ToolManager 会将其转换成可供 Agent 后续恢复的结构化结果。
+
 Args:
     tools (List): 工具列表，每个元素支持字符串、Callable、ModuleTool、带 ``__public_apis__`` 的实例、``(instance, key_source)`` 元组，或 ``dict`` 工具组。
     return_trace (bool): 是否返回中间步骤和工具调用信息。
@@ -169,6 +205,17 @@ Tool groups (``ToolGroup``) support three modes:
 - **pick-first-valid mode** (``pick_first_valid=True``): Scans the child list and exposes only the first tool whose credential is currently valid. Designed for scenarios where multiple equivalent services act as fallbacks (e.g. multiple search engines). ``lazy`` is forced to ``False`` in this mode.
 
 Tool groups support multi-level nesting; child nodes can be plain tools or another tool group (defined via a nested ``dict``).
+
+Tool execution always returns either ``{'ok': True, 'value': ...}`` or
+``{'ok': False, 'value': ...}``. On success, ``value`` is the tool's business return value. On failure, ``value`` is the
+exception message string exposed to the Agent; ``ok`` and the other envelope fields are consumed by program events, traces,
+and renderers. On the direct execution path, tools should return normal business data and raise
+``ToolExecutionError`` for predictable failures. The failure message must be self-contained; the outer tool call or event
+already carries the tool name. Approval-required failures are the sole exception and additionally include
+``'needs_approval': True``. Arguments that remain unparseable after compatibility JSON repair return a clear message;
+repairable trailing commas or truncated input continue to argument validation.
+A ``ToolExecutionError`` still represents a failed tool invocation, so it triggers the tool module's ERROR log and
+``on_error`` hook, while ToolManager converts it into a structured result that the Agent can recover from.
 
 Args:
     tools (List): Tool list. Each element can be a string, Callable, ModuleTool, an instance with ``__public_apis__``, a ``(instance, key_source)`` tuple, or a ``dict`` tool group.
@@ -926,6 +973,22 @@ Notes:
     The base class invokes it lazily on first use.
 ''')
 
+add_chinese_doc('LazyLLMAgentBase.describe_context', '''\
+返回当前面向模型的静态上下文，不调用模型或工具。
+
+**返回值：**
+
+- Dict[str, Any]: 包含 ``system_prompt``、``tool_definitions``、``skills_prompt``、``skill_prompt_parts`` 和 ``workspace``。
+''')
+
+add_english_doc('LazyLLMAgentBase.describe_context', '''\
+Return the current model-facing static context without invoking the model or tools.
+
+**Returns:**
+
+- Dict[str, Any]: Includes ``system_prompt``, ``tool_definitions``, ``skills_prompt``, ``skill_prompt_parts``, and ``workspace``.
+''')
+
 add_chinese_doc('ReactAgent', '''\
 ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
 
@@ -961,7 +1024,7 @@ Args:
     force_summarize (bool): 是否在执行完 max_retries + 1 轮工具调用仍未输出最终答案时，强制追加一次 LLM 调用以获取总结输出。
         为 True 时触发强制总结；为 False（默认）时直接抛出 ValueError。
     force_summarize_context (str): 强制总结时注入的额外上下文（如原始任务描述），默认为空字符串。
-    keep_full_turns (int): 保留最近 N 轮完整工具结果不截断，其余旧结果压缩至 200 字符，默认为 0（全部压缩）。
+    keep_full_turns (int): 传给 ``history_compactor`` 的最近完整工具结果数量。框架不再内置截断；未提供 compactor 时 history 原样送给模型。默认 0。
     on_max_retries (callable, optional): 达到当前工具调用轮次上限但仍未结束时调用。依次接收最终输出、已执行轮次和当前上限；返回更大的整数可仅为本次调用扩展上限，返回其他值则结束循环。默认为 ``None``。
         ReactAgent 会临时告知模型剩余 ReAct 轮次；该消息不会写入执行历史或输出流。
 ''')
@@ -1003,7 +1066,7 @@ Args:
     force_summarize (bool): When True, if the agent has not produced a final answer after max_retries + 1 tool-call iterations, one additional LLM call is made with the full conversation history plus a force-summarize instruction, asking the model to stop tool calls and output its final answer immediately. If False (default), a ValueError is raised instead.
         Useful when the task involves many tool-call steps and the LLM struggles to stop on its own.
     force_summarize_context (str): Extra context injected into the force-summarize prompt (e.g. the original task description). Defaults to empty string.
-    keep_full_turns (int): Number of most-recent tool results to keep intact during history compaction. Older results are truncated to 200 chars. Defaults to 0 (all results compacted).
+    keep_full_turns (int): Passed to ``history_compactor`` as the number of recent tool results to keep intact. LazyLLM no longer truncates history itself; without a compactor the model sees the raw history. Defaults to 0.
     on_max_retries (callable, optional): Called when the current tool-call round limit is reached without a final answer. It receives the final output, actual round count, and current limit. Returning a larger integer expands only the current invocation; any other value ends the loop. Defaults to ``None``.
         ReactAgent briefly tells the model its remaining ReAct rounds without persisting or emitting the message.
 
@@ -1015,6 +1078,30 @@ add_chinese_doc('ReactAgent.build_agent', '''\
 
 add_english_doc('ReactAgent.build_agent', '''\
 Build the internal reasoning and tool-calling loop for ReactAgent.
+''')
+
+add_chinese_doc('ReactAgent.describe_context', '''\
+返回当前面向模型的上下文预览，不调用模型、工具或 history_compactor。
+
+Args:
+    llm_chat_history (Optional[List[Dict[str, Any]]]): 已有对话历史。默认为空。
+    current_input (Any): 当前用户输入，用于同步工具组可见性。默认为 ``None``。
+
+**返回值：**
+
+- Dict[str, Any]: 在基类字段之上增加 ``history``（原始 history 的浅拷贝）。
+''')
+
+add_english_doc('ReactAgent.describe_context', '''\
+Return a model-facing context preview without invoking the model, tools, or history_compactor.
+
+Args:
+    llm_chat_history (Optional[List[Dict[str, Any]]]): Existing chat history. Defaults to empty.
+    current_input (Any): Current user input, used to sync visible tool groups. Defaults to ``None``.
+
+**Returns:**
+
+- Dict[str, Any]: Base context fields plus ``history`` (a shallow copy of the raw history).
 ''')
 
 add_chinese_doc('ReactAgent.set_stop_tools', '''\

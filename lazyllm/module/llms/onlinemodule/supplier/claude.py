@@ -107,7 +107,7 @@ class ClaudeChat(OnlineChatModuleBase):
                     'usage': {'prompt_tokens': -1, 'completion_tokens': usage.get('output_tokens', -1)}}
         return ''  # ping / content_block_stop / message_stop → filtered out
 
-    def _str_to_json(self, msg: Union[str, bytes], stream_output: bool):
+    def _parse_response_frame(self, msg: Union[str, bytes], stream_output: bool):
         if isinstance(msg, bytes):
             msg = re.sub(r'^data:\s*', '', msg.decode('utf-8'))
         try:

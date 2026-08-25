@@ -199,6 +199,46 @@ def test_merge_refreshed_move_restores_writer_identity():
     assert moved.provider_binding['block_id'] == 'moved-heading'
 
 
+def test_merge_refreshed_document_rebases_internal_reference_targets():
+    adapter = FeishuWriterAdapter()
+    raw = [
+        _block('target', '目标章节', heading=True),
+        {
+            **_block('source', '参见目标章节和外部文档'),
+            'text': {'elements': [
+                {'text_run': {'content': '参见'}},
+                {'text_run': {
+                    'content': '目标章节',
+                    'text_element_style': {
+                        'link': {'url': 'https://feishu.cn/docx/doc-1#target'},
+                    },
+                }},
+                {'text_run': {
+                    'content': '和外部文档',
+                    'text_element_style': {
+                        'link': {'url': 'https://example.com/document'},
+                    },
+                }},
+            ]},
+        },
+    ]
+    previous = adapter.blocks_to_ir(raw, external_document_id='doc-1')
+    previous.blocks[0].node_id = 'writer-owned-target'
+    previous.blocks[1].spans[1].style['link']['target_node_id'] = 'writer-owned-target'
+    refreshed = adapter.blocks_to_ir(raw, external_document_id='doc-1')
+
+    merged = adapter.merge_refreshed_document(previous, refreshed)
+
+    assert merged.blocks[0].node_id == 'writer-owned-target'
+    assert merged.blocks[1].spans[1].style['link'] == {
+        'type': 'internal_ref',
+        'target_node_id': 'writer-owned-target',
+    }
+    assert merged.blocks[1].spans[2].style['link'] == {
+        'url': 'https://example.com/document',
+    }
+
+
 def test_move_clone_descendants_preserve_raw_format_and_children():
     blocks = _move_blocks()[:2]
     blocks[0]['heading1']['style'] = {'align': 2}

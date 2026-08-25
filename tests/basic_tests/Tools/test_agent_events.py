@@ -6,6 +6,14 @@ from types import SimpleNamespace
 
 import lazyllm
 from lazyllm.tools import PlanAndSolveAgent, ReactAgent
+from lazyllm.tools.agent import ToolExecutionError
+from lazyllm.tools.agent.base import (
+    TOOL_OBSERVATION_KEY,
+    is_tool_result_envelope,
+    normalize_tool_observation,
+)
+from lazyllm.tools.agent.functionCall import FunctionCall
+from lazyllm.tools.agent.toolsManager import ToolManager
 
 
 def add_one(value: int) -> int:
@@ -28,6 +36,43 @@ def get_status() -> dict:
         dict: Structured status information.
     '''
     return {'status': 'ok', 'content': 'Error handling reference'}
+
+
+def private_status() -> str:
+    '''Return a private toolkit status.
+
+    Returns:
+        str: Private status.
+    '''
+    return 'private status'
+
+
+def exposed_failure(query: str) -> str:
+    '''Raise from an exposed prefixed tool.
+
+    Args:
+        query (str): Search query.
+    '''
+    raise ToolExecutionError(f'Search failed for query {query!r}.')
+
+
+def approval_failure(path: str) -> str:
+    '''Require approval before changing a path.
+
+    Args:
+        path (str): Path that would be changed.
+    '''
+    raise ToolExecutionError.approval_required(f'Changing {path} requires approval.')
+
+
+def _private_tool_group():
+    return {
+        'name': 'private',
+        'desc': 'Private status tools.',
+        'lazy': True,
+        'prefix': False,
+        'tools': [private_status],
+    }
 
 
 class _FakeLLM(object):
@@ -424,8 +469,11 @@ class TestReactAgentEvents(object):
         result_event = next(event for event in events if event.tag == 'tool_results')
 
         assert result_event.tool_results[0]['result'] == {
-            'status': 'ok',
-            'content': 'Error handling reference',
+            'ok': True,
+            'value': {
+                'status': 'ok',
+                'content': 'Error handling reference',
+            },
         }
         tool_message = llm.inputs[1]['input'][0]
 
@@ -434,6 +482,276 @@ class TestReactAgentEvents(object):
             f'{str({"status": "ok", "content": "Error handling reference"})}\n\n'
             '[Internal runtime notice] Internal ReAct rounds left: 2.'
         )
+
+    def test_history_compactor_receives_structured_observation_without_model_leak(self):
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'Let me read the status.',
+                'tool_calls': [{
+                    'id': 'call-status',
+                    'type': 'function',
+                    'function': {'name': 'get_status', 'arguments': '{}'},
+                }],
+            },
+            {'role': 'assistant', 'content': 'Done.'},
+        ])
+        captured = []
+
+        def capture(prior_history, _keep, current_round_messages=None, **_kwargs):
+            current = list(current_round_messages or [])
+            captured.append(copy.deepcopy(list(prior_history) + current))
+            return list(prior_history) + current
+
+        agent = ReactAgent(
+            llm=llm,
+            tools=[get_status],
+            max_retries=3,
+            history_compactor=capture,
+            enable_builtin_tools=False,
+        )
+
+        assert agent('read status') == 'Done.'
+        captured_tool = next(
+            message
+            for history in captured
+            for message in history
+            if message.get('role') == 'tool'
+        )
+        assert captured_tool[TOOL_OBSERVATION_KEY] == {
+            'version': 1,
+            'ok': True,
+            'value': {'status': 'ok', 'content': 'Error handling reference'},
+            'error': '',
+        }
+        assert all(
+            TOOL_OBSERVATION_KEY not in message
+            for invocation in llm.inputs
+            if isinstance(invocation, dict)
+            for message in invocation.get('input', [])
+        )
+        persisted_tool = next(
+            message for message in lazyllm.locals['_lazyllm_agent']['history']
+            if message.get('role') == 'tool'
+        )
+        assert persisted_tool[TOOL_OBSERVATION_KEY] == captured_tool[TOOL_OBSERVATION_KEY]
+        assert normalize_tool_observation({
+            'ok': False,
+            'value': None,
+            'msg': '[Tool Error] failed',
+        }) == {
+            'version': 1,
+            'ok': False,
+            'value': None,
+            'error': '[Tool Error] failed',
+        }
+        incidental = {'ok': 'yes', 'path': '/tmp/file', 'content': 'not an envelope'}
+        assert is_tool_result_envelope(incidental) is False
+        assert normalize_tool_observation(incidental) == {
+            'version': 1,
+            'ok': None,
+            'value': incidental,
+            'error': '',
+        }
+
+    def test_react_agent_exposes_only_tool_failure_value_to_next_round(self):
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'Let me calculate.',
+                'tool_calls': [{
+                    'id': 'call-invalid',
+                    'type': 'function',
+                    'function': {'name': 'add_one'},
+                }],
+            },
+            {'role': 'assistant', 'content': 'I corrected the plan.'},
+        ])
+        agent = ReactAgent(
+            llm=llm,
+            tools=[add_one],
+            max_retries=3,
+            stream=True,
+            enable_builtin_tools=False,
+        )
+
+        assert agent('calculate') == 'I corrected the plan.'
+        events = _read_agent_events()
+        result_event = next(event for event in events if event.tag == 'tool_results')
+        failure = result_event.tool_results[0]['result']
+        assert failure['ok'] is False
+        assert 'value:' in failure['value']
+        tool_message = llm.inputs[1]['input'][0]
+        visible_error = tool_message['content'].split('\n\n', 1)[0]
+        assert visible_error == failure['value']
+        assert not visible_error.startswith('{"ok"')
+
+    def test_prefixed_failure_keeps_exposed_name_in_error_event_and_history(self):
+        exposed_name = 'github_exposed_failure'
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'Search GitHub.',
+                'tool_calls': [{
+                    'id': 'call-prefixed',
+                    'type': 'function',
+                    'function': {
+                        'name': exposed_name,
+                        'arguments': '{"query": "LazyLLM"}',
+                    },
+                }],
+            },
+            {'role': 'assistant', 'content': 'Done.'},
+        ])
+        agent = ReactAgent(
+            llm=llm,
+            tools=[{
+                'name': 'github',
+                'desc': 'GitHub tools.',
+                'lazy': False,
+                'prefix': True,
+                'tools': [exposed_failure],
+            }],
+            max_retries=3,
+            stream=True,
+            enable_builtin_tools=False,
+        )
+
+        assert agent('search') == 'Done.'
+        event = next(item for item in _read_agent_events() if item.tag == 'tool_results')
+        tool_result = event.tool_results[0]
+        tool_message = llm.inputs[1]['input'][0]
+
+        assert tool_result['name'] == exposed_name
+        assert tool_result['result']['ok'] is False
+        assert tool_result['result'] == {
+            'ok': False,
+            'value': "Search failed for query 'LazyLLM'.",
+        }
+        assert tool_message['name'] == exposed_name
+        visible_result = tool_message['content'].split('\n\n', 1)[0]
+        assert visible_result == tool_result['result']['value']
+
+    def test_react_agent_hides_approval_metadata_from_tool_observation(self):
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'I need to change the file.',
+                'tool_calls': [{
+                    'id': 'call-approval',
+                    'type': 'function',
+                    'function': {
+                        'name': 'approval_failure',
+                        'arguments': '{"path": "/workspace/a.txt"}',
+                    },
+                }],
+            },
+            {'role': 'assistant', 'content': 'Approval is required.'},
+        ])
+        agent = ReactAgent(
+            llm=llm,
+            tools=[approval_failure],
+            max_retries=3,
+            stream=True,
+            enable_builtin_tools=False,
+        )
+
+        assert agent('change the file') == 'Approval is required.'
+        event = next(item for item in _read_agent_events() if item.tag == 'tool_results')
+        result = event.tool_results[0]['result']
+        tool_message = llm.inputs[1]['input'][0]
+
+        assert result == {
+            'ok': False,
+            'value': 'Changing /workspace/a.txt requires approval.',
+            'needs_approval': True,
+        }
+        visible_result = tool_message['content'].split('\n\n', 1)[0]
+        assert visible_result == result['value']
+        assert 'needs_approval' not in visible_result
+
+    def test_react_agent_reuses_one_tool_snapshot_per_round(self):
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'Activate and inspect.',
+                'tool_calls': [
+                    {
+                        'id': 'call-gateway',
+                        'type': 'function',
+                        'function': {'name': 'get_private_methods', 'arguments': '{}'},
+                    },
+                    {
+                        'id': 'call-hidden-same-round',
+                        'type': 'function',
+                        'function': {'name': 'private_status', 'arguments': '{}'},
+                    },
+                ],
+            },
+            {
+                'role': 'assistant',
+                'content': 'Use the activated tool.',
+                'tool_calls': [{
+                    'id': 'call-hidden-next-round',
+                    'type': 'function',
+                    'function': {'name': 'private_status', 'arguments': '{}'},
+                }],
+            },
+            {'role': 'assistant', 'content': 'Done.'},
+        ])
+        agent = ReactAgent(
+            llm=llm,
+            tools=[_private_tool_group()],
+            max_retries=3,
+            stream=True,
+            enable_builtin_tools=False,
+        )
+
+        assert agent('inspect private status') == 'Done.'
+        result_events = [event for event in _read_agent_events() if event.tag == 'tool_results']
+
+        first_round = result_events[0].tool_results
+        assert first_round[0]['result']['ok'] is True
+        assert first_round[0]['result']['value'].startswith('Activated Toolkit "private"')
+        assert 'private_status' in first_round[1]['result']['value']
+        assert result_events[1].tool_results[0]['result'] == {
+            'ok': True,
+            'value': 'private status',
+        }
+
+    def test_function_call_round_snapshot_is_session_local(self):
+        manager = ToolManager([_private_tool_group()])
+        function_call = FunctionCall(_FakeLLM([]), _tool_manager=manager)
+        barrier = threading.Barrier(2)
+        snapshots = {}
+        errors = []
+
+        def capture(label, active):
+            try:
+                with lazyllm.new_session(f'tool-snapshot-{label}'):
+                    lazyllm.locals['_lazyllm_agent'] = {
+                        'workspace': {'_active_groups': ['private'] if active else []},
+                    }
+                    function_call._get_current_tools(refresh=True)
+                    barrier.wait()
+                    snapshots[label] = function_call._get_visible_tool_names()
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [
+            threading.Thread(target=capture, args=('inactive', False)),
+            threading.Thread(target=capture, args=('active', True)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert not errors
+        assert snapshots == {
+            'inactive': {'get_private_methods'},
+            'active': {'private_status'},
+        }
 
     def test_react_agent_stream_emits_text_reasoning_and_tool_events(self):
         llm = _FakeLLM([

@@ -4,7 +4,7 @@ from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
-    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineMultimodalEmbedModuleBase,
+    ModelFailureCode, OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineMultimodalEmbedModuleBase,
     LazyLLMOnlineRerankModuleBase, LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase,
     LazyLLMOnlineTTSModuleBase,
 )
@@ -13,7 +13,18 @@ from lazyllm.components.utils.file_operate import bytes_to_file, _image_to_base6
 from ..fileHandler import FileHandlerBase
 from lazyllm import LOG, config
 
+
 class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
+    PROVIDER_NAME = 'siliconflow'
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(
+        code_map={'20012': ModelFailureCode.NOT_FOUND},
+        http_map={
+            429: ModelFailureCode.RATE_LIMITED,
+            503: ModelFailureCode.PROVIDER_OVERLOADED,
+            504: ModelFailureCode.PROVIDER_OVERLOADED,
+        },
+        error_at_top_level=True,
+    )
     VLM_MODEL_PREFIX = ['Qwen/Qwen2.5-VL-72B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct', 'deepseek-ai/deepseek-vl2',
                         'Qwen/Qwen3-VL-30B-A3B-Thinking', 'THUDM/GLM-4.1V-9B-Thinking']
 

@@ -291,6 +291,8 @@ _add_bilingual_docs(
     add_writer_stream_english_doc,
     [
         ('IRPreviewOutput', '管理 Writer IR 流式预览的输出。', 'Manage streamed Writer IR preview output.'),
+        ('IRPreviewOutput.mark_body', '标记预览流已经输出正文内容。',
+         'Mark that the preview stream has emitted body content.'),
         ('IRPreviewOutput.start_item', '开始输出新的预览项。', 'Start a new preview item.'),
         ('IRPreviewOutput.append_complete', '追加完整的 Markdown 预览项。',
          'Append a complete Markdown preview item.'),
@@ -325,9 +327,24 @@ _add_bilingual_docs(
          'Consume and parse a Writer IR JSON fragment.'),
         ('IRJSONMarkdownParser.finish', '完成解析并与最终 WriterBlock 校验一致性。',
          'Finish parsing and validate against the final WriterBlock.'),
+        ('IRJSONMarkdownParser.finish_document', '完成文档级 Writer IR 解析并输出最终 Markdown 预览。',
+         'Finish document-level Writer IR parsing and emit the final Markdown preview.'),
+        ('IRPreviewStream', '将结构化 Writer IR 生成结果转换为 Markdown 预览流。',
+         'Convert structured Writer IR generation results into a Markdown preview stream.'),
+        ('OutlineIRStream', '将 Writer IR 大纲生成结果流式输出为 Markdown 预览。',
+         'Stream a Writer IR outline generation result as a Markdown preview.'),
         ('DraftMarkdownStream', '流式输出 Markdown 草稿。', 'Stream a Markdown draft.'),
         ('DraftIRStream', '将 Writer IR 草稿流式输出为 Markdown 预览。',
          'Stream a Writer IR draft as a Markdown preview.'),
+    ],
+)
+
+_add_bilingual_docs(
+    add_writer_chinese_doc,
+    add_writer_english_doc,
+    [
+        ('WriterPlanningTools.stream_outline', '流式生成 Writer IR 或 Markdown 大纲预览。',
+         'Stream a Writer IR or Markdown outline preview.'),
     ],
 )
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 WriterStage = Literal['outline', 'draft', 'final']
@@ -24,12 +24,16 @@ class ContentRef(BaseModel):
 
 
 class WriterSpan(BaseModel):
+    model_config = ConfigDict(extra='allow')
+
     text: str = ''
     style: Dict[str, Any] = Field(default_factory=dict)
 
 
 class WriterBlock(BaseModel):
     '''A provider-neutral document node identified by an internal Writer IR ID.'''
+
+    model_config = ConfigDict(extra='allow')
 
     # node_id is always an internal, stable Writer IR identifier. External block
     # identifiers belong in provider_binding (for example provider_binding.block_id).
@@ -60,6 +64,8 @@ WriterBlock.model_rebuild()
 
 class WriterDocument(BaseModel):
     '''The single document representation shared by outline, draft and final stages.'''
+
+    model_config = ConfigDict(extra='allow')
 
     # document_id is always the internal Writer IR document identifier. External
     # document IDs belong in provider_binding.document_id.

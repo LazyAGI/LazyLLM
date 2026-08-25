@@ -7,6 +7,8 @@ from typing import Any, Dict, Iterable, List, Optional, Type, TypeVar
 from pydantic import BaseModel
 from lazyllm.components.formatter import JsonFormatter
 from lazyllm.module import ModuleBase
+from lazyllm.thirdparty import json_repair
+from ..data_models.planning import SectionInstructionList
 from ..data_models.writer_ir import WriterBlock, WriterDocument
 from ..prompts.structured_output import STRUCTURED_OUTPUT_SYSTEM_PROMPT
 from ..utils.artifact import ToolResult, load_artifact_json, save_artifact_json
@@ -30,6 +32,12 @@ class _WriterJsonFormatter(JsonFormatter):
         try:
             return json.loads(cleaned)
         except json.JSONDecodeError:
+            # JsonFormatter rejects unbalanced braces before reaching json_repair.
+            # Writer structured output is schema-validated immediately afterwards,
+            # so repair syntax here without weakening semantic validation.
+            repaired = json_repair.loads(cleaned)
+            if isinstance(repaired, (dict, list)):
+                return repaired
             return super()._load(cleaned)
 
 
@@ -246,8 +254,17 @@ class WriterToolBase(ModuleBase):
 
         system_prompt = self._structured_output_prompt(schema)
         model = self._build_structured_llm(system_prompt, stream_output=stream_output)
-        response = model(prompt)
-        return self._validate_structured_response(response, schema)
+        attempts = 1 if stream_output else 2
+        for attempt in range(attempts):
+            try:
+                response = model(prompt)
+                return self._validate_structured_response(response, schema)
+            except Exception:
+                if attempt + 1 >= attempts:
+                    raise
+                # Keep transient calls and malformed structured output local to the
+                # Writer tool instead of repeating completed Workspace steps.
+        raise RuntimeError('Structured Writer call exhausted without a result.')
 
     def _call_llm_text(self, prompt: str, stream_output: Any = False) -> str:
         if self.llm is None:
@@ -308,6 +325,20 @@ class WriterToolBase(ModuleBase):
 
     @classmethod
     def _prepare_structured_candidate(cls, candidate: Any, schema: Type[T]) -> Any:
+        if schema is SectionInstructionList and isinstance(candidate, dict):
+            normalized = deepcopy(candidate)
+            instructions = normalized.get('instructions')
+            if isinstance(instructions, dict):
+                instructions = list(instructions.values())
+            if isinstance(instructions, list):
+                normalized['instructions'] = [
+                    cls._normalize_section_instruction_candidate(item)
+                    for item in instructions
+                    if isinstance(item, dict)
+                ]
+            if not isinstance(normalized.get('meta'), dict):
+                normalized['meta'] = {}
+            return normalized
         if schema is not WriterDocument or not isinstance(candidate, dict):
             return candidate
         document_stage = candidate.get('stage')
@@ -315,6 +346,37 @@ class WriterToolBase(ModuleBase):
             return candidate
         normalized = deepcopy(candidate)
         cls._inherit_document_stage(normalized.get('blocks'), document_stage)
+        return normalized
+
+    @staticmethod
+    def _normalize_section_instruction_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
+        normalized = deepcopy(candidate)
+        list_fields = (
+            'required_points', 'references', 'fact_constraints', 'style_constraints',
+            'relation_constraints', 'visual_needs', 'expected_blocks',
+            'pending_subtasks', 'revision_notes',
+        )
+        for field in list_fields:
+            value = normalized.get(field)
+            if value is None:
+                normalized[field] = []
+            elif isinstance(value, dict):
+                if field == 'relation_constraints':
+                    normalized[field] = [
+                        f'{key}: {item}' for key, item in value.items()
+                        if str(item).strip()
+                    ]
+                else:
+                    normalized[field] = list(value.values())
+            elif not isinstance(value, list):
+                normalized[field] = [value]
+        if not isinstance(normalized.get('meta'), dict):
+            normalized['meta'] = {}
+        content_ref = normalized.get('content_ref')
+        if isinstance(content_ref, dict):
+            occurrence = content_ref.get('occurrence')
+            if isinstance(occurrence, str) and occurrence.isdigit():
+                content_ref['occurrence'] = int(occurrence)
         return normalized
 
     @staticmethod

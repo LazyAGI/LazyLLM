@@ -4,7 +4,10 @@ import shutil
 import tempfile
 
 import lazyllm
+import pytest
 from lazyllm.tools import ReactAgent
+from lazyllm.tools.agent import ToolExecutionError
+from lazyllm.tools.agent.toolError import exception_failure
 from lazyllm.cli.skills import skills as skills_cli
 from lazyllm.tools.agent.skill_manager import SkillManager
 from lazyllm.tools.fs.base import LazyLLMFSBase
@@ -270,13 +273,13 @@ class TestSkills(object):
             manager = SkillManager(dir=tmp)
 
             ok_result = manager.run_script('script-skill', 'scripts/ok.py', allow_unsafe=True)
-            fail_result = manager.run_script('script-skill', 'scripts/fail.py', allow_unsafe=True)
+            with pytest.raises(ToolExecutionError) as exc_info:
+                manager.run_script('script-skill', 'scripts/fail.py', allow_unsafe=True)
 
             assert ok_result['status'] == 'ok'
             assert ok_result['exit_code'] == 0
-            assert fail_result['status'] == 'failed'
-            assert fail_result['exit_code'] == 7
-            assert 'bad' in fail_result['stdout']
+            assert 'exit code 7' in str(exc_info.value)
+            assert 'bad' in str(exc_info.value)
 
     def test_run_script_extracts_missing_env_guidance_from_stderr(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -293,17 +296,24 @@ class TestSkills(object):
                 )
 
             manager = SkillManager(dir=tmp)
-            result = manager.run_script('stderr-skill', 'scripts/needs_key.py', allow_unsafe=True)
+            with pytest.raises(ToolExecutionError) as exc_info:
+                manager.run_script('stderr-skill', 'scripts/needs_key.py', allow_unsafe=True)
 
-            assert result['status'] == 'failed'
-            assert result['error_type'] == 'MissingCredential'
-            assert result['missing_env'] == ['REDFOX_API_KEY']
-            assert result['api_key_url'] == 'https://redfox.hk/settings/api-keys?source=workbuddy'
-            assert result['setup_commands'] == ['export REDFOX_API_KEY="<your REDFOX_API_KEY>"']
-            assert 'REDFOX_API_KEY' in result['hint']
-            assert 'generic KEY' not in result['hint']
-            assert 'Missing REDFOX_API_KEY required by skill stderr-skill.' in result['error']
-            assert 'REDFOX_API_KEY (' not in result['error']
+            err = exc_info.value
+            details = err.details
+            assert details['error_type'] == 'MissingCredential'
+            assert details['missing_env'] == ['REDFOX_API_KEY']
+            assert details['api_key_url'] == 'https://redfox.hk/settings/api-keys?source=workbuddy'
+            assert details['setup_commands'] == ['export REDFOX_API_KEY="<your REDFOX_API_KEY>"']
+            assert 'REDFOX_API_KEY' in details['hint']
+            assert 'generic KEY' not in details['hint']
+            assert 'Missing REDFOX_API_KEY required by skill stderr-skill.' in str(err)
+            assert 'REDFOX_API_KEY (' not in str(err)
+            wrapped = exception_failure('run_script', err)
+            assert wrapped['ok'] is False
+            assert wrapped['missing_env'] == ['REDFOX_API_KEY']
+            assert wrapped['api_key_url'] == 'https://redfox.hk/settings/api-keys?source=workbuddy'
+            assert wrapped['setup_commands'] == ['export REDFOX_API_KEY="<your REDFOX_API_KEY>"']
 
     def test_run_script_extracts_missing_env_guidance_from_skill_md_body(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -323,19 +333,20 @@ class TestSkills(object):
             previous = os.environ.pop('BODY_API_KEY', None)
             try:
                 manager = SkillManager(dir=tmp)
-                result = manager.run_script('body-skill', 'scripts/needs_key.py', allow_unsafe=True)
+                with pytest.raises(ToolExecutionError) as exc_info:
+                    manager.run_script('body-skill', 'scripts/needs_key.py', allow_unsafe=True)
             finally:
                 if previous is None:
                     os.environ.pop('BODY_API_KEY', None)
                 else:
                     os.environ['BODY_API_KEY'] = previous
 
-            assert result['status'] == 'failed'
-            assert result['error_type'] == 'MissingCredential'
-            assert result['missing_env'] == ['BODY_API_KEY']
-            assert result['api_key_url'] == 'https://example.test/body-key'
-            assert result['setup_commands'] == ['export BODY_API_KEY="<your BODY_API_KEY>"']
-            assert 'generic KEY' not in result['hint']
+            details = exc_info.value.details
+            assert details['error_type'] == 'MissingCredential'
+            assert details['missing_env'] == ['BODY_API_KEY']
+            assert details['api_key_url'] == 'https://example.test/body-key'
+            assert details['setup_commands'] == ['export BODY_API_KEY="<your BODY_API_KEY>"']
+            assert 'generic KEY' not in details['hint']
 
     def test_run_script_extracts_missing_env_from_fenced_skill_md(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -357,18 +368,19 @@ class TestSkills(object):
             previous = os.environ.pop('FENCE_API_KEY', None)
             try:
                 manager = SkillManager(dir=tmp)
-                result = manager.run_script('fence-skill', 'scripts/needs_key.py', allow_unsafe=True)
+                with pytest.raises(ToolExecutionError) as exc_info:
+                    manager.run_script('fence-skill', 'scripts/needs_key.py', allow_unsafe=True)
             finally:
                 if previous is None:
                     os.environ.pop('FENCE_API_KEY', None)
                 else:
                     os.environ['FENCE_API_KEY'] = previous
 
-            assert result['status'] == 'failed'
-            assert result['error_type'] == 'MissingCredential'
-            assert result['missing_env'] == ['FENCE_API_KEY']
-            assert result['api_key_url'] == 'https://example.test/fence-key'
-            assert result['setup_commands'] == ['export FENCE_API_KEY="<your FENCE_API_KEY>"']
+            details = exc_info.value.details
+            assert details['error_type'] == 'MissingCredential'
+            assert details['missing_env'] == ['FENCE_API_KEY']
+            assert details['api_key_url'] == 'https://example.test/fence-key'
+            assert details['setup_commands'] == ['export FENCE_API_KEY="<your FENCE_API_KEY>"']
 
     def test_run_script_runs_when_required_env_is_present(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -489,13 +501,12 @@ class TestSkills(object):
                 f.write('print("ok")\n')
 
             manager = SkillManager(dir=tmp)
-            result = manager.run_script('cwd-skill', 'scripts/ok.py', allow_unsafe=True, cwd='missing')
+            with pytest.raises(ToolExecutionError) as exc_info:
+                manager.run_script('cwd-skill', 'scripts/ok.py', allow_unsafe=True, cwd='missing')
 
-            assert result['status'] == 'error'
-            assert result['error_type'] == 'FileNotFoundError'
-            assert result['rel_path'] == 'scripts/ok.py'
-            assert result.get('cwd') == 'missing'
-            assert 'cwd not found' in result['error']
+            assert 'scripts/ok.py' in str(exc_info.value)
+            assert 'missing' in str(exc_info.value)
+            assert 'cwd not found' in str(exc_info.value)
 
     def test_run_script_failure_omits_sandbox_cwd(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -507,10 +518,13 @@ class TestSkills(object):
                 f.write('import sys\nsys.exit(1)\n')
 
             manager = SkillManager(dir=tmp)
-            result = manager.run_script('cwd-skill', 'scripts/fail.py', allow_unsafe=True)
+            with pytest.raises(ToolExecutionError) as exc_info:
+                manager.run_script('cwd-skill', 'scripts/fail.py', allow_unsafe=True)
 
-            assert result['status'] == 'failed'
-            assert 'cwd' not in result or not os.path.isabs(str(result['cwd']))
+            message = str(exc_info.value)
+            assert 'exit code 1' in message
+            assert tmp not in message
+            assert 'lazyllm-skill-' not in message
 
     def test_materialize_dir_preserves_paths_when_root_is_empty(self):
         fs = _MemoryCloudFS(
