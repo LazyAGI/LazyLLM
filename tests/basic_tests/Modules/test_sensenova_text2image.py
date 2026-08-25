@@ -1,7 +1,5 @@
 import base64
 
-import pytest
-
 from lazyllm.module.llms.onlinemodule.supplier import sensenova
 
 
@@ -142,21 +140,3 @@ def test_u1_fast_keeps_generation_contract(monkeypatch):
         'n': 1,
         'watermark': True,
     }
-
-
-def test_u1_fast_rejects_image_input():
-    with pytest.raises(ValueError, match='does not support image input'):
-        _module()._forward(
-            input='修改图片',
-            files=['/tmp/source.png'],
-            model='sensenova-u1-fast',
-        )
-
-
-def test_u15_lite_rejects_multiple_images():
-    with pytest.raises(ValueError, match='only supports n=1'):
-        _module()._forward(
-            input='一只猫',
-            model='sensenova-u1.5-lite',
-            batch_size=2,
-        )

@@ -350,13 +350,6 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
             mime = 'image/png'
         return f'data:{mime};base64,{encoded}'
 
-    @staticmethod
-    def _validate_u15_formats(output_format: str, response_format: str) -> None:
-        if output_format not in ('png', 'jpeg', 'webp'):
-            raise ValueError('output_format must be one of: png, jpeg, webp.')
-        if response_format not in ('b64_json', 'url'):
-            raise ValueError('response_format must be one of: b64_json, url.')
-
     def _prepare_edit_images(self, files: List[str]) -> List[Dict[str, str]]:
         images = []
         for file in files:
@@ -368,51 +361,6 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
             images.append({'image_url': image_url})
         return images
 
-    def _build_image_request(self, prompt: str, files: List[str], model: str, size: str, n: int,
-                             output_format: str, response_format: str, watermark: bool,
-                             prompt_extend: bool, kwargs: Dict) -> Tuple[str, Dict]:
-        is_u15_lite = model.lower() == self.IMAGE_EDITING_MODEL_NAME
-        if not prompt:
-            raise ValueError('prompt is required.')
-        if is_u15_lite and n != 1:
-            raise ValueError('SenseNova sensenova-u1.5-lite only supports n=1.')
-        if not is_u15_lite and files:
-            raise ValueError('SenseNova sensenova-u1-fast does not support image input.')
-
-        payload = {
-            'model': model,
-            'prompt': prompt,
-            'size': size or ('auto' if is_u15_lite else '2752x1536'),
-            'n': n,
-            'watermark': True if watermark is None else watermark,
-            **kwargs,
-        }
-        endpoint = 'images/generations'
-        if is_u15_lite:
-            output_format = output_format or 'png'
-            response_format = response_format or 'b64_json'
-            self._validate_u15_formats(output_format, response_format)
-            payload['response_format'] = response_format
-            payload['prompt_extend'] = True if prompt_extend is None else prompt_extend
-            if files:
-                endpoint = 'images/edits'
-                payload['images'] = self._prepare_edit_images(files)
-            else:
-                payload['output_format'] = output_format
-        return endpoint, payload
-
-    def _response_image_bytes(self, response: Dict) -> List[bytes]:
-        image_bytes = []
-        for item in response.get('data', []):
-            if item.get('b64_json'):
-                encoded = item['b64_json'].split(',', 1)[-1]
-                image_bytes.append(base64.b64decode(encoded, validate=True))
-            elif item.get('url'):
-                image_bytes.append(self._load_images(item['url'])[0][1])
-        if not image_bytes:
-            raise ValueError('SenseNova returned no image data.')
-        return image_bytes
-
     def _forward(self, input: str = None, files: List[str] = None, size: str = None, n: int = None,
                  image_size: str = None, batch_size: int = None, output_format: str = None,
                  response_format: str = None, watermark: bool = None,
@@ -420,19 +368,37 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
         # LazyMind tools use image_size/batch_size while the SenseNova API uses
         # size/n. Keep both spellings available for direct LazyLLM callers.
         model = model or self._model_name
-        prompt = str(input or '').strip()
-        size = image_size or size
+        is_u15_lite = model.lower() == self.IMAGE_EDITING_MODEL_NAME
+        size = image_size or size or ('auto' if is_u15_lite else '2752x1536')
         n = batch_size if batch_size is not None else (n if n is not None else 1)
         # Framework-only execution hints are not valid SenseNova request fields.
         kwargs.pop('stream_output', None)
         kwargs.pop('priority', None)
-        endpoint, payload = self._build_image_request(
-            prompt, files or [], model, size, n, output_format, response_format,
-            watermark, prompt_extend, kwargs,
-        )
+        payload = {
+            'model': model,
+            'prompt': input,
+            'size': size,
+            'n': n,
+            'watermark': True if watermark is None else watermark,
+            **kwargs,
+        }
+        endpoint = 'images/edits' if files else 'images/generations'
+        if is_u15_lite:
+            payload['response_format'] = response_format or 'b64_json'
+            payload['prompt_extend'] = True if prompt_extend is None else prompt_extend
+            if files:
+                payload['images'] = self._prepare_edit_images(files)
+            else:
+                payload['output_format'] = output_format or 'png'
         base_url = (url or self._base_url).rstrip('/')
         resp = requests.post(f'{base_url}/{endpoint}',
                              headers=self._header, json=payload, timeout=180)
         resp.raise_for_status()
-        image_bytes = self._response_image_bytes(resp.json())
+        image_bytes = []
+        for item in resp.json()['data']:
+            if 'b64_json' in item:
+                encoded = item['b64_json'].split(',', 1)[-1]
+                image_bytes.append(base64.b64decode(encoded, validate=True))
+            else:
+                image_bytes.append(self._load_images(item['url'])[0][1])
         return encode_query_with_filepaths(None, bytes_to_file(image_bytes))
