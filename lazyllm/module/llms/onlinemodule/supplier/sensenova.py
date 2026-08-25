@@ -340,9 +340,27 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
         self._validate_image_data(data, url)
         return data
 
-    def _forward(self, input: str = None, files: List[str] = None, size: str = '2752x1536', n: int = 1,
-                 url: str = None, model: str = None, **kwargs):
-        payload = {'model': model, 'prompt': input, 'size': size, 'n': n, **kwargs}
+    def _forward(self, input: str = None, files: List[str] = None, size: str = None, n: int = None,
+                 image_size: str = None, batch_size: int = None, output_format: str = 'png',
+                 response_format: str = 'url', watermark: bool = True, url: str = None,
+                 model: str = None, **kwargs):
+        # LazyMind tools use image_size/batch_size while the SenseNova API uses
+        # size/n. Keep both spellings available for direct LazyLLM callers.
+        size = image_size or size or '2752x1536'
+        n = batch_size if batch_size is not None else (n if n is not None else 1)
+        # Framework-only execution hints are not valid SenseNova request fields.
+        kwargs.pop('stream_output', None)
+        kwargs.pop('priority', None)
+        payload = {
+            'model': model,
+            'prompt': input,
+            'size': size,
+            'n': n,
+            'output_format': output_format,
+            'response_format': response_format,
+            'watermark': watermark,
+            **kwargs,
+        }
         if files:
             for i, file in enumerate(files):
                 b64, _ = self._load_images(file)[0]

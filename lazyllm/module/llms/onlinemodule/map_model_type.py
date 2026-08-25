@@ -81,6 +81,7 @@ MODEL_MAPPING = {
     'nova-tts-1': 'tts',
     'nova-embedding-stable': 'embed',
     'sensenova-u1-fast': 'sd',
+    'sensenova-u1.5-lite': 'sd',
 
     # ===== GLM =====
     'chatglm3-6b': 'llm',

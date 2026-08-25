@@ -28,6 +28,7 @@ test_models = {
     ],
     'sd': [
         'cogview-4',
+        'sensenova-u1.5-lite',
         'wanx2.1-t2i-plus',
         'animate-anyone-template-gen2',
         'doubao-seedream-4-5-251128',
