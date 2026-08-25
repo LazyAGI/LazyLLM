@@ -1025,6 +1025,7 @@ Args:
         为 True 时触发强制总结；为 False（默认）时直接抛出 ValueError。
     force_summarize_context (str): 强制总结时注入的额外上下文（如原始任务描述），默认为空字符串。
     keep_full_turns (int): 传给 ``history_compactor`` 的最近完整工具结果数量。框架不再内置截断；未提供 compactor 时 history 原样送给模型。默认 0。
+    history_compactor (callable, optional): 压缩模型可见历史。推荐返回 ``(prior_history, current_round_messages)``；仍返回单个 list 时，仅在压缩后条数不变时按长度切分。
     on_max_retries (callable, optional): 达到当前工具调用轮次上限但仍未结束时调用。依次接收最终输出、已执行轮次和当前上限；返回更大的整数可仅为本次调用扩展上限，返回其他值则结束循环。默认为 ``None``。
         ReactAgent 会临时告知模型剩余 ReAct 轮次；该消息不会写入执行历史或输出流。
 ''')
@@ -1067,6 +1068,7 @@ Args:
         Useful when the task involves many tool-call steps and the LLM struggles to stop on its own.
     force_summarize_context (str): Extra context injected into the force-summarize prompt (e.g. the original task description). Defaults to empty string.
     keep_full_turns (int): Passed to ``history_compactor`` as the number of recent tool results to keep intact. LazyLLM no longer truncates history itself; without a compactor the model sees the raw history. Defaults to 0.
+    history_compactor (callable, optional): Compacts model-facing history. Prefer returning ``(prior_history, current_round_messages)``. A bare list is still split by length only when the compacted count is unchanged.
     on_max_retries (callable, optional): Called when the current tool-call round limit is reached without a final answer. It receives the final output, actual round count, and current limit. Returning a larger integer expands only the current invocation; any other value ends the loop. Defaults to ``None``.
         ReactAgent briefly tells the model its remaining ReAct rounds without persisting or emitting the message.
 
