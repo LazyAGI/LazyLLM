@@ -365,12 +365,11 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
                  image_size: str = None, batch_size: int = None, output_format: str = None,
                  response_format: str = None, watermark: bool = None,
                  prompt_extend: bool = None, url: str = None, model: str = None, **kwargs):
-        # LazyMind tools use image_size/batch_size while the SenseNova API uses
-        # size/n. Keep both spellings available for direct LazyLLM callers.
+        # SenseNova only supports one output image; consume n/batch_size but
+        # always send n=1.
         model = model or self._model_name
         is_u15_lite = model.lower() == self.IMAGE_EDITING_MODEL_NAME
         size = image_size or size or ('auto' if is_u15_lite else '2752x1536')
-        n = batch_size if batch_size is not None else (n if n is not None else 1)
         # Framework-only execution hints are not valid SenseNova request fields.
         kwargs.pop('stream_output', None)
         kwargs.pop('priority', None)
@@ -378,7 +377,7 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
             'model': model,
             'prompt': input,
             'size': size,
-            'n': n,
+            'n': 1,
             'watermark': True if watermark is None else watermark,
             **kwargs,
         }
