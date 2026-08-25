@@ -1,3 +1,4 @@
+import base64
 import json
 import time
 import os
@@ -342,12 +343,18 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
 
     def _forward(self, input: str = None, files: List[str] = None, size: str = None, n: int = None,
                  image_size: str = None, batch_size: int = None, output_format: str = 'png',
-                 response_format: str = 'url', watermark: bool = True, url: str = None,
-                 model: str = None, **kwargs):
+                 response_format: str = 'b64_json', watermark: bool = True,
+                 prompt_extend: bool = True, url: str = None, model: str = None, **kwargs):
         # LazyMind tools use image_size/batch_size while the SenseNova API uses
         # size/n. Keep both spellings available for direct LazyLLM callers.
-        size = image_size or size or '2752x1536'
+        size = image_size or size or 'auto'
         n = batch_size if batch_size is not None else (n if n is not None else 1)
+        if n != 1:
+            raise ValueError('SenseNova sensenova-u1.5-lite only supports n=1.')
+        if output_format not in ('png', 'jpeg', 'webp'):
+            raise ValueError('output_format must be one of: png, jpeg, webp.')
+        if response_format not in ('b64_json', 'url'):
+            raise ValueError('response_format must be one of: b64_json, url.')
         # Framework-only execution hints are not valid SenseNova request fields.
         kwargs.pop('stream_output', None)
         kwargs.pop('priority', None)
@@ -359,6 +366,7 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
             'output_format': output_format,
             'response_format': response_format,
             'watermark': watermark,
+            'prompt_extend': prompt_extend,
             **kwargs,
         }
         if files:
@@ -368,6 +376,13 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
         resp = requests.post(f'{(url or self._base_url)}{self._endpoint}',
                              headers=self._header, json=payload, timeout=180)
         resp.raise_for_status()
-        image_urls = [item['url'] for item in resp.json()['data']]
-        image_bytes = [data for _, data in self._load_images(image_urls)]
+        image_bytes = []
+        for item in resp.json().get('data', []):
+            if item.get('b64_json'):
+                encoded = item['b64_json'].split(',', 1)[-1]
+                image_bytes.append(base64.b64decode(encoded, validate=True))
+            elif item.get('url'):
+                image_bytes.append(self._load_images(item['url'])[0][1])
+        if not image_bytes:
+            raise ValueError('SenseNova returned no image data.')
         return encode_query_with_filepaths(None, bytes_to_file(image_bytes))
