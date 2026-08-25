@@ -361,34 +361,28 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
             images.append({'image_url': image_url})
         return images
 
-    def _forward(self, input: str = None, files: List[str] = None, size: str = None, n: int = None,
-                 image_size: str = None, batch_size: int = None, output_format: str = None,
-                 response_format: str = None, watermark: bool = None,
-                 prompt_extend: bool = None, url: str = None, model: str = None, **kwargs):
-        # SenseNova only supports one output image; consume n/batch_size but
-        # always send n=1.
+    def _forward(self, input: str = None, files: List[str] = None, size: str = None,
+                 output_format: str = 'png', response_format: str = 'b64_json',
+                 watermark: bool = True, prompt_extend: bool = True,
+                 url: str = None, model: str = None, **kwargs):
         model = model or self._model_name
         is_u15_lite = model.lower() == self.IMAGE_EDITING_MODEL_NAME
-        size = image_size or size or ('auto' if is_u15_lite else '2752x1536')
-        # Framework-only execution hints are not valid SenseNova request fields.
-        kwargs.pop('stream_output', None)
-        kwargs.pop('priority', None)
+        size = kwargs.get('image_size') or size or ('auto' if is_u15_lite else '2752x1536')
         payload = {
             'model': model,
             'prompt': input,
             'size': size,
             'n': 1,
-            'watermark': True if watermark is None else watermark,
-            **kwargs,
+            'watermark': watermark,
         }
         endpoint = 'images/edits' if files else 'images/generations'
         if is_u15_lite:
-            payload['response_format'] = response_format or 'b64_json'
-            payload['prompt_extend'] = True if prompt_extend is None else prompt_extend
+            payload['response_format'] = response_format
+            payload['prompt_extend'] = prompt_extend
             if files:
                 payload['images'] = self._prepare_edit_images(files)
             else:
-                payload['output_format'] = output_format or 'png'
+                payload['output_format'] = output_format
         base_url = (url or self._base_url).rstrip('/')
         resp = requests.post(f'{base_url}/{endpoint}',
                              headers=self._header, json=payload, timeout=180)
