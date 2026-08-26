@@ -244,12 +244,12 @@ def test_doc_server_openapi_schema_contains_doc_service_routes():
 def test_rag_and_standard_extras_install_python_multipart():
     # /upload_files, /add_files_to_group and /v1/docs/upload register with
     # fastapi.File/Form, which FastAPI cannot even wire up without this
-    # package. `lazyllm install rag` must pull it in on a clean install.
+    # package. `lazyllm install rag`/`standard`/`full` must all pull it in.
     from lazyllm.cli.install import load_dependencies, load_extras, process_package
 
     extras = load_extras()
     deps = load_dependencies()
-    for group in ('rag', 'standard'):
+    for group in ('rag', 'standard', 'full'):
         assert 'python-multipart' in extras[group]
         process_package('python-multipart', deps)
 
