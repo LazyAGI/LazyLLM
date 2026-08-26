@@ -12,6 +12,7 @@ from lazyllm.common import FileSystemQueue
 from lazyllm.module.module import ModuleBase
 from lazyllm.tools.writer.data_models import (
     ContentRef,
+    DocumentFact,
     DocumentSummary,
     MaterialStyle,
     ResourceProfile,
@@ -832,6 +833,46 @@ def test_generate_section_instructions_preserves_outline_references():
         instruction = instructions.instructions[0]
         assert instruction.references == references
         assert instruction.fact_constraints == []
+
+
+def test_short_section_instructions_scope_image_directives_to_visual_section():
+    task = WritingTask(
+        task_id='task-short-visual', query='写一篇 800 字短文', task_type='write',
+        constraints={'target_chars': 800, 'max_chars': 800},
+    )
+    context = WritingContext(
+        context_id='ctx-short-visual',
+        facts=[
+            DocumentFact(
+                fact_id='fact-image', key='upload.png',
+                value='必须使用提供的图片 upload.png', source=['upload.png'],
+            ),
+            DocumentFact(
+                fact_id='fact-content', key='灯塔编号',
+                value='灯塔编号为 LM-2048', source=['brief'],
+            ),
+        ],
+    )
+    outline = '# 灯塔守望者\n\n## 引言\n\n介绍背景。\n\n## 主体\n\n描述守望。\n'
+    visual_plan = VisualPlan(instructions=[VisualInstruction(
+        need_id='IMAGE-1',
+        content_ref=ContentRef(
+            heading_path=['灯塔守望者', '引言'], placeholder_id='IMAGE-1',
+        ),
+        visual_type='image', purpose='插入上传的灯塔图片', required=True,
+    )])
+
+    with tempfile.TemporaryDirectory() as directory:
+        result = WriterPlanningTools(artifact_store=directory).generate_section_instructions(
+            outline=outline, context=context, visual_plan=visual_plan, task=task,
+        )
+        instructions = load_artifact_json(result['artifact_path'], SectionInstructionList)
+
+    introduction, body = instructions.instructions
+    assert any('必须使用提供的图片' in item for item in introduction.fact_constraints)
+    assert all('必须使用提供的图片' not in item for item in body.fact_constraints)
+    assert all(any('灯塔编号为 LM-2048' in item for item in section.fact_constraints)
+               for section in instructions.instructions)
 
 
 def test_generate_rewrite_section_instructions_ir_uses_existing_meta_for_source_refs():
