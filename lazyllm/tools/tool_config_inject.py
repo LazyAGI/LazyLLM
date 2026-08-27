@@ -1,8 +1,12 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import os
+import re
 from typing import Any, Dict, Optional
 
 import lazyllm
 from lazyllm import LOG
+
+_ENV_NAME_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
 
 lazyllm.globals.config.add('dynamic_fs_auth', dict, None, 'DYNAMIC_FS_AUTH',
@@ -97,3 +101,76 @@ def inject_tool_config(tool_config: Optional[Dict[str, Any]]) -> None:
         lazyllm.globals.config[config_key] = {**existing, **new_entries}
 
     LOG.info(f'[inject_tool_config] injected tools: {sorted(injected)}')
+
+
+def get_dynamic_env_vars() -> Dict[str, str]:
+    raw = lazyllm.globals.get('dynamic_env_vars', {}) or {}
+    return {
+        str(name): str(value)
+        for name, value in raw.items()
+        if name is not None and value is not None
+    }
+
+
+def effective_env_value(name: str) -> str:
+    key = str(name or '').strip()
+    if not key:
+        return ''
+    dynamic = get_dynamic_env_vars()
+    if key in dynamic:
+        return str(dynamic[key])
+    return str(os.getenv(key) or '')
+
+
+def _validate_inject_env_name(name: Any) -> Optional[str]:
+    key = str(name or '').strip()
+    if not key:
+        return None
+    if '\0' in key:
+        LOG.warning('[inject_env_vars] skipping env name containing NUL')
+        return None
+    if not _ENV_NAME_RE.fullmatch(key):
+        LOG.warning(f'[inject_env_vars] skipping invalid env name: {key!r}')
+        return None
+    return key
+
+
+def inject_env_vars(env_vars: Optional[Dict[str, Any]]) -> None:
+    '''Inject environment variables for skill script execution.
+
+    Values are stored in lazyllm globals for the active session and consumed by
+    SkillManager.run_script when it starts the script subprocess. This does not
+    mutate the parent process ``os.environ``.
+
+    Semantics:
+    - A non-empty value overwrites the same name for this session.
+    - An empty string removes a previously injected name (clear).
+    - ``None`` values are ignored.
+    '''
+    if not env_vars:
+        return
+    existing = dict(get_dynamic_env_vars())
+    assigned: list = []
+    cleared: list = []
+    for name, value in env_vars.items():
+        key = _validate_inject_env_name(name)
+        if not key or value is None:
+            continue
+        text = str(value)
+        if '\0' in text:
+            LOG.warning(f'[inject_env_vars] skipping {key!r}: value contains NUL')
+            continue
+        if not text.strip():
+            if key in existing:
+                existing.pop(key, None)
+                cleared.append(key)
+            continue
+        existing[key] = text
+        assigned.append(key)
+    if not assigned and not cleared:
+        return
+    lazyllm.globals['dynamic_env_vars'] = existing
+    LOG.info(
+        f'[inject_env_vars] injected env vars: {sorted(assigned)}; '
+        f'cleared env vars: {sorted(cleared)}'
+    )

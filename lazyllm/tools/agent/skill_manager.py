@@ -10,6 +10,7 @@ import yaml
 
 from lazyllm import config, LOG, ModuleBase
 from lazyllm.thirdparty import fsspec
+from .missing_env import collect_missing_env_hints, format_missing_env_message
 from .toolError import ToolExecutionError
 
 DEFAULT_SKILLS_DIR = os.path.join(config['home'], 'skills')
@@ -624,8 +625,7 @@ class SkillManager(ModuleBase):
             ) from exc
         raise ToolExecutionError(f'run_script execution failed for {context}: {exc}') from exc
 
-    @staticmethod
-    def _normalize_script_result(result: Dict) -> Dict:
+    def _normalize_script_result(self, result: Dict, skill_info: Optional[Dict] = None) -> Dict:
         if result.get('status') == 'ok' and result.get('exit_code', 0) != 0:
             result['status'] = 'failed'
         if result.get('status') == 'needs_approval':
@@ -640,8 +640,28 @@ class SkillManager(ModuleBase):
             exit_code = result.get('exit_code')
             if exit_code is not None:
                 reason = f'Skill script execution failed with exit code {exit_code}: {reason}'
-            raise ToolExecutionError(reason)
+            raise self._script_failure_error(reason, result, skill_info)
         return result
+
+    @staticmethod
+    def _script_failure_error(
+        reason: str, result: Dict, skill_info: Optional[Dict],
+    ) -> ToolExecutionError:
+        if result.get('status') == 'missing':
+            return ToolExecutionError(reason)
+        raw_meta = (skill_info or {}).get('raw_meta') or {}
+        missing_env = collect_missing_env_hints(
+            reason,
+            result.get('stderr'),
+            result.get('stdout'),
+            declared_required=raw_meta.get('required_env'),
+        )
+        if not missing_env:
+            return ToolExecutionError(reason)
+        return ToolExecutionError.with_missing_env(
+            format_missing_env_message(reason, missing_env),
+            missing_env,
+        )
 
     def run_script(self, name: str, rel_path: str, args: Optional[List[str]] = None,
                    allow_unsafe: bool = False, cwd: Optional[str] = None) -> Dict[str, str]:
@@ -677,14 +697,17 @@ class SkillManager(ModuleBase):
                     f'The configured sandbox does not support executing skill {name} script '
                     f'{normalized_rel_path!r}.'
                 )
+            from lazyllm.tools.tool_config_inject import get_dynamic_env_vars
+            script_env = dict(get_dynamic_env_vars())
             result = self._sandbox.execute_script(
                 source_dir=base,
                 rel_path=normalized_rel_path,
                 args=args,
                 cwd=os.path.relpath(run_cwd, os.path.realpath(os.path.abspath(base))),
                 allow_unsafe=allow_unsafe,
+                env=script_env,
             )
-            return self._normalize_script_result(result)
+            return self._normalize_script_result(result, info)
         except ToolExecutionError:
             raise
         except Exception as exc:

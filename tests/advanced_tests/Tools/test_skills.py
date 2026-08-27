@@ -280,6 +280,151 @@ class TestSkills(object):
             assert 'exit code 7' in str(exc_info.value)
             assert 'bad' in str(exc_info.value)
 
+    def test_run_script_uses_dynamic_env_vars(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'env-skill', 'env-skill')
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            script = os.path.join(scripts_dir, 'print_env.py')
+            with open(script, 'w', encoding='utf-8') as f:
+                f.write('import os\nprint(os.getenv("DYNAMIC_TEST_API_KEY", ""))\n')
+
+            old_dynamic_env = lazyllm.globals.get('dynamic_env_vars')
+            lazyllm.globals['dynamic_env_vars'] = {'DYNAMIC_TEST_API_KEY': 'secret-from-session'}
+            try:
+                manager = SkillManager(dir=tmp)
+                result = manager.run_script('env-skill', 'scripts/print_env.py', allow_unsafe=True)
+            finally:
+                if old_dynamic_env is None:
+                    lazyllm.globals.pop('dynamic_env_vars', None)
+                else:
+                    lazyllm.globals['dynamic_env_vars'] = old_dynamic_env
+
+            assert result['status'] == 'ok'
+            assert result['stdout'].strip() == 'secret-from-session'
+
+    def test_run_script_retries_after_dynamic_env_injection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'retry-env-skill', 'retry-env-skill')
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            script = os.path.join(scripts_dir, 'needs_key.py')
+            with open(script, 'w', encoding='utf-8') as f:
+                f.write(
+                    'import os\nimport sys\n'
+                    'value = os.getenv("DYNAMIC_TEST_API_KEY", "")\n'
+                    'if not value:\n'
+                    '    sys.stderr.write("missing DYNAMIC_TEST_API_KEY")\n'
+                    '    sys.exit(1)\n'
+                    'print(value)\n'
+                )
+
+            from lazyllm.tools.tool_config_inject import inject_env_vars
+            old_dynamic_env = lazyllm.globals.get('dynamic_env_vars')
+            lazyllm.globals['dynamic_env_vars'] = {}
+            try:
+                manager = SkillManager(dir=tmp)
+                with pytest.raises(ToolExecutionError) as exc_info:
+                    manager.run_script(
+                        'retry-env-skill', 'scripts/needs_key.py', allow_unsafe=True,
+                    )
+                assert exc_info.value.missing_env == ['DYNAMIC_TEST_API_KEY']
+                assert 'missing_env: ["DYNAMIC_TEST_API_KEY"]' in str(exc_info.value)
+                inject_env_vars({'DYNAMIC_TEST_API_KEY': 'secret-after-set'})
+                result = manager.run_script(
+                    'retry-env-skill', 'scripts/needs_key.py', allow_unsafe=True,
+                )
+            finally:
+                if old_dynamic_env is None:
+                    lazyllm.globals.pop('dynamic_env_vars', None)
+                else:
+                    lazyllm.globals['dynamic_env_vars'] = old_dynamic_env
+
+            assert result['status'] == 'ok'
+            assert result['stdout'].strip() == 'secret-after-set'
+
+    def test_run_script_does_not_preflight_block_unset_required_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'optional-env-skill', 'optional-env-skill')
+            with open(os.path.join(skill_dir, 'SKILL.md'), 'w', encoding='utf-8') as f:
+                f.write(
+                    '---\n'
+                    'name: optional-env-skill\n'
+                    'description: optional env skill\n'
+                    'required_env:\n'
+                    '  - OPTIONAL_API_KEY\n'
+                    '---\n'
+                    '# optional\n'
+                )
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            with open(os.path.join(scripts_dir, 'ok.py'), 'w', encoding='utf-8') as f:
+                f.write('print("ran-without-key")\n')
+
+            manager = SkillManager(dir=tmp)
+            result = manager.run_script(
+                'optional-env-skill', 'scripts/ok.py', allow_unsafe=True,
+            )
+
+            assert result['status'] == 'ok'
+            assert result['stdout'].strip() == 'ran-without-key'
+
+    def test_run_script_hints_declared_required_env_only_after_failure(self, monkeypatch):
+        monkeypatch.delenv('DECLARED_API_KEY', raising=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'declared-env-skill', 'declared-env-skill')
+            with open(os.path.join(skill_dir, 'SKILL.md'), 'w', encoding='utf-8') as f:
+                f.write(
+                    '---\n'
+                    'name: declared-env-skill\n'
+                    'description: declared env skill\n'
+                    'required_env:\n'
+                    '  - DECLARED_API_KEY\n'
+                    '---\n'
+                    '# declared\n'
+                )
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            with open(os.path.join(scripts_dir, 'fail.py'), 'w', encoding='utf-8') as f:
+                f.write('import sys\nprint("boom")\nsys.exit(1)\n')
+
+            old_dynamic_env = lazyllm.globals.get('dynamic_env_vars')
+            lazyllm.globals['dynamic_env_vars'] = {}
+            try:
+                manager = SkillManager(dir=tmp)
+                with pytest.raises(ToolExecutionError) as exc_info:
+                    manager.run_script(
+                        'declared-env-skill', 'scripts/fail.py', allow_unsafe=True,
+                    )
+            finally:
+                if old_dynamic_env is None:
+                    lazyllm.globals.pop('dynamic_env_vars', None)
+                else:
+                    lazyllm.globals['dynamic_env_vars'] = old_dynamic_env
+
+            assert 'boom' in str(exc_info.value)
+            assert exc_info.value.missing_env == ['DECLARED_API_KEY']
+
+    def test_run_script_hints_convention_missing_env_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'convention-env-skill', 'convention-env-skill')
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            with open(os.path.join(scripts_dir, 'fail.py'), 'w', encoding='utf-8') as f:
+                f.write(
+                    'import sys\n'
+                    'sys.stderr.write("MISSING_ENV=CONVENTION_API_KEY\\n")\n'
+                    'sys.exit(1)\n'
+                )
+
+            manager = SkillManager(dir=tmp)
+            with pytest.raises(ToolExecutionError) as exc_info:
+                manager.run_script(
+                    'convention-env-skill', 'scripts/fail.py', allow_unsafe=True,
+                )
+
+            assert exc_info.value.missing_env == ['CONVENTION_API_KEY']
+
     def test_run_script_reports_missing_cwd_as_tool_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             skill_dir = _make_skill(tmp, 'cwd-skill', 'cwd-skill')
@@ -296,6 +441,7 @@ class TestSkills(object):
             assert 'scripts/ok.py' in str(exc_info.value)
             assert 'missing' in str(exc_info.value)
             assert 'cwd not found' in str(exc_info.value)
+            assert not exc_info.value.missing_env
 
     def test_materialize_dir_preserves_paths_when_root_is_empty(self):
         fs = _MemoryCloudFS(

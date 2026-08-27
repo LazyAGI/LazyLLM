@@ -50,7 +50,8 @@ class DummySandbox(LazyLLMSandboxBase):
         return {'returncode': proc.returncode, 'stdout': stdout, 'stderr': stderr}
 
     def execute_script(self, source_dir: str, rel_path: str, args: Optional[List[str]] = None,
-                       cwd: str = '.', allow_unsafe: bool = False) -> Dict[str, Any]:
+                       cwd: str = '.', allow_unsafe: bool = False,
+                       env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         del allow_unsafe  # DummySandbox currently has no approval boundary.
         context = self._create_context()
         try:
@@ -72,7 +73,7 @@ class DummySandbox(LazyLLMSandboxBase):
             completed = subprocess.run(
                 [runner, script_path, *(args or [])],
                 cwd=run_cwd,
-                env=os.environ.copy(),
+                env={**os.environ.copy(), **(env or {})},
                 text=True,
                 capture_output=True,
                 timeout=self._timeout,

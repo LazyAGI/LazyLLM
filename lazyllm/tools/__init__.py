@@ -44,7 +44,12 @@ if TYPE_CHECKING:
     from .review import get_errors, ChineseCorrector
     from .git import (LazyLLMGitBase, PrInfo, ReviewCommentInfo, Git,
                       GitHub, GitLab, Gitee, GitCode)
-    from .tool_config_inject import inject_tool_config
+    from .tool_config_inject import (
+        effective_env_value,
+        get_dynamic_env_vars,
+        inject_env_vars,
+        inject_tool_config,
+    )
 
 
 def __getattr__(name: str):
@@ -154,7 +159,12 @@ _SUBMOD_MAP = {
         'GitCode',
         'review',
     ],
-    'tool_config_inject': ['inject_tool_config'],
+    'tool_config_inject': [
+        'inject_tool_config',
+        'inject_env_vars',
+        'get_dynamic_env_vars',
+        'effective_env_value',
+    ],
     'fs': [
         'LazyLLMFSBase',
         'LinkDocumentFSBase',
