@@ -1711,6 +1711,99 @@ Args:
     api_key (str, optional): The OpenAI API key. If not provided, it will be read from `lazyllm.config`.
 ''')
 
+add_chinese_doc('llms.onlinemodule.supplier.openrouter.OpenRouterChat', '''\
+OpenRouter 在线对话模块，使用 OpenRouter 的 OpenAI 兼容接口。默认 API 地址为
+``https://openrouter.ai/api/v1/``，默认模型为 ``openrouter/free``。
+
+Args:
+    base_url (str, optional): OpenRouter 或兼容服务的 API 根地址。
+    model (str, optional): OpenRouter 模型 ID。默认为 ``openrouter/free``。
+    api_key (str, optional): OpenRouter API Key；未显式传入时从 ``lazyllm.config['openrouter_api_key']`` 读取。
+    skip_auth (bool): 是否跳过鉴权。仅适用于不要求鉴权的自部署兼容服务，默认为 ``False``。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.openrouter.OpenRouterChat', '''\
+Online chat module for OpenRouter's OpenAI-compatible API. Its default API root is
+``https://openrouter.ai/api/v1/`` and its default model is ``openrouter/free``.
+
+Args:
+    base_url (str, optional): API root of OpenRouter or a compatible service.
+    model (str, optional): OpenRouter model ID. Defaults to ``openrouter/free``.
+    api_key (str, optional): OpenRouter API key. When omitted, it is read from ``lazyllm.config['openrouter_api_key']``.
+    skip_auth (bool): Whether to omit authentication. Use only with a self-hosted compatible service that requires no authentication. Defaults to ``False``.
+''')
+
+add_example('llms.onlinemodule.supplier.openrouter.OpenRouterChat', '''\
+>>> import lazyllm
+>>> chat = lazyllm.OnlineChatModule(
+...     source='openrouter', model='openrouter/free', api_key='your-api-key')
+>>> response = chat('Introduce LazyLLM in one sentence.')
+
+>>> local_chat = lazyllm.OnlineChatModule(
+...     source='openrouter', model='your-model',
+...     url='http://127.0.0.1:8000/v1/', skip_auth=True)
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.openrouter.OpenRouterEmbed', '''\
+OpenRouter 在线文本向量模块，使用 OpenRouter 的 OpenAI 兼容 Embeddings 接口。默认模型为
+``liquid/lfm-2.5-embedding-350m:free``。
+
+Args:
+    embed_url (str, optional): OpenRouter 或兼容服务的 API 根地址。
+    embed_model_name (str, optional): OpenRouter 向量模型 ID。
+    api_key (str, optional): OpenRouter API Key；未显式传入时从 ``lazyllm.config['openrouter_api_key']`` 读取。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.openrouter.OpenRouterEmbed', '''\
+Online text embedding module for OpenRouter's OpenAI-compatible Embeddings API. The default model is
+``liquid/lfm-2.5-embedding-350m:free``.
+
+Args:
+    embed_url (str, optional): API root of OpenRouter or a compatible service.
+    embed_model_name (str, optional): OpenRouter embedding model ID.
+    api_key (str, optional): OpenRouter API key. When omitted, it is read from ``lazyllm.config['openrouter_api_key']``.
+''')
+
+add_example('llms.onlinemodule.supplier.openrouter.OpenRouterEmbed', '''\
+>>> import lazyllm
+>>> embed = lazyllm.OnlineEmbeddingModule(
+...     source='openrouter',
+...     model='liquid/lfm-2.5-embedding-350m:free',
+...     api_key='your-api-key')
+>>> vector = embed('LazyLLM routes online models.')
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.openrouter.OpenRouterText2Image', '''\
+OpenRouter 文生图模块。默认 API 地址为 ``https://openrouter.ai/api/v1/``，默认模型为
+``bytedance-seed/seedream-4.5``。返回的 Base64 图片或图片 URL 会转换为 LazyLLM 文件结果。
+
+Args:
+    api_key (str, optional): OpenRouter API Key；未显式传入时从 ``lazyllm.config['openrouter_api_key']`` 读取。
+    model (str, optional): OpenRouter 文生图模型 ID。
+    base_url (str, optional): OpenRouter 或兼容服务的 API 根地址。
+    skip_auth (bool): 是否跳过鉴权。仅适用于不要求鉴权的自部署兼容服务，默认为 ``False``。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.openrouter.OpenRouterText2Image', '''\
+Text-to-image module for OpenRouter. Its default API root is ``https://openrouter.ai/api/v1/`` and
+its default model is ``bytedance-seed/seedream-4.5``. Base64 images and image URLs in the response
+are converted to LazyLLM file results.
+
+Args:
+    api_key (str, optional): OpenRouter API key. When omitted, it is read from ``lazyllm.config['openrouter_api_key']``.
+    model (str, optional): OpenRouter text-to-image model ID.
+    base_url (str, optional): API root of OpenRouter or a compatible service.
+    skip_auth (bool): Whether to omit authentication. Use only with a self-hosted compatible service that requires no authentication. Defaults to ``False``.
+''')
+
+add_example('llms.onlinemodule.supplier.openrouter.OpenRouterText2Image', '''\
+>>> import lazyllm
+>>> image = lazyllm.OnlineMultiModalModule(
+...     source='openrouter', type='text2image',
+...     model='bytedance-seed/seedream-4.5', api_key='your-api-key')
+>>> result = image('A red panda walking on the moon.')
+''')
+
 add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenSTT', '''\
 基于千问多模态接口的语音转文本（STT）模块，默认使用 ``paraformer-v2`` 模型。
 
