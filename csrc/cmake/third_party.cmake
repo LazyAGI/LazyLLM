@@ -3,7 +3,11 @@ include(FetchContent)
 # disable remote update checks to keep builds reproducible.
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 
-find_package(Python3 COMPONENTS Interpreter Development.Module Development.Embed REQUIRED)
+set(_lazyllm_python_components Interpreter Development.Module)
+if (BUILD_TESTS)
+    list(APPEND _lazyllm_python_components Development.Embed)
+endif ()
+find_package(Python3 COMPONENTS ${_lazyllm_python_components} REQUIRED)
 find_package(pybind11 CONFIG REQUIRED)
 
 find_package(xxHash QUIET)

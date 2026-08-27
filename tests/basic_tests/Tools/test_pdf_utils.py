@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from lazyllm.thirdparty import pypdf
@@ -66,7 +67,8 @@ def test_long_pdf_is_replaced_inplace(tmp_path):
     assert result is True
     assert len(replaced.pages) == 3
     assert [round(float(page.mediabox.height)) for page in replaced.pages] == [200, 200, 100]
-    assert source.stat().st_mode & 0o777 == 0o640
+    if os.name != 'nt':
+        assert source.stat().st_mode & 0o777 == 0o640
 
 
 def test_normal_pdf_inplace_returns_false(tmp_path):

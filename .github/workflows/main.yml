@@ -24,6 +24,7 @@ env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${{ github.run_number }}'
   PYTHON_VERSION: "3.10.9"
   LAZYLLM_DEFAULT_RECENT_K: 20
+  LAZYLLM_SKIP_EXTERNAL_STORE_TESTS: ${{ vars.ENABLE_SELF_HOSTED_TESTS != 'true' }}
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{
     github.event_name == 'pull_request_target' && github.event.pull_request.title || github.ref }}
@@ -442,6 +443,17 @@ jobs:
           pip install -r tests/requirements_linux.txt
           pip install -r tests/data_tests/requirements.txt
           pip install 'setuptools<82'
+
+      - name: Prepare NLTK data
+        env:
+          NLTK_ALLOW_PROXIED_URLOPEN: "1"
+        run: |
+          NLTK_DATA="${RUNNER_TEMP}/nltk_data"
+          mkdir -p "${NLTK_DATA}"
+          python -m nltk.downloader -d "${NLTK_DATA}" stopwords punkt_tab
+          NLTK_DATA="${NLTK_DATA}" python -c \
+            "import nltk; nltk.data.find('corpora/stopwords'); nltk.data.find('tokenizers/punkt_tab')"
+          echo "NLTK_DATA=${NLTK_DATA}" >> "${GITHUB_ENV}"
 
       - name: Checkout test data
         uses: actions/checkout@v4
@@ -921,6 +933,8 @@ jobs:
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
             pip install -r tests/requirements_mac.txt
           fi
+          pip install 'setuptools<82'
+          python -c "import pymilvus; print(pymilvus.__version__)"
 
       - name: Download test dataset
         run: |

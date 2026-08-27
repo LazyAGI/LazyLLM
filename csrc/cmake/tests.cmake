@@ -26,8 +26,7 @@ foreach (test_src ${LAZYLLM_TEST_SOURCES})
     target_link_libraries(${test_name} PRIVATE
         GTest::gtest_main
         lazyllm_core
-        pybind11::headers
-        Python3::Python
+        pybind11::embed
     )
     # Ensure tests use the same libstdc++ as the compiler, avoiding conda-incompatible versions.
     if (LAZYLLM_LIBSTDCPP_DIR)
