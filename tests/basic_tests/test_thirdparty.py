@@ -71,3 +71,8 @@ class TestThirdparty(object):
             assert thirdparty.check_dependency_by_group('standard')
         except ImportError:
             assert True, 'Normal exit due to missing dependencies'
+
+    def test_python_multipart_resolves_to_its_import_name(self):
+        # its import name (multipart) differs from its PyPI name
+        assert thirdparty.package_name_map.get('multipart') == 'python-multipart'
+        assert thirdparty.package_name_map_reverse.get('python-multipart') == 'multipart'

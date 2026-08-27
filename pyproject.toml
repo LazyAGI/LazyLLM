@@ -170,6 +170,7 @@ jieba = { version = ">=0.42.1", optional = true }
 sentencepiece = { version = ">=0.2.0,<0.3.0", optional = true }
 psycopg2-binary = { version = ">=2.9.9,<3.0.0", optional = true }
 sqlalchemy = { version = ">=2.0.34,<3.0.0", optional = true }
+python-multipart = { version = ">=0.0.18", optional = true }
 gradio = { version = "==5.49.1", optional = true }
 gradio-client = { version = ">=0.6.1", optional = true }
 numpy = { version = "==1.26.4", optional = true }
@@ -244,6 +245,7 @@ standard = [
     "sentencepiece",
     "psycopg2-binary",
     "sqlalchemy",
+    "python-multipart",
     "gradio",
     "gradio-client",
     "numpy",
@@ -332,6 +334,7 @@ full = [
     "opentelemetry-api",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-http",
+    "python-multipart",
     "json_repair"
 ]
 alpaca-lora = [
@@ -455,6 +458,7 @@ rag = [
     "sentencepiece",
     "psycopg2-binary",
     "sqlalchemy",
+    "python-multipart",
     "json_repair"
 ]
 rag-advanced = [
