@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+option(BUILD_TESTS "Build C++ tests" OFF)
+
 if (MSVC)
     add_compile_options(/utf-8)
 endif()
@@ -103,7 +105,6 @@ install(DIRECTORY ${CMAKE_BINARY_DIR}/tokenizers DESTINATION lazyllm COMPONENT l
 
 
 # TESTS
-option(BUILD_TESTS "Build C++ tests" OFF)
 if (BUILD_TESTS)
     include(cmake/tests.cmake)
 endif ()
