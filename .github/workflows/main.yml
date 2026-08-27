@@ -24,6 +24,7 @@ env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${{ github.run_number }}'
   PYTHON_VERSION: "3.10.9"
   LAZYLLM_DEFAULT_RECENT_K: 20
+  LAZYLLM_SKIP_EXTERNAL_STORE_TESTS: ${{ vars.ENABLE_SELF_HOSTED_TESTS != 'true' }}
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{
     github.event_name == 'pull_request_target' && github.event.pull_request.title || github.ref }}
@@ -111,7 +112,7 @@ jobs:
       && !contains(github.event.pull_request.title, '[skip ci]')
       && (needs.wait_approve.result == 'success' || needs.skip_approve.result == 'success')
     needs: [ wait_approve, skip_approve ]
-    runs-on: tps_sco_nv
+    runs-on: ${{ vars.ENABLE_SELF_HOSTED_TESTS == 'true' && 'tps_sco_nv' || 'ubuntu-latest' }}
     outputs:
       changed_files: ${{ steps.changed_files_yaml.outputs.all_changed_files }}
     steps:
@@ -140,6 +141,7 @@ jobs:
           git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
 
       - name: Setup Python venv
+        if: vars.ENABLE_SELF_HOSTED_TESTS == 'true'
         run: |
           VENV_DIR="/home/mnt/platform_ci/GitHub/.venv/${{ runner.name }}"
           if [ ! -f "$VENV_DIR/bin/python" ]; then
@@ -151,16 +153,8 @@ jobs:
           echo "VIRTUAL_ENV=$VENV_DIR" >> $GITHUB_ENV
           echo "VENV_DIR=$VENV_DIR" >> $GITHUB_ENV
 
-      - name: Build doc
-        run: |
-          set -e
-          python .github/scripts/check_stale_editable.py
-          find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-          pip install -r requirements.txt
-          pip install -r docs/requirements.txt
-          LAZYLLM_INIT_DOC=True python -B docs/add_docstrings.py
-
       - name: Setup CI directory
+        if: vars.ENABLE_SELF_HOSTED_TESTS == 'true'
         run: |
           set -ex
           echo ${{ env.CI_PATH }}
@@ -169,11 +163,12 @@ jobs:
           mv $GITHUB_WORKSPACE/* $GITHUB_WORKSPACE/.[!.]* ${{ env.CI_PATH }}/
           cd ${{ env.CI_PATH }}
 
+          pip install -r requirements.txt
           pip install -r tests/requirements.txt
           pip install -r tests/requirements_linux.txt
 
   basic_tests:
-    runs-on: tps_sco_nv
+    runs-on: ubuntu-latest
     needs: [ clone ]
     if: always() && needs.clone.result == 'success'
     steps:
@@ -183,38 +178,41 @@ jobs:
           allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Setup Python venv
-        run: |
-          VENV_DIR="/home/mnt/platform_ci/GitHub/.venv/${{ runner.name }}"
-          if [ ! -f "$VENV_DIR/bin/python" ]; then
-            mkdir -p "$VENV_DIR"
-            python -m venv --system-site-packages "$VENV_DIR"
-          fi
-          source "$VENV_DIR/bin/activate"
-          echo "$VENV_DIR/bin" >> $GITHUB_PATH
-          echo "VIRTUAL_ENV=$VENV_DIR" >> $GITHUB_ENV
-          echo "VENV_DIR=$VENV_DIR" >> $GITHUB_ENV
+      - name: Setup test environment
+        uses: ./.github/actions/setup
+        with:
+          tests_dir: "tests/basic_tests"
 
-      - name: Install package in editable mode
+      - name: Install Linux test dependencies
         run: |
-          set -e
-          python .github/scripts/check_stale_editable.py
-          pip install -e .
+          pip install -r tests/requirements.txt
+          pip install -r tests/requirements_linux.txt
+          pip install 'setuptools<82'
+
+      - name: Checkout test data
+        uses: actions/checkout@v4
+        with:
+          repository: LazyAGI/LazyLLM-Data
+          token: ${{ secrets.PERSONAL_GITHUB_TOKEN || github.token }}
+          path: test_data
 
       - name: RunTests
         uses: ./.github/actions/run_tests
         with:
-          working_directory: ${{ env.CI_PATH }}
+          working_directory: ${{ github.workspace }}
           changed_files: ${{ needs.clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/basic_tests"
           launcher: "empty"
           nproc: 4
+          load_sco_env: "false"
+          data_path: ${{ github.workspace }}/test_data
+          model_path: ""
 
   advanced_tests:
     runs-on: tps_sco_nv
     needs: [ clone ]
-    if: always() && needs.clone.result == 'success'
+    if: vars.ENABLE_SELF_HOSTED_TESTS == 'true' && needs.clone.result == 'success'
     env:
       LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
       LAZYLLM_AIPING_API_KEY: ${{ secrets.LAZYLLM_AIPING_API_KEY }}
@@ -258,12 +256,14 @@ jobs:
           changed_files: ${{ needs.clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/advanced_tests"
+          load_sco_env: "true"
 
   engine_tests:
     runs-on: tps_sco_nv
     needs: [ clone ]
     if: |
       always()
+      && vars.ENABLE_SELF_HOSTED_TESTS == 'true'
       && needs.clone.result == 'success'
       && (contains(needs.clone.outputs.changed_files, 'lazyllm/engine/') || github.ref_type == 'tag')
     env:
@@ -309,9 +309,10 @@ jobs:
           changed_files: ${{ needs.clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/engine_tests"
+          load_sco_env: "true"
 
   charge_tests:
-    runs-on: tps_sco_nv
+    runs-on: ubuntu-latest
     needs: [ clone ]
     if: always() && needs.clone.result == 'success'
     env:
@@ -338,26 +339,32 @@ jobs:
           allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Setup Python venv
+      - name: Setup test environment
+        uses: ./.github/actions/setup
+        with:
+          tests_dir: "tests/charge_tests"
+
+      - name: Install Linux test dependencies
         run: |
-          VENV_DIR="/home/mnt/platform_ci/GitHub/.venv/${{ runner.name }}"
-          if [ ! -f "$VENV_DIR/bin/python" ]; then
-            mkdir -p "$VENV_DIR"
-            python -m venv --system-site-packages "$VENV_DIR"
-          fi
-          source "$VENV_DIR/bin/activate"
-          echo "$VENV_DIR/bin" >> $GITHUB_PATH
-          echo "VIRTUAL_ENV=$VENV_DIR" >> $GITHUB_ENV
-          echo "VENV_DIR=$VENV_DIR" >> $GITHUB_ENV
+          pip install -r tests/requirements.txt
+          pip install -r tests/requirements_linux.txt
+          pip install 'setuptools<82'
+
+      - name: Checkout test data
+        uses: actions/checkout@v4
+        with:
+          repository: LazyAGI/LazyLLM-Data
+          token: ${{ secrets.PERSONAL_GITHUB_TOKEN || github.token }}
+          path: test_data
 
       - name: Load cache
         uses: ./.github/actions/load_cache
         with:
-          working_directory: ${{ env.CI_PATH }}
+          working_directory: ${{ github.workspace }}
 
       - name: Clone LazyLLM-Cache for Output and Cache
         run: |
-          cd ${{ env.CI_PATH }}
+          cd ${{ github.workspace }}
           echo "LAZYLLM_TEMP_DIR=github_cache/output" >> $GITHUB_ENV
           echo "LAZYLLM_CACHE_DIR=github_cache/paid_llm_cache" >> $GITHUB_ENV
 
@@ -372,7 +379,7 @@ jobs:
           elif [ "$GITHUB_RUN_ATTEMPT" != "1" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
             echo "This is a re-run! (GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT), and push to main branch."
             echo "LAZYLLM_CACHE_MODE=WO" >> $GITHUB_ENV
-          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+          elif [[ "$GITHUB_EVENT_NAME" = "pull_request" || "$GITHUB_EVENT_NAME" = "pull_request_target" ]]; then
             echo "This is a pull request from other branch to main."
             echo "LAZYLLM_CACHE_MODE=RO" >> $GITHUB_ENV
           fi
@@ -386,16 +393,21 @@ jobs:
         id: RunTests
         uses: ./.github/actions/run_tests
         with:
-          working_directory: ${{ env.CI_PATH }}
+          working_directory: ${{ github.workspace }}
           changed_files: ${{ needs.clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/charge_tests"
+          launcher: "empty"
+          load_sco_env: "false"
+          data_path: ${{ github.workspace }}/test_data
+          model_path: ""
 
       - name: Update LazyLLM-Cache
         if: ${{ success() && steps.RunTests.conclusion == 'success' && github.event_name == 'push' }}
         run: |
-          cd ${{ env.CI_PATH }}
+          cd ${{ github.workspace }}
           cd github_cache
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/LazyAGI/LazyLLM-Cache.git
           ls -alh .
           if [ -n "$(git status --porcelain)" ]; then
             echo "Detected file changes, committing to main branch..."
@@ -406,9 +418,11 @@ jobs:
           else
             echo "No file changes detected, no commit needed"
           fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN || github.token }}
 
   data_op_ppl_tests:
-    runs-on: tps_sco_nv
+    runs-on: ubuntu-latest
     needs: [ clone ]
     if: always() && needs.clone.result == 'success'
     steps:
@@ -418,32 +432,48 @@ jobs:
           allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Setup Python venv
-        run: |
-          VENV_DIR="/home/mnt/platform_ci/GitHub/.venv/${{ runner.name }}"
-          if [ ! -f "$VENV_DIR/bin/python" ]; then
-            mkdir -p "$VENV_DIR"
-            python -m venv --system-site-packages "$VENV_DIR"
-          fi
-          source "$VENV_DIR/bin/activate"
-          echo "$VENV_DIR/bin" >> $GITHUB_PATH
-          echo "VIRTUAL_ENV=$VENV_DIR" >> $GITHUB_ENV
-          echo "VENV_DIR=$VENV_DIR" >> $GITHUB_ENV
+      - name: Setup test environment
+        uses: ./.github/actions/setup
+        with:
+          tests_dir: "tests/data_tests"
 
       - name: Install data tests dependencies
         run: |
-          cd ${{ env.CI_PATH }}
+          pip install -r tests/requirements.txt
+          pip install -r tests/requirements_linux.txt
           pip install -r tests/data_tests/requirements.txt
+          pip install 'setuptools<82'
+
+      - name: Prepare NLTK data
+        env:
+          NLTK_ALLOW_PROXIED_URLOPEN: "1"
+        run: |
+          NLTK_DATA="${RUNNER_TEMP}/nltk_data"
+          mkdir -p "${NLTK_DATA}"
+          python -m nltk.downloader -d "${NLTK_DATA}" stopwords punkt_tab
+          NLTK_DATA="${NLTK_DATA}" python -c \
+            "import nltk; nltk.data.find('corpora/stopwords'); nltk.data.find('tokenizers/punkt_tab')"
+          echo "NLTK_DATA=${NLTK_DATA}" >> "${GITHUB_ENV}"
+
+      - name: Checkout test data
+        uses: actions/checkout@v4
+        with:
+          repository: LazyAGI/LazyLLM-Data
+          token: ${{ secrets.PERSONAL_GITHUB_TOKEN || github.token }}
+          path: test_data
 
       - name: RunTests
         uses: ./.github/actions/run_tests
         with:
-          working_directory: ${{ env.CI_PATH }}
+          working_directory: ${{ github.workspace }}
           changed_files: ${{ needs.clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/data_tests"
           launcher: "empty"
           nproc: 4
+          load_sco_env: "false"
+          data_path: ${{ github.workspace }}/test_data
+          model_path: ""
 
   coverage_linux:
     runs-on: ubuntu-latest
@@ -581,6 +611,9 @@ jobs:
           brew install ffmpeg
           pip install -r tests/requirements.txt
           pip install -r tests/requirements_mac.txt
+          # jieba still imports pkg_resources.resource_stream, which was removed
+          # from newer setuptools releases pulled in by optional test dependencies.
+          pip install 'setuptools<82'
           export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
           pytest --lf --last-failed-no-failures=all -m "not skip_on_mac" -v \
             --override-ini=cache_dir=tests/basic_tests/.pytest_cache --reruns=2 tests/basic_tests/
@@ -900,6 +933,8 @@ jobs:
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
             pip install -r tests/requirements_mac.txt
           fi
+          pip install 'setuptools<82'
+          python -c "import pymilvus; print(pymilvus.__version__)"
 
       - name: Download test dataset
         run: |
