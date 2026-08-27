@@ -581,6 +581,9 @@ jobs:
           brew install ffmpeg
           pip install -r tests/requirements.txt
           pip install -r tests/requirements_mac.txt
+          # jieba still imports pkg_resources.resource_stream, which was removed
+          # from newer setuptools releases pulled in by optional test dependencies.
+          pip install 'setuptools<82'
           export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
           pytest --lf --last-failed-no-failures=all -m "not skip_on_mac" -v \
             --override-ini=cache_dir=tests/basic_tests/.pytest_cache --reruns=2 tests/basic_tests/
