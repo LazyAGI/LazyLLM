@@ -1228,7 +1228,8 @@ STORE_TEMPLATES = {
     'elasticsearch': {
         'segment_store_type': 'elasticsearch',
         'init_kwargs': {'uris': os.getenv('ELASTICSEARCH_HOST', 'localhost:9201')},
-        'is_skip': False, 'skip_reason': 'To test elasticsearch store, please set up a elasticsearch server'},
+        'is_skip': os.getenv('LAZYLLM_SKIP_EXTERNAL_STORE_TESTS', '').lower() == 'true',
+        'skip_reason': 'External store tests require the SCO test environment'},
     'opensearch': {
         'segment_store_type': 'opensearch',
         'init_kwargs': {'uris': os.getenv('OPENSEARCH_HOST', 'localhost:9200'),
@@ -1236,7 +1237,8 @@ STORE_TEMPLATES = {
                             'user': os.getenv('OPENSEARCH_USER', 'admin'),
                             'password': os.getenv('OPENSEARCH_INITIAL_ADMIN_PASSWORD'),
                             'verify_certs': False}},
-        'is_skip': False, 'skip_reason': 'To test opensearch store, please set up a opensearch server'},
+        'is_skip': os.getenv('LAZYLLM_SKIP_EXTERNAL_STORE_TESTS', '').lower() == 'true',
+        'skip_reason': 'External store tests require the SCO test environment'},
     'SQLiteStore': {
         'segment_store_type': 'SQLiteStore',
         'init_kwargs': {'db_path': os.path.join(tempfile.gettempdir(), 'test_sqlite_store.db')},
