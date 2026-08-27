@@ -1014,6 +1014,7 @@ def test_generate_ir_draft_document_is_ui_editable_without_outline():
         type='heading',
         content='重写章节',
         stage='draft',
+        numbering={'level': 1},
     )
 
     with tempfile.TemporaryDirectory() as d:
@@ -1063,6 +1064,7 @@ def test_generate_final_document_writes_markdown_file():
                 type='heading',
                 content='第一章',
                 stage='draft',
+                numbering={'level': 1},
                 references=[{'id': 'resource-1', 'url': 'https://example.com/source'}],
                 children=[
                     WriterBlock(
@@ -1164,8 +1166,16 @@ def test_generate_markdown_visual_plan_assigns_section_placeholders():
     assert need.preferred_strategy is None
 
 
-def test_markdown_draft_receives_its_section_visual_needs():
+def test_markdown_draft_receives_its_planned_visual_references():
     task, instruction, context = _markdown_draft_inputs()
+    instruction.meta['cross_references'] = [{
+        'target': 'IMAGE-1',
+        'kind': 'image',
+        'caption': '关键关系',
+        'required': True,
+        'must_create': True,
+    }]
+    instruction.meta['cross_reference_targets'] = ['IMAGE-1']
     plan = VisualPlan(instructions=[
         VisualInstruction(
             need_id='IMAGE-1',
@@ -1186,7 +1196,7 @@ def test_markdown_draft_receives_its_section_visual_needs():
         with patch.object(
             tool,
             '_call_llm_text',
-            return_value='正文。\n\n![关键关系](media-placeholder://IMAGE-1)',
+            return_value='正文。[关键关系](#block-IMAGE-1)',
         ) as mocked:
             result = tool.generate_draft_section(
                 task, instruction, context, visual_plan=plan,
@@ -1196,7 +1206,7 @@ def test_markdown_draft_receives_its_section_visual_needs():
     prompt = mocked.call_args.args[0]
     assert 'Do not output image markup' in prompt
     assert 'IMAGE-1' in prompt
-    assert '说明方案的关键关系' in prompt
+    assert '关键关系' in prompt
     assert '"required": true' in prompt
     assert 'IMAGE-2' not in prompt
     assert 'asset-1' not in prompt

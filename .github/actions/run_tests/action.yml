@@ -25,7 +25,7 @@ inputs:
   load_sco_env:
     description: 'Load the self-hosted SCC/SCO environment.'
     required: false
-    default: "true"
+    default: "false"
   data_path:
     description: 'Path containing the LazyLLM test data repository.'
     required: false

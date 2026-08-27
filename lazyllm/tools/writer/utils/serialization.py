@@ -33,12 +33,7 @@ def strip_heading_numbering(value: str) -> str:
     '''Remove visible heading numbering from generated/persisted heading text.'''
     text = (value or '').strip()
     match = _NUMBERED_HEADING_RE.match(text)
-    if not match:
-        return text
-    stripped = text[match.end():].strip()
-    # A heading such as ``第一章`` can be its complete title, rather than a
-    # numbering prefix.  Never normalize a non-empty heading to an empty one.
-    return stripped or text
+    return text[match.end():].strip() if match else text
 
 
 def strip_caption_numbering(value: str) -> str:

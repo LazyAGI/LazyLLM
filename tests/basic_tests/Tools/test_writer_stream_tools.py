@@ -314,8 +314,8 @@ class _StreamingLLM(ModuleBase):
 def test_stream_markdown_outline_returns_the_authoritative_artifact(tmp_path):
     chunks = [
         ('think', 'provider reasoning'),
-        ('text', '<think>hidden</think>\n\n# 测试大纲\n\n## 第一章'),
-        ('text', '\n\n- 要点一\n\n## 第二章\n\n- 要点二'),
+        ('text', '<think>hidden</think>\n\n# 测试大纲\n\n## 第一章 项目背景'),
+        ('text', '\n\n- 要点一\n\n## 第二章 方案设计\n\n- 要点二'),
     ]
     task = WritingTask(
         task_id='outline-markdown',
@@ -334,12 +334,12 @@ def test_stream_markdown_outline_returns_the_authoritative_artifact(tmp_path):
         preview = ''.join(stream)
         result = stream.result()
 
-    assert preview == '# 测试大纲\n\n## 第一章\n\n- 要点一\n\n## 第二章\n\n- 要点二\n'
+    assert preview == '# 测试大纲\n\n## 第一章 项目背景\n\n- 要点一\n\n## 第二章 方案设计\n\n- 要点二\n'
     artifact = Path(result['artifact_path']).read_text(encoding='utf-8')
     assert artifact == preview.replace(
-        '## 第一章', '<a id="block-sec-001"></a>\n## 第一章',
+        '## 第一章 项目背景', '<a id="block-sec-001"></a>\n## 项目背景',
     ).replace(
-        '## 第二章', '<a id="block-sec-002"></a>\n## 第二章',
+        '## 第二章 方案设计', '<a id="block-sec-002"></a>\n## 方案设计',
     )
     assert result['metadata']['extra']['representation'] == 'markdown'
 
@@ -353,7 +353,7 @@ def test_stream_ir_outline_exposes_markdown_and_saves_validated_document(tmp_pat
             WriterBlock(
                 node_id=f'section-{index}',
                 type='heading',
-                content=f'第{index}章',
+                content=f'第{index}章 章节{index}',
                 stage='outline',
                 children=[
                     WriterBlock(
@@ -403,7 +403,7 @@ def test_stream_ir_outline_exposes_markdown_and_saves_validated_document(tmp_pat
     assert document.stage == 'outline'
     assert document.ui_editable is False
     preview = ''.join(deltas)
-    assert preview.startswith('# 权威标题\n\n## 第1章')
+    assert preview.startswith('# 权威标题\n\n## 第1章 章节1')
     assert render_document_markdown(document).startswith(
         '# 权威标题\n\n<a id="block-section-1"></a>',
     )
