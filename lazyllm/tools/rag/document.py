@@ -80,7 +80,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 ' does not support embedded (filesystem-bound) vector stores. Point the store config at a'
                 ' remote service (http/https/tcp/grpc/unix scheme), e.g.'
                 " Milvus: {'type': 'milvus', 'kwargs': {'uri': os.getenv('MILVUS_URI', 'http://<host>:19530')}}"
-                " or Chroma: {'type': 'chroma', 'kwargs': {'uri': 'http://<host>:8000'}}."
+                " or Chroma: {'type': 'chroma', 'kwargs': {'uri': 'http://<host>:8000'}}"
+                " or Qdrant: {'type': 'qdrant', 'kwargs': {'uri': 'http://<host>:6333'}}."
                 f' Offending store(s): {embedded!r}.')
 
         def _iter_kbs(self):
