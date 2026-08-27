@@ -22,6 +22,18 @@ inputs:
     description: ''
     required: false
     default: "1"
+  load_sco_env:
+    description: 'Load the self-hosted SCC/SCO environment.'
+    required: false
+    default: "true"
+  data_path:
+    description: 'Path containing the LazyLLM test data repository.'
+    required: false
+    default: "/mnt/lustre/share_data/lazyllm/data"
+  model_path:
+    description: 'Optional path containing pre-downloaded models.'
+    required: false
+    default: "/mnt/lustre/share_data/lazyllm/models"
 
 
 runs:
@@ -36,12 +48,14 @@ runs:
         cd ${{ inputs.working_directory }}
         echo "tests_dir=${{ inputs.tests_dir }}"
         echo "markers=${{ inputs.markers }}"
-        env | grep '^SCC'
+        env | grep '^SCC' || true
         export LAZYLLM_SCO_ENV_NAME=lazyllm
         export LAZYLLM_DEFAULT_LAUNCHER=${{ inputs.launcher }}
         export PYTHONPATH=$PWD:$PYTHONPATH
-        export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
-        export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+        export LAZYLLM_DATA_PATH="${{ inputs.data_path }}"
+        if [ -n "${{ inputs.model_path }}" ]; then
+          export LAZYLLM_MODEL_PATH="${{ inputs.model_path }}"
+        fi
         export LAZYLLM_HOME="${{ inputs.working_directory }}/${{ github.run_id }}-${{ github.job }}"
         export LAZYLLM_DEFAULT_RECENT_K=20
         echo "GITHUB_REF=$GITHUB_REF"
@@ -52,7 +66,9 @@ runs:
         fi
         pip install pytest-xdist
         mkdir -p $LAZYLLM_HOME
-        source ~/ENV/env.sh
+        if [ "${{ inputs.load_sco_env }}" = "true" ]; then
+          source ~/ENV/env.sh
+        fi
         if [ -f ${{ inputs.tests_dir }}/.pytest_cache/v/cache/lastfailed ]; then
           pytest --lf --last-failed-no-failures=none \
             -n ${{ inputs.nproc }} --dist=loadfile -m "${{ inputs.markers }}" --order-scope=class \

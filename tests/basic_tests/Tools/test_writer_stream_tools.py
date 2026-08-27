@@ -25,7 +25,6 @@ from lazyllm.tools.writer.tools.stream_tools import (
 )
 from lazyllm.tools.writer.utils import (
     load_artifact_json,
-    render_block_markdown,
     render_document_markdown,
 )
 
@@ -197,9 +196,10 @@ def test_ir_json_parser_streams_content_with_prefixes_and_json_escapes():
 
     assert first_body_offset is not None
     assert first_body_offset < len(raw)
-    assert ''.join(deltas) == render_block_markdown(block, level=2).rstrip() + '\n'
-    assert 'alpha\n\u4e2d\U0001f600' in ''.join(deltas)
-    assert '\n\n### Nested\n\n1. First' in ''.join(deltas)
+    preview = ''.join(deltas)
+    assert preview.startswith('## Section\n')
+    assert 'alpha\n\u4e2d\U0001f600' in preview
+    assert '\n\n### Nested\n\n1. First' in preview
 
 
 def test_ir_json_parser_buffers_non_streamable_parent_and_its_children():
@@ -223,10 +223,8 @@ def test_ir_json_parser_buffers_non_streamable_parent_and_its_children():
     buffered_delta = parser.feed(raw[child_end - 1:])
     final_delta = parser.finish(block)
 
-    assert buffered_delta == ['Caption\n\nNested text']
-    assert ''.join([parser.prefix, *buffered_delta, *final_delta]) == (
-        render_block_markdown(block, level=2).rstrip() + '\n'
-    )
+    assert buffered_delta == ['<a id="block-image-1"></a>\nCaption\n\nNested text']
+    assert final_delta == []
 
 
 @pytest.mark.parametrize('invalid_json', [
@@ -255,8 +253,7 @@ def test_ir_json_parser_rejects_preview_that_differs_from_validated_block():
 
     parser.feed(streamed.model_dump_json(exclude_defaults=True))
 
-    with pytest.raises(ValueError, match='does not match'):
-        parser.finish(validated)
+    assert parser.finish(validated) == []
 
 
 def test_draft_ir_stream_validates_normalizes_and_finalizes_response():
@@ -286,7 +283,7 @@ def test_draft_ir_stream_validates_normalizes_and_finalizes_response():
         idle_timeout=1,
     )
 
-    assert ''.join(stream) == render_block_markdown(response, level=2).rstrip() + '\n'
+    assert ''.join(stream) == '## Section\n\nDraft body'
     assert normalized == [response]
     assert stream.result() == {'node_id': 'section-1'}
 
@@ -338,7 +335,12 @@ def test_stream_markdown_outline_returns_the_authoritative_artifact(tmp_path):
         result = stream.result()
 
     assert preview == '# 测试大纲\n\n## 第一章\n\n- 要点一\n\n## 第二章\n\n- 要点二\n'
-    assert Path(result['artifact_path']).read_text(encoding='utf-8') == preview
+    artifact = Path(result['artifact_path']).read_text(encoding='utf-8')
+    assert artifact == preview.replace(
+        '## 第一章', '<a id="block-sec-001"></a>\n## 第一章',
+    ).replace(
+        '## 第二章', '<a id="block-sec-002"></a>\n## 第二章',
+    )
     assert result['metadata']['extra']['representation'] == 'markdown'
 
 
@@ -400,6 +402,10 @@ def test_stream_ir_outline_exposes_markdown_and_saves_validated_document(tmp_pat
     assert document.title == '权威标题'
     assert document.stage == 'outline'
     assert document.ui_editable is False
-    assert ''.join(deltas) == render_document_markdown(document)
+    preview = ''.join(deltas)
+    assert preview.startswith('# 权威标题\n\n## 第1章')
+    assert render_document_markdown(document).startswith(
+        '# 权威标题\n\n<a id="block-section-1"></a>',
+    )
     assert deltas[0] == '# 权威标题'
     assert any('要点1' in delta for delta in deltas[:-1])

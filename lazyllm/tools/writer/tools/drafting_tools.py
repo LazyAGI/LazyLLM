@@ -748,12 +748,48 @@ class WriterDraftingTools(WriterToolBase):
         visual_plan: Any,
         result_extra: Dict[str, Any],
     ) -> dict:
+        instruction = self._with_markdown_visual_references(instruction, visual_plan)
         prompt = self._markdown_draft_prompt(
             task, instruction, context, previous_blocks,
         )
         body = self._call_llm_text(prompt)
         body = self._condense_markdown_section_if_needed(body, instruction)
         return self._finalize_markdown_draft_section(body, instruction, result_extra)
+
+    def _with_markdown_visual_references(
+        self,
+        instruction: SectionInstruction,
+        visual_plan: Any,
+    ) -> SectionInstruction:
+        plan = self._unified_optional_model(visual_plan, VisualPlan) or VisualPlan()
+        references = list(instruction.meta.get('cross_references') or [])
+        known_targets = {
+            str(item.get('target')) for item in references if isinstance(item, dict)
+        }
+        for need in plan.instructions:
+            same_section = (
+                instruction.content_ref.node_id
+                and need.content_ref.node_id == instruction.content_ref.node_id
+            ) or (
+                instruction.content_ref.heading_path
+                and need.content_ref.heading_path == instruction.content_ref.heading_path
+            )
+            if not same_section or need.need_id in known_targets:
+                continue
+            references.append({
+                'target': need.need_id,
+                'kind': 'image',
+                'caption': need.purpose,
+                'required': True,
+                'must_create': True,
+            })
+            known_targets.add(need.need_id)
+        if references == list(instruction.meta.get('cross_references') or []):
+            return instruction
+        enriched = instruction.model_copy(deep=True)
+        enriched.meta['cross_references'] = references
+        enriched.meta['cross_reference_targets'] = sorted(known_targets)
+        return enriched
 
     def _condense_ir_section_if_needed(
         self,
@@ -963,13 +999,7 @@ class WriterDraftingTools(WriterToolBase):
             if not isinstance(writing_outline, WriterDocument):
                 raise ValueError('IR draft blocks require a WriterDocument outline.')
         writer_blocks = [block for block in blocks if isinstance(block, WriterBlock)]
-        for block in writer_blocks:
-            for item in block.iter_blocks():
-                item.stage = 'draft'
-                if item.type == 'heading':
-                    item.content = strip_heading_numbering(item.content)
-                elif item.type == 'image':
-                    item.content = strip_caption_numbering(item.content)
+        self._normalize_ir_draft_blocks(writer_blocks)
         draft_document = WriterDocument(
             document_id=f'draft-document-{context.context_id}',
             stage='draft',
@@ -1005,6 +1035,21 @@ class WriterDraftingTools(WriterToolBase):
             },
         )
         return result.model_dump()
+
+    @staticmethod
+    def _normalize_ir_draft_blocks(blocks: List[WriterBlock]) -> None:
+        def normalize(block: WriterBlock, heading_level: int) -> None:
+            block.stage = 'draft'
+            if block.type == 'heading':
+                block.content = strip_heading_numbering(block.content)
+                block.numbering.setdefault('level', heading_level)
+            elif block.type == 'image':
+                block.content = strip_caption_numbering(block.content)
+            for child in block.children:
+                normalize(child, heading_level + int(child.type == 'heading'))
+
+        for block in blocks:
+            normalize(block, 1)
 
     def _generate_markdown_draft_document(
         self, blocks: List[WriterBlock | str],
@@ -1117,6 +1162,7 @@ class WriterDraftingTools(WriterToolBase):
             result['output_file_path'] = path
             return result
 
+        self._normalize_ir_draft_blocks(draft_document.blocks)
         content = writer_document_to_markdown(draft_document)
         final_document = WriterDocument(
             document_id=f'output-{draft_document.document_id}',

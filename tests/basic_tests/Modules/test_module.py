@@ -159,6 +159,7 @@ class TestModule:
         assert tm5(inputs) == res_template.format(inputs)
 
     def test_TrainableModule_stream(self):
+        lazyllm.FileSystemQueue().clear()
         tm = lazyllm.TrainableModule(self.base_model, self.target_path, stream=True, trust_remote_code=False)
         tm.deploy_method(lazyllm.deploy.dummy)
         assert tm._deploy_type == lazyllm.deploy.dummy
