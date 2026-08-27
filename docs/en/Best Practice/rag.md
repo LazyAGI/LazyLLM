@@ -33,7 +33,7 @@ The Document constructor has the following parameters:
     * A `DocumentProcessor` instance: Connects to an existing external parsing service; in this case, `store_conf` must be passed to `DocumentProcessor` instead of `Document`.
 * `launcher`: The method of launching the service, which is used in cluster applications; it can be ignored for single-machine applications.
 * `store_conf`: Configure which storage backend to use. In standalone mode and distributed mode with `manager=True`, pass this to `Document`; if `manager` is a `DocumentProcessor` instance, `store_conf` should be passed to that `DocumentProcessor` instead, and `Document` no longer accepts this parameter.
-* `doc_fields`: Configure the fields and corresponding types that need to be stored and retrieved (currently only used by the Chroma and Milvus backend).
+* `doc_fields`: Configure the fields and corresponding types that need to be stored and retrieved (currently only used by the Chroma, Milvus and Qdrant backends).
 
 #### Node and NodeGroup
 
@@ -199,7 +199,7 @@ Document.start()
   └─ auto-start DocumentProcessor (subprocess, HTTP service)
        └─ Worker × N (each an independent subprocess)
             └─ _Processor (in Worker process, lazily created on first task)
-                 └─ _DocumentStore (connects to external Milvus/Chroma, etc.)
+                 └─ _DocumentStore (connects to external Milvus/Chroma/Qdrant, etc.)
 
 Write flow:
 DocServer.upload()
@@ -290,6 +290,7 @@ In each of the `segment_store` and `vector_store`, the `type` field specifies th
     - `vector_store`:
         - `chroma`: Uses Chroma for data storage.
         - `milvus`: Uses Milvus for data storage.
+        - `qdrant`: Uses Qdrant for data storage.
 * `kwargs`: This is a dictionary that contains the configuration parameters for the storage backend, different storage backends have different configuration parameters:
     - `map`:
         - `uri` (optional): The directory where data is stored (using sqlite3 as the underlying storage engine).
@@ -309,6 +310,11 @@ In each of the `segment_store` and `vector_store`, the `type` field specifies th
         - `index_kwargs` (optional): The configuration parameters for the Milvus index, which can be a dictionary or a list. If it is a dictionary, it means that all embedding indexes use the same configuration; if it is a list, the elements in the list are dictionaries, representing the configuration used by the embeddings specified by `embed_key`. Currently, only `floating point embedding` and `sparse embedding` are supported for the two types of embeddings, with the following supported parameters respectively:
             - `floating point embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
             - `sparse embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
+    - `qdrant`:
+        - `uri` (required): The Qdrant server URL in the format of `http://host:6333` (or `https://`).
+        - `api_key` (optional): The API key for accessing remote Qdrant services.
+        - `client_kwargs` (optional): The configuration parameters for the Qdrant client.
+        - `index_kwargs` (optional): The configuration parameters for the Qdrant index, a list of dicts keyed by `embed_key` whose `distance` field is the similarity metric (defaulting to `COSINE` for dense and `DOT` for sparse vectors).
 
 
 Here is an example configuration using Chroma as the storage backend and Milvus as the retrieval backend:

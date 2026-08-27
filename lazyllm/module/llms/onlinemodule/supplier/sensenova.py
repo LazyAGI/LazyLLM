@@ -1,4 +1,6 @@
+import base64
 import json
+import mimetypes
 import time
 import os
 import requests
@@ -318,6 +320,7 @@ class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):
 
 class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
     MODEL_NAME = 'sensenova-u1-fast'
+    IMAGE_EDITING_MODEL_NAME = 'sensenova-u1.5-lite'
 
     def _materialize_lazy_api_key(self) -> str:
         return self._get_api_key(None, None)
@@ -340,16 +343,55 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
         self._validate_image_data(data, url)
         return data
 
-    def _forward(self, input: str = None, files: List[str] = None, size: str = '2752x1536', n: int = 1,
+    @staticmethod
+    def _image_data_url(file: str, encoded: str) -> str:
+        mime = mimetypes.guess_type(str(file).split('?', 1)[0])[0]
+        if not mime or not mime.startswith('image/'):
+            mime = 'image/png'
+        return f'data:{mime};base64,{encoded}'
+
+    def _prepare_edit_images(self, files: List[str]) -> List[Dict[str, str]]:
+        images = []
+        for file in files:
+            if str(file).startswith(('http://', 'https://', 'data:image/')):
+                image_url = str(file)
+            else:
+                encoded, _ = self._load_images(file)[0]
+                image_url = self._image_data_url(file, encoded)
+            images.append({'image_url': image_url})
+        return images
+
+    def _forward(self, input: str = None, files: List[str] = None, size: str = None,
+                 output_format: str = 'png', response_format: str = 'b64_json',
+                 watermark: bool = True, prompt_extend: bool = True,
                  url: str = None, model: str = None, **kwargs):
-        payload = {'model': model, 'prompt': input, 'size': size, 'n': n, **kwargs}
-        if files:
-            for i, file in enumerate(files):
-                b64, _ = self._load_images(file)[0]
-                payload['image' if i == 0 else f'image{i + 1}'] = f'data:image/png;base64,{b64}'
-        resp = requests.post(f'{(url or self._base_url)}{self._endpoint}',
+        model = model or self._model_name
+        is_u15_lite = model.lower() == self.IMAGE_EDITING_MODEL_NAME
+        size = kwargs.get('image_size') or size or ('auto' if is_u15_lite else '2752x1536')
+        payload = {
+            'model': model,
+            'prompt': input,
+            'size': size,
+            'n': 1,
+            'watermark': watermark,
+        }
+        endpoint = 'images/edits' if files else 'images/generations'
+        if is_u15_lite:
+            payload['response_format'] = response_format
+            payload['prompt_extend'] = prompt_extend
+            if files:
+                payload['images'] = self._prepare_edit_images(files)
+            else:
+                payload['output_format'] = output_format
+        base_url = (url or self._base_url).rstrip('/')
+        resp = requests.post(f'{base_url}/{endpoint}',
                              headers=self._header, json=payload, timeout=180)
         resp.raise_for_status()
-        image_urls = [item['url'] for item in resp.json()['data']]
-        image_bytes = [data for _, data in self._load_images(image_urls)]
+        image_bytes = []
+        for item in resp.json()['data']:
+            if 'b64_json' in item:
+                encoded = item['b64_json'].split(',', 1)[-1]
+                image_bytes.append(base64.b64decode(encoded, validate=True))
+            else:
+                image_bytes.append(self._load_images(item['url'])[0][1])
         return encode_query_with_filepaths(None, bytes_to_file(image_bytes))

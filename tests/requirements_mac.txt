@@ -1,1 +1,2 @@
 milvus-lite==2.4.10
+qdrant-client==1.19.0

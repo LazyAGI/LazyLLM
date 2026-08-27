@@ -52,11 +52,11 @@ Plan semantics:
   - A create instruction that adds an image must include visual_instruction.
   - visual_instruction.need_id must equal instruction_id and its content_ref must
     equal the create instruction's content_ref.
-  - visual_instruction.visual_type must be "image" for this revision workflow.
+  - visual_instruction.visual_type may be "image", "diagram", "chart", or "table".
   - visual_instruction.purpose is the semantic image requirement used to match an
     uploaded asset or acquire a new image. required must be true.
-  - visual_instruction.preferred_strategy must be null or "image_generation"
-    for a revision image create.
+  - visual_instruction.preferred_strategy may be null or "image_generation". For
+    "image" and "diagram", it may also be "web_search".
   - A delete instruction targeting an existing image must not include visual_instruction.
   - Existing image blocks must not be updated or moved. Text blocks continue to support
     create, update, delete, and move.

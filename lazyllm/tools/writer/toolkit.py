@@ -44,13 +44,13 @@ class WriterToolKit:
             ),
             dict(
                 name='writer_planning',
-                desc='Outline and section instruction generation tools.',
+                desc='Outline, section instruction, and short-document plan generation tools.',
                 tools=[self.planning],
                 lazy=self.lazy,
             ),
             dict(
                 name='writer_drafting',
-                desc='Draft section, draft document, and writing output generation tools.',
+                desc='Draft section, flat document, assembled document, and writing output generation tools.',
                 tools=[self.drafting],
                 lazy=self.lazy,
             ),

@@ -554,6 +554,44 @@ class TestReactAgentEvents(object):
             'error': '',
         }
 
+    def test_history_compactor_tuple_return_sends_current_tools_once(self):
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'Let me read the status.',
+                'tool_calls': [{
+                    'id': 'call-status',
+                    'type': 'function',
+                    'function': {'name': 'get_status', 'arguments': '{}'},
+                }],
+            },
+            {'role': 'assistant', 'content': 'Done.'},
+        ])
+
+        def compact(prior_history, _keep, current_round_messages=None, **_kwargs):
+            current = list(current_round_messages or [])
+            return [{'role': 'user', 'content': 'earlier turns summarized'}], current
+
+        agent = ReactAgent(
+            llm=llm,
+            tools=[get_status],
+            max_retries=3,
+            history_compactor=compact,
+            enable_builtin_tools=False,
+        )
+
+        assert agent('read status') == 'Done.'
+        tool_round = next(
+            invocation for invocation in llm.inputs
+            if isinstance(invocation, dict) and isinstance(invocation.get('input'), list)
+        )
+        tool_ids = [
+            message.get('tool_call_id')
+            for message in tool_round['input']
+            if isinstance(message, dict) and message.get('role') == 'tool'
+        ]
+        assert tool_ids == ['call-status']
+
     def test_react_agent_exposes_only_tool_failure_value_to_next_round(self):
         llm = _FakeLLM([
             {

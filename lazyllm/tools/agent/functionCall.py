@@ -51,6 +51,15 @@ class StreamResponse():
 _ROUND_TOOLS_KEY = '_function_call_round_tools'
 
 
+def _structured_compact_parts(compacted: Any) -> Optional[tuple]:
+    if not isinstance(compacted, tuple) or len(compacted) != 2:
+        return None
+    prior_part, current_part = compacted
+    if isinstance(prior_part, list) and isinstance(current_part, list):
+        return prior_part, current_part
+    return None
+
+
 def _tool_result_observation(result: Any) -> Any:
     if is_tool_result_envelope(result):
         if result['ok']:
@@ -81,7 +90,7 @@ class FunctionCall(ModuleBase):
                  skill_manager=None, sandbox: Optional[LazyLLMSandboxBase] = None,
                  keep_full_turns: int = 0, stop_tools: Optional[List[str]] = None,
                  round_limit: Optional[int] = None,
-                 history_compactor: Optional[Callable[..., List[Dict[str, Any]]]] = None,
+                 history_compactor: Optional[Callable[..., Any]] = None,
                  runtime_observer: Optional[Callable[..., Any]] = None):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
@@ -222,6 +231,9 @@ class FunctionCall(ModuleBase):
             self._keep_full_turns,
             **kwargs,
         )
+        split = _structured_compact_parts(compacted)
+        if split is not None:
+            return strip_tool_observations(split[0]), strip_tool_observations(split[1])
         compacted = strip_tool_observations(compacted)
         prior_len = len(prior_history)
         if current and len(compacted) == prior_len + len(current):

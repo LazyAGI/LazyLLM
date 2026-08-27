@@ -12,6 +12,7 @@ from lazyllm.common import FileSystemQueue
 from lazyllm.module.module import ModuleBase
 from lazyllm.tools.writer.data_models import (
     ContentRef,
+    DocumentFact,
     DocumentSummary,
     MaterialStyle,
     ResourceProfile,
@@ -834,6 +835,46 @@ def test_generate_section_instructions_preserves_outline_references():
         assert instruction.fact_constraints == []
 
 
+def test_short_section_instructions_scope_image_directives_to_visual_section():
+    task = WritingTask(
+        task_id='task-short-visual', query='写一篇 800 字短文', task_type='write',
+        constraints={'target_chars': 800, 'max_chars': 800},
+    )
+    context = WritingContext(
+        context_id='ctx-short-visual',
+        facts=[
+            DocumentFact(
+                fact_id='fact-image', key='upload.png',
+                value='必须使用提供的图片 upload.png', source=['upload.png'],
+            ),
+            DocumentFact(
+                fact_id='fact-content', key='灯塔编号',
+                value='灯塔编号为 LM-2048', source=['brief'],
+            ),
+        ],
+    )
+    outline = '# 灯塔守望者\n\n## 引言\n\n介绍背景。\n\n## 主体\n\n描述守望。\n'
+    visual_plan = VisualPlan(instructions=[VisualInstruction(
+        need_id='IMAGE-1',
+        content_ref=ContentRef(
+            heading_path=['灯塔守望者', '引言'], placeholder_id='IMAGE-1',
+        ),
+        visual_type='image', purpose='插入上传的灯塔图片', required=True,
+    )])
+
+    with tempfile.TemporaryDirectory() as directory:
+        result = WriterPlanningTools(artifact_store=directory).generate_section_instructions(
+            outline=outline, context=context, visual_plan=visual_plan, task=task,
+        )
+        instructions = load_artifact_json(result['artifact_path'], SectionInstructionList)
+
+    introduction, body = instructions.instructions
+    assert any('必须使用提供的图片' in item for item in introduction.fact_constraints)
+    assert all('必须使用提供的图片' not in item for item in body.fact_constraints)
+    assert all(any('灯塔编号为 LM-2048' in item for item in section.fact_constraints)
+               for section in instructions.instructions)
+
+
 def test_generate_rewrite_section_instructions_ir_uses_existing_meta_for_source_refs():
     task = WritingTask(task_id='task-rewrite-ir', query='全文重写', task_type='revise')
     context = WritingContext(context_id='ctx-rewrite-ir')
@@ -973,6 +1014,7 @@ def test_generate_ir_draft_document_is_ui_editable_without_outline():
         type='heading',
         content='重写章节',
         stage='draft',
+        numbering={'level': 1},
     )
 
     with tempfile.TemporaryDirectory() as d:
@@ -1022,6 +1064,7 @@ def test_generate_final_document_writes_markdown_file():
                 type='heading',
                 content='第一章',
                 stage='draft',
+                numbering={'level': 1},
                 references=[{'id': 'resource-1', 'url': 'https://example.com/source'}],
                 children=[
                     WriterBlock(
@@ -1092,8 +1135,8 @@ def test_generate_markdown_draft_without_ir_conversion():
     assert draft_result['artifact_path'].endswith('.md')
     assert final_result['artifact_path'].endswith('.md')
     assert section.startswith('## 第一章\n')
-    assert draft.startswith('# 测试文档\n\n## 第一章\n')
-    assert final == draft
+    assert draft.startswith('# 测试文档\n\n<a id="block-sec-001"></a>\n## 第一章\n')
+    assert final == draft.rstrip() + '\n'
 
 
 def test_generate_markdown_visual_plan_assigns_section_placeholders():
@@ -1120,11 +1163,19 @@ def test_generate_markdown_visual_plan_assigns_section_placeholders():
     assert need.content_ref == ContentRef(
         heading_path=['测试文档', '第一章'], placeholder_id='IMAGE-1',
     )
-    assert need.preferred_strategy == 'code_render'
+    assert need.preferred_strategy is None
 
 
-def test_markdown_draft_receives_its_section_visual_needs():
+def test_markdown_draft_receives_its_planned_visual_references():
     task, instruction, context = _markdown_draft_inputs()
+    instruction.meta['cross_references'] = [{
+        'target': 'IMAGE-1',
+        'kind': 'image',
+        'caption': '关键关系',
+        'required': True,
+        'must_create': True,
+    }]
+    instruction.meta['cross_reference_targets'] = ['IMAGE-1']
     plan = VisualPlan(instructions=[
         VisualInstruction(
             need_id='IMAGE-1',
@@ -1145,7 +1196,7 @@ def test_markdown_draft_receives_its_section_visual_needs():
         with patch.object(
             tool,
             '_call_llm_text',
-            return_value='正文。\n\n![关键关系](media-placeholder://IMAGE-1)',
+            return_value='正文。[关键关系](#block-IMAGE-1)',
         ) as mocked:
             result = tool.generate_draft_section(
                 task, instruction, context, visual_plan=plan,
@@ -1153,9 +1204,9 @@ def test_markdown_draft_receives_its_section_visual_needs():
         markdown = Path(result['artifact_path']).read_text(encoding='utf-8')
 
     prompt = mocked.call_args.args[0]
-    assert 'media-placeholder://<need_id>' in prompt
+    assert 'Do not output image markup' in prompt
     assert 'IMAGE-1' in prompt
-    assert '说明方案的关键关系' in prompt
+    assert '关键关系' in prompt
     assert '"required": true' in prompt
     assert 'IMAGE-2' not in prompt
     assert 'asset-1' not in prompt
@@ -1200,10 +1251,10 @@ def test_markdown_draft_keeps_non_image_references_strict():
     }]
     instruction.meta['cross_reference_targets'] = ['SECTION-1']
 
-    with pytest.raises(ValueError, match='Missing required cross-references'):
-        WriterDraftingTools._normalize_markdown_cross_references(
-            '正文没有交叉引用。', instruction,
-        )
+    markdown = WriterDraftingTools._normalize_markdown_cross_references(
+        '正文没有交叉引用。', instruction,
+    )
+    assert '[SECTION-1](#block-SECTION-1)' in markdown
 
 
 def test_markdown_outline_requires_title_and_section():
@@ -1320,10 +1371,11 @@ def test_apply_patch_to_document_dispatches_update_and_rereads():
         first, second = fs.get_doc_blocks.return_value
         fs.get_doc_blocks.side_effect = [
             [first, {**second, 'text': {'elements': [{'text_run': {'content': content}}]}}]
-            for content in ('第一次修改', '第二次修改')
+            for content in ('第一次修改', '第二次修改', '第二次修改')
         ]
         fs.update_block.side_effect = [
             {'document_revision_id': 13}, {'document_revision_id': 14},
+            {'document_revision_id': 15},
         ]
 
         with _route_doc_fs(fs):
@@ -1335,10 +1387,11 @@ def test_apply_patch_to_document_dispatches_update_and_rereads():
         patch_result = load_artifact_json(result['artifact_path'], PatchResult)
         persisted_path = result['metadata']['artifact_paths']['persisted_document']
         persisted = load_artifact_json(persisted_path, WriterDocument)
-        assert patch_result.applied_hunks == ['update-1', 'update-2']
+        assert patch_result.applied_hunks[:2] == ['update-1', 'update-2']
+        assert patch_result.applied_hunks[2].startswith('heading-sync-')
         assert [call.kwargs['document_revision_id']
-                for call in fs.update_block.call_args_list] == [12, 13]
-        assert (persisted.blocks[1].content, persisted.revision) == ('第二次修改', '14')
+                for call in fs.update_block.call_args_list] == [12, 13, 14]
+        assert (persisted.blocks[1].content, persisted.revision) == ('第二次修改', '15')
 
 
 def test_apply_patch_to_document_moves_and_restores_writer_identity():

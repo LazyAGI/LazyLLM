@@ -31,6 +31,10 @@
     members:
     exclude-members:
 
+::: lazyllm.tools.rag.store.QdrantStore
+    members: [dir, connect, upsert, delete, get, search]
+    exclude-members:
+
 ::: lazyllm.tools.rag.store.hybrid.hybrid_store.HybridStore
     members: connect, upsert, delete, get, search
     exclude-members:
