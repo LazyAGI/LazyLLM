@@ -224,6 +224,26 @@ Args:
 
 ''')
 
+add_toolsmgr_chinese_doc('ToolManager.has_valid_tool_name', '''\
+判断 OpenAI function calling 格式的工具调用对象是否包含有效工具名称。
+
+Args:
+    tool_call (Any): 待检查的工具调用对象，预期包含 ``function.name`` 字段。
+
+Returns:
+    bool: 仅当 ``function`` 为字典且 ``name`` 为非空字符串时返回 True，否则返回 False。
+''')
+
+add_toolsmgr_english_doc('ToolManager.has_valid_tool_name', '''\
+Check whether an OpenAI function-calling tool call contains a valid tool name.
+
+Args:
+    tool_call (Any): Tool-call object to inspect; expected to contain ``function.name``.
+
+Returns:
+    bool: True only when ``function`` is a dictionary and ``name`` is a non-empty string; otherwise False.
+''')
+
 add_example('ToolManager', """\
 >>> from lazyllm.tools import ToolManager, fc_register
 >>> import json
