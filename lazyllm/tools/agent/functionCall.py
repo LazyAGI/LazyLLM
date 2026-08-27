@@ -19,6 +19,7 @@ from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbo
 import re
 import json
 import inspect
+import uuid
 
 FC_PROMPT = f'''# Tools
 
@@ -350,6 +351,35 @@ class FunctionCall(ModuleBase):
                     llm_output['tool_calls'] = [{'function': {'name': match.group(1),
                                                               'arguments': json.loads(match.group(2))}}]
                 except Exception: pass
+        if raw_tool_calls := llm_output.get('tool_calls'):
+            tool_calls = raw_tool_calls if isinstance(raw_tool_calls, list) else [raw_tool_calls]
+            valid_tool_calls, fallback_texts = [], []
+            for tool_call in tool_calls:
+                function = tool_call.get('function') if isinstance(tool_call, dict) else None
+                if self._tools_manager.has_valid_tool_name(tool_call):
+                    tool_call['id'] = tool_call.get('id') or f'call_{uuid.uuid4().hex}'
+                    tool_call['type'] = 'function'
+                    valid_tool_calls.append(tool_call)
+                    continue
+                arguments = function.get('arguments') if isinstance(function, dict) else None
+                if isinstance(arguments, str) and arguments.strip():
+                    try:
+                        json.loads(arguments)
+                    except (TypeError, ValueError):
+                        fallback_texts.append(arguments.strip())
+            if len(valid_tool_calls) != len(tool_calls):
+                LOG.warning(
+                    f'[FunctionCall] dropped {len(tool_calls) - len(valid_tool_calls)} malformed tool call(s) '
+                    f'before replaying provider history'
+                )
+            if valid_tool_calls:
+                llm_output['tool_calls'] = valid_tool_calls
+            else:
+                llm_output.pop('tool_calls', None)
+                if not str(llm_output.get('content') or '').strip() and fallback_texts:
+                    llm_output['content'] = '\n'.join(fallback_texts)
+                    if self._stream:
+                        _write_agent_data('text', delta=llm_output['content'])
         has_tools = bool(llm_output.get('tool_calls'))
         if tool_calls := llm_output.get('tool_calls'):
             if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]

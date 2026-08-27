@@ -4,7 +4,7 @@ from .openai import OpenAIChat
 
 
 class OpenRouterChat(OpenAIChat):
-    """OpenRouter's OpenAI-compatible chat completions API."""
+    '''OpenRouter's OpenAI-compatible chat completions API.'''
 
     PROVIDER_NAME = 'openrouter'
     TRAINABLE_MODEL_LIST = []
