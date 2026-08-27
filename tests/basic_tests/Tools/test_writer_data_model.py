@@ -120,7 +120,7 @@ def test_writer_tool_base_save_artifacts_metadata():
         )
 
         assert isinstance(result, ToolResult)
-        assert result.artifact_path.endswith('document.json')
+        assert result.artifact_path.endswith('document_ir.lmd')
         assert result.context_path.endswith('writing_context.json')
         assert result.metadata['schema_names']['resource_profiles'] == (
             'lazyllm.tools.writer.artifacts.resource_profiles'

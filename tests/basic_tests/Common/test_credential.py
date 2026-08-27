@@ -17,7 +17,7 @@ def _fresh_globals():
 
 class _MockService(CredentialMixin):
     def __init__(self, tokens, policy=KeySelectPolicy.RANDOM, dynamic_auth=False, skip_auth=False):
-        cred = self._default_credential(tokens, dynamic_auth=dynamic_auth)
+        cred = self._default_credential(tokens, dynamic_auth=dynamic_auth, policy=policy)
         self.__init_credential__(cred, strategy=BearerTokenStrategy(),
                                  skip_auth=skip_auth, dynamic_key_policy=policy)
 
