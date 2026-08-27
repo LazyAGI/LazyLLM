@@ -864,6 +864,12 @@ class ToolManager(ModuleBase):
                 function['arguments'] = std_json.dumps(arguments, ensure_ascii=False)
         return tool_calls
 
+    @staticmethod
+    def has_valid_tool_name(tool_call: Any) -> bool:
+        function = tool_call.get('function') if isinstance(tool_call, dict) else None
+        name = function.get('name') if isinstance(function, dict) else None
+        return isinstance(name, str) and bool(name.strip())
+
     def sync_active_groups(self, input: Any = None, history: Optional[List[Dict[str, Any]]] = None) -> Set[str]:  # noqa C901
         '''Activate lazy Toolkits from registered input rules and structured gateway calls in history.'''
         try:
@@ -993,8 +999,7 @@ class ToolManager(ModuleBase):
     def _parse_tool_call(self, tc, allowed_tool_names=None):
         func = tc.get('function') if isinstance(tc, dict) else None
         name = func.get('name') if isinstance(func, dict) else None
-        if not isinstance(func, dict) or not isinstance(name, str) or not name.strip() \
-                or 'arguments' not in func:
+        if not self.has_valid_tool_name(tc) or 'arguments' not in func:
             failure = tool_failure(
                 f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}',
             )

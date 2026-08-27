@@ -174,6 +174,55 @@ def _read_agent_events():
 
 
 class TestReactAgentEvents(object):
+    def test_malformed_tool_call_with_plain_text_arguments_becomes_final_answer(self):
+        llm = _FakeLLM([{
+            'role': 'assistant',
+            'content': '\n',
+            'tool_calls': [{
+                'id': 'call-malformed',
+                'type': None,
+                'function': {
+                    'name': '',
+                    'arguments': 'This model answered in the tool arguments by mistake.',
+                },
+            }],
+        }])
+        agent = ReactAgent(
+            llm=llm,
+            tools=[add_one],
+            max_retries=1,
+            stream=True,
+            enable_builtin_tools=False,
+        )
+
+        assert agent('answer directly') == 'This model answered in the tool arguments by mistake.'
+        assert len(llm.inputs) == 1
+        events = _read_agent_events()
+        assert any(event.tag == 'text' and event.delta == 'This model answered in the tool arguments by mistake.'
+                   for event in events)
+        assert not any(event.tag == 'tool_calls' for event in events)
+
+    def test_valid_tool_call_gets_provider_safe_id_and_type(self):
+        llm = _FakeLLM([])
+        function_call = FunctionCall(llm, _tool_manager=ToolManager([add_one]))
+        with lazyllm.new_session('normalize-tool-call-envelope'):
+            lazyllm.locals['_lazyllm_agent'] = {'workspace': {}}
+            function_call._get_current_tools(refresh=True)
+            output = function_call._post_action({
+                'role': 'assistant',
+                'content': '',
+                'tool_calls': [{
+                    'function': {'name': 'add_one', 'arguments': '{"value": 1}'},
+                }],
+            })
+            tool_call = output['tool_calls'][0]
+            assert tool_call['id'].startswith('call_')
+            assert tool_call['type'] == 'function'
+            assert lazyllm.locals['_lazyllm_agent']['workspace']['tool_call_trace'][0]['tool_call_result'] == {
+                'ok': True,
+                'value': 2,
+            }
+
     def test_force_summary_is_emitted_after_streamed_tool_progress(self):
         llm = _SharedCursorLLM([
             {
