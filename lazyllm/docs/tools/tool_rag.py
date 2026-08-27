@@ -2722,6 +2722,207 @@ Args:
     - 'score': 相似度分数（1 - 距离）。
 ''')
 
+add_english_doc('rag.store.QdrantStore', '''
+Vector store implementation based on Qdrant, inheriting from LazyLLMStoreBase. Supports vector insertion, deletion, retrieval (including scalar filtering), dense and sparse vectors.
+
+Note: Qdrant stores dense vectors normalized to unit length when the distance is COSINE, so vectors read back via get() may differ from the inserted values.
+
+Args:
+    uri (str): Qdrant connection address. Must be a remote Qdrant server URL in the form http(s)://host:port.
+    api_key (Optional[str]): API key for remote Qdrant (e.g. Qdrant Cloud).
+    index_kwargs (Optional[Union[Dict, List]]): Index configuration, each entry is {"embed_key": ..., "distance": "COSINE|EUCLID|DOT|MANHATTAN"} and the per-key distance defaults to COSINE for dense and DOT for sparse vectors.
+    client_kwargs (Optional[Dict]): Additional keyword arguments passed to the Qdrant client constructor.
+''')
+
+add_chinese_doc('rag.store.QdrantStore', '''
+基于 Qdrant 的向量存储实现，继承自 LazyLLMStoreBase。支持向量写入、删除、相似度检索（含标量过滤），同时支持稠密向量与稀疏向量。
+
+注意：当距离度量使用 COSINE 时，Qdrant 会将稠密向量归一化为单位长度，通过 get() 读回的向量可能与写入值不同。
+
+Args:
+    uri (str): Qdrant 连接地址，必须是 `http(s)://host:port` 形式的远程 Qdrant 服务地址。
+    api_key (Optional[str]): 访问远程 Qdrant 服务（如 Qdrant Cloud）的 API Key。
+    index_kwargs (Optional[Union[Dict, List]]): 索引配置，例如 {"embed_key": ..., "distance": "COSINE|EUCLID|DOT|MANHATTAN"}，distance 默认为稠密向量 COSINE、稀疏向量 DOT。
+    client_kwargs (Optional[Dict]): 传递给 Qdrant 客户端的额外参数。
+''')
+
+add_english_doc('rag.store.QdrantStore.search', '''
+Perform vector similarity search.
+
+Args:
+    collection_name (str): The collection to search in.
+    query_embedding (Union[dict, List[float]]): The query vector, a dict of {index: value} for sparse vectors.
+    embed_key (str): The embedding key to search against.
+    topk (int, optional): Number of results to return. Defaults to 10.
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): Optional metadata filters to narrow the search.
+
+**Returns:**\n
+- List[dict]: Matching results, each containing:
+    - 'uid': The unique identifier of the matched record.
+    - 'score': Similarity score (larger is more similar; for EUCLID/MANHATTAN distances the raw distance is negated).
+''')
+
+add_chinese_doc('rag.store.QdrantStore.search', '''
+执行向量相似度检索。
+
+Args:
+    collection_name (str): 要查询的集合名称。
+    query_embedding (List[float] 或 dict): 查询向量，稀疏向量使用 {index: value} 字典。
+    embed_key (str): 指定使用的向量空间 key。
+    topk (int, optional): 返回的结果数量，默认为 10。
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): 可选的元数据过滤条件，用于限制检索结果。
+
+**Returns:**\n
+- List[dict]: 匹配结果列表，每条记录包含：
+    - 'uid': 匹配记录的唯一标识符。
+    - 'score': 相似度分数（越大越相关；EUCLID/MANHATTAN 度量下为取负后的距离）。
+''')
+
+add_english_doc('rag.store.QdrantStore.dir', '''
+Always returns None; Qdrant is a remote service with no embedded filesystem path.
+
+**Returns:**\n
+- None.
+''')
+
+add_chinese_doc('rag.store.QdrantStore.dir', '''
+始终返回 None；Qdrant 是远程服务，没有嵌入式文件路径。
+
+**Returns:**\n
+- None。
+''')
+
+add_english_doc('rag.store.QdrantStore.connect', '''
+Initialize the Qdrant client, validate embed specs, and (when collections are given) infer missing embed dims and datatypes from the existing Qdrant schema.
+
+Args:
+    embed_dims (Optional[Dict[str, int]]): Embedding dimensions per embed key.
+    embed_datatypes (Optional[Dict[str, DataType]]): Data type per embed key (FLOAT_VECTOR or SPARSE_FLOAT_VECTOR).
+    embed (Optional[Dict[str, Callable]]): Optional embed callables keyed by embed_key, used to auto-resolve dims for FLOAT_VECTOR keys that have no dim provided.
+    global_metadata_desc (Optional[Dict]): Field descriptor mapping for metadata filters.
+    collections (Optional[List[str]]): Existing collection names whose schema should be introspected to fill in missing embed dims/datatypes.
+''')
+
+add_chinese_doc('rag.store.QdrantStore.connect', '''
+初始化 Qdrant 客户端，校验向量规范；当传入 collections 时，从已存在的 Qdrant schema 中推断缺失的向量维度与数据类型。
+
+Args:
+    embed_dims (Optional[Dict[str, int]]): 各向量 key 的维度。
+    embed_datatypes (Optional[Dict[str, DataType]]): 各向量 key 的数据类型（FLOAT_VECTOR 或 SPARSE_FLOAT_VECTOR）。
+    embed (Optional[Dict[str, Callable]]): 按 embed_key 索引的向量函数，可选，用于自动推导未指定维度的 FLOAT_VECTOR key 的维度。
+    global_metadata_desc (Optional[Dict]): 元数据过滤字段的描述映射。
+    collections (Optional[List[str]]): 现有集合名称列表，将从其 schema 中补齐缺失的向量维度/类型。
+''')
+
+add_english_doc('rag.store.QdrantStore.upsert', '''
+Insert or update a batch of segment data into a Qdrant collection, creating the collection on first use.
+
+Args:
+    collection_name (str): Target collection.
+    data (List[dict]): List of segment data; rows missing required embeddings are dropped with a warning.
+
+**Returns:**\n
+- bool: True on success, False if any error occurred.
+''')
+
+add_chinese_doc('rag.store.QdrantStore.upsert', '''
+向 Qdrant 集合批量写入或更新切片数据，首次写入时自动创建集合。
+
+Args:
+    collection_name (str): 目标集合。
+    data (List[dict]): 切片数据列表；缺失必需向量的行将被丢弃并发出警告。
+
+**Returns:**\n
+- bool: 成功返回 True，发生任何错误返回 False。
+''')
+
+add_english_doc('rag.store.QdrantStore.delete', '''
+Delete the entire Qdrant collection, or a subset of records by criteria.
+
+Args:
+    collection_name (str): Target collection.
+    criteria (Optional[dict]): If None, drop the entire collection; otherwise filter by uid list or metadata conditions.
+    kwargs: Other parameters.
+
+**Returns:**\n
+- bool: True on success, False if any error occurred.
+''')
+
+add_chinese_doc('rag.store.QdrantStore.delete', '''
+删除整个 Qdrant 集合或按条件删除部分记录。
+
+Args:
+    collection_name (str): 目标集合。
+    criteria (Optional[dict]): 若为 None 则删除整个集合；否则按 uid 列表或元数据条件过滤。
+    kwargs: 其他参数。
+
+**Returns:**\n
+- bool: 成功返回 True，发生任何错误返回 False。
+''')
+
+add_english_doc('rag.store.QdrantStore.get', '''
+Retrieve records from a Qdrant collection, optionally filtered by uid or metadata.
+
+Args:
+    collection_name (str): Target collection.
+    criteria (Optional[dict]): Dict containing 'uid' list or metadata field filters.
+    kwargs: Other parameters.
+
+**Returns:**\n
+- List[dict]: Each entry contains 'uid' and 'embedding'.
+''')
+
+add_chinese_doc('rag.store.QdrantStore.get', '''
+从 Qdrant 集合检索记录，可按 uid 或元数据过滤。
+
+Args:
+    collection_name (str): 目标集合。
+    criteria (Optional[dict]): 包含 'uid' 列表或元数据字段过滤条件的字典。
+    kwargs: 其他参数。
+
+**Returns:**\n
+- List[dict]: 每项包含 'uid' 和 'embedding' 映射。
+''')
+
+add_example('rag.store.QdrantStore', '''
+>>> import lazyllm
+>>> from lazyllm.tools.rag.data_type import DataType
+>>> from lazyllm.tools.rag.store import QdrantStore
+>>> store = QdrantStore(uri='http://localhost:6333')
+>>> store.connect(
+...     embed_dims={'vec_dense': 3},
+...     embed_datatypes={'vec_dense': DataType.FLOAT_VECTOR},
+...     global_metadata_desc={})
+>>> store.upsert('my_collection', [{'uid': '1', 'embedding': {'vec_dense': [0.1, 0.2, 0.3]}}])
+>>> store.search('my_collection', query_embedding=[0.1, 0.2, 0.3], embed_key='vec_dense', topk=1)
+''')
+
+add_english_doc('rag.store.QdrantStore.rebuild', '''
+Rebuild a QdrantStore from the constructor kwargs. Used by pickle ``__reduce__`` to round-trip without the live client.
+
+Args:
+    uri (str): Qdrant connection address.
+    api_key (Optional[str]): API key for remote Qdrant.
+    index_kwargs (Optional[Union[Dict, List]]): Index configuration.
+    client_kwargs (Optional[Dict]): Additional keyword arguments for the Qdrant client.
+
+**Returns:**\n
+- QdrantStore: A new instance with no active client (call ``connect`` to initialize).
+''')
+
+add_chinese_doc('rag.store.QdrantStore.rebuild', '''
+根据构造参数重建一个 QdrantStore。供 pickle ``__reduce__`` 使用，不包含活跃客户端。
+
+Args:
+    uri (str): Qdrant 连接地址。
+    api_key (Optional[str]): 远程 Qdrant 的 API Key。
+    index_kwargs (Optional[Union[Dict, List]]): 索引配置。
+    client_kwargs (Optional[Dict]): 传递给 Qdrant 客户端的额外参数。
+
+**Returns:**\n
+- QdrantStore: 新实例，没有已初始化的客户端（需调用 ``connect`` 来初始化）。
+''')
+
 add_english_doc('rag.store.MilvusStore', '''
 Vector store implementation based on Milvus, inheriting from StoreBase. Supports vector insertion, deletion, flexible querying (including scalar filtering).
 

@@ -456,6 +456,7 @@ def test_normalize_image_plan_canonicalizes_linked_visual_identifiers():
                 visual_type='image',
                 purpose='补充说明',
                 preferred_strategy='image_generation',
+                required=True,
             ),
         )],
     )
@@ -532,7 +533,11 @@ def test_generate_patch_set_materializes_required_image_reference(tmp_path):
     image_hunk = next(hunk for hunk in patch_set.hunks if hunk.modify_type == 'create')
     assert image_hunk.block.type == 'image'
     assert image_hunk.block.references == [
-        {'type': 'media_asset', 'id': 'asset-image-1'},
+        {
+            'type': 'media_asset',
+            'id': 'asset-image-1',
+            'path': str(tmp_path / 'generated-image.png'),
+        },
     ]
 
 

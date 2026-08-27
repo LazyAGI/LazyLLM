@@ -31,7 +31,7 @@ docs = Document(dataset_path='/path/to/doc/dir', embed=MyEmbeddingModule(), mana
     * `DocumentProcessor` 实例：连接已有的外部解析服务，此时 `store_conf` 必须传给 `DocumentProcessor` 而非 `Document`；
 * `launcher`：启动服务的方式，集群应用会用到这个参数，单机应用可以忽略；
 * `store_conf`：配置使用哪种存储引擎保存文档解析结果。在单机模式和 `manager=True` 的分布式模式下传给 `Document`；若 `manager` 为 `DocumentProcessor` 实例，则 `store_conf` 应传给该 `DocumentProcessor`，`Document` 层不再接受此参数；
-* `doc_fields`：配置需要存储和检索的字段及对应的类型（当前在使用内存存储、Chroma以及Milvus向量数据库时支持该功能）
+* `doc_fields`：配置需要存储和检索的字段及对应的类型（当前在使用内存存储、Chroma、Milvus以及Qdrant向量数据库时支持该功能）
 * 更多参数说明请前往[Document API][lazyllm.Document]查看。
 
 #### 节点与节点组
@@ -199,7 +199,7 @@ Document.start()
   └─ 自动启动 DocumentProcessor（子进程，HTTP 服务）
        └─ Worker × N（各自独立子进程）
             └─ _Processor（Worker 进程内，首次处理任务时懒创建）
-                 └─ _DocumentStore（连接外部 Milvus/Chroma 等）
+                 └─ _DocumentStore（连接外部 Milvus/Chroma/Qdrant 等）
 
 写入流程：
 DocServer.upload()
@@ -288,7 +288,8 @@ store_conf = {"segment_store": {}, "vector_store": {}}
         - `opensearch`：使用 OpenSearch 引擎存储数据；
     - 向量存储（`vector_store`）:
         - `chroma`：使用 Chroma 存储数据；
-        - `milvus`：使用 Milvus 存储数据。
+        - `milvus`：使用 Milvus 存储数据；
+        - `qdrant`：使用 Qdrant 存储数据。
 * `kwargs`：存储引擎所需客户端配置针对不同的存储引擎，`kwargs` 包含不同的参数，具体如下：
     - `map`：
         - `uri`（可选）：本地切片存储路径，基于`sqlite3`的本地切片存储。
@@ -308,6 +309,11 @@ store_conf = {"segment_store": {}, "vector_store": {}}
         - `index_kwargs`（可选）：Milvus 索引配置，可以是一个 dict 或者 list。如果是一个 dict 表示所有的 embedding index 使用同样的配置；如果是一个 list，list 中的元素是 dict，表示由 `embed_key` 所指定的 embedding 所使用的配置。当前只支持 `floaing point embedding` 和 `sparse embedding` 两种 embedding 类型，分别支持的参数如下：
             - `floating point embedding`：[https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
             - `sparse embedding`：[https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
+    - `qdrant`：
+        - `uri`（必填）：Qdrant 服务地址，必须是 `http://host:6333`（或 `https://`）格式的远程服务 URL；
+        - `api_key`（可选）：访问远程 Qdrant 服务的 API Key；
+        - `client_kwargs`（可选）：Qdrant 客户端配置，用于配置 Qdrant 的连接参数；
+        - `index_kwargs`（可选）：Qdrant 索引配置，list 中的元素是 dict，由 `embed_key` 指定 embedding，`distance` 为相似度计算方式（稠密向量默认为 `COSINE`，稀疏向量默认为 `DOT`）。
 
 下面是一个使用 内存 key/value 存储作为切片存储，Chroma 作为向量存储的配置样例：
 

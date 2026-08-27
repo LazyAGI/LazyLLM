@@ -36,6 +36,16 @@ INSERT_BATCH_SIZE = 3000
 IMAGE_PATTERN = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
 
 
+def is_empty_embedding_value(v) -> bool:
+    if v is None:
+        return True
+    if isinstance(v, (list, tuple)):
+        return len(v) == 0
+    if isinstance(v, dict):
+        return not v
+    return False
+
+
 class SegmentType(IntFlag):
     TEXT = auto()
     IMAGE = auto()

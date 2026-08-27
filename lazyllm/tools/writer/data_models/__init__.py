@@ -8,7 +8,7 @@ from .context import (
     StyleProfile,
     WritingContext,
 )
-from .planning import SectionInstruction, SectionInstructionList
+from .planning import SectionInstruction, SectionInstructionList, ShortWritingPlan
 from .revision import (
     LocatedContent,
     LocateResult,
@@ -41,6 +41,7 @@ __all__ = [
     'WritingContext',
     'SectionInstruction',
     'SectionInstructionList',
+    'ShortWritingPlan',
     'ModifyInstruction',
     'ModifyPlan',
     'LocatedContent',

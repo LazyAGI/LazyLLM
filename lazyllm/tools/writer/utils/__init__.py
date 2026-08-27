@@ -31,6 +31,7 @@ from .conversion import (
     writer_document_to_lmd,
     writer_document_to_markdown,
 )
+from .request_constraints import parse_writer_request_constraints
 
 __all__ = [
     'SCHEMA_VERSION',
@@ -60,4 +61,5 @@ __all__ = [
     'writer_document_to_markdown',
     'strip_heading_numbering',
     'strip_caption_numbering',
+    'parse_writer_request_constraints',
 ]

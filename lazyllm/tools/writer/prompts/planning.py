@@ -232,6 +232,43 @@ Target H2 sections:
 '''
 
 
+GENERATE_SHORT_VISUAL_PLAN_PROMPT = '''Generate a visual plan for one flat short article.
+
+Requirements:
+- Return a VisualPlan object.
+- An explicit user requirement that the article contain any image, illustration, chart, table, diagram,
+  or other visual has highest priority. In that case, instructions MUST NOT be empty; never return an empty
+  object or an empty instructions list. Create enough instructions to satisfy the requested visual content
+  and count, and mark every explicitly required instruction with required=true.
+- Treat restrictions on the visual source separately from whether a visual is required. For example,
+  "do not use uploaded images" still requires a non-empty plan when the user asks for a generated image.
+  When the user explicitly asks the system to generate an image, set preferred_strategy=image_generation.
+- Return an empty instructions list only when the user forbids visuals, or when the user has not explicitly
+  required any visual and no visual materially improves the article.
+- Use the short writing plan to decide what each visual communicates and where it naturally belongs.
+- Each content_ref must contain only document_root=true. Do not use node_id, heading_path, or placeholder_id.
+- visual_type must be image, chart, table, or diagram.
+- preferred_strategy must be null or exactly one of web_search, kb_search, image_generation, or code_render.
+  Leave it null when an uploaded or otherwise available input image should be reused.
+- Put natural-language placement guidance only in meta.placement_hint. Never put placement guidance in
+  preferred_strategy.
+- purpose must state what the visual communicates for the complete article.
+- Set required=true only when the user explicitly requires that visual.
+- Do not impose a visual count limit; decide from the requested content, length, and explicit requirements.
+- Do not generate asset IDs, paths, URLs, captions, placeholders, or upload details.
+- Keep the plan selective enough to satisfy writing_task.constraints.target_chars and max_chars.
+
+Writing task:
+{task_json}
+
+Short writing plan:
+{short_writing_plan_json}
+
+Writing context:
+{context_json}
+'''
+
+
 GENERATE_SECTION_INSTRUCTIONS_PROMPT = '''Generate section-level writing instructions from the outline and writing context.
 
 Requirements:
@@ -300,4 +337,36 @@ Execution results:
 
 Visual plan:
 {visual_plan_json}
+'''
+
+
+GENERATE_SHORT_WRITING_PLAN_PROMPT = '''Generate one whole-document writing plan for a short article.
+
+Requirements:
+- Return one ShortWritingPlan object. Do not return an outline, chapter plan, or draft prose.
+- The plan covers the complete article in one writing pass.
+- content_ref must contain only document_root=true.
+- section_title is the article title. Prefer writing_task.target_document.title when provided.
+- section_goal states the writing objective for the complete article.
+- core_viewpoint states the central claim or message that the complete article must communicate.
+- required_points contains the essential content that must appear in the article.
+- fact_constraints contains only factual statements actually present in the writing context.
+- references identifies relevant context facts or resources and must not invent identifiers.
+- style_constraints includes the requested genre, audience, tone, point of view, and style when applicable.
+- Keep visual_needs empty. Visuals are planned separately with a strongly typed VisualPlan.
+- expected_blocks is a concise content-order plan for continuous prose. Its entries are internal coverage
+  cues, not visible headings, separate generations, or minimum paragraph counts.
+- Do not create relation_constraints, cross-references, section links, chapters, or subheadings.
+- Keep the plan selective enough to satisfy task.constraints.target_chars and max_chars.
+- Set meta.representation to the requested writing_task.output.representation.
+- Do not invent facts that conflict with the writing context.
+
+Writing task:
+{task_json}
+
+Writing context:
+{context_json}
+
+Execution results:
+{execution_results_json}
 '''

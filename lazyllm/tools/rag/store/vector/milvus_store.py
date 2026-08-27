@@ -13,19 +13,11 @@ from lazyllm import LOG
 from lazyllm.thirdparty import pymilvus
 from lazyllm.common import override
 
-from ..store_base import LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX, EMBED_PREFIX, EmbedResolveMixin
+from ..store_base import (LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX, EMBED_PREFIX,
+                          EmbedResolveMixin, is_empty_embedding_value)
 from ...data_type import DataType
 from ...global_metadata import GlobalMetadataDesc
 
-
-def _is_empty_embedding_value(v) -> bool:
-    if v is None:
-        return True
-    if isinstance(v, (list, tuple)):
-        return len(v) == 0
-    if isinstance(v, dict):
-        return not v
-    return False
 
 MILVUS_UPSERT_BATCH_SIZE = 500
 MILVUS_PAGINATION_OFFSET = 1000
@@ -202,7 +194,7 @@ class MilvusStore(EmbedResolveMixin, LazyLLMStoreBase):
         if not emb or not isinstance(emb, dict):
             return False
         for k in required_embed_keys:
-            if _is_empty_embedding_value(emb.get(k)):
+            if is_empty_embedding_value(emb.get(k)):
                 return False
         return True
 
@@ -220,7 +212,7 @@ class MilvusStore(EmbedResolveMixin, LazyLLMStoreBase):
             emb = row.get('embedding')
             if not isinstance(emb, dict):
                 continue
-            keys.update(k for k, v in emb.items() if not _is_empty_embedding_value(v))
+            keys.update(k for k, v in emb.items() if not is_empty_embedding_value(v))
         return keys
 
     @override
