@@ -1,22 +1,37 @@
-from typing import Any, Dict
+from typing import Any, Dict, Iterable, Optional
 
 from lazyllm.common import HandledException
 
 
-def tool_failure(message: str, *, needs_approval: bool = False) -> Dict[str, Any]:
+def tool_failure(
+    message: str,
+    *,
+    needs_approval: bool = False,
+    missing_env: Optional[Iterable[str]] = None,
+) -> Dict[str, Any]:
     result = {'ok': False, 'value': str(message)}
     if needs_approval:
         result['needs_approval'] = True
+    names = [str(name) for name in (missing_env or []) if name]
+    if names:
+        result['missing_env'] = names
     return result
 
 
 class ToolExecutionError(HandledException):
     needs_approval = False
+    missing_env = ()
 
     @classmethod
     def approval_required(cls, message: str) -> 'ToolExecutionError':
         error = cls(message)
         error.needs_approval = True
+        return error
+
+    @classmethod
+    def with_missing_env(cls, message: str, missing_env: Iterable[str]) -> 'ToolExecutionError':
+        error = cls(message)
+        error.missing_env = [str(name) for name in missing_env if name]
         return error
 
 
@@ -47,6 +62,7 @@ def exception_failure(tool_name: str, error: Exception) -> Dict[str, Any]:
         return tool_failure(
             str(typed_error) or type(typed_error).__name__,
             needs_approval=typed_error.needs_approval,
+            missing_env=getattr(typed_error, 'missing_env', ()) or None,
         )
 
     semantic_error = causes[-1] if causes else error
