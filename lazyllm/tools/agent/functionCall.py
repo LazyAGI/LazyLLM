@@ -453,7 +453,14 @@ class FunctionCall(ModuleBase):
             llm_output['tool_calls'] = tool_calls
             if self._stream:
                 _write_agent_data('tool_calls', tool_calls=tool_calls)
-            execute_with_records = getattr(self._tools_manager, 'execute_with_records', None)
+            explicitly_supports_records = any(
+                'execute_with_records' in cls.__dict__
+                for cls in type(self._tools_manager).__mro__
+            )
+            execute_with_records = (
+                getattr(self._tools_manager, 'execute_with_records')
+                if explicitly_supports_records else None
+            )
             if callable(execute_with_records):
                 execution_batch = execute_with_records(
                     tool_calls,

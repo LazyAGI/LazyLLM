@@ -2,11 +2,13 @@ from .functionCall import FunctionCall, FunctionCallAgent
 from .toolsManager import fc_register, register, ToolManager
 from .tool_runtime import (
     AgentRuntimeExtension,
+    PreparedToolBatch,
     PreparedToolCall,
     ResolvedToolAccess,
     RuntimeContext,
     RuntimeDelta,
     ToolExecutionBatch,
+    ToolExecutionDisposition,
     ToolExecutionRecord,
     ToolRuntimeMetadata,
 )
@@ -43,9 +45,11 @@ __all__ = [
     'register',
     'fc_register',
     'ResolvedToolAccess',
+    'PreparedToolBatch',
     'PreparedToolCall',
     'ToolExecutionRecord',
     'ToolExecutionBatch',
+    'ToolExecutionDisposition',
     'RuntimeContext',
     'RuntimeDelta',
     'AgentRuntimeExtension',

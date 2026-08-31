@@ -226,16 +226,18 @@ Args:
 
 add_chinese_doc('ToolManager.prepare_tool_calls', '''\
 一次性完成工具调用规范化、JSON 修复、参数校验和运行期资源解析，返回与输入顺序一致的
-``PreparedToolCall``。资源事实通过 ``prepared.access`` 获取；不再提供独立资源查询接口，避免校验器和
-动态资源解析器在执行前被重复调用。已准备调用可交给 ``execute_prepared_calls``，或直接使用
-``execute_with_records`` 完成准备与执行并取得 ``ToolExecutionBatch``。
+manager-owned ``PreparedToolBatch``。其中的 ``PreparedToolCall`` 是只用于检查参数、准备状态和
+``access`` 的公开视图，不是执行凭证。batch 只能由创建它的 ToolManager 执行一次；也可直接使用
+``execute_with_records`` 完成准备与执行并取得 ``ToolExecutionBatch``。不再提供独立资源查询接口，
+避免校验器和动态资源解析器在执行前被重复调用。
 ''')
 
 add_english_doc('ToolManager.prepare_tool_calls', '''\
-Normalize calls, repair JSON, validate arguments, and resolve runtime resources exactly once. The returned
-``PreparedToolCall`` objects preserve input order and expose resource facts through ``prepared.access``.
-Use ``execute_prepared_calls`` to execute them, or ``execute_with_records`` to prepare and execute in one step.
-There is no separate resource-query API, preventing validators and dynamic resolvers from running twice.
+Normalize calls, repair JSON, validate arguments, and resolve runtime resources exactly once. The returned manager-owned
+``PreparedToolBatch`` preserves input order. Its ``PreparedToolCall`` objects are inspection-only views exposing
+arguments, preparation state, and ``prepared.access``; they are not execution credentials. A batch can be executed once
+and only by the ToolManager that created it. Use ``execute_with_records`` to prepare and execute in one step. There is no
+separate resource-query API, preventing validators and dynamic resolvers from running twice.
 ''')
 
 add_example('ToolManager', """\

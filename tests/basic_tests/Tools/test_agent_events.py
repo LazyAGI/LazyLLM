@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import copy
 import json
@@ -325,6 +326,52 @@ def test_user_message_with_runtime_notice_prefix_is_preserved_verbatim():
     assert lazyllm.locals['_lazyllm_agent']['history'][0] == {
         'role': 'user',
         'content': message,
+    }
+
+
+def test_function_call_does_not_bypass_legacy_delegating_manager_wrapper():
+    class LegacyWrapper:
+        def __init__(self, manager):
+            self._manager = manager
+            self.calls = 0
+
+        def __getattr__(self, name):
+            return getattr(self._manager, name)
+
+        def __call__(self, tools, **kwargs):
+            self.calls += 1
+            results = self._manager(tools, **kwargs)
+            return [
+                {**result, 'value': {'wrapped': result.get('value')}}
+                for result in results
+            ]
+
+    llm = _FakeLLM([
+        {
+            'role': 'assistant',
+            'content': '',
+            'tool_calls': [{
+                'id': 'status',
+                'function': {'name': 'get_status', 'arguments': '{}'},
+            }],
+        },
+        {'role': 'assistant', 'content': 'Done.'},
+    ])
+    wrapper = LegacyWrapper(ToolManager([get_status]))
+    function_call = FunctionCall(llm, _tool_manager=wrapper)
+
+    result = function_call('start')
+    while isinstance(result, dict):
+        result = function_call(result)
+
+    assert result == 'Done.'
+    assert wrapper.calls == 1
+    tool_message = next(
+        message for message in reversed(lazyllm.locals['_lazyllm_agent']['history'])
+        if message.get('role') == 'tool'
+    )
+    assert ast.literal_eval(tool_message['content']) == {
+        'wrapped': {'status': 'ok', 'content': 'Error handling reference'},
     }
 
 

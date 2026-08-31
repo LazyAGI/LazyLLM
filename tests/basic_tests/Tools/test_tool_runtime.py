@@ -3,7 +3,13 @@ from dataclasses import FrozenInstanceError
 import lazyllm
 import pytest
 
-from lazyllm.tools import ToolManager, ToolRuntimeMetadata, fc_register
+from lazyllm.tools import (
+    PreparedToolBatch,
+    ToolExecutionDisposition,
+    ToolManager,
+    ToolRuntimeMetadata,
+    fc_register,
+)
 
 
 def _documented_tool(name='runtime_contract_tool'):
@@ -134,6 +140,7 @@ def test_prepared_calls_expose_access_and_invalid_preparation_state():
         {'id': 'good', 'function': {'name': tool.__name__, 'arguments': '{"value":"x"}'}},
     ])
 
+    assert isinstance(prepared, PreparedToolBatch)
     assert prepared[0].preparation_status == 'invalid'
     assert not prepared[0].access.read_keys and not prepared[0].access.write_keys
     assert prepared[1].preparation_status == 'ready'
@@ -142,6 +149,74 @@ def test_prepared_calls_expose_access_and_invalid_preparation_state():
 
     batch = manager.execute_prepared_calls(prepared)
     assert [record.executed for record in batch.records] == [False, True]
+    assert [record.disposition for record in batch.records] == [
+        ToolExecutionDisposition.PREPARATION_FAILED,
+        ToolExecutionDisposition.EXECUTED,
+    ]
+
+
+def test_prepared_batch_is_manager_owned_single_use_and_views_are_not_execution_inputs():
+    seen = []
+
+    @fc_register(write_keys=lambda args: ('file', args['value']))
+    def tool(value: str) -> str:
+        '''Return a value.
+
+        Args:
+            value: Input value.
+        '''
+        seen.append(value)
+        return value
+
+    first = ToolManager([tool])
+    second = ToolManager([tool])
+    prepared = first.prepare_tool_calls({
+        'id': 'one',
+        'function': {'name': 'tool', 'arguments': {'value': 'original'}},
+    })
+
+    prepared[0].validated_arguments['value'] = 'forged'
+    prepared[0].tool_call['function']['arguments'] = '{"value":"forged"}'
+    assert prepared[0].validated_arguments == {'value': 'original'}
+    with pytest.raises(TypeError, match='created by ToolManager'):
+        PreparedToolBatch((), (), first)
+    with pytest.raises(ValueError, match='different ToolManager'):
+        second.execute_prepared_calls(prepared)
+
+    batch = first.execute_prepared_calls(prepared)
+    assert list(batch.results) == [{'ok': True, 'value': 'original'}]
+    assert batch.records[0].validated_arguments == {'value': 'original'}
+    assert seen == ['original']
+    with pytest.raises(RuntimeError, match='already been executed'):
+        first.execute_prepared_calls(prepared)
+
+
+def test_dispatch_failure_has_explicit_disposition():
+    tool = _documented_tool('runtime_dispatch_tool')
+    manager = ToolManager([tool])
+    prepared = manager.prepare_tool_calls({
+        'id': 'one',
+        'function': {'name': tool.__name__, 'arguments': {'value': 'x'}},
+    })
+    manager._tool_call.pop(tool.__name__)
+
+    batch = manager.execute_prepared_calls(prepared)
+
+    assert batch.records[0].disposition is ToolExecutionDisposition.DISPATCH_FAILED
+    assert batch.records[0].executed is False
+    assert batch.results[0]['ok'] is False
+
+
+def test_prepared_batch_rejects_duplicate_selected_indices():
+    tool = _documented_tool('runtime_selected_tool')
+    manager = ToolManager([tool])
+    prepared = manager.prepare_tool_calls({
+        'id': 'one',
+        'function': {'name': tool.__name__, 'arguments': {'value': 'x'}},
+    })
+
+    with pytest.raises(ValueError, match='must be unique'):
+        manager.execute_prepared_calls(prepared, selected_indices=(0, 0))
 
 
 def test_prepare_and_execute_validate_resolve_and_invoke_once():
