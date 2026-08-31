@@ -173,7 +173,7 @@ Output only "true" or "false" (without quotes), nothing else.
 
         for key, value in data.items():
             if isinstance(value, dict):
-                if not self._validate_schema(schema[key], value, f'{prefix}.{key}' if prefix else key):
+                if not self._validate_schema_impl(schema[key], value, f'{prefix}.{key}' if prefix else key):
                     return False
         return True
 
