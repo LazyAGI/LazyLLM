@@ -334,6 +334,8 @@ class FeishuWriterAdapter(WriterAdapterBase):
             if previous is None:
                 continue
             block.references = deepcopy(previous.references)
+            if block.type == previous.type == 'heading':
+                block.numbering = deepcopy(previous.numbering)
         return WriterDocument.model_validate(refreshed_document.model_dump())
 
     @staticmethod

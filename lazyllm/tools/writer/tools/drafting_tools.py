@@ -8,13 +8,14 @@ from .stream_tools import DraftIRStream, DraftMarkdownStream, OutlineIRStream, r
 from ..data_models.context import WritingContext
 from ..data_models.multimodal import MediaAssetLibrary, VisualPlan
 from ..data_models.task import WritingTask
-from ..data_models.writer_ir import WriterBlock, WriterDocument
+from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterSpan
 from ..data_models.planning import SectionInstruction, ShortWritingPlan
 from ..numbering import (
     MARKDOWN_ANCHOR_RE,
     build_numbering_view_from_ir,
     build_numbering_view_from_markdown,
     compute_numbering,
+    ensure_markdown_heading_anchors,
 )
 from ..prompts import (
     CONDENSE_DRAFT_SECTION_MARKDOWN_PROMPT,
@@ -879,7 +880,7 @@ class WriterDraftingTools(WriterToolBase):
         body = body.strip()
         if not body:
             raise ValueError('Markdown draft section body must not be empty.')
-        body = self._normalize_markdown_draft_body(body)
+        body = self._normalize_markdown_draft_body(body, instruction.section_title)
         body = self._strip_system_section_anchors(body)
         if not body:
             raise ValueError('Markdown draft section body contains only headings, no content.')
@@ -1046,7 +1047,7 @@ class WriterDraftingTools(WriterToolBase):
             section.strip() for section in section_markdown
         )
         markdown = markdown.rstrip() + '\n'
-        markdown = self._ensure_markdown_outline_anchors(markdown)
+        markdown = ensure_markdown_heading_anchors(markdown)
         compute_numbering(build_numbering_view_from_markdown(markdown))
         assembled_sections = [
             section for section in parse_markdown_sections(markdown)
@@ -1180,19 +1181,18 @@ class WriterDraftingTools(WriterToolBase):
         return '\n\n'.join(section.strip() for section in sections if isinstance(section, str))
 
     @staticmethod
-    def _normalize_markdown_draft_body(body: str) -> str:
-        '''Strip leading H1/H2 and downgrade stray H1/H2 to H3.'''
+    def _normalize_markdown_draft_body(body: str, section_title: str) -> str:
+        '''Strip a repeated section heading and downgrade other H1/H2 to H3.'''
         lines = body.split('\n')
         result: List[str] = []
         in_fence = False
-        seen_content = False
+        normalized_section_title = strip_heading_numbering(section_title)
 
         for line in lines:
             stripped = line.strip()
             if stripped[:3] in ('```', '~~~'):
                 in_fence = not in_fence
                 result.append(line)
-                seen_content = True
                 continue
             if in_fence:
                 result.append(line)
@@ -1201,7 +1201,7 @@ class WriterDraftingTools(WriterToolBase):
             m = re.match(r'^(#{1,2})\s+(.+?)\s*$', line)
             if m:
                 title = strip_heading_numbering(m.group(2))
-                if seen_content:
+                if title != normalized_section_title:
                     result.append(f'### {title}')
                 continue
 
@@ -1211,7 +1211,6 @@ class WriterDraftingTools(WriterToolBase):
                     f'{subheading.group(1)} '
                     f'{strip_heading_numbering(subheading.group(2))}'
                 )
-                seen_content = True
                 continue
 
             line = re.sub(
@@ -1220,8 +1219,6 @@ class WriterDraftingTools(WriterToolBase):
                 line,
             )
 
-            if stripped:
-                seen_content = True
             result.append(line)
 
         return '\n'.join(result).strip()
@@ -1248,6 +1245,18 @@ class WriterDraftingTools(WriterToolBase):
             != strip_heading_numbering(instruction.content_ref.heading_path[-1])
         ):
             raise ValueError('Markdown draft section heading does not match its content_ref.')
+        if instruction.heading_structure is not None:
+            actual = [
+                (level - 1, strip_heading_numbering(heading_path[-1]))
+                for level, heading_path, _, _ in sections
+                if level > 2
+            ]
+            expected = [
+                (item.level, item.title)
+                for item in instruction.heading_structure
+            ]
+            if actual != expected:
+                raise ValueError('Markdown draft section does not preserve its heading structure.')
 
     @staticmethod
     def _markdown_draft_section_title(markdown: str) -> str:
@@ -1273,6 +1282,7 @@ class WriterDraftingTools(WriterToolBase):
         draft_block.stage = 'draft'
         draft_block.type = 'heading'
         draft_block.content = strip_heading_numbering(instruction.section_title)
+        draft_block.spans = []
         draft_block.numbering['level'] = 1
         for block in draft_block.iter_blocks():
             block.stage = 'draft'
@@ -1281,10 +1291,40 @@ class WriterDraftingTools(WriterToolBase):
             elif block.type == 'image':
                 block.content = strip_caption_numbering(block.content)
         draft_block.references = [dict(reference) for reference in instruction.references]
+        self._normalize_ir_heading_structure(
+            draft_block, instruction, allow_partial=allow_deferred_create,
+        )
         self._normalize_ir_cross_references(
             draft_block, instruction, allow_deferred_create=allow_deferred_create,
         )
         return draft_block
+
+    @staticmethod
+    def _normalize_ir_heading_structure(
+        draft_block: WriterBlock,
+        instruction: SectionInstruction,
+        *,
+        allow_partial: bool,
+    ) -> None:
+        structure = instruction.heading_structure
+        if structure is None:
+            return
+        headings = [
+            block for block in draft_block.iter_blocks()
+            if block is not draft_block and block.type == 'heading'
+        ]
+        expected = structure[:len(headings)] if allow_partial else structure
+        if len(headings) != len(expected):
+            raise ValueError('IR draft section does not preserve its heading structure.')
+
+        for block, item in zip(headings, expected):
+            if block.model_extra is not None:
+                block.model_extra.pop('level', None)
+            if item.node_id is not None:
+                block.node_id = item.node_id
+            block.content = item.title
+            block.spans = []
+            block.numbering['level'] = item.level
 
     @staticmethod
     def _normalize_ir_cross_references(  # noqa: C901
@@ -1327,10 +1367,23 @@ class WriterDraftingTools(WriterToolBase):
                 if target not in allowed_targets:
                     raise ValueError(f'Unplanned IR cross-reference {target!r}.')
                 found_targets.add(str(target))
-            if has_internal_ref and (
-                ''.join(span.text for span in block.spans) != block.content
-            ):
-                raise ValueError('IR cross-reference spans must reproduce the complete block content.')
+            if has_internal_ref and ''.join(span.text for span in block.spans) != block.content:
+                block.spans.sort(key=lambda span: block.content.find(span.text))
+                cursor = 0
+                complete_spans: List[WriterSpan] = []
+                for span in block.spans:
+                    start = block.content.find(span.text, cursor) if span.text else -1
+                    if start < 0:
+                        raise ValueError(
+                            'IR cross-reference span text must occur in block content without overlap.'
+                        )
+                    if start > cursor:
+                        complete_spans.append(WriterSpan(text=block.content[cursor:start]))
+                    complete_spans.append(span)
+                    cursor = start + len(span.text)
+                if cursor < len(block.content):
+                    complete_spans.append(WriterSpan(text=block.content[cursor:]))
+                block.spans = complete_spans
 
         missing = [
             str(item.get('target')) for item in references
@@ -1538,56 +1591,6 @@ class WriterDraftingTools(WriterToolBase):
         if isinstance(document_targets, list):
             allowed_targets.update(str(target) for target in document_targets)
         return references, allowed_targets
-
-    @staticmethod
-    def _ensure_markdown_outline_anchors(markdown: str) -> str:
-        output: List[str] = []
-        pending_anchors: List[str] = []
-        counters: List[int] = []
-        fence: str | None = None
-        for line in markdown.splitlines():
-            fence_match = re.match(r'^\s*(```+|~~~+)', line)
-            if fence_match:
-                marker = fence_match.group(1)[0]
-                if fence is None:
-                    fence = marker
-                elif fence == marker:
-                    fence = None
-                output.append(line)
-                continue
-            if fence is not None:
-                output.append(line)
-                continue
-
-            anchors = [
-                target
-                for target in WriterDraftingTools._MARKDOWN_ANCHOR_RE.findall(line)
-                if target.startswith('block-sec-')
-            ]
-            if anchors:
-                pending_anchors.extend(anchors)
-                output.append(line)
-                continue
-            heading = re.match(r'^(#{2,6})\s+(.+?)\s*$', line)
-            if heading:
-                depth = len(heading.group(1)) - 1
-                counters = counters[:depth]
-                counters.extend([0] * (depth - len(counters)))
-                counters[-1] += 1
-                expected = 'block-sec-' + '-'.join(
-                    f'{value:03d}' for value in counters
-                )
-                if not pending_anchors:
-                    output.append(f'<a id="{expected}"></a>')
-                elif pending_anchors[0] != expected:
-                    raise ValueError(
-                        f'Unexpected heading anchor {pending_anchors[0]!r}; expected {expected!r}.'
-                    )
-                pending_anchors = []
-            elif line.strip() and pending_anchors:
-                pending_anchors = []
-            output.append(line)
-        return '\n'.join(output)
 
     @staticmethod
     def _media_assets_for_section(

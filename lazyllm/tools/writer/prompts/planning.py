@@ -7,8 +7,16 @@ Requirements:
 - Start with exactly one H1 document title.
 - Add at least one H2 section directly under the H1 title.
 - Every H2 section title must be unique.
-- Use H3-H6 only for optional subsection planning under an H2 section.
-- Write titles and section titles without visible numbering; the system renders numbers.
+- Use H3-H6 for subsection planning under an H2 section; never use list items as
+  substitutes for subsection headings.
+- Write every heading without visible numbering; the system renders numbers. Ignore
+  requested labels such as "1", "1.1", "一、", or "(1)" while preserving their structure.
+- Follow this shape when subsections are needed:
+  # Document title
+  ## Section title
+  ### Subsection title
+  ### Another subsection
+  ## Another section
 - Treat the outline as the exact structural skeleton of the final deliverable: every H2
   will become a visible section in the drafted document.
 - Do not create meta-planning H2 sections such as background and setting, character
@@ -288,6 +296,7 @@ Requirements:
   relevant to this section. It must not contain fact IDs or resource IDs.
 - fact_constraints MUST only contain factual statements actually present in the writing context.
 - references are owned by the authoritative outline. Omit references; the system normalizes them.
+- heading_structure is owned by the authoritative outline. Omit it; the system normalizes it.
 - style_constraints should include tone, pov, audience, and style requirements when applicable.
 - Sections may be drafted independently and in parallel. Resolve document-global narrative
   choices during planning: choose one point of view, tense, narrative voice, and protagonist
@@ -308,7 +317,8 @@ Requirements:
    conclusion citing the experiments it summarizes. This is expected when the writing
    task asks for cross-references; in that case include at least one section reference.
    Represent every planned reference in SectionInstruction.meta.cross_references as
-   an object with target_ref, kind, required, and guidance.
+   an object with target_ref, required, and guidance. Omit kind; the system derives it
+   from the resolved target.
    Background continuity readers are assumed to know
    (such as narrative chapters building on earlier events) belongs in relation_constraints.
    For Writer IR, target_ref is {{"node_id": "..."}} copied from the outline.
@@ -316,7 +326,7 @@ Requirements:
    Its guidance names the information the reader needs from that target.
 - Visual plan needs own created images. Do not add must_create image objects; the system adds them.
    To reference a planned image in this or another section, use
-   target_ref: {{"node_id": "<that visual need_id>"}} with must_create=false and kind="image".
+   target_ref: {{"node_id": "<that visual need_id>"}} with required=false and must_create=false.
 - Use guidance to describe what natural wording should carry each reference link.
 - Do not invent facts that conflict with writing context.
 

@@ -8,7 +8,12 @@ from lazyllm.thirdparty import mistune
 
 from ..data_models.multimodal import MediaAssetLibrary
 from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterSpan, WriterStage
-from ..numbering import MARKDOWN_ANCHOR_RE
+from ..numbering import (
+    MARKDOWN_ANCHOR_RE,
+    parse_markdown_anchor_numbering,
+    parse_markdown_heading_numbering_config,
+    strip_markdown_heading_numbering_config,
+)
 
 
 class MarkdownSelectionError(ValueError):
@@ -19,7 +24,9 @@ class MarkdownSelectionError(ValueError):
 
 
 _NUMBERED_HEADING_RE = re.compile(
-    r'^\s*(?:\d+(?:\.\d+)*(?!\s*年)(?:\s*[、.．：:]\s*|\s+)'
+    r'^\s*(?:[（(](?:\d+|[a-zA-Z]+|[ivxlcdmIVXLCDM]+|[一二三四五六七八九十百]+)[）)]\s*'
+    r'|[①-⑳]\s*'
+    r'|\d+(?:\.\d+)*(?!\s*年)(?:\s*[、.．：:]\s*|\s+)'
     r'|第\s*(?:\d+(?:\.\d+)*|[一二三四五六七八九十百千万零〇两]+)\s*[章节部分篇]\s*[：:、.．]?\s*'
     r'|[一二三四五六七八九十百千万零〇两]+\s*[、.．：:]\s*)'
 )
@@ -206,7 +213,10 @@ def parse_document_markdown(  # noqa: C901
     media_assets: Optional[MediaAssetLibrary] = None,
 ) -> WriterDocument:
     '''Convert the drafting Markdown subset into the existing WriterDocument IR.'''
-    tokens = mistune.create_markdown(renderer='ast', plugins=['table'])(markdown or '')
+    heading_numbering = parse_markdown_heading_numbering_config(markdown or '')
+    tokens = mistune.create_markdown(renderer='ast', plugins=['table'])(
+        strip_markdown_heading_numbering_config(markdown or ''),
+    )
     outline_ids: Dict[str, List[str]] = defaultdict(list)
     if outline:
         for block in outline.iter_blocks():
@@ -215,7 +225,7 @@ def parse_document_markdown(  # noqa: C901
 
     used_ids = set()
     sequence = 0
-    pending_anchor_ids: List[str] = []
+    pending_anchor_ids: List[tuple[str, Dict[str, Any]]] = []
 
     def next_id(kind: str, title: str = '') -> str:
         nonlocal sequence
@@ -240,14 +250,18 @@ def parse_document_markdown(  # noqa: C901
             target = target[len('block-'):]
         return target
 
-    def take_pending_node_id(kind: str, title: str = '') -> str:
+    def take_pending_anchor(kind: str, title: str = '') -> tuple[str, Dict[str, Any]]:
         if pending_anchor_ids:
-            node_id = normalize_anchor_target(pending_anchor_ids.pop(0))
+            raw_id, numbering = pending_anchor_ids.pop(0)
+            node_id = normalize_anchor_target(raw_id)
             if node_id in used_ids:
                 raise ValueError(f'duplicate Markdown anchor target: {node_id!r}')
             used_ids.add(node_id)
-            return node_id
-        return next_id(kind, title)
+            return node_id, numbering
+        return next_id(kind, title), {}
+
+    def take_pending_node_id(kind: str, title: str = '') -> str:
+        return take_pending_anchor(kind, title)[0]
 
     title = outline.title if outline else ''
     blocks: List[WriterBlock] = []
@@ -269,12 +283,14 @@ def parse_document_markdown(  # noqa: C901
             if level == 1 and not blocks and not heading_stack:
                 title = content or title
                 continue
+            node_id, anchor_numbering = take_pending_anchor('heading', content)
             block = WriterBlock(
-                node_id=take_pending_node_id('heading', content),
-                type='heading',
-                content=content,
-                stage=stage,
-                numbering={'level': max(level - 1, 1)},
+                node_id=node_id, type='heading',
+                content=content, stage=stage,
+                numbering={
+                    'level': max(level - 1, 1),
+                    **anchor_numbering,
+                },
             )
             while heading_stack and heading_stack[-1][0] >= level:
                 heading_stack.pop()
@@ -290,10 +306,8 @@ def parse_document_markdown(  # noqa: C901
                 content = _markdown_token_text(item).strip()
                 if content:
                     append_block(WriterBlock(
-                        node_id=next_id('list-item'),
-                        type='list_item',
-                        content=content,
-                        stage=stage,
+                        node_id=next_id('list-item'), type='list_item',
+                        content=content, stage=stage,
                         numbering={'ordered': ordered},
                     ))
             continue
@@ -338,8 +352,11 @@ def parse_document_markdown(  # noqa: C901
                 continue
             raw_paragraph = _markdown_token_text(token).strip()
             anchor_matches = list(MARKDOWN_ANCHOR_RE.finditer(raw_paragraph))
-            anchor_ids = [
-                normalize_anchor_target(match.group(1))
+            anchors = [
+                (
+                    normalize_anchor_target(match.group(1)),
+                    parse_markdown_anchor_numbering(match.group(0)),
+                )
                 for match in anchor_matches
             ]
             without_anchors = raw_paragraph
@@ -347,8 +364,8 @@ def parse_document_markdown(  # noqa: C901
                 without_anchors = (
                     without_anchors[:match.start()] + without_anchors[match.end():]
                 )
-            if anchor_ids and not without_anchors.strip():
-                pending_anchor_ids.extend(anchor_ids)
+            if anchors and not without_anchors.strip():
+                pending_anchor_ids.extend(anchors)
                 continue
 
             spans = _markdown_spans_from_token(token)
@@ -386,6 +403,11 @@ def parse_document_markdown(  # noqa: C901
         metadata={
             'source': 'parse_document_markdown',
             'outline_id': outline.document_id if outline else None,
+            **({
+                'heading_numbering': {
+                    'ordered_style': heading_numbering['ordered_style'],
+                },
+            } if heading_numbering else {}),
         },
     )
 

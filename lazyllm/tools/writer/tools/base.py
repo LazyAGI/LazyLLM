@@ -383,6 +383,13 @@ class WriterToolBase(ModuleBase):
 
     @classmethod
     def _prepare_structured_candidate(cls, candidate: Any, schema: Type[T]) -> Any:
+        if schema is WriterBlock and isinstance(candidate, (dict, list)):
+            normalized = deepcopy(candidate) if isinstance(candidate, dict) else {
+                'children': candidate,
+            }
+            normalized.setdefault('node_id', 'draft-section')
+            normalized.setdefault('type', 'heading')
+            return normalized
         if schema is SectionInstructionList and isinstance(candidate, dict):
             normalized = deepcopy(candidate)
             instructions = normalized.get('instructions')

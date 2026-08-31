@@ -9,7 +9,13 @@ from ..data_models.multimodal import VisualPlan
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import ContentRef, WriterBlock, WriterDocument
-from ..data_models.planning import SectionInstruction, SectionInstructionList, ShortWritingPlan
+from ..data_models.planning import (
+    HeadingStructureItem,
+    SectionInstruction,
+    SectionInstructionList,
+    ShortWritingPlan,
+)
+from ..numbering import ensure_markdown_heading_anchors
 from ..prompts import (
     GENERATE_OUTLINE_MARKDOWN_PROMPT,
     GENERATE_OUTLINE_PROMPT,
@@ -497,6 +503,7 @@ class WriterPlanningTools(WriterToolBase):
         else:
             instruction_list = self._normalize_markdown_section_instructions(
                 instruction_list,
+                writing_outline,
                 targets,
                 writing_context,
                 execution_data,
@@ -720,9 +727,7 @@ class WriterPlanningTools(WriterToolBase):
                 lines.append(f'{heading.group(1)} {title}')
                 continue
             lines.append(line)
-        return WriterPlanningTools._materialize_markdown_outline_anchors(
-            '\n'.join(lines).rstrip() + '\n',
-        )
+        return ensure_markdown_heading_anchors('\n'.join(lines).rstrip() + '\n')
 
     @staticmethod
     def _remove_outline_image_markup(line: str) -> str:
@@ -744,19 +749,6 @@ class WriterPlanningTools(WriterToolBase):
             line,
         )
         return re.sub(r'<img\b[^>]*>', '', line, flags=re.IGNORECASE)
-
-    @staticmethod
-    def _materialize_markdown_outline_anchors(outline: str) -> str:
-        _, targets = get_markdown_outline_targets(outline)
-        target_ids = iter(
-            WriterPlanningTools._markdown_outline_node_ids(targets).values()
-        )
-        lines: List[str] = []
-        for line, in_fence in WriterPlanningTools._markdown_lines_with_fence_state(outline):
-            if not in_fence and re.match(r'^##\s+.+?\s*$', line):
-                lines.append(f'<a id="block-{next(target_ids)}"></a>')
-            lines.append(line)
-        return '\n'.join(lines).rstrip() + '\n'
 
     @staticmethod
     def _markdown_lines_with_fence_state(markdown: str):
@@ -887,6 +879,7 @@ class WriterPlanningTools(WriterToolBase):
     def _normalize_markdown_section_instructions(
         self,
         instruction_list: SectionInstructionList,
+        outline: str,
         targets: List[tuple[int, List[str], int, str]],
         context: WritingContext,
         execution_results: Any,
@@ -919,6 +912,7 @@ class WriterPlanningTools(WriterToolBase):
 
         outline_id = f'{context.context_id}-outline-markdown'
         node_id_by_ref = self._markdown_outline_node_ids(targets)
+        headings_by_ref = self._markdown_heading_structure(outline)
         needs_by_ref = self._markdown_visual_needs_by_ref(visual_plan)
         visual_targets = {
             need.need_id
@@ -931,6 +925,7 @@ class WriterPlanningTools(WriterToolBase):
             instruction = instruction_by_ref[key]
             self._validate_instruction(instruction, '/'.join(heading_path))
             instruction.section_title = strip_heading_numbering(heading_path[-1])
+            instruction.heading_structure = headings_by_ref[key]
             instruction.references = []
             self._normalize_fact_constraints(instruction, bool(context.facts))
             instruction.meta.update({
@@ -996,6 +991,23 @@ class WriterPlanningTools(WriterToolBase):
             node_id = 'sec-' + '-'.join(f'{value:03d}' for value in counters)
             ids[(tuple(heading_path), occurrence)] = node_id
         return ids
+
+    @staticmethod
+    def _markdown_heading_structure(
+        outline: str,
+    ) -> Dict[tuple[tuple[str, ...], int], List[HeadingStructureItem]]:
+        result: Dict[tuple[tuple[str, ...], int], List[HeadingStructureItem]] = {}
+        current: tuple[tuple[str, ...], int] | None = None
+        for level, heading_path, occurrence, _ in parse_markdown_sections(outline):
+            if level == 2:
+                current = (tuple(heading_path), occurrence)
+                result[current] = []
+            elif level > 2 and current is not None:
+                result[current].append(HeadingStructureItem(
+                    level=level - 1,
+                    title=strip_heading_numbering(heading_path[-1]),
+                ))
+        return result
 
     @staticmethod
     def _markdown_visual_needs_by_ref(
@@ -1079,18 +1091,12 @@ class WriterPlanningTools(WriterToolBase):
             target = cls._resolve_cross_reference_target(
                 target_ref, section_ids, visual_targets or set(),
             )
-            kind = (
-                'image'
-                if target in (visual_targets or set())
-                else str(item.get('kind') or 'section')
-            )
-            if kind not in {'section', 'image'}:
-                raise ValueError(f'Unsupported cross-reference kind {kind!r}.')
-
             normalized.append({
                 'target': target,
-                'kind': kind,
-                'required': bool(item.get('required', True)),
+                'kind': 'image' if target in (visual_targets or set()) else 'section',
+                'required': target not in (visual_targets or set()) and bool(
+                    item.get('required', True)
+                ),
                 'must_create': False,
                 'caption': str(item.get('caption') or '').strip(),
                 'guidance': str(item.get('guidance') or '').strip(),
@@ -1333,6 +1339,15 @@ class WriterPlanningTools(WriterToolBase):
     ) -> SectionInstruction:
         self._validate_instruction(instruction, block.node_id)
         instruction.section_title = block.content
+        instruction.heading_structure = [
+            HeadingStructureItem(
+                node_id=node_id_by_original[item.node_id],
+                level=int(item.numbering.get('level') or 1),
+                title=strip_heading_numbering(item.content),
+            )
+            for item in block.iter_blocks()
+            if item is not block and item.type == 'heading'
+        ]
         instruction.content_ref.node_id = outline_node_id
         instruction.references = [dict(reference) for reference in block.references]
         instruction.visual_needs = []
