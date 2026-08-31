@@ -164,6 +164,38 @@ class _BudgetRecordingLLM(_FakeLLM):
         return super().__call__(input, **kwargs)
 
 
+class _RuntimeNoticeManager:
+    def __init__(self, manager):
+        self._manager = manager
+        self.calls = 0
+        self.notices = {}
+
+    def __getattr__(self, name):
+        return getattr(self._manager, name)
+
+    def __call__(self, tool_calls, **kwargs):
+        results = self._manager(tool_calls, **kwargs)
+        self.calls += 1
+        if self.calls == 3:
+            ids = tuple(tool_call['id'] for tool_call in tool_calls)
+            self.notices[ids] = (
+                '[Internal runtime notice]\nThe same tool call has returned the same result '
+                '3 consecutive times. Review the result and change the approach or arguments '
+                'instead of repeating it unchanged.'
+            )
+        return results
+
+    def consume_internal_runtime_notices(self, batch_tool_call_ids):
+        ids = tuple(batch_tool_call_ids)
+        if ids not in self.notices:
+            self.notices.clear()
+            return []
+        return [self.notices.pop(ids)]
+
+    def reset_internal_runtime_notice_state(self):
+        self.notices.clear()
+
+
 def _read_agent_events():
     events = []
     for raw in lazyllm.FileSystemQueue().dequeue():
@@ -171,6 +203,52 @@ def _read_agent_events():
             payload = json.loads(raw)
             events.append(SimpleNamespace(**payload))
     return events
+
+
+def test_function_call_appends_runtime_notice_after_compaction_and_keeps_it_internal():
+    outputs = [
+        {
+            'role': 'assistant',
+            'content': '',
+            'tool_calls': [{
+                'function': {'name': 'get_status', 'arguments': '{}'},
+            }],
+        }
+        for _ in range(3)
+    ] + [{'role': 'assistant', 'content': 'Done.'}]
+    llm = _FakeLLM(outputs)
+    manager = _RuntimeNoticeManager(ToolManager([get_status]))
+    compacted_inputs = []
+
+    def compact(prior_history, _keep, current_round_messages=None, **_kwargs):
+        current = list(current_round_messages or [])
+        compacted_inputs.append(copy.deepcopy(current))
+        return list(prior_history), current
+
+    function_call = FunctionCall(
+        llm,
+        _tool_manager=manager,
+        history_compactor=compact,
+    )
+    result = function_call('start')
+    generated_ids = []
+    while isinstance(result, dict):
+        generated_ids.append(result['tool_calls'][0]['id'])
+        result = function_call(result)
+
+    assert result == 'Done.'
+    assert len(set(generated_ids)) == 3
+    final_round_messages = llm.inputs[-1]['input']
+    assert [message['role'] for message in final_round_messages] == ['tool', 'user']
+    assert '3 consecutive times' in final_round_messages[-1]['content']
+    assert all(
+        '[Internal runtime notice]\nThe same tool call' not in json.dumps(messages)
+        for messages in compacted_inputs
+    )
+    assert not any(
+        str(message.get('content') or '').startswith('[Internal runtime notice]\n')
+        for message in lazyllm.locals['_lazyllm_agent']['history']
+    )
 
 
 class TestReactAgentEvents(object):

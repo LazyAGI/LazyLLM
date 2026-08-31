@@ -207,6 +207,8 @@ class ReactAgent(LazyLLMAgentBase):
             if completed is not None:
                 return completed
             return ret
+        if self._fc is not None:
+            self._fc.reset_internal_runtime_notice_state()
         if self._force_summarize:
             try:
                 agent_ctx = locals['_lazyllm_agent']

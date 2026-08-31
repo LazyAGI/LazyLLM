@@ -224,6 +224,35 @@ Args:
 
 ''')
 
+add_chinese_doc('ToolManager.resolve_tool_accesses', '''\
+解析一批工具调用在运行期访问的资源。
+
+该方法复用 ToolManager 的参数修复、校验和工具查找逻辑，供运行时监控组件判断读写冲突与进展语义。
+无效调用返回中性的访问结果；实际工具执行仍负责产生对应的失败结果。
+
+Args:
+    tool_calls (List[Dict]): 待解析的工具调用列表。
+    allowed_tool_names (Iterable[str] | None): 可选的工具名称白名单。
+
+Returns:
+    List: 与输入顺序一致的运行期资源访问结果。
+''')
+
+add_english_doc('ToolManager.resolve_tool_accesses', '''\
+Resolve runtime resource access for a batch of tool calls.
+
+This method reuses ToolManager argument repair, validation, and tool lookup so runtime monitors can evaluate
+resource conflicts and progress semantics consistently. Invalid calls receive neutral access; normal execution
+still produces their actual failure results.
+
+Args:
+    tool_calls (List[Dict]): Tool calls to resolve.
+    allowed_tool_names (Iterable[str] | None): Optional allowlist of tool names.
+
+Returns:
+    List: Runtime access results in input order.
+''')
+
 add_example('ToolManager', """\
 >>> from lazyllm.tools import ToolManager, fc_register
 >>> import json
@@ -306,7 +335,9 @@ add_example('ToolManager', """\
 """)
 
 add_agent_chinese_doc('register', '''\
-工具注册器，用于将函数注册为可供 FunctionCall/Agent 调用的工具。
+工具注册器，用于将函数注册为可供 FunctionCall/Agent 调用的工具。省略 group、仅传入运行时参数时，
+只为现有 callable 绑定 metadata，不产生额外注册。资源声明不会进入模型可见 schema；读资源可并行，
+重叠资源只要一方写入就会保持调用顺序，``("file", path)`` 还会判断规范化路径的父子关系。
 
 Args:
     group (str): 工具分组，建议使用 'tool'。
@@ -314,10 +345,17 @@ Args:
     input_files_parm (str): 指定函数中哪个参数包含输入文件路径，沙箱会在执行前上传这些文件。该参数指向的函数参数类型必须为 ``str`` 或 ``List[str]``。
     output_files_parm (str): 指定函数中哪个参数包含输出文件路径，沙箱执行完成后会下载这些文件。该参数指向的函数参数类型必须为 ``str`` 或 ``List[str]``。
     output_files (List[str]): 额外的输出文件路径列表，用于工具中硬编码的输出文件名（不通过函数参数传递），沙箱执行后也会下载这些文件。
+    read_keys: 静态读资源 key，或根据已校验工具参数返回读资源 key 的函数。
+    write_keys: 静态写资源 key，或根据已校验工具参数返回写资源 key 的函数。
+    exclusive (bool): 是否独占执行，不能与 ``read_keys`` 或 ``write_keys`` 同时使用。
+    polling (bool): 是否为允许连续返回相同结果的轮询工具。
 ''')
 
 add_agent_english_doc('register', '''\
-Tool registrar for registering functions as tools callable by FunctionCall/Agent.
+Tool registrar for registering functions as tools callable by FunctionCall/Agent. When only runtime
+options are provided and the group is omitted, metadata is attached without adding another registration.
+Resource declarations stay out of the model-facing schema. Readers may run concurrently, while overlapping
+resources are ordered whenever either side writes. ``("file", path)`` also detects canonical parent/child paths.
 
 Args:
     group (str): tool group, recommend using 'tool'.
@@ -325,73 +363,10 @@ Args:
     input_files_parm (str): the name of the function parameter that holds input file paths; the sandbox uploads these files before execution. The parameter it points to must be of type ``str`` or ``List[str]``.
     output_files_parm (str): the name of the function parameter that holds output file paths; the sandbox downloads these files after execution. The parameter it points to must be of type ``str`` or ``List[str]``.
     output_files (List[str]): additional output file paths for the sandbox to download, for cases where output filenames are hardcoded in the tool rather than passed as parameters.
-''')
-
-add_chinese_doc('tool_concurrency', '''\
-声明工具调用读取或写入的资源。``read_keys`` 和 ``write_keys`` 可以是静态 key，
-也可以是接收已校验工具参数字典的函数。读操作之间可以并行；路径重叠或 key 相同且
-至少一方为写操作时，``ToolManager`` 会保持工具调用顺序。``("file", path)`` 会按
-规范化后的文件路径及父子目录关系判断重叠。该声明不会出现在模型可见的工具 schema 中。
-
-Args:
-    read_keys: 静态读资源 key，或根据工具参数返回一个或多个读资源 key 的函数。
-    write_keys: 静态写资源 key，或根据工具参数返回一个或多个写资源 key 的函数。
-    exclusive (bool): 是否独占执行。不能与 ``read_keys`` 或 ``write_keys`` 同时使用。
-''')
-
-add_english_doc('tool_concurrency', '''\
-Declares the resources read or written by a tool invocation. ``read_keys`` and
-``write_keys`` may be static keys or callables receiving validated tool arguments.
-Readers may run concurrently; overlapping resources are ordered whenever either
-side writes. ``("file", path)`` uses canonical file paths and parent/child path
-overlap. The declaration is not included in the model-facing tool schema.
-
-Args:
-    read_keys: Static read keys or a callable returning one or more read keys.
-    write_keys: Static write keys or a callable returning one or more write keys.
-    exclusive (bool): Whether the tool runs exclusively. Cannot be combined with keys.
-''')
-
-add_example('tool_concurrency', '''\
->>> from lazyllm.tools import tool_concurrency
->>> @tool_concurrency(write_keys={'current_memory'})
-... def update_profile(value: str) -> str:
-...     \"\"\"Update profile.
-...
-...     Args:
-...         value (str): New value.
-...     \"\"\"
-...     return value
-
->>> @tool_concurrency(read_keys=lambda args: ('file', args['path']))
-... def read_text(path: str) -> str:
-...     \"\"\"Read text.
-...
-...     Args:
-...         path (str): File path.
-...     \"\"\"
-...     with open(path) as stream:
-...         return stream.read()
-
->>> @tool_concurrency(write_keys=lambda args: [
-...     ('file', args['source']), ('file', args['target'])])
-... def move_text(source: str, target: str) -> str:
-...     \"\"\"Move text.
-...
-...     Args:
-...         source (str): Source path.
-...         target (str): Target path.
-...     \"\"\"
-...     return target
-
->>> @tool_concurrency(exclusive=True)
-... def clarify(question: str) -> str:
-...     \"\"\"Ask a question.
-...
-...     Args:
-...         question (str): Question text.
-...     \"\"\"
-...     return question
+    read_keys: Static read resource keys or a callable receiving validated tool arguments.
+    write_keys: Static write resource keys or a callable receiving validated tool arguments.
+    exclusive (bool): Whether the tool runs exclusively. Cannot be combined with resource keys.
+    polling (bool): Whether unchanged repeated results are expected while polling.
 ''')
 
 add_agent_example('register', """\
@@ -415,6 +390,16 @@ add_agent_example('register', """\
 ...         output_paths (List[str] | None): output file paths.
 ...     '''
 ...     return "done"
+
+>>> @fc_register(read_keys=lambda args: ("file", args["path"]))
+... def read_text(path: str):
+...     '''Read a text file.
+...
+...     Args:
+...         path (str): file path.
+...     '''
+...     with open(path) as stream:
+...         return stream.read()
 """)
 
 add_agent_chinese_doc('code_interpreter', '''\
@@ -620,6 +605,19 @@ Args:
     _prompt (Optional[str]): Custom prompt for function call, defaults to automatic selection based on llm type.
 
 Note: Tools in `tools` must include a `__doc__` attribute and describe their purpose and parameters according to the [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings).
+''')
+
+add_chinese_doc('FunctionCall.reset_internal_runtime_notice_state', '''\
+清理 FunctionCall 所绑定工具管理器中的内部运行时提醒状态。
+
+该方法供 Agent 生命周期在正常结束、停止、取消、异常或达到最大轮次时统一清理内部状态。
+''')
+
+add_english_doc('FunctionCall.reset_internal_runtime_notice_state', '''\
+Clear internal runtime notice state held by the tool manager bound to this FunctionCall.
+
+Agent lifecycles use this method to clean up internal state after normal completion, stop, cancellation,
+exceptions, or maximum-turn termination.
 ''')
 
 add_example('FunctionCall', """\

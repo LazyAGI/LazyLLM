@@ -49,6 +49,7 @@ class StreamResponse():
 
 
 _ROUND_TOOLS_KEY = '_function_call_round_tools'
+_INTERNAL_RUNTIME_NOTICE_PREFIX = '[Internal runtime notice]\n'
 
 
 def _structured_compact_parts(compacted: Any) -> Optional[tuple]:
@@ -252,6 +253,37 @@ class FunctionCall(ModuleBase):
             history=history,
         )
 
+    def reset_internal_runtime_notice_state(self) -> None:
+        reset = getattr(self._tools_manager, 'reset_internal_runtime_notice_state', None)
+        if callable(reset):
+            reset()
+        try:
+            workspace = locals['_lazyllm_agent'].get('workspace', {})
+        except Exception:
+            return
+        history = workspace.get('history') if isinstance(workspace, dict) else None
+        if isinstance(history, list):
+            workspace['history'] = [
+                message for message in history
+                if not (
+                    message.get('role') == 'user'
+                    and str(message.get('content') or '').startswith(_INTERNAL_RUNTIME_NOTICE_PREFIX)
+                )
+            ]
+
+    def _consume_internal_runtime_notice_messages(
+        self,
+        workspace: Dict[str, Any],
+    ) -> List[Dict[str, str]]:
+        consume = getattr(self._tools_manager, 'consume_internal_runtime_notices', None)
+        if not callable(consume):
+            return []
+        batch_ids = [tool_call.get('id', '') for tool_call in workspace['tool_call_trace']]
+        notices = consume(batch_ids)
+        if not notices:
+            return []
+        return [{'role': 'user', 'content': '\n\n'.join(notices)}]
+
     def _build_current_tool_messages(
         self,
         workspace: Dict[str, Any],
@@ -301,6 +333,9 @@ class FunctionCall(ModuleBase):
             workspace=workspace,
             remaining_rounds=remaining_rounds,
         )
+        runtime_notice_messages = self._consume_internal_runtime_notice_messages(workspace)
+        workspace['history'].extend(runtime_notice_messages)
+        compacted_current.extend(runtime_notice_messages)
         locals['chat_history'][self._llm._module_id] = compacted_prior
         self._notify_history_ready(workspace, current_round, compacted_prior + compacted_current)
         return {'input': compacted_current}
@@ -308,6 +343,12 @@ class FunctionCall(ModuleBase):
     def _build_history(self, input: Union[str, dict, list]):
         self._get_current_tools(refresh=True)
         workspace = locals['_lazyllm_agent']['workspace']
+        is_user_input = isinstance(input, str) or (
+            isinstance(input, dict)
+            and ('input' in input or input.get('role') == 'user')
+        )
+        if is_user_input:
+            self.reset_internal_runtime_notice_state()
         history_idx = len(workspace.setdefault('history', []))
         current_round, budget_notice, remaining_rounds = self._prepare_round(workspace)
 
@@ -374,6 +415,7 @@ class FunctionCall(ModuleBase):
                 if (text := _tool_result_stop_text(result)) is not None
             ]
             if controlled_stop_texts:
+                self.reset_internal_runtime_notice_state()
                 return '\n'.join(controlled_stop_texts)
             if self._stop_tools:
                 called_names = {(tc.get('function') or {}).get('name') for tc in tool_calls if isinstance(tc, dict)}
@@ -388,6 +430,7 @@ class FunctionCall(ModuleBase):
                         and (tc.get('function') or {}).get('name') in self._stop_tools
                     )
                     if not stop_failed:
+                        self.reset_internal_runtime_notice_state()
                         if self._runtime_observer:
                             try:
                                 workspace = locals['_lazyllm_agent']['workspace']
@@ -403,6 +446,7 @@ class FunctionCall(ModuleBase):
                         return '\n'.join(str(_tool_result_observation(r)) for r in tool_calls_results)
         else:
             llm_output = llm_output['content']
+            self.reset_internal_runtime_notice_state()
         if self._runtime_observer:
             try:
                 workspace = locals['_lazyllm_agent']['workspace']
@@ -440,16 +484,25 @@ class FunctionCall(ModuleBase):
             # that may contain truncated tool_calls with invalid JSON arguments.
             locals['_lazyllm_agent'].pop('workspace', None)
             locals['chat_history'][self._llm._module_id] = []
+            self.reset_internal_runtime_notice_state()
             raise
 
         # If the model decides not to call any tools, the result is a string. For debugging and subsequent tasks,
         # the last non-empty tool call trace is stored in locals['_lazyllm_agent']['completed']
         # and history is stored in locals['_lazyllm_agent']['history'].
         if isinstance(result, str):
+            self.reset_internal_runtime_notice_state()
             workspace = locals['_lazyllm_agent'].pop('workspace', {})
             locals['_lazyllm_agent']['completed'] = workspace.pop(
                 'tool_call_trace', locals['_lazyllm_agent'].get('completed', []))
-            locals['_lazyllm_agent']['history'] = workspace.pop('history', [])
+            history = workspace.pop('history', [])
+            locals['_lazyllm_agent']['history'] = [
+                message for message in history
+                if not (
+                    message.get('role') == 'user'
+                    and str(message.get('content') or '').startswith(_INTERNAL_RUNTIME_NOTICE_PREFIX)
+                )
+            ]
             locals['chat_history'][self._llm._module_id] = []
         return result
 
