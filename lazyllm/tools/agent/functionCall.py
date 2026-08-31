@@ -189,7 +189,7 @@ class FunctionCall(ModuleBase):
             remaining_rounds,
         )
 
-    def _compact_history(
+    def _compact_history(  # noqa: C901
         self,
         prior_history: List[Dict[str, Any]],
         current_input: Any = None,
@@ -458,7 +458,7 @@ class FunctionCall(ModuleBase):
                 for cls in type(self._tools_manager).__mro__
             )
             execute_with_records = (
-                getattr(self._tools_manager, 'execute_with_records')
+                self._tools_manager.execute_with_records
                 if explicitly_supports_records else None
             )
             if callable(execute_with_records):

@@ -108,7 +108,7 @@ _PREPARED_BATCH_CONSTRUCTION_TOKEN = object()
 
 
 class PreparedToolBatch(Sequence[PreparedToolCall]):
-    """Manager-owned prepared calls with public inspection-only views."""
+    '''Manager-owned prepared calls with public inspection-only views.'''
 
     __slots__ = ('_calls', '_invocations', '_owner', '_consumed')
 
