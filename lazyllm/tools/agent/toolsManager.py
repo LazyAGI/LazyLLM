@@ -1169,6 +1169,7 @@ class ToolManager(ModuleBase):
         return lazyllm.package(ordered_results)
 
     def execute_prepared_calls(self, prepared_batch, selected_indices=None):
+        '''Execute one manager-owned prepared batch and return results with records.'''
         if not isinstance(prepared_batch, PreparedToolBatch):
             raise TypeError('execute_prepared_calls requires a PreparedToolBatch')
         invocations = prepared_batch._claim(self)
@@ -1204,6 +1205,7 @@ class ToolManager(ModuleBase):
     def execute_with_records(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]],
                              verbose: bool = False,
                              allowed_tool_names: Optional[Set[str]] = None):
+        '''Prepare and execute tool calls once, returning results with execution records.'''
         del verbose
         prepared = self.prepare_tool_calls(tools, allowed_tool_names)
         return self.execute_prepared_calls(prepared)

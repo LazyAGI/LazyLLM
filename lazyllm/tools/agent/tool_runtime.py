@@ -203,11 +203,17 @@ class RuntimeDelta:
 
 
 class AgentRuntimeExtension(Protocol):
-    def begin_run(self, context: Dict[str, Any]) -> None: ...
+    def begin_run(self, context: Dict[str, Any]) -> None:
+        '''Initialize extension state for one Agent run.'''
+        ...
 
-    def after_tool_batch(self, records: Sequence[ToolExecutionRecord]) -> RuntimeDelta: ...
+    def after_tool_batch(self, records: Sequence[ToolExecutionRecord]) -> RuntimeDelta:
+        '''Observe one completed tool batch and return one-shot model context.'''
+        ...
 
-    def end_run(self, reason: str) -> None: ...
+    def end_run(self, reason: str) -> None:
+        '''Release run-scoped extension state for the supplied terminal reason.'''
+        ...
 
 
 @dataclass(frozen=True)

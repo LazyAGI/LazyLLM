@@ -263,6 +263,7 @@ class FunctionCall(ModuleBase):
         )
 
     def discard_pending_runtime_context(self) -> None:
+        '''Discard undelivered internal runtime context without changing public history.'''
         try:
             workspace = locals['_lazyllm_agent'].get('workspace', {})
         except Exception:
