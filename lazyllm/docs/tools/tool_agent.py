@@ -240,6 +240,29 @@ and only by the ToolManager that created it. Use ``execute_with_records`` to pre
 separate resource-query API, preventing validators and dynamic resolvers from running twice.
 ''')
 
+add_english_doc('ToolManager.execute_prepared_calls', '''\
+Execute a manager-owned ``PreparedToolBatch`` once and return a ``ToolExecutionBatch``. ``selected_indices`` may select
+an ordered subset for execution; indices must be valid and unique. Batches from another manager and reused batches are
+rejected.
+''')
+
+add_english_doc('ToolManager.execute_with_records', '''\
+Prepare and execute tool calls through one validation and resource-resolution pass, returning ordered results together
+with ``ToolExecutionRecord`` values and their explicit execution dispositions.
+''')
+
+add_english_doc('AgentRuntimeExtension.begin_run', '''\
+Initialize extension state for one Agent run. ``context`` contains run-scoped internal facts and is not public history.
+''')
+
+add_english_doc('AgentRuntimeExtension.after_tool_batch', '''\
+Observe one completed ordered tool batch and return a one-shot ``RuntimeDelta`` for the next matching model call.
+''')
+
+add_english_doc('AgentRuntimeExtension.end_run', '''\
+Release run-scoped extension state after normal completion, stopping, cancellation, or an exception.
+''')
+
 add_example('ToolManager', """\
 >>> from lazyllm.tools import ToolManager, fc_register
 >>> import json
@@ -602,6 +625,10 @@ Args:
     _prompt (Optional[str]): Custom prompt for function call, defaults to automatic selection based on llm type.
 
 Note: Tools in `tools` must include a `__doc__` attribute and describe their purpose and parameters according to the [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings).
+''')
+
+add_english_doc('FunctionCall.discard_pending_runtime_context', '''\
+Discard any undelivered internal runtime context and its bound tool-call IDs without changing public conversation history.
 ''')
 
 add_example('FunctionCall', """\
