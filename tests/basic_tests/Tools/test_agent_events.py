@@ -1,3 +1,4 @@
+import asyncio
 import copy
 import json
 import threading
@@ -5,9 +6,11 @@ import time
 from types import SimpleNamespace
 
 import lazyllm
+import pytest
 from lazyllm.tools import PlanAndSolveAgent, ReactAgent
-from lazyllm.tools.agent import ToolExecutionError
+from lazyllm.tools.agent import RuntimeContext, RuntimeDelta, ToolExecutionError
 from lazyllm.tools.agent.base import (
+    LazyLLMAgentBase,
     TOOL_OBSERVATION_KEY,
     is_tool_result_envelope,
     normalize_tool_observation,
@@ -164,36 +167,80 @@ class _BudgetRecordingLLM(_FakeLLM):
         return super().__call__(input, **kwargs)
 
 
-class _RuntimeNoticeManager:
-    def __init__(self, manager):
-        self._manager = manager
+class _RuntimeNoticeExtension:
+    def __init__(self):
         self.calls = 0
-        self.notices = {}
+        self.ends = []
 
-    def __getattr__(self, name):
-        return getattr(self._manager, name)
+    def begin_run(self, _context):
+        self.calls = 0
 
-    def __call__(self, tool_calls, **kwargs):
-        results = self._manager(tool_calls, **kwargs)
+    def after_tool_batch(self, _records):
         self.calls += 1
-        if self.calls == 3:
-            ids = tuple(tool_call['id'] for tool_call in tool_calls)
-            self.notices[ids] = (
+        if self.calls >= 3:
+            return RuntimeDelta(model_context=(RuntimeContext(
                 '[Internal runtime notice]\nThe same tool call has returned the same result '
-                '3 consecutive times. Review the result and change the approach or arguments '
+                f'{self.calls} consecutive times. Review the result and change the approach or arguments '
                 'instead of repeating it unchanged.'
-            )
-        return results
+            ),))
+        return RuntimeDelta()
 
-    def consume_internal_runtime_notices(self, batch_tool_call_ids):
-        ids = tuple(batch_tool_call_ids)
-        if ids not in self.notices:
-            self.notices.clear()
-            return []
-        return [self.notices.pop(ids)]
+    def end_run(self, reason):
+        self.ends.append(reason)
 
-    def reset_internal_runtime_notice_state(self):
-        self.notices.clear()
+
+class _LifecycleAgent(LazyLLMAgentBase):
+    def __init__(self, action, extension, workspace):
+        super().__init__(
+            tools=[],
+            workspace=workspace,
+            sandbox=None,
+            enable_builtin_tools=False,
+            runtime_extensions=[extension],
+        )
+        self._agent = action
+
+    def build_agent(self):
+        pass
+
+
+class _LifecycleExtension:
+    def __init__(self):
+        self.begins = 0
+        self.ends = []
+
+    def begin_run(self, _context):
+        self.begins += 1
+
+    def end_run(self, reason):
+        self.ends.append(reason)
+
+
+def test_runtime_extension_lifecycle_ends_once_on_success(tmp_path):
+    extension = _LifecycleExtension()
+    agent = _LifecycleAgent(lambda value: value, extension, str(tmp_path))
+
+    assert agent.forward('done') == 'done'
+    assert extension.begins == 1
+    assert extension.ends == ['completed']
+
+
+def test_runtime_extension_lifecycle_ends_once_on_exception_and_cancellation(tmp_path):
+    def fail(_value):
+        raise RuntimeError('failed')
+
+    extension = _LifecycleExtension()
+    with pytest.raises(RuntimeError, match='failed'):
+        _LifecycleAgent(fail, extension, str(tmp_path)).forward('start')
+    assert extension.ends == ['exception']
+
+    def cancel(_value):
+        raise asyncio.CancelledError()
+
+    extension = _LifecycleExtension()
+    with pytest.raises(asyncio.CancelledError):
+        _LifecycleAgent(cancel, extension, str(tmp_path)).forward('start')
+    assert extension.ends == ['cancellation']
 
 
 def _read_agent_events():
@@ -205,7 +252,7 @@ def _read_agent_events():
     return events
 
 
-def test_function_call_appends_runtime_notice_after_compaction_and_keeps_it_internal():
+def test_function_call_delivers_only_current_runtime_context_after_compaction():
     outputs = [
         {
             'role': 'assistant',
@@ -214,21 +261,24 @@ def test_function_call_appends_runtime_notice_after_compaction_and_keeps_it_inte
                 'function': {'name': 'get_status', 'arguments': '{}'},
             }],
         }
-        for _ in range(3)
+        for _ in range(5)
     ] + [{'role': 'assistant', 'content': 'Done.'}]
     llm = _FakeLLM(outputs)
-    manager = _RuntimeNoticeManager(ToolManager([get_status]))
+    extension = _RuntimeNoticeExtension()
     compacted_inputs = []
+    reserved_runtime_tokens = []
 
-    def compact(prior_history, _keep, current_round_messages=None, **_kwargs):
+    def compact(prior_history, _keep, current_round_messages=None, **kwargs):
         current = list(current_round_messages or [])
         compacted_inputs.append(copy.deepcopy(current))
+        reserved_runtime_tokens.append(kwargs.get('reserved_runtime_context_tokens'))
         return list(prior_history), current
 
     function_call = FunctionCall(
         llm,
-        _tool_manager=manager,
+        _tool_manager=ToolManager([get_status]),
         history_compactor=compact,
+        runtime_extensions=[extension],
     )
     result = function_call('start')
     generated_ids = []
@@ -237,18 +287,45 @@ def test_function_call_appends_runtime_notice_after_compaction_and_keeps_it_inte
         result = function_call(result)
 
     assert result == 'Done.'
-    assert len(set(generated_ids)) == 3
-    final_round_messages = llm.inputs[-1]['input']
-    assert [message['role'] for message in final_round_messages] == ['tool', 'user']
-    assert '3 consecutive times' in final_round_messages[-1]['content']
+    assert len(set(generated_ids)) == 5
+    notice_inputs = [
+        model_input['input']
+        for model_input in llm.inputs
+        if isinstance(model_input, dict)
+        and any(
+            message.get('role') == 'user'
+            and str(message.get('content') or '').startswith('[Internal runtime notice]')
+            for message in model_input.get('input', [])
+        )
+    ]
+    assert len(notice_inputs) == 3
+    assert [messages[-1]['content'].split(' consecutive times')[0].rsplit(' ', 1)[-1]
+            for messages in notice_inputs] == ['3', '4', '5']
+    assert all([message['role'] for message in messages] == ['tool', 'user']
+               for messages in notice_inputs)
     assert all(
         '[Internal runtime notice]\nThe same tool call' not in json.dumps(messages)
         for messages in compacted_inputs
     )
+    assert set(reserved_runtime_tokens) == {512}
     assert not any(
         str(message.get('content') or '').startswith('[Internal runtime notice]\n')
         for message in lazyllm.locals['_lazyllm_agent']['history']
     )
+
+
+def test_user_message_with_runtime_notice_prefix_is_preserved_verbatim():
+    message = '[Internal runtime notice]\nThis is real user content.'
+    function_call = FunctionCall(
+        _FakeLLM([{'role': 'assistant', 'content': 'Done.'}]),
+        _tool_manager=ToolManager([get_status]),
+    )
+
+    assert function_call(message) == 'Done.'
+    assert lazyllm.locals['_lazyllm_agent']['history'][0] == {
+        'role': 'user',
+        'content': message,
+    }
 
 
 class TestReactAgentEvents(object):

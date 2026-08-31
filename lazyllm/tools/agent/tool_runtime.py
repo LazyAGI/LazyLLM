@@ -1,11 +1,12 @@
 import inspect
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Protocol, Sequence, Tuple
 
 
 _TOOL_RUNTIME_METADATA_ATTR = '__lazyllm_tool_runtime_metadata__'
+_TOOL_RUNTIME_METADATA_PATCH_ATTR = '__lazyllm_tool_runtime_metadata_patch__'
 _FILE_RESOURCE_NAMESPACE = 'file'
 
 
@@ -40,15 +41,85 @@ def _normalize_resource_keys(value: Any):
 
 
 @dataclass(frozen=True)
-class _ResolvedToolAccess:
+class ResolvedToolAccess:
     read_keys: frozenset = frozenset()
     write_keys: frozenset = frozenset()
     exclusive: bool = False
     polling: bool = False
 
+
+@dataclass(frozen=True)
+class PreparedToolCall:
+    tool_call: Dict[str, Any]
+    call_id: str
+    tool_name: str
+    arguments: Any
+    validated_arguments: Optional[Dict[str, Any]]
+    access: ResolvedToolAccess = field(default_factory=ResolvedToolAccess)
+    failure: Any = None
+
     @property
-    def counts_as_progress(self) -> bool:
-        return self.exclusive or bool(self.write_keys)
+    def ready(self) -> bool:
+        return self.failure is None and self.validated_arguments is not None
+
+    @property
+    def preparation_status(self) -> str:
+        return 'ready' if self.ready else 'invalid'
+
+
+@dataclass(frozen=True)
+class ToolExecutionRecord:
+    prepared: PreparedToolCall
+    result: Any
+    executed: bool = True
+
+    @property
+    def call_id(self) -> str:
+        return self.prepared.call_id
+
+    @property
+    def tool_name(self) -> str:
+        return self.prepared.tool_name
+
+    @property
+    def arguments(self) -> Any:
+        return self.prepared.arguments
+
+    @property
+    def validated_arguments(self) -> Optional[Dict[str, Any]]:
+        return self.prepared.validated_arguments
+
+    @property
+    def access(self) -> ResolvedToolAccess:
+        return self.prepared.access
+
+
+@dataclass(frozen=True)
+class ToolExecutionBatch:
+    results: Any
+    records: Tuple[ToolExecutionRecord, ...] = ()
+
+
+@dataclass(frozen=True)
+class RuntimeContext:
+    content: str
+
+    def __post_init__(self):
+        if not isinstance(self.content, str) or not self.content.strip():
+            raise ValueError('runtime context content must be a non-empty string')
+
+
+@dataclass(frozen=True)
+class RuntimeDelta:
+    model_context: Tuple[RuntimeContext, ...] = ()
+
+
+class AgentRuntimeExtension(Protocol):
+    def begin_run(self, context: Dict[str, Any]) -> None: ...
+
+    def after_tool_batch(self, records: Sequence[ToolExecutionRecord]) -> RuntimeDelta: ...
+
+    def end_run(self, reason: str) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -88,12 +159,12 @@ class ToolRuntimeMetadata:
         value = source(arguments) if callable(source) else source
         return _normalize_resource_keys(value)
 
-    def resolve(self, arguments: Dict[str, Any]) -> _ResolvedToolAccess:
+    def resolve(self, arguments: Dict[str, Any]) -> ResolvedToolAccess:
         if self.exclusive:
-            return _ResolvedToolAccess(exclusive=True, polling=self.polling)
+            return ResolvedToolAccess(exclusive=True, polling=self.polling)
         read_keys = self._resolve_source(self.read_keys, arguments)
         write_keys = self._resolve_source(self.write_keys, arguments)
-        return _ResolvedToolAccess(
+        return ResolvedToolAccess(
             read_keys=read_keys - write_keys,
             write_keys=write_keys,
             polling=self.polling,
@@ -104,22 +175,35 @@ def _get_tool_runtime_metadata(func: Optional[Callable]) -> Optional[ToolRuntime
     if func is None:
         return None
     target = getattr(func, '__func__', func)
-    metadata = getattr(target, _TOOL_RUNTIME_METADATA_ATTR, None)
-    if metadata is not None:
-        return metadata
     try:
-        target = inspect.unwrap(target)
+        canonical = inspect.unwrap(target)
     except (TypeError, ValueError):
-        return None
-    return getattr(target, _TOOL_RUNTIME_METADATA_ATTR, None)
+        canonical = target
+    return getattr(canonical, _TOOL_RUNTIME_METADATA_ATTR, None) \
+        or getattr(target, _TOOL_RUNTIME_METADATA_ATTR, None)
 
 
-def _set_tool_runtime_metadata(func: Callable, metadata: ToolRuntimeMetadata) -> None:
+def _set_tool_runtime_metadata(func: Callable, patch: Dict[str, Any]) -> None:
     target = getattr(func, '__func__', func)
-    existing = _get_tool_runtime_metadata(target)
-    if existing is not None and existing != metadata:
-        raise ValueError('conflicting ToolRuntimeMetadata declarations for the same callable')
-    setattr(target, _TOOL_RUNTIME_METADATA_ATTR, metadata)
+    try:
+        canonical = inspect.unwrap(target)
+    except (TypeError, ValueError):
+        canonical = target
+    existing_patch = dict(
+        getattr(canonical, _TOOL_RUNTIME_METADATA_PATCH_ATTR, None)
+        or getattr(target, _TOOL_RUNTIME_METADATA_PATCH_ATTR, {})
+        or {}
+    )
+    for name, value in patch.items():
+        if name in existing_patch and existing_patch[name] != value:
+            raise ValueError(
+                f'conflicting ToolRuntimeMetadata declaration for field {name!r}'
+            )
+        existing_patch[name] = value
+    metadata = ToolRuntimeMetadata(**existing_patch)
+    for item in {target, canonical}:
+        setattr(item, _TOOL_RUNTIME_METADATA_PATCH_ATTR, existing_patch)
+        setattr(item, _TOOL_RUNTIME_METADATA_ATTR, metadata)
 
 
 def _resource_keys_overlap(left, right) -> bool:
@@ -132,7 +216,7 @@ def _resource_keys_overlap(left, right) -> bool:
     return bool(common_length) and left_parts[:common_length] == right_parts[:common_length]
 
 
-def _accesses_conflict(current: _ResolvedToolAccess, reserved: _ResolvedToolAccess) -> bool:
+def _accesses_conflict(current: ResolvedToolAccess, reserved: ResolvedToolAccess) -> bool:
     occupied = reserved.read_keys | reserved.write_keys
     return (
         any(_resource_keys_overlap(write, key) for write in current.write_keys for key in occupied)

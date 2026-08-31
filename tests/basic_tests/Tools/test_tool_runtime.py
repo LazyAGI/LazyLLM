@@ -36,7 +36,7 @@ def test_runtime_metadata_validation_and_resolution():
     assert not access.read_keys.intersection(access.write_keys)
     assert access.write_keys
     assert access.polling is True
-    assert access.counts_as_progress is True
+    assert not hasattr(access, 'counts_as_progress')
     with pytest.raises(FrozenInstanceError):
         metadata.polling = False
 
@@ -76,23 +76,34 @@ def test_registration_forms_and_compatible_alias():
             lazyllm.tool.remove(name)
 
 
-def test_stacked_groups_reuse_one_declaration_and_conflicts_fail():
+def test_stacked_metadata_merges_fields_idempotently_and_rejects_conflicts():
     tool = _documented_tool('runtime_stacked_tool')
 
     def read_keys(args):
         return ('file', args['value'])
 
-    try:
-        fc_register('tool', read_keys=read_keys)(tool)
-        fc_register('builtin_tools', read_keys=read_keys)(tool)
-        assert lazyllm.tool.runtime_stacked_tool().runtime_metadata.read_keys is read_keys
-        assert lazyllm.builtin_tools.runtime_stacked_tool().runtime_metadata.read_keys is read_keys
+    fc_register(read_keys=read_keys)(tool)
+    fc_register(polling=True)(tool)
+    fc_register(polling=True)(tool)
+    metadata = ToolManager([tool]).all_tools[0].runtime_metadata
+    assert metadata.read_keys is read_keys
+    assert metadata.polling is True
 
-        with pytest.raises(ValueError, match='conflicting ToolRuntimeMetadata'):
-            fc_register(write_keys=lambda args: ('file', args['value']))(tool)
+    with pytest.raises(ValueError, match='conflicting ToolRuntimeMetadata'):
+        fc_register(read_keys='other-resource')(tool)
+
+
+def test_metadata_patch_after_registration_updates_future_instances():
+    tool = _documented_tool('runtime_late_patch_tool')
+    try:
+        fc_register('tool', read_keys='shared')(tool)
+        fc_register(polling=True)(tool)
+
+        metadata = lazyllm.tool.runtime_late_patch_tool().runtime_metadata
+        assert metadata.read_keys == 'shared'
+        assert metadata.polling is True
     finally:
-        lazyllm.tool.remove('runtime_stacked_tool')
-        lazyllm.builtin_tools.remove('runtime_stacked_tool')
+        lazyllm.tool.remove('runtime_late_patch_tool')
 
 
 def test_method_metadata_preserves_non_sandbox_execution():
@@ -113,15 +124,59 @@ def test_method_metadata_preserves_non_sandbox_execution():
     assert tool._resolve_runtime_access({'value': 'x'}).read_keys
 
 
-def test_resolve_tool_accesses_returns_neutral_for_invalid_calls():
+def test_prepared_calls_expose_access_and_invalid_preparation_state():
     tool = _documented_tool()
     fc_register(write_keys='shared')(tool)
     manager = ToolManager([tool])
 
-    accesses = manager.resolve_tool_accesses([
+    prepared = manager.prepare_tool_calls([
         {'id': 'bad', 'function': {'name': 'missing', 'arguments': '{}'}},
         {'id': 'good', 'function': {'name': tool.__name__, 'arguments': '{"value":"x"}'}},
     ])
 
-    assert not accesses[0].read_keys and not accesses[0].write_keys and not accesses[0].exclusive
-    assert accesses[1].write_keys
+    assert prepared[0].preparation_status == 'invalid'
+    assert not prepared[0].access.read_keys and not prepared[0].access.write_keys
+    assert prepared[1].preparation_status == 'ready'
+    assert prepared[1].access.write_keys
+    assert not hasattr(manager, 'resolve_tool_accesses')
+
+    batch = manager.execute_prepared_calls(prepared)
+    assert [record.executed for record in batch.records] == [False, True]
+
+
+def test_prepare_and_execute_validate_resolve_and_invoke_once():
+    calls = {'validate': 0, 'resolve': 0, 'invoke': 0}
+
+    def resolve(arguments):
+        calls['resolve'] += 1
+        return f'resource:{arguments["value"]}'
+
+    @fc_register(read_keys=resolve)
+    def tool(value: str) -> str:
+        '''Return a value.
+
+        Args:
+            value: Input value.
+        '''
+        calls['invoke'] += 1
+        return value
+
+    manager = ToolManager([tool])
+    module_tool = manager.all_tools[0]
+    original_validate = module_tool._validate_input
+
+    def validate(arguments):
+        calls['validate'] += 1
+        return original_validate(arguments)
+
+    module_tool._validate_input = validate
+    batch = manager.execute_with_records({
+        'id': 'one',
+        'function': {'name': 'tool', 'arguments': '{"value":"x",}'},
+    })
+
+    assert calls == {'validate': 1, 'resolve': 1, 'invoke': 1}
+    assert list(batch.results) == [{'ok': True, 'value': 'x'}]
+    assert batch.records[0].arguments == {'value': 'x'}
+    assert batch.records[0].validated_arguments == {'value': 'x'}
+    assert batch.records[0].executed is True

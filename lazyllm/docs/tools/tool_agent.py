@@ -224,33 +224,18 @@ Args:
 
 ''')
 
-add_chinese_doc('ToolManager.resolve_tool_accesses', '''\
-解析一批工具调用在运行期访问的资源。
-
-该方法复用 ToolManager 的参数修复、校验和工具查找逻辑，供运行时监控组件判断读写冲突与进展语义。
-无效调用返回中性的访问结果；实际工具执行仍负责产生对应的失败结果。
-
-Args:
-    tool_calls (List[Dict]): 待解析的工具调用列表。
-    allowed_tool_names (Iterable[str] | None): 可选的工具名称白名单。
-
-Returns:
-    List: 与输入顺序一致的运行期资源访问结果。
+add_chinese_doc('ToolManager.prepare_tool_calls', '''\
+一次性完成工具调用规范化、JSON 修复、参数校验和运行期资源解析，返回与输入顺序一致的
+``PreparedToolCall``。资源事实通过 ``prepared.access`` 获取；不再提供独立资源查询接口，避免校验器和
+动态资源解析器在执行前被重复调用。已准备调用可交给 ``execute_prepared_calls``，或直接使用
+``execute_with_records`` 完成准备与执行并取得 ``ToolExecutionBatch``。
 ''')
 
-add_english_doc('ToolManager.resolve_tool_accesses', '''\
-Resolve runtime resource access for a batch of tool calls.
-
-This method reuses ToolManager argument repair, validation, and tool lookup so runtime monitors can evaluate
-resource conflicts and progress semantics consistently. Invalid calls receive neutral access; normal execution
-still produces their actual failure results.
-
-Args:
-    tool_calls (List[Dict]): Tool calls to resolve.
-    allowed_tool_names (Iterable[str] | None): Optional allowlist of tool names.
-
-Returns:
-    List: Runtime access results in input order.
+add_english_doc('ToolManager.prepare_tool_calls', '''\
+Normalize calls, repair JSON, validate arguments, and resolve runtime resources exactly once. The returned
+``PreparedToolCall`` objects preserve input order and expose resource facts through ``prepared.access``.
+Use ``execute_prepared_calls`` to execute them, or ``execute_with_records`` to prepare and execute in one step.
+There is no separate resource-query API, preventing validators and dynamic resolvers from running twice.
 ''')
 
 add_example('ToolManager', """\
@@ -349,6 +334,11 @@ Args:
     write_keys: 静态写资源 key，或根据已校验工具参数返回写资源 key 的函数。
     exclusive (bool): 是否独占执行，不能与 ``read_keys`` 或 ``write_keys`` 同时使用。
     polling (bool): 是否为允许连续返回相同结果的轮询工具。
+
+``fc_register`` 采用显式字段合并：不同字段可由多层装饰组合，相同字段相同值为幂等声明，相同字段不同值会报错。
+``tool_concurrency`` 已直接删除，属于 breaking change；请迁移为
+``@fc_register(read_keys=...)``、``@fc_register(write_keys=...)``、``@fc_register(exclusive=True)``
+或 ``@fc_register(polling=True)``。
 ''')
 
 add_agent_english_doc('register', '''\
@@ -367,6 +357,11 @@ Args:
     write_keys: Static write resource keys or a callable receiving validated tool arguments.
     exclusive (bool): Whether the tool runs exclusively. Cannot be combined with resource keys.
     polling (bool): Whether unchanged repeated results are expected while polling.
+
+``fc_register`` merges explicitly supplied fields across decorator layers. Repeating the same field and value is
+idempotent; declaring a different value for the same field raises an error. ``tool_concurrency`` has been removed as
+a breaking change. Migrate to ``@fc_register(read_keys=...)``, ``@fc_register(write_keys=...)``,
+``@fc_register(exclusive=True)``, or ``@fc_register(polling=True)``.
 ''')
 
 add_agent_example('register', """\
@@ -605,19 +600,6 @@ Args:
     _prompt (Optional[str]): Custom prompt for function call, defaults to automatic selection based on llm type.
 
 Note: Tools in `tools` must include a `__doc__` attribute and describe their purpose and parameters according to the [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings).
-''')
-
-add_chinese_doc('FunctionCall.reset_internal_runtime_notice_state', '''\
-清理 FunctionCall 所绑定工具管理器中的内部运行时提醒状态。
-
-该方法供 Agent 生命周期在正常结束、停止、取消、异常或达到最大轮次时统一清理内部状态。
-''')
-
-add_english_doc('FunctionCall.reset_internal_runtime_notice_state', '''\
-Clear internal runtime notice state held by the tool manager bound to this FunctionCall.
-
-Agent lifecycles use this method to clean up internal state after normal completion, stop, cancellation,
-exceptions, or maximum-turn termination.
 ''')
 
 add_example('FunctionCall', """\

@@ -1,6 +1,6 @@
 import ast
 import copy
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import json as std_json
 import json5 as json
 import lazyllm
@@ -18,8 +18,11 @@ from pydantic import create_model, BaseModel, ConfigDict, ValidationError
 from lazyllm import LOG, locals as lazyllm_locals
 from .toolError import exception_failure, tool_failure
 from .tool_runtime import (
+    PreparedToolCall,
+    ResolvedToolAccess,
+    ToolExecutionBatch,
+    ToolExecutionRecord,
     ToolRuntimeMetadata,
-    _ResolvedToolAccess,
     _accesses_conflict,
     _get_tool_runtime_metadata,
     _set_tool_runtime_metadata,
@@ -29,6 +32,11 @@ from typing import *  # noqa F403, to import all types for compile_func(), do no
 # ---------------------------------------------------------------------------- #
 
 _UNSET = object()
+
+
+@dataclass(frozen=True)
+class _ValidatedToolInput:
+    value: Any
 
 
 def _levenshtein(left, right):
@@ -171,7 +179,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def runtime_metadata(self) -> ToolRuntimeMetadata:
         return self._runtime_metadata
 
-    def _resolve_runtime_access(self, validated_arguments: Dict[str, Any]) -> _ResolvedToolAccess:
+    def _resolve_runtime_access(self, validated_arguments: Dict[str, Any]) -> ResolvedToolAccess:
         try:
             return self._runtime_metadata.resolve(validated_arguments)
         except Exception as error:
@@ -179,7 +187,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
                 f'[ToolRuntime] tool={self.name!r} could not resolve resource keys; '
                 f'using exclusive execution: {type(error).__name__}: {error}'
             )
-            return _ResolvedToolAccess(exclusive=True, polling=self._runtime_metadata.polling)
+            return ResolvedToolAccess(exclusive=True, polling=self._runtime_metadata.polling)
 
     @property
     def input_files_parm(self) -> str:
@@ -292,7 +300,11 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return False
 
     def forward(self, tool_input: Union[str, Dict[str, Any]], verbose: bool = False) -> Any:
-        val_input = self._validate_input(tool_input)
+        validated = tool_input.value if isinstance(tool_input, _ValidatedToolInput) \
+            else self._validate_input(tool_input)
+        return self._execute_validated(validated, verbose=verbose)
+
+    def _execute_validated(self, val_input: Any, verbose: bool = False) -> Any:
         if isinstance(val_input, dict):
             ret = self.apply(**val_input)
         else:
@@ -311,7 +323,8 @@ import base64
 import cloudpickle
 tool = cloudpickle.loads(base64.b64decode({repr(tool_dump)}.encode('utf-8')))
 kwargs = cloudpickle.loads(base64.b64decode({repr(args_dump)}.encode('utf-8')))
-result = tool(kwargs)
+from lazyllm.tools.agent.toolsManager import _ValidatedToolInput
+result = tool(_ValidatedToolInput(kwargs))
 print(f'{SANDBOX_TOOL_RESULT_PREFIX}{{result}}')  # noqa print
 '''
 
@@ -337,7 +350,8 @@ def _runtime_metadata_from_options(options):
         assert isinstance(output_files, list) and all(isinstance(item, str) for item in output_files), \
             f'output_files must be a list of strings, but got {type(output_files)}'
         normalized['output_files'] = tuple(output_files)
-    return ToolRuntimeMetadata(**normalized)
+    ToolRuntimeMetadata(**normalized)
+    return normalized
 
 
 class _FunctionCallRegister:
@@ -941,7 +955,7 @@ class ToolManager(ModuleBase):
             failure = tool_failure(
                 f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}',
             )
-            return None, failure, None
+            return None, None, None, failure
         name = name.strip()
         raw_args = func['arguments']
         visible_names = list(self._tool_call) if allowed_tool_names is None else sorted(
@@ -956,60 +970,91 @@ class ToolManager(ModuleBase):
             lazyllm.LOG.warning(
                 f'[ToolManager] tool {name!r} was not exposed. Visible: {visible_names}'
             )
-            return None, failure, None
+            return None, raw_args, None, failure
         try:
             arguments = ToolManager._safe_parse_json(raw_args) if isinstance(raw_args, str) else raw_args
         except (TypeError, ValueError):
             failure = tool_failure(
                 'Invalid arguments: arguments must be valid JSON.',
             )
-            return None, failure, None
+            return None, raw_args.strip() if isinstance(raw_args, str) else raw_args, None, failure
         if not isinstance(arguments, dict):
             failure = tool_failure(
                 f'Invalid arguments: Tool [{name}] arguments must be a JSON object, '
                 f'got {type(arguments).__name__}.',
             )
-            return None, failure, None
+            return None, arguments, None, failure
         tool = self._tool_call.get(name)
         if tool is None:
             failure = tool_failure(
                 f'Tool [{name}] is no longer registered.',
             )
-            return None, failure, None
+            return None, arguments, None, failure
         validated_arguments, validation_failure = self._validate_tool(name, arguments)
         if validated_arguments is None:
-            return None, validation_failure, None
-        return tool, arguments, validated_arguments
+            return None, arguments, None, validation_failure
+        return tool, arguments, validated_arguments, None
 
     @staticmethod
     def _call_tool(tool, arguments, exposed_name):
         try:
-            value = tool(arguments)
+            value = tool(_ValidatedToolInput(arguments))
             return {'ok': True, 'value': value}
         except Exception as error:
             lazyllm.LOG.warning(
                 f'[ToolCall] tool={exposed_name!r} raised: {type(error).__name__}: {error}')
             return exception_failure(exposed_name, error)
 
-    def _build_tool_invocation(self, tool_call, allowed_tool_names=None):
-        function = tool_call.get('function') if isinstance(tool_call, dict) else None
-        exposed_name = str(function.get('name') or '') if isinstance(function, dict) else ''
-        tool, arguments, validated_arguments = self._parse_tool_call(tool_call, allowed_tool_names)
-        if tool is None:
-            return (
-                lambda *_, _failure=arguments: _failure,
-                {},
-                _ResolvedToolAccess(),
+    def prepare_tool_calls(self, tools, allowed_tool_names=None):
+        tool_calls = self.normalize_tool_calls([tools] if isinstance(tools, dict) else list(tools or []))
+        prepared = []
+        for tool_call in tool_calls:
+            function = tool_call.get('function') if isinstance(tool_call, dict) else None
+            tool_name = str(function.get('name') or '') if isinstance(function, dict) else ''
+            call_id = str(tool_call.get('id') or '') if isinstance(tool_call, dict) else ''
+            tool, normalized_arguments, validated_arguments, failure = self._parse_tool_call(
+                tool_call, allowed_tool_names,
             )
-        access = tool._resolve_runtime_access(validated_arguments)
+            if tool is None:
+                prepared.append(PreparedToolCall(
+                    tool_call=tool_call,
+                    call_id=call_id,
+                    tool_name=tool_name,
+                    arguments=normalized_arguments,
+                    validated_arguments=None,
+                    failure=failure,
+                ))
+                continue
+            prepared.append(PreparedToolCall(
+                tool_call=tool_call,
+                call_id=call_id,
+                tool_name=tool_name,
+                arguments=normalized_arguments,
+                validated_arguments=validated_arguments,
+                access=tool._resolve_runtime_access(validated_arguments),
+            ))
+        return prepared
+
+    def _build_prepared_invocation(self, prepared: PreparedToolCall):
+        if not prepared.ready:
+            return (
+                lambda *_, _failure=prepared.failure: _failure,
+                {},
+                prepared.access,
+                False,
+            )
+        tool = self._tool_call.get(prepared.tool_name)
+        if tool is None:
+            failure = tool_failure(f'Tool [{prepared.tool_name}] is no longer registered.')
+            return lambda *_, _failure=failure: _failure, {}, prepared.access, False
         if self._sandbox and tool.execute_in_sandbox:
-            sandbox_arguments = self._build_sandbox_args(tool, arguments)
-            return self._sandbox, sandbox_arguments, access
+            sandbox_arguments = self._build_sandbox_args(tool, prepared.validated_arguments)
+            return self._sandbox, sandbox_arguments, prepared.access, True
 
         def _safe_call(args):
-            return self._call_tool(tool, args, exposed_name)
+            return self._call_tool(tool, args, prepared.tool_name)
 
-        return _safe_call, arguments, access
+        return _safe_call, prepared.validated_arguments, prepared.access, True
 
     @staticmethod
     def _invoke_tool_callable(callable_, arguments):
@@ -1021,14 +1066,14 @@ class ToolManager(ModuleBase):
     def _build_execution_segments(accesses):
         segments = []
         current_segment = []
-        reserved = _ResolvedToolAccess()
+        reserved = ResolvedToolAccess()
 
         def close_current_segment():
             nonlocal current_segment, reserved
             if current_segment:
                 segments.append(current_segment)
                 current_segment = []
-                reserved = _ResolvedToolAccess()
+                reserved = ResolvedToolAccess()
 
         for index, access in enumerate(accesses):
             if access.exclusive:
@@ -1038,21 +1083,12 @@ class ToolManager(ModuleBase):
             if _accesses_conflict(access, reserved):
                 close_current_segment()
             current_segment.append(index)
-            reserved = _ResolvedToolAccess(
+            reserved = ResolvedToolAccess(
                 read_keys=reserved.read_keys | access.read_keys,
                 write_keys=reserved.write_keys | access.write_keys,
             )
         close_current_segment()
         return segments
-
-    def resolve_tool_accesses(self, tool_calls, allowed_tool_names=None):
-        accesses = []
-        for tool_call in tool_calls if isinstance(tool_calls, list) else [tool_calls]:
-            tool, _, validated_arguments = self._parse_tool_call(tool_call, allowed_tool_names)
-            access = tool._resolve_runtime_access(validated_arguments) if tool is not None \
-                else _ResolvedToolAccess()
-            accesses.append(access)
-        return accesses
 
     @classmethod
     def _execute_segment(cls, indices, callables, call_arguments):
@@ -1087,15 +1123,34 @@ class ToolManager(ModuleBase):
             raise min(errors, key=lambda item: item[0])[1]
         return lazyllm.package(ordered_results)
 
+    def execute_prepared_calls(self, prepared_calls):
+        prepared_calls = list(prepared_calls or [])
+        if not prepared_calls:
+            return ToolExecutionBatch(results=[], records=())
+        invocations = [
+            self._build_prepared_invocation(prepared)
+            for prepared in prepared_calls
+        ]
+        callables, call_arguments, accesses, executed = map(list, zip(*invocations))
+        tool_calls = [prepared.tool_call for prepared in prepared_calls]
+        results = self._execute_tool_calls(tool_calls, callables, call_arguments, accesses)
+        records = tuple(
+            ToolExecutionRecord(prepared=prepared, result=result, executed=was_executed)
+            for prepared, result, was_executed in zip(prepared_calls, results, executed)
+        )
+        return ToolExecutionBatch(results=results, records=records)
+
+    def execute_with_records(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]],
+                             verbose: bool = False,
+                             allowed_tool_names: Optional[Set[str]] = None):
+        del verbose
+        prepared = self.prepare_tool_calls(tools, allowed_tool_names)
+        return self.execute_prepared_calls(prepared)
+
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False,
                 allowed_tool_names: Optional[Set[str]] = None):
-        if isinstance(tools, list) and not tools: return []
-        tool_calls = self.normalize_tool_calls([tools] if isinstance(tools, dict) else tools)
-        if not isinstance(tool_calls, list):
-            tool_calls = [tool_calls]
-        invocations = [
-            self._build_tool_invocation(tool_call, allowed_tool_names)
-            for tool_call in tool_calls
-        ]
-        callables, call_arguments, accesses = map(list, zip(*invocations))
-        return self._execute_tool_calls(tool_calls, callables, call_arguments, accesses)
+        return self.execute_with_records(
+            tools,
+            verbose=verbose,
+            allowed_tool_names=allowed_tool_names,
+        ).results
