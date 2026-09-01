@@ -23,6 +23,27 @@ class ContentRef(BaseModel):
     occurrence: int = Field(default=1, ge=1)
 
 
+class ContextRelation(BaseModel):
+    '''An outline node's dependency on context from another outline node.'''
+
+    target_node_id: str
+    relation: str
+    guidance: str = ''
+
+
+class WritingSubTask(BaseModel):
+    '''A document-level question that must be resolved for one outline node.'''
+
+    subtask_id: str
+    node_id: str
+    question: str
+    subtask_type: Literal['retrieve', 'extract', 'reason']
+    status: Literal['pending', 'running', 'completed', 'retrying', 'failed'] = 'pending'
+    result_summary: str = ''
+    retry_count: int = Field(default=0, ge=0)
+    result_references: List[Dict[str, Any]] = Field(default_factory=list)
+
+
 class WriterSpan(BaseModel):
     model_config = ConfigDict(extra='allow')
 
@@ -39,6 +60,9 @@ class WriterBlock(BaseModel):
     # identifiers belong in provider_binding (for example provider_binding.block_id).
     node_id: str
     type: str
+    target_chars: Optional[int] = Field(default=None, gt=0)
+    context_relations: List[ContextRelation] = Field(default_factory=list)
+    subtasks: List[WritingSubTask] = Field(default_factory=list)
     numbering: Dict[str, Any] = Field(default_factory=dict)
     references: List[Dict[str, Any]] = Field(default_factory=list)
     content: str = ''
@@ -95,7 +119,8 @@ WriterDocument.model_rebuild()
 
 
 __all__ = [
-    'ContentRef', 'WriterDocument', 'WriterBlock', 'WriterSpan', 'WriterStage',
+    'ContentRef', 'ContextRelation', 'WritingSubTask', 'WriterDocument', 'WriterBlock',
+    'WriterSpan', 'WriterStage',
     'WRITER_IR_FILE_EXTENSION', 'WRITER_IR_CONTENT_TYPE',
     'WRITER_BLOCK_MUTABLE_FIELDS', 'WRITER_BLOCK_PROVIDER_MANAGED_FIELDS',
 ]
