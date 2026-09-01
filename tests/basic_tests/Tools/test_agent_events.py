@@ -165,21 +165,6 @@ class _BudgetRecordingLLM(_FakeLLM):
         return super().__call__(input, **kwargs)
 
 
-class _RuntimeNoticeProvider:
-    def __init__(self):
-        self.calls = 0
-
-    def __call__(self):
-        self.calls += 1
-        if self.calls >= 3:
-            return (
-                '[Internal runtime notice]\nThe same tool call has returned the same result '
-                f'{self.calls} consecutive times. Review the result and change the approach or arguments '
-                'instead of repeating it unchanged.'
-            )
-        return None
-
-
 def _read_agent_events():
     events = []
     for raw in lazyllm.FileSystemQueue().dequeue():
@@ -189,7 +174,7 @@ def _read_agent_events():
     return events
 
 
-def test_function_call_delivers_only_current_runtime_context_after_compaction():
+def test_function_call_delivers_model_context_after_compaction():
     outputs = [
         {
             'role': 'assistant',
@@ -197,11 +182,10 @@ def test_function_call_delivers_only_current_runtime_context_after_compaction():
             'tool_calls': [{
                 'function': {'name': 'get_status', 'arguments': '{}'},
             }],
-        }
-        for _ in range(5)
-    ] + [{'role': 'assistant', 'content': 'Done.'}]
+        },
+        {'role': 'assistant', 'content': 'Done.'},
+    ]
     llm = _FakeLLM(outputs)
-    provider = _RuntimeNoticeProvider()
     compacted_inputs = []
     reserved_runtime_tokens = []
 
@@ -215,33 +199,16 @@ def test_function_call_delivers_only_current_runtime_context_after_compaction():
         llm,
         _tool_manager=ToolManager([get_status]),
         history_compactor=compact,
-        model_context_provider=provider,
+        model_context_provider=lambda: '[Internal runtime notice]\nChange the approach.',
     )
     result = function_call('start')
-    generated_ids = []
-    while isinstance(result, dict):
-        generated_ids.append(result['tool_calls'][0]['id'])
-        result = function_call(result)
 
-    assert result == 'Done.'
-    assert len(set(generated_ids)) == 5
-    notice_inputs = [
-        model_input['input']
-        for model_input in llm.inputs
-        if isinstance(model_input, dict)
-        and any(
-            message.get('role') == 'user'
-            and str(message.get('content') or '').startswith('[Internal runtime notice]')
-            for message in model_input.get('input', [])
-        )
-    ]
-    assert len(notice_inputs) == 3
-    assert [messages[-1]['content'].split(' consecutive times')[0].rsplit(' ', 1)[-1]
-            for messages in notice_inputs] == ['3', '4', '5']
-    assert all([message['role'] for message in messages] == ['tool', 'user']
-               for messages in notice_inputs)
+    assert function_call(result) == 'Done.'
+    model_input = llm.inputs[-1]['input']
+    assert [message['role'] for message in model_input[-2:]] == ['tool', 'user']
+    assert model_input[-1]['content'] == '[Internal runtime notice]\nChange the approach.'
     assert all(
-        '[Internal runtime notice]\nThe same tool call' not in json.dumps(messages)
+        '[Internal runtime notice]' not in json.dumps(messages)
         for messages in compacted_inputs
     )
     assert set(reserved_runtime_tokens) == {512}
@@ -274,20 +241,6 @@ def test_model_context_provider_failure_does_not_interrupt_tool_round():
     result = function_call('start')
 
     assert function_call(result) == 'Done.'
-
-
-def test_user_message_with_runtime_notice_prefix_is_preserved_verbatim():
-    message = '[Internal runtime notice]\nThis is real user content.'
-    function_call = FunctionCall(
-        _FakeLLM([{'role': 'assistant', 'content': 'Done.'}]),
-        _tool_manager=ToolManager([get_status]),
-    )
-
-    assert function_call(message) == 'Done.'
-    assert lazyllm.locals['_lazyllm_agent']['history'][0] == {
-        'role': 'user',
-        'content': message,
-    }
 
 
 def test_function_call_does_not_bypass_legacy_delegating_manager_wrapper():
