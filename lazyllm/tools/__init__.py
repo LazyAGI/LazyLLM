@@ -16,10 +16,15 @@ if TYPE_CHECKING:
                      YuqueFS, OnesFS, S3FS, ObsidianFS)
     from .agent import (
         ToolManager,
-        tool_concurrency,
+        PreparedToolCall,
+        ResolvedToolAccess,
+        ToolExecutionBatch,
+        ToolExecutionDisposition,
+        ToolExecutionRecord,
+        ToolRuntimeMetadata,
         FunctionCall,
         FunctionCallAgent,
-        register as fc_register,
+        fc_register,
         LazyLLMAgentBase,
         ReactAgent,
         PlanAndSolveAgent,
@@ -58,7 +63,7 @@ def __getattr__(name: str):
 
     if name == 'fc_register':
         agent = import_module('.agent', package=__package__)
-        globals()['fc_register'] = value = agent.register
+        globals()['fc_register'] = value = agent.fc_register
     elif name in _SUBMOD_MAP:
         return import_module(f'.{name}', package=__package__)
     elif name in _SUBMOD_MAP_REVERSE:
@@ -94,7 +99,12 @@ _SUBMOD_MAP = {
     'webpages': ['WebModule'],
     'agent': [
         'ToolManager',
-        'tool_concurrency',
+        'ResolvedToolAccess',
+        'PreparedToolCall',
+        'ToolExecutionRecord',
+        'ToolExecutionBatch',
+        'ToolExecutionDisposition',
+        'ToolRuntimeMetadata',
         'ModuleTool',
         'FunctionCall',
         'FunctionCallAgent',

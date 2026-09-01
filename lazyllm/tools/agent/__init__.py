@@ -1,5 +1,13 @@
 from .functionCall import FunctionCall, FunctionCallAgent
-from .toolsManager import register, tool_concurrency, ToolManager
+from .toolsManager import fc_register, register, ToolManager
+from .tool_runtime import (
+    PreparedToolCall,
+    ResolvedToolAccess,
+    ToolExecutionBatch,
+    ToolExecutionDisposition,
+    ToolExecutionRecord,
+    ToolRuntimeMetadata,
+)
 from .base import (
     LazyLLMAgentBase,
     TOOL_OBSERVATION_KEY,
@@ -31,7 +39,13 @@ __all__ = [
     'FunctionCallAgent',
     'LazyLLMAgentBase',
     'register',
-    'tool_concurrency',
+    'fc_register',
+    'ResolvedToolAccess',
+    'PreparedToolCall',
+    'ToolExecutionRecord',
+    'ToolExecutionBatch',
+    'ToolExecutionDisposition',
+    'ToolRuntimeMetadata',
     'ReactAgent',
     'PlanAndSolveAgent',
     'ReWOOAgent',

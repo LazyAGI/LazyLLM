@@ -1,12 +1,11 @@
 import ast
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json as std_json
 import json5 as json
 import lazyllm
 import docstring_parser
 import os
-from pathlib import Path
 from lazyllm.module import ModuleBase
 from lazyllm.common import LazyLLMRegisterMetaClass, kwargs, _change_exception_type
 from lazyllm.common.utils import SecurityVisitor
@@ -14,15 +13,39 @@ from lazyllm.flow.flow import FlowException
 from typing import Callable, Any, Union, Optional, get_type_hints, List, Dict, Type, Set
 import inspect
 import re
+import uuid
 from pydantic import create_model, BaseModel, ConfigDict, ValidationError
 from lazyllm import LOG, locals as lazyllm_locals
 from .toolError import exception_failure, tool_failure
+from .tool_runtime import (
+    PreparedToolCall,
+    ResolvedToolAccess,
+    ToolExecutionBatch,
+    ToolExecutionDisposition,
+    ToolExecutionRecord,
+    ToolRuntimeMetadata,
+    _accesses_conflict,
+    _get_tool_runtime_metadata,
+    _set_tool_runtime_metadata,
+)
 from typing import *  # noqa F403, to import all types for compile_func(), do not remove
 
 # ---------------------------------------------------------------------------- #
 
-_TOOL_CONCURRENCY_ATTR = '__lazyllm_tool_concurrency__'
-_FILE_RESOURCE_NAMESPACE = 'file'
+_UNSET = object()
+
+
+@dataclass(frozen=True)
+class _ValidatedToolInput:
+    value: Any
+
+
+@dataclass(frozen=True)
+class _PreparedToolInvocation:
+    prepared: PreparedToolCall
+    tool: Any
+    validated_arguments: Optional[Dict[str, Any]]
+    failure: Any = None
 
 
 def _levenshtein(left, right):
@@ -51,125 +74,6 @@ def _closest_tool_name(requested, available):
     return name if distance <= threshold else None
 
 
-def _normalize_resource_key(key: Any):
-    if isinstance(key, str):
-        if not key.strip():
-            raise ValueError('concurrency keys must not contain empty strings')
-        return 'exact', key
-    if not isinstance(key, tuple) or not key:
-        raise TypeError('each concurrency key must be a non-empty string or tuple')
-    if key[0] == _FILE_RESOURCE_NAMESPACE:
-        if len(key) != 2:
-            raise ValueError('file concurrency keys must have the form ("file", path)')
-        path = os.fspath(key[1])
-        if not isinstance(path, str) or not path.strip():
-            raise ValueError('file concurrency key paths must be non-empty strings')
-        path = os.path.normcase(os.path.realpath(os.path.abspath(os.path.expanduser(path))))
-        return _FILE_RESOURCE_NAMESPACE, Path(path)
-    return 'exact', key
-
-
-def _normalize_resource_keys(value: Any):
-    if isinstance(value, (str, tuple)):
-        values = (value,)
-    elif isinstance(value, (list, set, frozenset)):
-        values = value
-    else:
-        raise TypeError('concurrency keys must be a string, tuple, list, set, or frozenset')
-    if not values:
-        raise ValueError('concurrency keys must not be empty')
-    return frozenset(_normalize_resource_key(key) for key in values)
-
-
-@dataclass(frozen=True)
-class _ConcurrencyAccess:
-    read_keys: frozenset = frozenset()
-    write_keys: frozenset = frozenset()
-    exclusive: bool = False
-
-
-class _ToolConcurrencySpec:
-    def __init__(self, read_keys=None, write_keys=None, exclusive: bool = False):
-        if not isinstance(exclusive, bool):
-            raise TypeError('exclusive must be a bool')
-        if not exclusive and read_keys is None and write_keys is None:
-            raise ValueError('at least one of read_keys, write_keys, or exclusive=True is required')
-        if exclusive and (read_keys is not None or write_keys is not None):
-            raise ValueError('exclusive cannot be combined with read_keys or write_keys')
-        for source in (read_keys, write_keys):
-            if source is not None and not callable(source):
-                _normalize_resource_keys(source)
-        self.read_keys = read_keys
-        self.write_keys = write_keys
-        self.exclusive = exclusive
-
-    @staticmethod
-    def _resolve_source(source, arguments):
-        if source is None:
-            return frozenset()
-        value = source(arguments) if callable(source) else source
-        return _normalize_resource_keys(value)
-
-    def resolve(self, arguments: Dict[str, Any]) -> _ConcurrencyAccess:
-        if self.exclusive:
-            return _ConcurrencyAccess(exclusive=True)
-        read_keys = self._resolve_source(self.read_keys, arguments)
-        write_keys = self._resolve_source(self.write_keys, arguments)
-        return _ConcurrencyAccess(
-            read_keys=read_keys - write_keys,
-            write_keys=write_keys,
-        )
-
-
-def tool_concurrency(*, read_keys=None, write_keys=None, exclusive: bool = False):
-    '''Declare the resources read or written by a tool invocation.
-
-    Key declarations may be static or callables that receive validated tool
-    arguments. The metadata is local to ToolManager and is not exposed in the
-    model-facing tool schema.
-    '''
-    spec = _ToolConcurrencySpec(read_keys=read_keys, write_keys=write_keys, exclusive=exclusive)
-
-    def decorator(func: Callable) -> Callable:
-        target = getattr(func, '__func__', func)
-        setattr(target, _TOOL_CONCURRENCY_ATTR, spec)
-        return func
-
-    return decorator
-
-
-def _get_tool_concurrency_spec(func: Optional[Callable]) -> Optional[_ToolConcurrencySpec]:
-    if func is None:
-        return None
-    target = getattr(func, '__func__', func)
-    spec = getattr(target, _TOOL_CONCURRENCY_ATTR, None)
-    if spec is not None:
-        return spec
-    try:
-        target = inspect.unwrap(target)
-    except (TypeError, ValueError):
-        return None
-    return getattr(target, _TOOL_CONCURRENCY_ATTR, None)
-
-
-def _resource_keys_overlap(left, right) -> bool:
-    if left[0] != right[0]:
-        return False
-    if left[0] != _FILE_RESOURCE_NAMESPACE:
-        return left[1] == right[1]
-    left_parts, right_parts = left[1].parts, right[1].parts
-    common_length = min(len(left_parts), len(right_parts))
-    return bool(common_length) and left_parts[:common_length] == right_parts[:common_length]
-
-
-def _accesses_conflict(current: _ConcurrencyAccess, reserved: _ConcurrencyAccess) -> bool:
-    occupied = reserved.read_keys | reserved.write_keys
-    return (
-        any(_resource_keys_overlap(write, key) for write in current.write_keys for key in occupied)
-        or any(_resource_keys_overlap(read, key) for read in current.read_keys for key in reserved.write_keys)
-    )
-
-
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, verbose: bool = False, return_trace: bool = False, execute_in_sandbox: bool = True,
                  apply_func: Optional[Callable] = None, schema_func: Optional[Callable] = None,
@@ -188,12 +92,8 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
             else (_ for _ in ()).throw(ValueError('Function must have a docstring'))
         # strip space(s) and newlines before and after docstring, as RewooAgent requires
         self._description = self._description.strip(' \n')
-        self._execute_in_sandbox = execute_in_sandbox
-        self._input_files_parm = None
-        self._output_files_parm = None
-        self._output_files = []
-        self._concurrency_spec = _get_tool_concurrency_spec(
-            metadata_func or schema_func or apply_func or self.__class__.apply)
+        metadata = _get_tool_runtime_metadata(metadata_func or schema_func or apply_func or self.__class__.apply)
+        self._runtime_metadata = metadata or ToolRuntimeMetadata(execute_in_sandbox=execute_in_sandbox)
         self._params_schema = self._load_function_schema(schema_func or self.__class__.apply)
 
     @staticmethod
@@ -278,55 +178,53 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
     @property
     def execute_in_sandbox(self) -> bool:
-        return self._execute_in_sandbox
+        return self._runtime_metadata.execute_in_sandbox
 
     @execute_in_sandbox.setter
     def execute_in_sandbox(self, value: bool):
-        self._execute_in_sandbox = value
+        self._runtime_metadata = replace(self._runtime_metadata, execute_in_sandbox=value)
 
     @property
-    def concurrency_spec(self) -> Optional[_ToolConcurrencySpec]:
-        return self._concurrency_spec
+    def runtime_metadata(self) -> ToolRuntimeMetadata:
+        return self._runtime_metadata
 
-    def _resolve_concurrency(self, arguments: Dict[str, Any]) -> _ConcurrencyAccess:
-        if self._concurrency_spec is None:
-            return _ConcurrencyAccess()
+    def _resolve_runtime_access(self, validated_arguments: Dict[str, Any]) -> ResolvedToolAccess:
         try:
-            return self._concurrency_spec.resolve(arguments)
+            return self._runtime_metadata.resolve(validated_arguments)
         except Exception as error:
             LOG.warning(
-                f'[ToolConcurrency] tool={self.name!r} could not resolve resource keys; '
+                f'[ToolRuntime] tool={self.name!r} could not resolve resource keys; '
                 f'using exclusive execution: {type(error).__name__}: {error}'
             )
-            return _ConcurrencyAccess(exclusive=True)
+            return ResolvedToolAccess(exclusive=True)
 
     @property
     def input_files_parm(self) -> str:
-        return self._input_files_parm
+        return self._runtime_metadata.input_files_parm
 
     @input_files_parm.setter
     def input_files_parm(self, value: str):
         assert isinstance(value, str), f'input_files_parm must be a string, but got {type(value)}'
-        self._input_files_parm = value
+        self._runtime_metadata = replace(self._runtime_metadata, input_files_parm=value)
 
     @property
     def output_files_parm(self) -> str:
-        return self._output_files_parm
+        return self._runtime_metadata.output_files_parm
 
     @output_files_parm.setter
     def output_files_parm(self, value: str):
         assert isinstance(value, str), f'output_files_parm must be a string, but got {type(value)}'
-        self._output_files_parm = value
+        self._runtime_metadata = replace(self._runtime_metadata, output_files_parm=value)
 
     @property
     def output_files(self) -> List[str]:
-        return self._output_files
+        return list(self._runtime_metadata.output_files)
 
     @output_files.setter
     def output_files(self, value: List[str]):
         assert isinstance(value, list) and all(isinstance(item, str) for item in value), \
             f'output_files must be a list of strings, but got {type(value)}'
-        self._output_files = value
+        self._runtime_metadata = replace(self._runtime_metadata, output_files=tuple(value))
 
     @property
     def params_schema(self) -> Type[BaseModel]:
@@ -411,7 +309,11 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return False
 
     def forward(self, tool_input: Union[str, Dict[str, Any]], verbose: bool = False) -> Any:
-        val_input = self._validate_input(tool_input)
+        validated = tool_input.value if isinstance(tool_input, _ValidatedToolInput) \
+            else self._validate_input(tool_input)
+        return self._execute_validated(validated, verbose=verbose)
+
+    def _execute_validated(self, val_input: Any, verbose: bool = False) -> Any:
         if isinstance(val_input, dict):
             ret = self.apply(**val_input)
         else:
@@ -430,19 +332,80 @@ import base64
 import cloudpickle
 tool = cloudpickle.loads(base64.b64decode({repr(tool_dump)}.encode('utf-8')))
 kwargs = cloudpickle.loads(base64.b64decode({repr(args_dump)}.encode('utf-8')))
-result = tool(kwargs)
+from lazyllm.tools.agent.toolsManager import _ValidatedToolInput
+result = tool(_ValidatedToolInput(kwargs))
 print(f'{SANDBOX_TOOL_RESULT_PREFIX}{{result}}')  # noqa print
 '''
 
-register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool',
-                            allowed_parameter=['execute_in_sandbox', 'input_files_parm',
-                                               'output_files_parm', 'output_files'])
+_base_fc_register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool')
+_RUNTIME_METADATA_FIELDS = {
+    'execute_in_sandbox',
+    'input_files_parm',
+    'output_files_parm',
+    'output_files',
+    'read_keys',
+    'write_keys',
+    'exclusive',
+    'polling',
+}
+
+
+def _runtime_metadata_from_options(options):
+    unknown = set(options) - _RUNTIME_METADATA_FIELDS
+    assert not unknown, f'Only allowed parameters: {_RUNTIME_METADATA_FIELDS}, but got {unknown}'
+    normalized = dict(options)
+    if 'output_files' in normalized:
+        output_files = normalized['output_files']
+        assert isinstance(output_files, list) and all(isinstance(item, str) for item in output_files), \
+            f'output_files must be a list of strings, but got {type(output_files)}'
+        normalized['output_files'] = tuple(output_files)
+    ToolRuntimeMetadata(**normalized)
+    return normalized
+
+
+class _FunctionCallRegister:
+    def __call__(self, group=_UNSET, *, rewrite_func=None, **options):
+        if group is not _UNSET and not isinstance(group, (str, type)):
+            if options or rewrite_func is not None:
+                raise TypeError('bare fc_register does not accept registration options')
+            return _base_fc_register(group)
+
+        metadata = _runtime_metadata_from_options(options) if options else None
+        if group is _UNSET:
+            if metadata is None:
+                raise TypeError('fc_register requires a callable, group, or runtime metadata')
+
+            def metadata_decorator(func):
+                _set_tool_runtime_metadata(func, metadata)
+                return func
+
+            return metadata_decorator
+
+        registrar = _base_fc_register(group, rewrite_func=rewrite_func)
+        if metadata is None:
+            return registrar
+
+        def register_decorator(func, *args):
+            _set_tool_runtime_metadata(func, metadata)
+            return registrar(func, *args)
+
+        return register_decorator
+
+    def __getattr__(self, name):
+        return getattr(_base_fc_register, name)
+
+    def new_group(self, group_name):
+        return _base_fc_register.new_group(group_name)
+
+
+fc_register = _FunctionCallRegister()
+register = fc_register
 if 'tool' not in LazyLLMRegisterMetaClass.all_clses:
-    register.new_group('tool')
+    fc_register.new_group('tool')
 if 'builtin_tools' not in LazyLLMRegisterMetaClass.all_clses:
-    register.new_group('builtin_tools')
+    fc_register.new_group('builtin_tools')
 if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
-    register.new_group('tmp_tool')
+    fc_register.new_group('tmp_tool')
 
 
 class MethodModuleTool(ModuleTool):
@@ -464,6 +427,7 @@ class MethodModuleTool(ModuleTool):
             schema_func=schema_func or bound,
             metadata_func=bound,
         )
+        self.execute_in_sandbox = False
         self._name = instance.__class__.__name__ if method_name == '__call__' \
             else f'{instance.__class__.__name__}_{method_name}'
 
@@ -854,6 +818,8 @@ class ToolManager(ModuleBase):
     def normalize_tool_calls(tool_calls: Any) -> Any:
         '''Normalize provider tool-call arguments at the ToolManager boundary.'''
         for tool_call in tool_calls if isinstance(tool_calls, list) else [tool_calls]:
+            if isinstance(tool_call, dict) and not str(tool_call.get('id') or '').strip():
+                tool_call['id'] = str(uuid.uuid4())
             function = tool_call.get('function') if isinstance(tool_call, dict) else None
             if not isinstance(function, dict):
                 continue
@@ -998,7 +964,7 @@ class ToolManager(ModuleBase):
             failure = tool_failure(
                 f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}',
             )
-            return None, failure, None
+            return None, None, None, failure
         name = name.strip()
         raw_args = func['arguments']
         visible_names = list(self._tool_call) if allowed_tool_names is None else sorted(
@@ -1013,60 +979,113 @@ class ToolManager(ModuleBase):
             lazyllm.LOG.warning(
                 f'[ToolManager] tool {name!r} was not exposed. Visible: {visible_names}'
             )
-            return None, failure, None
+            return None, raw_args, None, failure
         try:
             arguments = ToolManager._safe_parse_json(raw_args) if isinstance(raw_args, str) else raw_args
         except (TypeError, ValueError):
             failure = tool_failure(
                 'Invalid arguments: arguments must be valid JSON.',
             )
-            return None, failure, None
+            return None, raw_args.strip() if isinstance(raw_args, str) else raw_args, None, failure
         if not isinstance(arguments, dict):
             failure = tool_failure(
                 f'Invalid arguments: Tool [{name}] arguments must be a JSON object, '
                 f'got {type(arguments).__name__}.',
             )
-            return None, failure, None
+            return None, arguments, None, failure
         tool = self._tool_call.get(name)
         if tool is None:
             failure = tool_failure(
                 f'Tool [{name}] is no longer registered.',
             )
-            return None, failure, None
+            return None, arguments, None, failure
         validated_arguments, validation_failure = self._validate_tool(name, arguments)
         if validated_arguments is None:
-            return None, validation_failure, None
-        return tool, arguments, validated_arguments
+            return None, arguments, None, validation_failure
+        return tool, arguments, validated_arguments, None
 
     @staticmethod
     def _call_tool(tool, arguments, exposed_name):
         try:
-            value = tool(arguments)
+            value = tool(_ValidatedToolInput(arguments))
             return {'ok': True, 'value': value}
         except Exception as error:
             lazyllm.LOG.warning(
                 f'[ToolCall] tool={exposed_name!r} raised: {type(error).__name__}: {error}')
             return exception_failure(exposed_name, error)
 
-    def _build_tool_invocation(self, tool_call, allowed_tool_names=None):
-        function = tool_call.get('function') if isinstance(tool_call, dict) else None
-        exposed_name = str(function.get('name') or '') if isinstance(function, dict) else ''
-        tool, arguments, validated_arguments = self._parse_tool_call(tool_call, allowed_tool_names)
-        if tool is None:
-            return (
-                lambda *_, _failure=arguments: _failure,
-                {},
-                _ConcurrencyAccess(),
+    def _prepare_tool_invocations(self, tools, allowed_tool_names=None):
+        tool_calls = self.normalize_tool_calls([tools] if isinstance(tools, dict) else list(tools or []))
+        invocations = []
+        for index, tool_call in enumerate(tool_calls):
+            function = tool_call.get('function') if isinstance(tool_call, dict) else None
+            tool_name = str(function.get('name') or '') if isinstance(function, dict) else ''
+            call_id = str(tool_call.get('id') or '') if isinstance(tool_call, dict) else ''
+            tool, normalized_arguments, validated_arguments, failure = self._parse_tool_call(
+                tool_call, allowed_tool_names,
             )
-        access = tool._resolve_concurrency(validated_arguments)
+            if tool is None:
+                view = PreparedToolCall(
+                    index=index,
+                    tool_call=copy.deepcopy(tool_call),
+                    call_id=call_id,
+                    tool_name=tool_name,
+                    arguments=copy.deepcopy(normalized_arguments),
+                    validated_arguments=None,
+                )
+                invocations.append(_PreparedToolInvocation(
+                    prepared=view,
+                    tool=None,
+                    validated_arguments=None,
+                    failure=failure,
+                ))
+                continue
+            access = tool._resolve_runtime_access(validated_arguments)
+            view = PreparedToolCall(
+                index=index,
+                tool_call=copy.deepcopy(tool_call),
+                call_id=call_id,
+                tool_name=tool_name,
+                arguments=copy.deepcopy(normalized_arguments),
+                validated_arguments=copy.deepcopy(validated_arguments),
+                access=access,
+                polling=tool.runtime_metadata.polling,
+            )
+            invocations.append(_PreparedToolInvocation(
+                prepared=view,
+                tool=tool,
+                validated_arguments=validated_arguments,
+            ))
+        return invocations
+
+    def _build_prepared_invocation(self, invocation: _PreparedToolInvocation):
+        prepared = invocation.prepared
+        if not prepared.ready:
+            return (
+                lambda *_, _failure=invocation.failure: _failure,
+                {},
+                prepared.access,
+                ToolExecutionDisposition.PREPARATION_FAILED,
+            )
+        tool = invocation.tool
         if self._sandbox and tool.execute_in_sandbox:
-            sandbox_arguments = self._build_sandbox_args(tool, arguments)
-            return self._sandbox, sandbox_arguments, access
+            sandbox_arguments = self._build_sandbox_args(tool, invocation.validated_arguments)
+            return (
+                self._sandbox,
+                sandbox_arguments,
+                prepared.access,
+                ToolExecutionDisposition.EXECUTED,
+            )
 
         def _safe_call(args):
-            return self._call_tool(tool, args, exposed_name)
+            return self._call_tool(tool, args, prepared.tool_name)
 
-        return _safe_call, arguments, access
+        return (
+            _safe_call,
+            invocation.validated_arguments,
+            prepared.access,
+            ToolExecutionDisposition.EXECUTED,
+        )
 
     @staticmethod
     def _invoke_tool_callable(callable_, arguments):
@@ -1078,14 +1097,14 @@ class ToolManager(ModuleBase):
     def _build_execution_segments(accesses):
         segments = []
         current_segment = []
-        reserved = _ConcurrencyAccess()
+        reserved = ResolvedToolAccess()
 
         def close_current_segment():
             nonlocal current_segment, reserved
             if current_segment:
                 segments.append(current_segment)
                 current_segment = []
-                reserved = _ConcurrencyAccess()
+                reserved = ResolvedToolAccess()
 
         for index, access in enumerate(accesses):
             if access.exclusive:
@@ -1095,7 +1114,7 @@ class ToolManager(ModuleBase):
             if _accesses_conflict(access, reserved):
                 close_current_segment()
             current_segment.append(index)
-            reserved = _ConcurrencyAccess(
+            reserved = ResolvedToolAccess(
                 read_keys=reserved.read_keys | access.read_keys,
                 write_keys=reserved.write_keys | access.write_keys,
             )
@@ -1122,8 +1141,8 @@ class ToolManager(ModuleBase):
         return tool_diverter(tuple(branch_arguments))
 
     @classmethod
-    def _execute_tool_calls(cls, tool_calls, callables, call_arguments, accesses):
-        ordered_results = [None] * len(tool_calls)
+    def _execute_tool_calls(cls, count, callables, call_arguments, accesses):
+        ordered_results = [None] * count
         errors = []
         for segment in cls._build_execution_segments(accesses):
             for index, result, error in cls._execute_segment(segment, callables, call_arguments):
@@ -1135,15 +1154,43 @@ class ToolManager(ModuleBase):
             raise min(errors, key=lambda item: item[0])[1]
         return lazyllm.package(ordered_results)
 
+    def execute_with_records(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]],
+                             verbose: bool = False,
+                             allowed_tool_names: Optional[Set[str]] = None,
+                             *, dispatch_selector: Optional[Callable] = None):
+        '''Prepare and execute tool calls once, returning results with execution records.'''
+        del verbose
+        invocations = self._prepare_tool_invocations(tools, allowed_tool_names)
+        if not invocations:
+            return ToolExecutionBatch(results=[], records=())
+        prepared = tuple(invocation.prepared for invocation in invocations)
+        selected_indices = tuple(
+            dispatch_selector(prepared)
+            if dispatch_selector is not None else range(len(invocations))
+        )
+        if any(type(index) is not int or index < 0 or index >= len(invocations)
+               for index in selected_indices):
+            raise IndexError('selected prepared-call index is out of range')
+        if len(set(selected_indices)) != len(selected_indices):
+            raise ValueError('selected prepared-call indices must be unique')
+        selected = [invocations[index] for index in sorted(selected_indices)]
+        if not selected:
+            return ToolExecutionBatch(results=[], records=())
+        execution_inputs = [self._build_prepared_invocation(item) for item in selected]
+        callables, call_arguments, accesses, dispositions = map(list, zip(*execution_inputs))
+        results = self._execute_tool_calls(
+            len(selected), callables, call_arguments, accesses,
+        )
+        records = tuple(
+            ToolExecutionRecord(item.prepared, result, disposition)
+            for item, result, disposition in zip(selected, results, dispositions)
+        )
+        return ToolExecutionBatch(results=results, records=records)
+
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False,
                 allowed_tool_names: Optional[Set[str]] = None):
-        if isinstance(tools, list) and not tools: return []
-        tool_calls = self.normalize_tool_calls([tools] if isinstance(tools, dict) else tools)
-        if not isinstance(tool_calls, list):
-            tool_calls = [tool_calls]
-        invocations = [
-            self._build_tool_invocation(tool_call, allowed_tool_names)
-            for tool_call in tool_calls
-        ]
-        callables, call_arguments, accesses = map(list, zip(*invocations))
-        return self._execute_tool_calls(tool_calls, callables, call_arguments, accesses)
+        return self.execute_with_records(
+            tools,
+            verbose=verbose,
+            allowed_tool_names=allowed_tool_names,
+        ).results

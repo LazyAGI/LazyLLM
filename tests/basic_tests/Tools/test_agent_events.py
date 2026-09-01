@@ -1,3 +1,4 @@
+import ast
 import copy
 import json
 import threading
@@ -171,6 +172,121 @@ def _read_agent_events():
             payload = json.loads(raw)
             events.append(SimpleNamespace(**payload))
     return events
+
+
+def test_function_call_delivers_model_context_after_compaction():
+    outputs = [
+        {
+            'role': 'assistant',
+            'content': '',
+            'tool_calls': [{
+                'function': {'name': 'get_status', 'arguments': '{}'},
+            }],
+        },
+        {'role': 'assistant', 'content': 'Done.'},
+    ]
+    llm = _FakeLLM(outputs)
+    compacted_inputs = []
+    reserved_runtime_tokens = []
+
+    def compact(prior_history, _keep, current_round_messages=None, **kwargs):
+        current = list(current_round_messages or [])
+        compacted_inputs.append(copy.deepcopy(current))
+        reserved_runtime_tokens.append(kwargs.get('reserved_runtime_context_tokens'))
+        return list(prior_history), current
+
+    function_call = FunctionCall(
+        llm,
+        _tool_manager=ToolManager([get_status]),
+        history_compactor=compact,
+        model_context_provider=lambda: '[Internal runtime notice]\nChange the approach.',
+    )
+    result = function_call('start')
+
+    assert function_call(result) == 'Done.'
+    model_input = llm.inputs[-1]['input']
+    assert [message['role'] for message in model_input[-2:]] == ['tool', 'user']
+    assert model_input[-1]['content'] == '[Internal runtime notice]\nChange the approach.'
+    assert all(
+        '[Internal runtime notice]' not in json.dumps(messages)
+        for messages in compacted_inputs
+    )
+    assert set(reserved_runtime_tokens) == {512}
+    assert not any(
+        str(message.get('content') or '').startswith('[Internal runtime notice]\n')
+        for message in lazyllm.locals['_lazyllm_agent']['history']
+    )
+
+
+def test_model_context_provider_failure_does_not_interrupt_tool_round():
+    llm = _FakeLLM([
+        {
+            'role': 'assistant',
+            'content': '',
+            'tool_calls': [{
+                'function': {'name': 'get_status', 'arguments': '{}'},
+            }],
+        },
+        {'role': 'assistant', 'content': 'Done.'},
+    ])
+
+    def fail():
+        raise RuntimeError('provider failed')
+
+    function_call = FunctionCall(
+        llm,
+        _tool_manager=ToolManager([get_status]),
+        model_context_provider=fail,
+    )
+    result = function_call('start')
+
+    assert function_call(result) == 'Done.'
+
+
+def test_function_call_does_not_bypass_legacy_delegating_manager_wrapper():
+    class LegacyWrapper:
+        def __init__(self, manager):
+            self._manager = manager
+            self.calls = 0
+
+        def __getattr__(self, name):
+            return getattr(self._manager, name)
+
+        def __call__(self, tools, **kwargs):
+            self.calls += 1
+            results = self._manager(tools, **kwargs)
+            return [
+                {**result, 'value': {'wrapped': result.get('value')}}
+                for result in results
+            ]
+
+    llm = _FakeLLM([
+        {
+            'role': 'assistant',
+            'content': '',
+            'tool_calls': [{
+                'id': 'status',
+                'function': {'name': 'get_status', 'arguments': '{}'},
+            }],
+        },
+        {'role': 'assistant', 'content': 'Done.'},
+    ])
+    wrapper = LegacyWrapper(ToolManager([get_status]))
+    function_call = FunctionCall(llm, _tool_manager=wrapper)
+
+    result = function_call('start')
+    while isinstance(result, dict):
+        result = function_call(result)
+
+    assert result == 'Done.'
+    assert wrapper.calls == 1
+    tool_message = next(
+        message for message in reversed(lazyllm.locals['_lazyllm_agent']['history'])
+        if message.get('role') == 'tool'
+    )
+    assert ast.literal_eval(tool_message['content']) == {
+        'wrapped': {'status': 'ok', 'content': 'Error handling reference'},
+    }
 
 
 class TestReactAgentEvents(object):

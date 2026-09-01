@@ -6,7 +6,7 @@ import lazyllm
 import pytest
 
 from lazyllm.flow.flow import FlowException
-from lazyllm.tools import ToolManager, fc_register, tool_concurrency
+from lazyllm.tools import ToolManager, fc_register
 from lazyllm.tools.agent.file_tool import (
     delete_file,
     list_dir,
@@ -32,11 +32,11 @@ def _value(result):
     return result['value']
 
 
-def test_concurrency_metadata_is_preserved_and_hidden_from_schema():
+def test_runtime_metadata_is_preserved_and_hidden_from_schema():
     class Toolkit:
         __public_apis__ = ['read']
 
-        @tool_concurrency(read_keys=lambda args: ('file', args['path']))
+        @fc_register(read_keys=lambda args: ('file', args['path']))
         def read(self, path: str):
             '''Read a path.
 
@@ -45,9 +45,8 @@ def test_concurrency_metadata_is_preserved_and_hidden_from_schema():
             '''
             return path
 
-    registered_name = 'tool_concurrency_registered_test_tool'
+    registered_name = 'tool_runtime_registered_test_tool'
 
-    @tool_concurrency(write_keys=lambda args: ('file', args['path']))
     def registered(path: str):
         '''Write a path.
 
@@ -57,19 +56,26 @@ def test_concurrency_metadata_is_preserved_and_hidden_from_schema():
         return path
 
     registered.__name__ = registered_name
-    fc_register('tool', execute_in_sandbox=False)(registered)
+    fc_register(
+        'tool',
+        execute_in_sandbox=False,
+        write_keys=lambda args: ('file', args['path']),
+    )(registered)
     try:
         manager = ToolManager([Toolkit(), registered_name])
-        assert manager.tools_info['Toolkit_read'].concurrency_spec is not None
-        assert manager.tools_info[registered_name].concurrency_spec is not None
+        assert manager.tools_info['Toolkit_read'].runtime_metadata.read_keys is not None
+        assert manager.tools_info[registered_name].runtime_metadata.write_keys is not None
         schema = json.dumps(manager.tools_description)
-        assert '__lazyllm_tool_concurrency__' not in schema
-        assert 'concurrency_spec' not in schema
+        assert '__lazyllm_tool_runtime_metadata__' not in schema
+        assert 'runtime_metadata' not in schema
 
         builtin_manager = ToolManager([
             read_file, list_dir, search_in_files, make_dir, write_file, delete_file, move_file,
         ])
-        assert all(tool.concurrency_spec is not None for tool in builtin_manager.all_tools)
+        assert all(
+            tool.runtime_metadata.read_keys is not None or tool.runtime_metadata.write_keys is not None
+            for tool in builtin_manager.all_tools
+        )
     finally:
         lazyllm.tool.remove(registered_name)
 
@@ -77,10 +83,10 @@ def test_concurrency_metadata_is_preserved_and_hidden_from_schema():
 @pytest.mark.parametrize(
     'first_name,first_path,second_name,second_path,expected_max_active',
     [
-        ('read', '/tmp/tool-concurrency/a', 'read', '/tmp/tool-concurrency/a', 2),
-        ('read', '/tmp/tool-concurrency/a', 'write', '/tmp/tool-concurrency/a', 1),
-        ('write', '/tmp/tool-concurrency/a', 'write', '/tmp/tool-concurrency/a/child', 1),
-        ('write', '/tmp/tool-concurrency/a', 'write', '/tmp/tool-concurrency/b', 2),
+        ('read', '/tmp/tool-runtime/a', 'read', '/tmp/tool-runtime/a', 2),
+        ('read', '/tmp/tool-runtime/a', 'write', '/tmp/tool-runtime/a', 1),
+        ('write', '/tmp/tool-runtime/a', 'write', '/tmp/tool-runtime/a/child', 1),
+        ('write', '/tmp/tool-runtime/a', 'write', '/tmp/tool-runtime/b', 2),
     ],
 )
 def test_dynamic_file_keys_control_parallelism(
@@ -102,7 +108,7 @@ def test_dynamic_file_keys_control_parallelism(
                 self.active -= 1
             return path
 
-        @tool_concurrency(read_keys=lambda args: ('file', args['path']))
+        @fc_register(read_keys=lambda args: ('file', args['path']))
         def read(self, path: str):
             '''Read a path.
 
@@ -111,7 +117,7 @@ def test_dynamic_file_keys_control_parallelism(
             '''
             return self._run(path)
 
-        @tool_concurrency(write_keys=lambda args: ('file', args['path']))
+        @fc_register(write_keys=lambda args: ('file', args['path']))
         def write(self, path: str):
             '''Write a path.
 
@@ -146,7 +152,7 @@ def test_ordered_segments_exclusive_barrier_and_result_order():
                 self.events.append(f'{label}:end')
             return label
 
-        @tool_concurrency(write_keys=lambda args: ('file', args['path']))
+        @fc_register(write_keys=lambda args: ('file', args['path']))
         def write(self, path: str, label: str, delay: float = 0.01):
             '''Write a path.
 
@@ -157,7 +163,7 @@ def test_ordered_segments_exclusive_barrier_and_result_order():
             '''
             return self._run(label, delay)
 
-        @tool_concurrency(exclusive=True)
+        @fc_register(exclusive=True)
         def exclusive(self, label: str):
             '''Run exclusively.
 
@@ -176,9 +182,9 @@ def test_ordered_segments_exclusive_barrier_and_result_order():
 
     toolkit = Toolkit()
     results = ToolManager([toolkit])([
-        _tool_call('Toolkit_write', {'path': '/tmp/tool-concurrency/a', 'label': 'first', 'delay': 0.02}),
-        _tool_call('Toolkit_write', {'path': '/tmp/tool-concurrency/b', 'label': 'peer', 'delay': 0.04}),
-        _tool_call('Toolkit_write', {'path': '/tmp/tool-concurrency/a', 'label': 'second'}),
+        _tool_call('Toolkit_write', {'path': '/tmp/tool-runtime/a', 'label': 'first', 'delay': 0.02}),
+        _tool_call('Toolkit_write', {'path': '/tmp/tool-runtime/b', 'label': 'peer', 'delay': 0.04}),
+        _tool_call('Toolkit_write', {'path': '/tmp/tool-runtime/a', 'label': 'second'}),
         _tool_call('Toolkit_exclusive', {'label': 'exclusive'}),
         _tool_call('Toolkit_plain', {'label': 'plain'}),
     ])
@@ -192,7 +198,7 @@ def test_ordered_segments_exclusive_barrier_and_result_order():
 def test_tool_failure_does_not_stop_later_conflicting_calls():
     events = []
 
-    @tool_concurrency(write_keys=lambda args: ('file', args['path']))
+    @fc_register(write_keys=lambda args: ('file', args['path']))
     def mutate(path: str, label: str, fail: bool = False):
         '''Mutate a path.
 
@@ -207,9 +213,9 @@ def test_tool_failure_does_not_stop_later_conflicting_calls():
         return label
 
     results = ToolManager([mutate])([
-        _tool_call('mutate', {'path': '/tmp/tool-concurrency/a', 'label': 'first'}),
-        _tool_call('mutate', {'path': '/tmp/tool-concurrency/a', 'label': 'fail', 'fail': True}),
-        _tool_call('mutate', {'path': '/tmp/tool-concurrency/a', 'label': 'last'}),
+        _tool_call('mutate', {'path': '/tmp/tool-runtime/a', 'label': 'first'}),
+        _tool_call('mutate', {'path': '/tmp/tool-runtime/a', 'label': 'fail', 'fail': True}),
+        _tool_call('mutate', {'path': '/tmp/tool-runtime/a', 'label': 'last'}),
     ])
 
     assert events == ['first', 'fail', 'last']
@@ -219,7 +225,7 @@ def test_tool_failure_does_not_stop_later_conflicting_calls():
 
 
 def test_sandbox_failures_attempt_all_calls_and_rethrow_first_exception():
-    @tool_concurrency(write_keys=lambda args: ('file', args['path']))
+    @fc_register(write_keys=lambda args: ('file', args['path']))
     def sandbox_tool(path: str):
         '''Process a path.
 
@@ -242,9 +248,29 @@ def test_sandbox_failures_attempt_all_calls_and_rethrow_first_exception():
     manager = ToolManager([sandbox_tool], sandbox=sandbox)
     with pytest.raises(FlowException, match='expected sandbox failure 2'):
         manager([
-            _tool_call('sandbox_tool', {'path': '/tmp/tool-concurrency/a'}),
-            _tool_call('sandbox_tool', {'path': '/tmp/tool-concurrency/a'}),
-            _tool_call('sandbox_tool', {'path': '/tmp/tool-concurrency/a'}),
+            _tool_call('sandbox_tool', {'path': '/tmp/tool-runtime/a'}),
+            _tool_call('sandbox_tool', {'path': '/tmp/tool-runtime/a'}),
+            _tool_call('sandbox_tool', {'path': '/tmp/tool-runtime/a'}),
         ])
 
     assert sandbox.calls == 3
+
+
+def test_runtime_key_resolution_failure_falls_back_to_exclusive_execution():
+    @fc_register(read_keys=lambda _args: (_ for _ in ()).throw(RuntimeError('bad key')))
+    def broken(value: str):
+        '''Return a value.
+
+        Args:
+            value: Input value.
+        '''
+        return value
+
+    manager = ToolManager([broken])
+    snapshots = []
+    manager.execute_with_records(
+        [_tool_call('broken', {'value': 'x'})],
+        dispatch_selector=lambda prepared: snapshots.extend(prepared) or (),
+    )
+    access = snapshots[0].access
+    assert access.exclusive is True

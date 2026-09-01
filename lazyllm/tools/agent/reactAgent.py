@@ -83,7 +83,8 @@ class ReactAgent(LazyLLMAgentBase):
                  extra_stop_condition: Optional[Callable] = None,
                  on_max_retries: Optional[Callable] = None,
                  history_compactor: Optional[Callable] = None,
-                 runtime_observer: Optional[Callable] = None):
+                 runtime_observer: Optional[Callable] = None,
+                 model_context_provider: Optional[Callable[[], Optional[str]]] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
                          desc=desc, workspace=workspace, sandbox=sandbox, fs=fs, skills_dir=skills_dir,
@@ -99,6 +100,7 @@ class ReactAgent(LazyLLMAgentBase):
         self._keep_full_turns = keep_full_turns
         self._history_compactor = history_compactor
         self._runtime_observer = runtime_observer
+        self._model_context_provider = model_context_provider
         self._extra_stop_condition = extra_stop_condition
         self._on_max_retries = on_max_retries
         self._stop_tools: set = set()
@@ -138,7 +140,8 @@ class ReactAgent(LazyLLMAgentBase):
                           history_compactor=self._history_compactor,
                           stop_tools=list(self._stop_tools) if self._stop_tools else None,
                           round_limit=self._max_retries + 1,
-                          runtime_observer=self._runtime_observer)
+                          runtime_observer=self._runtime_observer,
+                          model_context_provider=self._model_context_provider)
         agent = loop(
             fc,
             stop_condition=self._stop,
