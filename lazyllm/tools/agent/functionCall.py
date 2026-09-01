@@ -2,7 +2,6 @@ from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import LOG, globals as lazyllm_globals, pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
-from .tool_runtime import RuntimeDelta
 from typing import List, Any, Dict, Union, Callable, Optional
 from .base import (
     LazyLLMAgentBase,
@@ -50,9 +49,8 @@ class StreamResponse():
 
 
 _ROUND_TOOLS_KEY = '_function_call_round_tools'
-_PENDING_RUNTIME_CONTEXT_KEY = '_pending_runtime_context'
-_RUNTIME_CONTEXT_MAX_CHARS = 2048
-_RUNTIME_CONTEXT_RESERVED_TOKENS = 512
+_MODEL_CONTEXT_MAX_CHARS = 2048
+_MODEL_CONTEXT_RESERVED_TOKENS = 512
 
 
 def _structured_compact_parts(compacted: Any) -> Optional[tuple]:
@@ -96,7 +94,7 @@ class FunctionCall(ModuleBase):
                  round_limit: Optional[int] = None,
                  history_compactor: Optional[Callable[..., Any]] = None,
                  runtime_observer: Optional[Callable[..., Any]] = None,
-                 runtime_extensions: Optional[List[Any]] = None):
+                 model_context_provider: Optional[Callable[[], Optional[str]]] = None):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
@@ -114,7 +112,7 @@ class FunctionCall(ModuleBase):
         self._stop_tools: set = set(stop_tools) if stop_tools else set()
         self._round_limit = round_limit
         self._runtime_observer = runtime_observer
-        self._runtime_extensions = tuple(runtime_extensions or ())
+        self._model_context_provider = model_context_provider
         prompt = _prompt or FC_PROMPT
         self._system_prompt = prompt
         self._prompter = ChatPrompter(
@@ -210,8 +208,8 @@ class FunctionCall(ModuleBase):
             'current_input': current_input,
             'current_round_messages': current,
         }
-        if getattr(self, '_runtime_extensions', ()):
-            kwargs['reserved_runtime_context_tokens'] = _RUNTIME_CONTEXT_RESERVED_TOKENS
+        if self._model_context_provider is not None:
+            kwargs['reserved_runtime_context_tokens'] = _MODEL_CONTEXT_RESERVED_TOKENS
         try:
             signature = inspect.signature(self._history_compactor)
             accepts_kwargs = any(
@@ -262,84 +260,24 @@ class FunctionCall(ModuleBase):
             history=history,
         )
 
-    def discard_pending_runtime_context(self) -> None:
-        '''Discard undelivered internal runtime context without changing public history.'''
+    def _consume_model_context(self) -> List[Dict[str, str]]:
+        if self._model_context_provider is None:
+            return []
         try:
-            workspace = locals['_lazyllm_agent'].get('workspace', {})
-        except Exception:
-            return
-        if isinstance(workspace, dict):
-            workspace.pop(_PENDING_RUNTIME_CONTEXT_KEY, None)
-
-    def _queue_runtime_context(
-        self,
-        workspace: Dict[str, Any],
-        records: Any,
-    ) -> None:
-        contexts = []
-        for extension in self._runtime_extensions:
-            after_batch = getattr(extension, 'after_tool_batch', None)
-            if not callable(after_batch):
-                continue
-            try:
-                delta = after_batch(tuple(records or ()))
-            except Exception as error:
-                LOG.warning(
-                    f'[AgentRuntimeExtension] after_tool_batch failed: '
-                    f'{type(error).__name__}: {error}'
-                )
-                continue
-            if isinstance(delta, RuntimeDelta):
-                contexts.extend(delta.model_context)
-        if not contexts:
-            workspace.pop(_PENDING_RUNTIME_CONTEXT_KEY, None)
-            return
-        remaining = _RUNTIME_CONTEXT_MAX_CHARS
-        messages = []
-        for context in contexts:
-            content = str(getattr(context, 'content', '') or '').strip()
-            if not content or remaining <= 0:
-                continue
-            if len(content) > remaining:
-                content = content[:remaining]
-                LOG.warning('[AgentRuntimeExtension] runtime context was truncated to fit the input budget')
-            messages.append({'role': 'user', 'content': content})
-            remaining -= len(content)
-        if not messages:
-            return
-        workspace[_PENDING_RUNTIME_CONTEXT_KEY] = {
-            'batch_ids': tuple(str(record.call_id) for record in records),
-            'messages': messages,
-        }
-
-    def _consume_runtime_context_messages(
-        self,
-        workspace: Dict[str, Any],
-    ) -> List[Dict[str, str]]:
-        pending = workspace.pop(_PENDING_RUNTIME_CONTEXT_KEY, None)
-        if not isinstance(pending, dict):
-            return []
-        batch_ids = tuple(str(tool_call.get('id') or '') for tool_call in workspace['tool_call_trace'])
-        if tuple(pending.get('batch_ids') or ()) != batch_ids:
-            return []
-        messages = list(pending.get('messages') or [])
-        if messages:
-            for extension in self._runtime_extensions:
-                delivered = getattr(extension, 'runtime_context_delivered', None)
-                if callable(delivered):
-                    try:
-                        delivered(batch_ids)
-                    except Exception as error:
-                        LOG.warning(
-                            f'[AgentRuntimeExtension] runtime_context_delivered failed: '
-                            f'{type(error).__name__}: {error}'
-                        )
-            self._observe_runtime(
-                'runtime_context_delivered',
-                batch_ids=list(batch_ids),
-                context_count=len(messages),
+            content = self._model_context_provider()
+        except Exception as error:
+            LOG.warning(
+                f'[ModelContextProvider] failed: {type(error).__name__}: {error}'
             )
-        return messages
+            return []
+        if not isinstance(content, str) or not content.strip():
+            return []
+        content = content.strip()
+        if len(content) > _MODEL_CONTEXT_MAX_CHARS:
+            content = content[:_MODEL_CONTEXT_MAX_CHARS]
+            LOG.warning('[ModelContextProvider] context was truncated to fit the input budget')
+        self._observe_runtime('runtime_context_delivered', context_count=1)
+        return [{'role': 'user', 'content': content}]
 
     def _build_current_tool_messages(
         self,
@@ -390,8 +328,7 @@ class FunctionCall(ModuleBase):
             workspace=workspace,
             remaining_rounds=remaining_rounds,
         )
-        runtime_context_messages = self._consume_runtime_context_messages(workspace)
-        compacted_current.extend(runtime_context_messages)
+        compacted_current.extend(self._consume_model_context())
         locals['chat_history'][self._llm._module_id] = compacted_prior
         self._notify_history_ready(workspace, current_round, compacted_prior + compacted_current)
         return {'input': compacted_current}
@@ -399,12 +336,6 @@ class FunctionCall(ModuleBase):
     def _build_history(self, input: Union[str, dict, list]):
         self._get_current_tools(refresh=True)
         workspace = locals['_lazyllm_agent']['workspace']
-        is_user_input = isinstance(input, str) or (
-            isinstance(input, dict)
-            and ('input' in input or input.get('role') == 'user')
-        )
-        if is_user_input:
-            self.discard_pending_runtime_context()
         history_idx = len(workspace.setdefault('history', []))
         current_round, budget_notice, remaining_rounds = self._prepare_round(workspace)
 
@@ -454,27 +385,10 @@ class FunctionCall(ModuleBase):
             llm_output['tool_calls'] = tool_calls
             if self._stream:
                 _write_agent_data('tool_calls', tool_calls=tool_calls)
-            explicitly_supports_records = any(
-                'execute_with_records' in cls.__dict__
-                for cls in type(self._tools_manager).__mro__
+            tool_calls_results = self._tools_manager(
+                tool_calls,
+                allowed_tool_names=self._get_visible_tool_names(),
             )
-            execute_with_records = (
-                self._tools_manager.execute_with_records
-                if explicitly_supports_records else None
-            )
-            if callable(execute_with_records):
-                execution_batch = execute_with_records(
-                    tool_calls,
-                    allowed_tool_names=self._get_visible_tool_names(),
-                )
-                tool_calls_results = execution_batch.results
-                execution_records = execution_batch.records
-            else:
-                tool_calls_results = self._tools_manager(
-                    tool_calls,
-                    allowed_tool_names=self._get_visible_tool_names(),
-                )
-                execution_records = ()
             if self._stream:
                 _write_agent_data('tool_results',
                                   tool_results=LazyLLMAgentBase._normalize_tool_results(tool_calls,
@@ -483,14 +397,11 @@ class FunctionCall(ModuleBase):
                 {**tool_call, 'tool_call_result': tool_result}
                 for tool_call, tool_result in zip(tool_calls, tool_calls_results)
             ]
-            workspace = locals['_lazyllm_agent']['workspace']
-            self._queue_runtime_context(workspace, execution_records)
             controlled_stop_texts = [
                 text for result in tool_calls_results
                 if (text := _tool_result_stop_text(result)) is not None
             ]
             if controlled_stop_texts:
-                self.discard_pending_runtime_context()
                 return '\n'.join(controlled_stop_texts)
             if self._stop_tools:
                 called_names = {(tc.get('function') or {}).get('name') for tc in tool_calls if isinstance(tc, dict)}
@@ -505,7 +416,6 @@ class FunctionCall(ModuleBase):
                         and (tc.get('function') or {}).get('name') in self._stop_tools
                     )
                     if not stop_failed:
-                        self.discard_pending_runtime_context()
                         if self._runtime_observer:
                             try:
                                 workspace = locals['_lazyllm_agent']['workspace']
@@ -521,7 +431,6 @@ class FunctionCall(ModuleBase):
                         return '\n'.join(str(_tool_result_observation(r)) for r in tool_calls_results)
         else:
             llm_output = llm_output['content']
-            self.discard_pending_runtime_context()
         if self._runtime_observer:
             try:
                 workspace = locals['_lazyllm_agent']['workspace']
@@ -568,8 +477,7 @@ class FunctionCall(ModuleBase):
             workspace = locals['_lazyllm_agent'].pop('workspace', {})
             locals['_lazyllm_agent']['completed'] = workspace.pop(
                 'tool_call_trace', locals['_lazyllm_agent'].get('completed', []))
-            history = workspace.pop('history', [])
-            locals['_lazyllm_agent']['history'] = history
+            locals['_lazyllm_agent']['history'] = workspace.pop('history', [])
             locals['chat_history'][self._llm._module_id] = []
         return result
 

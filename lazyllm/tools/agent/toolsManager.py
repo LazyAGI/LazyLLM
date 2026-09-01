@@ -18,7 +18,6 @@ from pydantic import create_model, BaseModel, ConfigDict, ValidationError
 from lazyllm import LOG, locals as lazyllm_locals
 from .toolError import exception_failure, tool_failure
 from .tool_runtime import (
-    PreparedToolBatch,
     PreparedToolCall,
     ResolvedToolAccess,
     ToolExecutionBatch,
@@ -44,10 +43,9 @@ class _ValidatedToolInput:
 @dataclass(frozen=True)
 class _PreparedToolInvocation:
     prepared: PreparedToolCall
-    tool_call: Dict[str, Any]
     tool: Any
     validated_arguments: Optional[Dict[str, Any]]
-    access: ResolvedToolAccess
+    failure: Any = None
 
 
 def _levenshtein(left, right):
@@ -198,7 +196,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
                 f'[ToolRuntime] tool={self.name!r} could not resolve resource keys; '
                 f'using exclusive execution: {type(error).__name__}: {error}'
             )
-            return ResolvedToolAccess(exclusive=True, polling=self._runtime_metadata.polling)
+            return ResolvedToolAccess(exclusive=True)
 
     @property
     def input_files_parm(self) -> str:
@@ -1016,11 +1014,10 @@ class ToolManager(ModuleBase):
                 f'[ToolCall] tool={exposed_name!r} raised: {type(error).__name__}: {error}')
             return exception_failure(exposed_name, error)
 
-    def prepare_tool_calls(self, tools, allowed_tool_names=None):
+    def _prepare_tool_invocations(self, tools, allowed_tool_names=None):
         tool_calls = self.normalize_tool_calls([tools] if isinstance(tools, dict) else list(tools or []))
-        prepared = []
         invocations = []
-        for tool_call in tool_calls:
+        for index, tool_call in enumerate(tool_calls):
             function = tool_call.get('function') if isinstance(tool_call, dict) else None
             tool_name = str(function.get('name') or '') if isinstance(function, dict) else ''
             call_id = str(tool_call.get('id') or '') if isinstance(tool_call, dict) else ''
@@ -1029,59 +1026,48 @@ class ToolManager(ModuleBase):
             )
             if tool is None:
                 view = PreparedToolCall(
+                    index=index,
                     tool_call=copy.deepcopy(tool_call),
                     call_id=call_id,
                     tool_name=tool_name,
                     arguments=copy.deepcopy(normalized_arguments),
                     validated_arguments=None,
-                    failure=copy.deepcopy(failure),
                 )
-                prepared.append(view)
                 invocations.append(_PreparedToolInvocation(
-                    prepared=copy.deepcopy(view),
-                    tool_call=copy.deepcopy(tool_call),
+                    prepared=view,
                     tool=None,
                     validated_arguments=None,
-                    access=view.access,
+                    failure=failure,
                 ))
                 continue
             access = tool._resolve_runtime_access(validated_arguments)
             view = PreparedToolCall(
+                index=index,
                 tool_call=copy.deepcopy(tool_call),
                 call_id=call_id,
                 tool_name=tool_name,
                 arguments=copy.deepcopy(normalized_arguments),
                 validated_arguments=copy.deepcopy(validated_arguments),
                 access=access,
+                polling=tool.runtime_metadata.polling,
             )
-            prepared.append(view)
             invocations.append(_PreparedToolInvocation(
-                prepared=copy.deepcopy(view),
-                tool_call=copy.deepcopy(tool_call),
+                prepared=view,
                 tool=tool,
-                validated_arguments=copy.deepcopy(validated_arguments),
-                access=access,
+                validated_arguments=validated_arguments,
             ))
-        return PreparedToolBatch._create(prepared, invocations, self)
+        return invocations
 
     def _build_prepared_invocation(self, invocation: _PreparedToolInvocation):
         prepared = invocation.prepared
         if not prepared.ready:
             return (
-                lambda *_, _failure=prepared.failure: _failure,
+                lambda *_, _failure=invocation.failure: _failure,
                 {},
                 prepared.access,
                 ToolExecutionDisposition.PREPARATION_FAILED,
             )
-        tool = self._tool_call.get(prepared.tool_name)
-        if tool is None or tool is not invocation.tool:
-            failure = tool_failure(f'Tool [{prepared.tool_name}] is no longer registered.')
-            return (
-                lambda *_, _failure=failure: _failure,
-                {},
-                prepared.access,
-                ToolExecutionDisposition.DISPATCH_FAILED,
-            )
+        tool = invocation.tool
         if self._sandbox and tool.execute_in_sandbox:
             sandbox_arguments = self._build_sandbox_args(tool, invocation.validated_arguments)
             return (
@@ -1155,8 +1141,8 @@ class ToolManager(ModuleBase):
         return tool_diverter(tuple(branch_arguments))
 
     @classmethod
-    def _execute_tool_calls(cls, tool_calls, callables, call_arguments, accesses):
-        ordered_results = [None] * len(tool_calls)
+    def _execute_tool_calls(cls, count, callables, call_arguments, accesses):
+        ordered_results = [None] * count
         errors = []
         for segment in cls._build_execution_segments(accesses):
             for index, result, error in cls._execute_segment(segment, callables, call_arguments):
@@ -1168,47 +1154,38 @@ class ToolManager(ModuleBase):
             raise min(errors, key=lambda item: item[0])[1]
         return lazyllm.package(ordered_results)
 
-    def execute_prepared_calls(self, prepared_batch, selected_indices=None):
-        '''Execute one manager-owned prepared batch and return results with records.'''
-        if not isinstance(prepared_batch, PreparedToolBatch):
-            raise TypeError('execute_prepared_calls requires a PreparedToolBatch')
-        invocations = prepared_batch._claim(self)
-        if selected_indices is None:
-            selected_indices = tuple(range(len(invocations)))
-        else:
-            selected_indices = tuple(selected_indices)
-        if any(not isinstance(index, int) or index < 0 or index >= len(invocations)
+    def execute_with_records(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]],
+                             verbose: bool = False,
+                             allowed_tool_names: Optional[Set[str]] = None,
+                             *, dispatch_selector: Optional[Callable] = None):
+        '''Prepare and execute tool calls once, returning results with execution records.'''
+        del verbose
+        invocations = self._prepare_tool_invocations(tools, allowed_tool_names)
+        if not invocations:
+            return ToolExecutionBatch(results=[], records=())
+        prepared = tuple(invocation.prepared for invocation in invocations)
+        selected_indices = tuple(
+            dispatch_selector(prepared)
+            if dispatch_selector is not None else range(len(invocations))
+        )
+        if any(type(index) is not int or index < 0 or index >= len(invocations)
                for index in selected_indices):
             raise IndexError('selected prepared-call index is out of range')
         if len(set(selected_indices)) != len(selected_indices):
             raise ValueError('selected prepared-call indices must be unique')
-        selected = [invocations[index] for index in selected_indices]
+        selected = [invocations[index] for index in sorted(selected_indices)]
         if not selected:
             return ToolExecutionBatch(results=[], records=())
-        execution_inputs = [
-            self._build_prepared_invocation(invocation)
-            for invocation in selected
-        ]
+        execution_inputs = [self._build_prepared_invocation(item) for item in selected]
         callables, call_arguments, accesses, dispositions = map(list, zip(*execution_inputs))
-        tool_calls = [invocation.tool_call for invocation in selected]
-        results = self._execute_tool_calls(tool_calls, callables, call_arguments, accesses)
+        results = self._execute_tool_calls(
+            len(selected), callables, call_arguments, accesses,
+        )
         records = tuple(
-            ToolExecutionRecord(
-                prepared=invocation.prepared,
-                result=result,
-                disposition=disposition,
-            )
-            for invocation, result, disposition in zip(selected, results, dispositions)
+            ToolExecutionRecord(item.prepared, result, disposition)
+            for item, result, disposition in zip(selected, results, dispositions)
         )
         return ToolExecutionBatch(results=results, records=records)
-
-    def execute_with_records(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]],
-                             verbose: bool = False,
-                             allowed_tool_names: Optional[Set[str]] = None):
-        '''Prepare and execute tool calls once, returning results with execution records.'''
-        del verbose
-        prepared = self.prepare_tool_calls(tools, allowed_tool_names)
-        return self.execute_prepared_calls(prepared)
 
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False,
                 allowed_tool_names: Optional[Set[str]] = None):

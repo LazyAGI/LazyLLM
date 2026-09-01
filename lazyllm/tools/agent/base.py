@@ -1,6 +1,5 @@
-import asyncio
-import json
 import os
+import json
 from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 import lazyllm
@@ -100,8 +99,7 @@ class LazyLLMAgentBase(ModuleBase):
                  desc: str = '', workspace: Optional[str] = None,
                  sandbox: Union[str, LazyLLMSandboxBase, None] = 'auto',
                  fs: Optional[Any] = None, skills_dir: Optional[str] = None,
-                 enable_builtin_tools: bool = True,
-                 runtime_extensions: Optional[Iterable[Any]] = None):
+                 enable_builtin_tools: bool = True):
         super().__init__(return_trace=return_trace)
         use_skills, skills = self._normalize_skills_config(skills)
         if not use_skills and (fs is not None or skills_dir is not None):
@@ -126,8 +124,6 @@ class LazyLLMAgentBase(ModuleBase):
         self._builtin_tool_names = set()
         self._skill_tool_names = set()
         self._enable_builtin_tools = enable_builtin_tools
-        self._runtime_extensions = tuple(runtime_extensions or ())
-        self._runtime_end_reason = 'completed'
 
         if self._enable_builtin_tools:
             self._ensure_builtin_tools()
@@ -182,46 +178,14 @@ class LazyLLMAgentBase(ModuleBase):
         self.build_agent()
         if self._agent is None:
             raise RuntimeError('build_agent() did not initialize _agent.')
-        self._runtime_end_reason = 'completed'
-        context = {
-            'agent': self,
-            'run_id': str(getattr(self, '_agent_lab_run_id', '') or ''),
-        }
-        for extension in self._runtime_extensions:
-            begin = getattr(extension, 'begin_run', None)
-            if callable(begin):
-                try:
-                    begin(context)
-                except Exception as error:
-                    lazyllm.LOG.warning(
-                        f'[AgentRuntimeExtension] begin_run failed: '
-                        f'{type(error).__name__}: {error}'
-                    )
-        try:
-            pre = self._pre_process(*args, **kwargs)
-            if isinstance(pre, tuple):
-                result = self._agent(*pre)
-            elif isinstance(pre, dict):
-                result = self._agent(**pre)
-            else:
-                result = self._agent(pre)
-            return self._post_process(result)
-        except BaseException as error:
-            self._runtime_end_reason = (
-                'cancellation' if isinstance(error, asyncio.CancelledError) else 'exception'
-            )
-            raise
-        finally:
-            for extension in reversed(self._runtime_extensions):
-                end = getattr(extension, 'end_run', None)
-                if callable(end):
-                    try:
-                        end(self._runtime_end_reason)
-                    except Exception as error:
-                        lazyllm.LOG.warning(
-                            f'[AgentRuntimeExtension] end_run failed: '
-                            f'{type(error).__name__}: {error}'
-                        )
+        pre = self._pre_process(*args, **kwargs)
+        if isinstance(pre, tuple):
+            result = self._agent(*pre)
+        elif isinstance(pre, dict):
+            result = self._agent(**pre)
+        else:
+            result = self._agent(pre)
+        return self._post_process(result)
 
     @staticmethod
     def _normalize_tool_results(tool_calls, tool_calls_results):

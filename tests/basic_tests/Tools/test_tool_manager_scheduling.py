@@ -267,5 +267,10 @@ def test_runtime_key_resolution_failure_falls_back_to_exclusive_execution():
         return value
 
     manager = ToolManager([broken])
-    access = manager.prepare_tool_calls([_tool_call('broken', {'value': 'x'})])[0].access
+    snapshots = []
+    manager.execute_with_records(
+        [_tool_call('broken', {'value': 'x'})],
+        dispatch_selector=lambda prepared: snapshots.extend(prepared) or (),
+    )
+    access = snapshots[0].access
     assert access.exclusive is True

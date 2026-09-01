@@ -4,7 +4,6 @@ import lazyllm
 import pytest
 
 from lazyllm.tools import (
-    PreparedToolBatch,
     ToolExecutionDisposition,
     ToolManager,
     ToolRuntimeMetadata,
@@ -41,7 +40,8 @@ def test_runtime_metadata_validation_and_resolution():
     access = metadata.resolve({})
     assert not access.read_keys.intersection(access.write_keys)
     assert access.write_keys
-    assert access.polling is True
+    assert metadata.polling is True
+    assert not hasattr(access, 'polling')
     assert not hasattr(access, 'counts_as_progress')
     with pytest.raises(FrozenInstanceError):
         metadata.polling = False
@@ -130,32 +130,38 @@ def test_method_metadata_preserves_non_sandbox_execution():
     assert tool._resolve_runtime_access({'value': 'x'}).read_keys
 
 
-def test_prepared_calls_expose_access_and_invalid_preparation_state():
+def test_dispatch_selector_sees_prepared_snapshots_and_failures_are_recorded():
     tool = _documented_tool()
-    fc_register(write_keys='shared')(tool)
+    fc_register(write_keys='shared', polling=True)(tool)
     manager = ToolManager([tool])
+    selected = []
 
-    prepared = manager.prepare_tool_calls([
-        {'id': 'bad', 'function': {'name': 'missing', 'arguments': '{}'}},
-        {'id': 'good', 'function': {'name': tool.__name__, 'arguments': '{"value":"x"}'}},
-    ])
+    def selector(prepared):
+        selected.extend(prepared)
+        return range(len(prepared))
 
-    assert isinstance(prepared, PreparedToolBatch)
-    assert prepared[0].preparation_status == 'invalid'
-    assert not prepared[0].access.read_keys and not prepared[0].access.write_keys
-    assert prepared[1].preparation_status == 'ready'
-    assert prepared[1].access.write_keys
+    batch = manager.execute_with_records(
+        [
+            {'id': 'bad', 'function': {'name': 'missing', 'arguments': '{}'}},
+            {'id': 'good', 'function': {'name': tool.__name__, 'arguments': '{"value":"x"}'}},
+        ],
+        dispatch_selector=selector,
+    )
+
+    assert [item.index for item in selected] == [0, 1]
+    assert selected[0].ready is False
+    assert not selected[0].access.read_keys and not selected[0].access.write_keys
+    assert selected[1].ready is True
+    assert selected[1].access.write_keys
+    assert selected[1].polling is True
     assert not hasattr(manager, 'resolve_tool_accesses')
-
-    batch = manager.execute_prepared_calls(prepared)
-    assert [record.executed for record in batch.records] == [False, True]
     assert [record.disposition for record in batch.records] == [
         ToolExecutionDisposition.PREPARATION_FAILED,
         ToolExecutionDisposition.EXECUTED,
     ]
 
 
-def test_prepared_batch_is_manager_owned_single_use_and_views_are_not_execution_inputs():
+def test_dispatch_selector_snapshot_is_not_an_execution_input():
     seen = []
 
     @fc_register(write_keys=lambda args: ('file', args['value']))
@@ -168,55 +174,106 @@ def test_prepared_batch_is_manager_owned_single_use_and_views_are_not_execution_
         seen.append(value)
         return value
 
-    first = ToolManager([tool])
-    second = ToolManager([tool])
-    prepared = first.prepare_tool_calls({
-        'id': 'one',
-        'function': {'name': 'tool', 'arguments': {'value': 'original'}},
-    })
+    def selector(prepared):
+        prepared[0].validated_arguments['value'] = 'forged'
+        prepared[0].tool_call['function']['arguments'] = '{"value":"forged"}'
+        return (0,)
 
-    prepared[0].validated_arguments['value'] = 'forged'
-    prepared[0].tool_call['function']['arguments'] = '{"value":"forged"}'
-    assert prepared[0].validated_arguments == {'value': 'original'}
-    with pytest.raises(TypeError, match='created by ToolManager'):
-        PreparedToolBatch((), (), first)
-    with pytest.raises(ValueError, match='different ToolManager'):
-        second.execute_prepared_calls(prepared)
-
-    batch = first.execute_prepared_calls(prepared)
+    batch = ToolManager([tool]).execute_with_records(
+        {
+            'id': 'one',
+            'function': {'name': 'tool', 'arguments': {'value': 'original'}},
+        },
+        dispatch_selector=selector,
+    )
     assert list(batch.results) == [{'ok': True, 'value': 'original'}]
-    assert batch.records[0].validated_arguments == {'value': 'original'}
     assert seen == ['original']
-    with pytest.raises(RuntimeError, match='already been executed'):
-        first.execute_prepared_calls(prepared)
 
 
-def test_dispatch_failure_has_explicit_disposition():
-    tool = _documented_tool('runtime_dispatch_tool')
-    manager = ToolManager([tool])
-    prepared = manager.prepare_tool_calls({
-        'id': 'one',
-        'function': {'name': tool.__name__, 'arguments': {'value': 'x'}},
-    })
-    manager._tool_call.pop(tool.__name__)
+def test_dispatch_selector_uses_original_order_for_selected_calls():
+    tool = _documented_tool('runtime_selected_tool')
+    calls = [
+        {'id': str(index), 'function': {
+            'name': tool.__name__, 'arguments': {'value': str(index)},
+        }}
+        for index in range(3)
+    ]
 
-    batch = manager.execute_prepared_calls(prepared)
+    batch = ToolManager([tool]).execute_with_records(
+        calls,
+        dispatch_selector=lambda _prepared: (2, 0),
+    )
 
-    assert batch.records[0].disposition is ToolExecutionDisposition.DISPATCH_FAILED
-    assert batch.records[0].executed is False
-    assert batch.results[0]['ok'] is False
+    assert [record.index for record in batch.records] == [0, 2]
+    assert [result['value'] for result in batch.results] == ['0', '2']
 
 
-def test_prepared_batch_rejects_duplicate_selected_indices():
+@pytest.mark.parametrize(
+    ('indices', 'error', 'message'),
+    [
+        ((0, 0), ValueError, 'must be unique'),
+        ((1,), IndexError, 'out of range'),
+        ((True,), IndexError, 'out of range'),
+    ],
+)
+def test_dispatch_selector_rejects_invalid_indices(indices, error, message):
     tool = _documented_tool('runtime_selected_tool')
     manager = ToolManager([tool])
-    prepared = manager.prepare_tool_calls({
+    tool_call = {
         'id': 'one',
         'function': {'name': tool.__name__, 'arguments': {'value': 'x'}},
-    })
+    }
 
-    with pytest.raises(ValueError, match='must be unique'):
-        manager.execute_prepared_calls(prepared, selected_indices=(0, 0))
+    with pytest.raises(error, match=message):
+        manager.execute_with_records(
+            tool_call,
+            dispatch_selector=lambda _prepared: indices,
+        )
+
+
+def test_empty_dispatch_selection_does_not_invoke_tool():
+    calls = []
+
+    def tool(value: str) -> str:
+        '''Return a value.
+
+        Args:
+            value: Input value.
+        '''
+        calls.append(value)
+        return value
+
+    batch = ToolManager([tool]).execute_with_records(
+        {'id': 'one', 'function': {'name': 'tool', 'arguments': {'value': 'x'}}},
+        dispatch_selector=lambda _prepared: (),
+    )
+
+    assert batch.results == []
+    assert batch.records == ()
+    assert calls == []
+
+
+def test_dispatch_selector_failure_does_not_invoke_tool():
+    calls = []
+
+    def tool(value: str) -> str:
+        '''Return a value.
+
+        Args:
+            value: Input value.
+        '''
+        calls.append(value)
+        return value
+
+    def fail(_prepared):
+        raise RuntimeError('selector failed')
+
+    with pytest.raises(RuntimeError, match='selector failed'):
+        ToolManager([tool]).execute_with_records(
+            {'id': 'one', 'function': {'name': 'tool', 'arguments': {'value': 'x'}}},
+            dispatch_selector=fail,
+        )
+    assert calls == []
 
 
 def test_prepare_and_execute_validate_resolve_and_invoke_once():
@@ -254,4 +311,4 @@ def test_prepare_and_execute_validate_resolve_and_invoke_once():
     assert list(batch.results) == [{'ok': True, 'value': 'x'}]
     assert batch.records[0].arguments == {'value': 'x'}
     assert batch.records[0].validated_arguments == {'value': 'x'}
-    assert batch.records[0].executed is True
+    assert batch.records[0].disposition is ToolExecutionDisposition.EXECUTED

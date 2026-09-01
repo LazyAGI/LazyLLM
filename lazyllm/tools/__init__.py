@@ -16,12 +16,8 @@ if TYPE_CHECKING:
                      YuqueFS, OnesFS, S3FS, ObsidianFS)
     from .agent import (
         ToolManager,
-        AgentRuntimeExtension,
-        PreparedToolBatch,
         PreparedToolCall,
         ResolvedToolAccess,
-        RuntimeContext,
-        RuntimeDelta,
         ToolExecutionBatch,
         ToolExecutionDisposition,
         ToolExecutionRecord,
@@ -104,14 +100,10 @@ _SUBMOD_MAP = {
     'agent': [
         'ToolManager',
         'ResolvedToolAccess',
-        'PreparedToolBatch',
         'PreparedToolCall',
         'ToolExecutionRecord',
         'ToolExecutionBatch',
         'ToolExecutionDisposition',
-        'RuntimeContext',
-        'RuntimeDelta',
-        'AgentRuntimeExtension',
         'ToolRuntimeMetadata',
         'ModuleTool',
         'FunctionCall',

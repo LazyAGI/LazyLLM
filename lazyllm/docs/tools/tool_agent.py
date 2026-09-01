@@ -224,43 +224,11 @@ Args:
 
 ''')
 
-add_chinese_doc('ToolManager.prepare_tool_calls', '''\
-一次性完成工具调用规范化、JSON 修复、参数校验和运行期资源解析，返回与输入顺序一致的
-manager-owned ``PreparedToolBatch``。其中的 ``PreparedToolCall`` 是只用于检查参数、准备状态和
-``access`` 的公开视图，不是执行凭证。batch 只能由创建它的 ToolManager 执行一次；也可直接使用
-``execute_with_records`` 完成准备与执行并取得 ``ToolExecutionBatch``。不再提供独立资源查询接口，
-避免校验器和动态资源解析器在执行前被重复调用。
-''')
-
-add_english_doc('ToolManager.prepare_tool_calls', '''\
-Normalize calls, repair JSON, validate arguments, and resolve runtime resources exactly once. The returned manager-owned
-``PreparedToolBatch`` preserves input order. Its ``PreparedToolCall`` objects are inspection-only views exposing
-arguments, preparation state, and ``prepared.access``; they are not execution credentials. A batch can be executed once
-and only by the ToolManager that created it. Use ``execute_with_records`` to prepare and execute in one step. There is no
-separate resource-query API, preventing validators and dynamic resolvers from running twice.
-''')
-
-add_english_doc('ToolManager.execute_prepared_calls', '''\
-Execute a manager-owned ``PreparedToolBatch`` once and return a ``ToolExecutionBatch``. ``selected_indices`` may select
-an ordered subset for execution; indices must be valid and unique. Batches from another manager and reused batches are
-rejected.
-''')
-
 add_english_doc('ToolManager.execute_with_records', '''\
 Prepare and execute tool calls through one validation and resource-resolution pass, returning ordered results together
-with ``ToolExecutionRecord`` values and their explicit execution dispositions.
-''')
-
-add_english_doc('AgentRuntimeExtension.begin_run', '''\
-Initialize extension state for one Agent run. ``context`` contains run-scoped internal facts and is not public history.
-''')
-
-add_english_doc('AgentRuntimeExtension.after_tool_batch', '''\
-Observe one completed ordered tool batch and return a one-shot ``RuntimeDelta`` for the next matching model call.
-''')
-
-add_english_doc('AgentRuntimeExtension.end_run', '''\
-Release run-scoped extension state after normal completion, stopping, cancellation, or an exception.
+with ``ToolExecutionRecord`` values and their explicit execution dispositions. An optional ``dispatch_selector`` receives
+the prepared inspection snapshots and returns the unique call indices to execute. Tool validation and dynamic resource
+resolution still run exactly once.
 ''')
 
 add_example('ToolManager', """\
@@ -623,12 +591,10 @@ Args:
     return_trace (Optional[bool]): Whether to return the invocation trace, defaults to False.
     stream (Optional[bool]): Whether to enable streaming output, defaults to False.
     _prompt (Optional[str]): Custom prompt for function call, defaults to automatic selection based on llm type.
+    model_context_provider (Optional[Callable]): Returns one ephemeral internal context string after a tool batch. The
+        string is appended after history compaction and is not stored in public conversation history.
 
 Note: Tools in `tools` must include a `__doc__` attribute and describe their purpose and parameters according to the [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings).
-''')
-
-add_english_doc('FunctionCall.discard_pending_runtime_context', '''\
-Discard any undelivered internal runtime context and its bound tool-call IDs without changing public conversation history.
 ''')
 
 add_example('FunctionCall', """\

@@ -1,5 +1,4 @@
 import ast
-import asyncio
 import copy
 import json
 import threading
@@ -7,11 +6,9 @@ import time
 from types import SimpleNamespace
 
 import lazyllm
-import pytest
 from lazyllm.tools import PlanAndSolveAgent, ReactAgent
-from lazyllm.tools.agent import RuntimeContext, RuntimeDelta, ToolExecutionError
+from lazyllm.tools.agent import ToolExecutionError
 from lazyllm.tools.agent.base import (
-    LazyLLMAgentBase,
     TOOL_OBSERVATION_KEY,
     is_tool_result_envelope,
     normalize_tool_observation,
@@ -168,80 +165,19 @@ class _BudgetRecordingLLM(_FakeLLM):
         return super().__call__(input, **kwargs)
 
 
-class _RuntimeNoticeExtension:
+class _RuntimeNoticeProvider:
     def __init__(self):
         self.calls = 0
-        self.ends = []
 
-    def begin_run(self, _context):
-        self.calls = 0
-
-    def after_tool_batch(self, _records):
+    def __call__(self):
         self.calls += 1
         if self.calls >= 3:
-            return RuntimeDelta(model_context=(RuntimeContext(
+            return (
                 '[Internal runtime notice]\nThe same tool call has returned the same result '
                 f'{self.calls} consecutive times. Review the result and change the approach or arguments '
                 'instead of repeating it unchanged.'
-            ),))
-        return RuntimeDelta()
-
-    def end_run(self, reason):
-        self.ends.append(reason)
-
-
-class _LifecycleAgent(LazyLLMAgentBase):
-    def __init__(self, action, extension, workspace):
-        super().__init__(
-            tools=[],
-            workspace=workspace,
-            sandbox=None,
-            enable_builtin_tools=False,
-            runtime_extensions=[extension],
-        )
-        self._agent = action
-
-    def build_agent(self):
-        pass
-
-
-class _LifecycleExtension:
-    def __init__(self):
-        self.begins = 0
-        self.ends = []
-
-    def begin_run(self, _context):
-        self.begins += 1
-
-    def end_run(self, reason):
-        self.ends.append(reason)
-
-
-def test_runtime_extension_lifecycle_ends_once_on_success(tmp_path):
-    extension = _LifecycleExtension()
-    agent = _LifecycleAgent(lambda value: value, extension, str(tmp_path))
-
-    assert agent.forward('done') == 'done'
-    assert extension.begins == 1
-    assert extension.ends == ['completed']
-
-
-def test_runtime_extension_lifecycle_ends_once_on_exception_and_cancellation(tmp_path):
-    def fail(_value):
-        raise RuntimeError('failed')
-
-    extension = _LifecycleExtension()
-    with pytest.raises(RuntimeError, match='failed'):
-        _LifecycleAgent(fail, extension, str(tmp_path)).forward('start')
-    assert extension.ends == ['exception']
-
-    def cancel(_value):
-        raise asyncio.CancelledError()
-
-    extension = _LifecycleExtension()
-    with pytest.raises(asyncio.CancelledError):
-        _LifecycleAgent(cancel, extension, str(tmp_path)).forward('start')
-    assert extension.ends == ['cancellation']
+            )
+        return None
 
 
 def _read_agent_events():
@@ -265,7 +201,7 @@ def test_function_call_delivers_only_current_runtime_context_after_compaction():
         for _ in range(5)
     ] + [{'role': 'assistant', 'content': 'Done.'}]
     llm = _FakeLLM(outputs)
-    extension = _RuntimeNoticeExtension()
+    provider = _RuntimeNoticeProvider()
     compacted_inputs = []
     reserved_runtime_tokens = []
 
@@ -279,7 +215,7 @@ def test_function_call_delivers_only_current_runtime_context_after_compaction():
         llm,
         _tool_manager=ToolManager([get_status]),
         history_compactor=compact,
-        runtime_extensions=[extension],
+        model_context_provider=provider,
     )
     result = function_call('start')
     generated_ids = []
@@ -313,6 +249,31 @@ def test_function_call_delivers_only_current_runtime_context_after_compaction():
         str(message.get('content') or '').startswith('[Internal runtime notice]\n')
         for message in lazyllm.locals['_lazyllm_agent']['history']
     )
+
+
+def test_model_context_provider_failure_does_not_interrupt_tool_round():
+    llm = _FakeLLM([
+        {
+            'role': 'assistant',
+            'content': '',
+            'tool_calls': [{
+                'function': {'name': 'get_status', 'arguments': '{}'},
+            }],
+        },
+        {'role': 'assistant', 'content': 'Done.'},
+    ])
+
+    def fail():
+        raise RuntimeError('provider failed')
+
+    function_call = FunctionCall(
+        llm,
+        _tool_manager=ToolManager([get_status]),
+        model_context_provider=fail,
+    )
+    result = function_call('start')
+
+    assert function_call(result) == 'Done.'
 
 
 def test_user_message_with_runtime_notice_prefix_is_preserved_verbatim():

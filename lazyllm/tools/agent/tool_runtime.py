@@ -1,10 +1,9 @@
-import copy
 import inspect
 import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, Optional, Protocol, Sequence, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 
 _TOOL_RUNTIME_METADATA_ATTR = '__lazyllm_tool_runtime_metadata__'
@@ -47,108 +46,28 @@ class ResolvedToolAccess:
     read_keys: frozenset = frozenset()
     write_keys: frozenset = frozenset()
     exclusive: bool = False
-    polling: bool = False
 
 
-@dataclass(frozen=True, init=False)
+@dataclass(frozen=True)
 class PreparedToolCall:
-    _tool_call: Dict[str, Any]
+    index: int
+    tool_call: Dict[str, Any]
     call_id: str
     tool_name: str
-    _arguments: Any
-    _validated_arguments: Optional[Dict[str, Any]]
+    arguments: Any
+    validated_arguments: Optional[Dict[str, Any]]
     access: ResolvedToolAccess = field(default_factory=ResolvedToolAccess)
-    _failure: Any = None
-
-    def __init__(self, tool_call: Dict[str, Any], call_id: str, tool_name: str,
-                 arguments: Any, validated_arguments: Optional[Dict[str, Any]],
-                 access: Optional[ResolvedToolAccess] = None, failure: Any = None):
-        object.__setattr__(self, '_tool_call', copy.deepcopy(tool_call))
-        object.__setattr__(self, 'call_id', call_id)
-        object.__setattr__(self, 'tool_name', tool_name)
-        object.__setattr__(self, '_arguments', copy.deepcopy(arguments))
-        object.__setattr__(self, '_validated_arguments', copy.deepcopy(validated_arguments))
-        object.__setattr__(self, 'access', access or ResolvedToolAccess())
-        object.__setattr__(self, '_failure', copy.deepcopy(failure))
-
-    @property
-    def tool_call(self) -> Dict[str, Any]:
-        return copy.deepcopy(self._tool_call)
-
-    @property
-    def arguments(self) -> Any:
-        return copy.deepcopy(self._arguments)
-
-    @property
-    def validated_arguments(self) -> Optional[Dict[str, Any]]:
-        return copy.deepcopy(self._validated_arguments)
-
-    @property
-    def failure(self) -> Any:
-        return copy.deepcopy(self._failure)
+    polling: bool = False
 
     @property
     def ready(self) -> bool:
-        return self._failure is None and self._validated_arguments is not None
-
-    @property
-    def preparation_status(self) -> str:
-        return 'ready' if self.ready else 'invalid'
+        return self.validated_arguments is not None
 
 
 class ToolExecutionDisposition(str, Enum):
     EXECUTED = 'executed'
     PREPARATION_FAILED = 'preparation_failed'
-    DISPATCH_FAILED = 'dispatch_failed'
-    POLICY_BLOCKED = 'policy_blocked'
-    DEDUPLICATED = 'deduplicated'
-
-
-_PREPARED_BATCH_CONSTRUCTION_TOKEN = object()
-
-
-class PreparedToolBatch(Sequence[PreparedToolCall]):
-    '''Manager-owned prepared calls with public inspection-only views.'''
-
-    __slots__ = ('_calls', '_invocations', '_owner', '_consumed')
-
-    def __init__(self, calls, invocations, owner, *, _token=None):
-        if _token is not _PREPARED_BATCH_CONSTRUCTION_TOKEN:
-            raise TypeError('PreparedToolBatch instances are created by ToolManager.prepare_tool_calls()')
-        self._calls = tuple(calls)
-        self._invocations = tuple(invocations)
-        self._owner = owner
-        self._consumed = False
-
-    @classmethod
-    def _create(cls, calls, invocations, owner):
-        return cls(
-            calls,
-            invocations,
-            owner,
-            _token=_PREPARED_BATCH_CONSTRUCTION_TOKEN,
-        )
-
-    @property
-    def calls(self) -> Tuple[PreparedToolCall, ...]:
-        return self._calls
-
-    def __len__(self) -> int:
-        return len(self._calls)
-
-    def __getitem__(self, index):
-        return self._calls[index]
-
-    def __iter__(self) -> Iterator[PreparedToolCall]:
-        return iter(self._calls)
-
-    def _claim(self, owner):
-        if self._owner is not owner:
-            raise ValueError('PreparedToolBatch belongs to a different ToolManager')
-        if self._consumed:
-            raise RuntimeError('PreparedToolBatch has already been executed')
-        self._consumed = True
-        return self._invocations
+    SKIPPED = 'skipped'
 
 
 @dataclass(frozen=True)
@@ -156,10 +75,11 @@ class ToolExecutionRecord:
     prepared: PreparedToolCall
     result: Any
     disposition: ToolExecutionDisposition = ToolExecutionDisposition.EXECUTED
+    reason: str = ''
 
     @property
-    def executed(self) -> bool:
-        return self.disposition is ToolExecutionDisposition.EXECUTED
+    def index(self) -> int:
+        return self.prepared.index
 
     @property
     def call_id(self) -> str:
@@ -181,39 +101,15 @@ class ToolExecutionRecord:
     def access(self) -> ResolvedToolAccess:
         return self.prepared.access
 
+    @property
+    def polling(self) -> bool:
+        return self.prepared.polling
+
 
 @dataclass(frozen=True)
 class ToolExecutionBatch:
     results: Any
     records: Tuple[ToolExecutionRecord, ...] = ()
-
-
-@dataclass(frozen=True)
-class RuntimeContext:
-    content: str
-
-    def __post_init__(self):
-        if not isinstance(self.content, str) or not self.content.strip():
-            raise ValueError('runtime context content must be a non-empty string')
-
-
-@dataclass(frozen=True)
-class RuntimeDelta:
-    model_context: Tuple[RuntimeContext, ...] = ()
-
-
-class AgentRuntimeExtension(Protocol):
-    def begin_run(self, context: Dict[str, Any]) -> None:
-        '''Initialize extension state for one Agent run.'''
-        ...
-
-    def after_tool_batch(self, records: Sequence[ToolExecutionRecord]) -> RuntimeDelta:
-        '''Observe one completed tool batch and return one-shot model context.'''
-        ...
-
-    def end_run(self, reason: str) -> None:
-        '''Release run-scoped extension state for the supplied terminal reason.'''
-        ...
 
 
 @dataclass(frozen=True)
@@ -255,13 +151,12 @@ class ToolRuntimeMetadata:
 
     def resolve(self, arguments: Dict[str, Any]) -> ResolvedToolAccess:
         if self.exclusive:
-            return ResolvedToolAccess(exclusive=True, polling=self.polling)
+            return ResolvedToolAccess(exclusive=True)
         read_keys = self._resolve_source(self.read_keys, arguments)
         write_keys = self._resolve_source(self.write_keys, arguments)
         return ResolvedToolAccess(
             read_keys=read_keys - write_keys,
             write_keys=write_keys,
-            polling=self.polling,
         )
 
 
