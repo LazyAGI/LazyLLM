@@ -22,6 +22,7 @@ from lazyllm.module.llms.onlinemodule.base.onlineChatModuleBase import LazyLLMOn
 from lazyllm.module.llms.onlinemodule.base.provider_response import (
     OPENAI_COMPATIBLE_PROFILE,
     raise_for_http_error,
+    usage_from_frames,
 )
 from lazyllm.module.llms.onlinemodule.supplier.claude import ClaudeChat
 from lazyllm.module.llms.onlinemodule.supplier.deepseek import DeepSeekChat
@@ -709,8 +710,13 @@ def test_non_stream_interruption_survives_module_boundary_with_partial_and_usage
     error = exc_info.value
     assert error.terminal.finish is ModelFinish.LENGTH
     assert error.partial_response[0]['choices'][0]['message']['content'] == 'partial answer'
-    assert error.usage == {'prompt_tokens': 11, 'completion_tokens': 7}
-    assert lazyllm.globals['usage'][module._module_id] == error.usage
+    assert error.usage['prompt_tokens'] == 11
+    assert error.usage['completion_tokens'] == 7
+    assert error.usage['provider_usage'] == {'prompt_tokens': 11, 'completion_tokens': 7}
+    assert lazyllm.globals['usage'][module._module_id]['prompt_tokens'] == 11
+    assert lazyllm.globals['usage'][module._module_id]['provider_usages'] == [
+        {'prompt_tokens': 11, 'completion_tokens': 7},
+    ]
 
 
 def test_claude_keeps_pre_response_transport_retry(monkeypatch):
@@ -741,3 +747,53 @@ def test_claude_keeps_pre_response_transport_retry(monkeypatch):
 
     assert calls == 2
     assert result[0]['choices'][0]['message']['content'] == 'ok'
+
+
+def test_usage_from_frames_scans_backwards():
+    frames = [
+        {'choices': [{'delta': {'content': 'hi'}}]},
+        {'usage': {'prompt_tokens': 3, 'completion_tokens': 1}},
+        {'choices': []},
+    ]
+    assert usage_from_frames(frames) == {'prompt_tokens': 3, 'completion_tokens': 1}
+
+
+def test_record_usage_accumulates_repeated_calls_on_same_module():
+    module = OpenAIChat(
+        base_url='http://provider.test/v1/', model='test-model', api_key='',
+        stream=False, skip_auth=True,
+    )
+    module._record_usage({
+        'prompt_tokens': 100,
+        'completion_tokens': 10,
+        'provider_usage': {
+            'prompt_tokens': 100,
+            'completion_tokens': 10,
+            'prompt_tokens_details': {'cached_tokens': 80},
+        },
+    })
+    module._record_usage({
+        'prompt_tokens': 50,
+        'completion_tokens': 20,
+        'provider_usage': {
+            'prompt_tokens': 50,
+            'completion_tokens': 20,
+            'prompt_tokens_details': {'cached_tokens': 0},
+        },
+    })
+    recorded = lazyllm.globals['usage'][module._module_id]
+    assert recorded['prompt_tokens'] == 150
+    assert recorded['completion_tokens'] == 30
+    assert recorded['provider_usages'] == [
+        {
+            'prompt_tokens': 100,
+            'completion_tokens': 10,
+            'prompt_tokens_details': {'cached_tokens': 80},
+        },
+        {
+            'prompt_tokens': 50,
+            'completion_tokens': 20,
+            'prompt_tokens_details': {'cached_tokens': 0},
+        },
+    ]
+    assert 'provider_usage' not in recorded

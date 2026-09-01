@@ -19,6 +19,7 @@ from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbo
 import re
 import json
 import inspect
+import time
 
 FC_PROMPT = f'''# Tools
 
@@ -357,14 +358,18 @@ class FunctionCall(ModuleBase):
             llm_output['tool_calls'] = tool_calls
             if self._stream:
                 _write_agent_data('tool_calls', tool_calls=tool_calls)
+            tool_started = time.monotonic()
             tool_calls_results = self._tools_manager(
                 tool_calls,
                 allowed_tool_names=self._get_visible_tool_names(),
             )
+            tool_duration_ms = max(0.0, (time.monotonic() - tool_started) * 1000.0)
             if self._stream:
-                _write_agent_data('tool_results',
-                                  tool_results=LazyLLMAgentBase._normalize_tool_results(tool_calls,
-                                                                                        tool_calls_results))
+                _write_agent_data(
+                    'tool_results',
+                    tool_results=LazyLLMAgentBase._normalize_tool_results(tool_calls, tool_calls_results),
+                    duration_ms=round(tool_duration_ms),
+                )
             locals['_lazyllm_agent']['workspace']['tool_call_trace'] = [
                 {**tool_call, 'tool_call_result': tool_result}
                 for tool_call, tool_result in zip(tool_calls, tool_calls_results)

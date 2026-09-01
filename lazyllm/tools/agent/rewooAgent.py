@@ -1,6 +1,7 @@
 from typing import Callable, Dict, List, Any, Optional, Union
 import re
 import json
+import time
 
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
@@ -123,10 +124,15 @@ class ReWOOAgent(LazyLLMAgentBase):
         tool_calls = [{'function': {'name': tool_name, 'arguments': tool_arguments}}]
         if self._stream:
             _write_agent_data('tool_calls', tool_calls=tool_calls)
+        tool_started = time.monotonic()
         result = self._tools_manager(tool_calls)
+        tool_duration_ms = max(0.0, (time.monotonic() - tool_started) * 1000.0)
         if self._stream:
-            _write_agent_data('tool_results',
-                              tool_results=self._normalize_tool_results(tool_calls, result))
+            _write_agent_data(
+                'tool_results',
+                tool_results=self._normalize_tool_results(tool_calls, result),
+                duration_ms=round(tool_duration_ms),
+            )
         locals['_lazyllm_agent']['workspace']['tool_call_trace'].append(
             {**tool_calls[0], 'tool_call_result': result[0]}
         )
