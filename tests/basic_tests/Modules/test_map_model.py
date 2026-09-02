@@ -41,6 +41,8 @@ test_models = {
         'doubao-seedance-1-5-pro-251215',
         'wan2.6-t2v',
         'wan2.6-i2v-flash',
+        'wan3.0-video',
+        'wan3.0-video-prime',
         'Wan-AI/Wan2.2-T2V-A14B',
         'Wan-AI/Wan2.2-I2V-A14B',
     ],

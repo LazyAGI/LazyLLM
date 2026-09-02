@@ -335,6 +335,8 @@ MODEL_MAPPING = {
     'aitryon-plus': 'sd',
     'aitryon-parsing-v1': 'sd',
     'aitryon-refiner': 'sd',
+    'wan3.0-video': 'text2video',
+    'wan3.0-video-prime': 'text2video',
     'wan2.6-t2v': 'text2video',
     'wan2.6-i2v': 'text2video',
     'wan2.6-i2v-flash': 'text2video',

@@ -93,6 +93,88 @@ def test_qwen_image2video_sends_first_frame(monkeypatch):
     assert captured['json']['parameters']['resolution'] == '720P'
 
 
+def test_qwen_wan3_all_in_one_sends_first_and_last_frames(monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return _Response({'output': {'task_id': 'task-wan3'}})
+
+    def fake_get(url, **kwargs):
+        if url == 'https://video.example/wan3.mp4':
+            return _Response(content=b'wan3-video')
+        return _Response({'output': {
+            'task_status': 'SUCCEEDED',
+            'video_url': 'https://video.example/wan3.mp4',
+        }})
+
+    monkeypatch.setattr(qwen_supplier.requests, 'post', fake_post)
+    monkeypatch.setattr(qwen_supplier.requests, 'get', fake_get)
+    monkeypatch.setattr(qwen_supplier, 'bytes_to_file', lambda values: values)
+    monkeypatch.setattr(qwen_supplier, 'encode_query_with_filepaths', lambda _, values: values)
+
+    video = QwenText2Video(api_key='test-key')
+    result = video._forward(
+        input='transition between the two frames',
+        files=['https://image.example/first.png', 'https://image.example/last.png'],
+        image_roles=['first_frame', 'last_frame'],
+        resolution='480p',
+        ratio='adaptive',
+        duration=30,
+        poll_interval=0,
+    )
+
+    payload = captured['json']
+    assert payload['model'] == 'wan3.0-video'
+    assert payload['input']['media'] == [
+        {'type': 'first_frame', 'url': 'https://image.example/first.png'},
+        {'type': 'last_frame', 'url': 'https://image.example/last.png'},
+    ]
+    assert payload['parameters'] == {
+        'duration': 30,
+        'prompt_extend': True,
+        'resolution': '480P',
+        'ratio': 'adaptive',
+        'audio': True,
+    }
+    assert result == [b'wan3-video']
+
+
+def test_qwen_wan3_all_in_one_sends_multiple_reference_images(monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return _Response({'output': {'task_id': 'task-wan3'}})
+
+    def fake_get(url, **kwargs):
+        if url == 'https://video.example/wan3.mp4':
+            return _Response(content=b'wan3-video')
+        return _Response({'output': {
+            'task_status': 'SUCCEEDED',
+            'video_url': 'https://video.example/wan3.mp4',
+        }})
+
+    monkeypatch.setattr(qwen_supplier.requests, 'post', fake_post)
+    monkeypatch.setattr(qwen_supplier.requests, 'get', fake_get)
+    monkeypatch.setattr(qwen_supplier, 'bytes_to_file', lambda values: values)
+    monkeypatch.setattr(qwen_supplier, 'encode_query_with_filepaths', lambda _, values: values)
+
+    video = QwenText2Video(api_key='test-key', model='wan3.0-video-prime')
+    video._forward(
+        input='keep all referenced subjects consistent',
+        files=['https://image.example/1.png', 'https://image.example/2.png'],
+        image_roles=['reference_image', 'reference_image'],
+        ratio='adaptive',
+        poll_interval=0,
+    )
+
+    assert captured['json']['input']['media'] == [
+        {'type': 'reference_image', 'url': 'https://image.example/1.png'},
+        {'type': 'reference_image', 'url': 'https://image.example/2.png'},
+    ]
+
+
 def test_siliconflow_image2video_uses_submit_and_status(monkeypatch):
     captured = {'posts': []}
 

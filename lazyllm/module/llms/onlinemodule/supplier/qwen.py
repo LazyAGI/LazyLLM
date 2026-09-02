@@ -751,11 +751,13 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
 
 
 class QwenText2Video(LazyLLMOnlineText2VideoModuleBase):
-    """DashScope Wan 2.6 text-to-video and first-frame image-to-video."""
+    """DashScope Wan video generation, including Wan 3.0 All-in-One media routing."""
 
     SUPPORTED_IMAGE_ROLES = True
-    MODEL_NAME = 'wan2.6-i2v-flash'
+    MODEL_NAME = 'wan3.0-video'
     MODEL_NAMES = (
+        'wan3.0-video',
+        'wan3.0-video-prime',
         'wan2.6-t2v',
         'wan2.6-i2v',
         'wan2.6-i2v-flash',
@@ -819,12 +821,14 @@ class QwenText2Video(LazyLLMOnlineText2VideoModuleBase):
     def _forward(self, input: str = None, files: List[str] = None, image_roles: List[str] = None,
                  resolution: str = '720p', duration: int = 5, ratio: str = '16:9',
                  watermark: bool = False, prompt_extend: bool = True,
+                 audio: bool = True,
                  poll_interval: float = 3.0, timeout: float = 900,
                  url: str = None, model: str = None, **kwargs):
         selected_model = model or self._model_name
+        is_all_in_one = selected_model in {'wan3.0-video', 'wan3.0-video-prime'}
         is_t2v = '-t2v' in selected_model
         is_i2v = '-i2v' in selected_model
-        if not (is_t2v or is_i2v):
+        if not (is_all_in_one or is_t2v or is_i2v):
             raise ValueError(f'Unsupported Qwen video model: {selected_model}')
 
         supplied_files = list(files or [])
@@ -832,24 +836,70 @@ class QwenText2Video(LazyLLMOnlineText2VideoModuleBase):
             raise ValueError(f'{selected_model} is text-to-video and does not accept image files')
         if is_i2v and len(supplied_files) != 1:
             raise ValueError(f'{selected_model} requires exactly one first-frame image')
-        if image_roles and len(image_roles) != len(supplied_files):
+        resolved_roles = list(image_roles or [])
+        if resolved_roles and len(resolved_roles) != len(supplied_files):
             raise ValueError('image_roles must have the same length as files')
-        if image_roles and any(role not in {'first_frame', 'reference_image'} for role in image_roles):
+        if not is_all_in_one and resolved_roles and any(
+            role not in {'first_frame', 'reference_image'} for role in resolved_roles
+        ):
             raise ValueError(f'{selected_model} supports only a first-frame image')
+
+        if is_all_in_one:
+            if len(supplied_files) > 20:
+                raise ValueError(f'{selected_model} accepts at most 20 media inputs')
+            if not resolved_roles and supplied_files:
+                resolved_roles = (
+                    ['first_frame'] if len(supplied_files) == 1
+                    else ['reference_image'] * len(supplied_files)
+                )
+            supported_roles = {'first_frame', 'last_frame', 'reference_image'}
+            invalid_roles = set(resolved_roles) - supported_roles
+            if invalid_roles:
+                raise ValueError(
+                    f'{selected_model} received unsupported image roles: {sorted(invalid_roles)}'
+                )
+            if resolved_roles.count('first_frame') > 1 or resolved_roles.count('last_frame') > 1:
+                raise ValueError(f'{selected_model} accepts at most one first frame and one last frame')
+            if resolved_roles.count('last_frame') and not resolved_roles.count('first_frame'):
+                raise ValueError('last_frame requires first_frame')
+            if resolved_roles.count('reference_image') > 10:
+                raise ValueError(f'{selected_model} accepts at most 10 reference images')
+            has_frame_control = any(role in {'first_frame', 'last_frame'} for role in resolved_roles)
+            has_references = any(role == 'reference_image' for role in resolved_roles)
+            if has_frame_control and has_references:
+                raise ValueError(
+                    f'{selected_model} cannot mix first/last frames with reference images'
+                )
 
         effective_resolution = self._effective_resolution(selected_model, resolution)
         request_input = {'prompt': input}
-        if is_i2v:
+        if is_all_in_one and supplied_files:
+            request_input['media'] = [
+                {'type': role, 'url': self._format_image(file)}
+                for file, role in zip(supplied_files, resolved_roles)
+            ]
+        elif is_i2v:
             request_input['img_url'] = self._format_image(supplied_files[0])
 
         parameters = {
             'duration': int(duration),
             'prompt_extend': bool(prompt_extend),
-            'watermark': bool(watermark),
         }
-        if is_t2v:
+        if is_all_in_one:
+            if int(duration) != -1 and not 2 <= int(duration) <= 30:
+                raise ValueError('Wan 3.0 duration must be -1 or an integer from 2 to 30 seconds')
+            parameters.update({
+                'resolution': effective_resolution,
+                'ratio': ratio,
+                'audio': bool(audio),
+            })
+            if watermark:
+                parameters['watermark'] = True
+        elif is_t2v:
+            parameters['watermark'] = bool(watermark)
             parameters['size'] = self._video_size(effective_resolution, ratio)
         else:
+            parameters['watermark'] = bool(watermark)
             parameters['resolution'] = effective_resolution
 
         api_root = self._api_root(url or self._base_url)
