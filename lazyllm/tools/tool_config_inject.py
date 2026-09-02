@@ -32,6 +32,12 @@ TOOL_AUTH_REGISTRY: Dict[str, str] = {
     'yuque': 'dynamic_fs_auth',
     'ones': 'dynamic_fs_auth',
     's3': 'dynamic_fs_auth',
+    'gmailimap': 'dynamic_tool_auth',
+    'qqmail': 'dynamic_tool_auth',
+    'qqexmail': 'dynamic_tool_auth',
+    'netease163': 'dynamic_tool_auth',
+    'neteaseqiye': 'dynamic_tool_auth',
+    'mail': 'dynamic_tool_auth',
     # ── Search / API-key tools (SearchBase) ──────────────────────────────
     'bing': 'dynamic_tool_auth',
     'google': 'dynamic_tool_auth',
@@ -47,6 +53,11 @@ TOOL_AUTH_REGISTRY: Dict[str, str] = {
 
 # Default config key for tools not listed in TOOL_AUTH_REGISTRY.
 _DEFAULT_CONFIG_KEY = 'dynamic_tool_auth'
+_MAIL_AUTH_KEYS = ('mail', 'gmailimap', 'qqmail', 'qqexmail', 'netease163', 'neteaseqiye')
+
+
+def _clear_mail_auth_entries(existing: Dict[str, Any], keep: set[str]) -> Dict[str, Any]:
+    return {key: value for key, value in existing.items() if key not in _MAIL_AUTH_KEYS or key in keep}
 
 
 def inject_tool_config(tool_config: Optional[Dict[str, Any]]) -> None:
@@ -69,7 +80,9 @@ def inject_tool_config(tool_config: Optional[Dict[str, Any]]) -> None:
         globals.config['dynamic_fs_auth']   = {..., 'feishu': 'u-xxx'}
         globals.config['dynamic_tool_auth'] = {..., 'bing': 'sk-xxx', 'google': 'AIza...'}
     '''
+    existing_tool_auth = dict(lazyllm.globals.config['dynamic_tool_auth'] or {})
     if not tool_config:
+        lazyllm.globals.config['dynamic_tool_auth'] = _clear_mail_auth_entries(existing_tool_auth, set())
         return
 
     # Collect updates grouped by config key.
@@ -98,7 +111,12 @@ def inject_tool_config(tool_config: Optional[Dict[str, Any]]) -> None:
 
     for config_key, new_entries in updates.items():
         existing = lazyllm.globals.config[config_key] or {}
+        if config_key == 'dynamic_tool_auth':
+            existing = _clear_mail_auth_entries(existing, set(new_entries))
         lazyllm.globals.config[config_key] = {**existing, **new_entries}
+
+    if 'dynamic_tool_auth' not in updates:
+        lazyllm.globals.config['dynamic_tool_auth'] = _clear_mail_auth_entries(existing_tool_auth, set())
 
     LOG.info(f'[inject_tool_config] injected tools: {sorted(injected)}')
 
