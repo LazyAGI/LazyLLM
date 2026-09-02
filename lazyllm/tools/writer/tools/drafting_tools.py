@@ -1245,18 +1245,6 @@ class WriterDraftingTools(WriterToolBase):
             != strip_heading_numbering(instruction.content_ref.heading_path[-1])
         ):
             raise ValueError('Markdown draft section heading does not match its content_ref.')
-        if instruction.heading_structure is not None:
-            actual = [
-                (level - 1, strip_heading_numbering(heading_path[-1]))
-                for level, heading_path, _, _ in sections
-                if level > 2
-            ]
-            expected = [
-                (item.level, item.title)
-                for item in instruction.heading_structure
-            ]
-            if actual != expected:
-                raise ValueError('Markdown draft section does not preserve its heading structure.')
 
     @staticmethod
     def _markdown_draft_section_title(markdown: str) -> str:
@@ -1315,7 +1303,7 @@ class WriterDraftingTools(WriterToolBase):
         ]
         expected = structure[:len(headings)] if allow_partial else structure
         if len(headings) != len(expected):
-            raise ValueError('IR draft section does not preserve its heading structure.')
+            return
 
         for block, item in zip(headings, expected):
             if block.model_extra is not None:

@@ -12,12 +12,14 @@ from lazyllm.common import FileSystemQueue
 from lazyllm.module.module import ModuleBase
 from lazyllm.tools.writer.data_models import (
     ContentRef,
+    ContextRelation,
     DocumentFact,
     DocumentSummary,
     MaterialStyle,
     ResourceProfile,
     VisualInstruction,
     VisualPlan,
+    WritingSubTask,
     WriterBlock,
     WriterDocument,
     WriterSpan,
@@ -34,18 +36,24 @@ from lazyllm.tools.writer.data_models.revision import (
 )
 from lazyllm.tools.writer.data_models.task import InputResource
 from lazyllm.tools.writer.data_models.planning import (
+    HeadingStructureItem,
     SectionInstruction,
     SectionInstructionList,
 )
+from lazyllm.tools.writer.prompts.planning import GENERATE_OUTLINE_MARKDOWN_PROMPT
 from lazyllm.tools.writer.tools.context_tools import WriterContextTools
 from lazyllm.tools.writer.tools.drafting_tools import WriterDraftingTools
+from lazyllm.tools.writer.tools.execution_tools import WriterExecutionTools
 from lazyllm.tools.writer.tools.base import WriterToolBase
 from lazyllm.tools.writer.tools.planning_tools import WriterPlanningTools
 from lazyllm.tools.writer.tools.quality_tools import WriterQualityTools
 from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
 from lazyllm.tools.writer.utils import (
+    apply_markdown_outline_instructions,
     get_markdown_outline_targets,
     load_artifact_json,
+    parse_document_markdown,
+    parse_markdown_outline_instructions,
     save_artifact_json,
 )
 
@@ -90,6 +98,74 @@ def _markdown_draft_inputs():
         ),
         WritingContext(context_id='ctx-md-stream'),
     )
+
+
+def test_markdown_outline_prompt_formats_hidden_instruction_example():
+    prompt = GENERATE_OUTLINE_MARKDOWN_PROMPT.format(
+        task_json='{}',
+        context_json='{}',
+        resource_profiles_json='[]',
+        execution_results_json='null',
+    )
+
+    assert '<!-- writer:outline {"node_id":"","target_chars":3,' in prompt
+    assert 'Do not copy the example value across headings.' in prompt
+
+
+def test_markdown_outline_instruction_sidecars_round_trip_as_outline_fields():
+    markdown = '\n'.join([
+        '# 方案',
+        '<a id="block-sec-1"></a>',
+        '## 系统设计',
+        '<!-- writer:outline {"node_id":"sec-1","target_chars":900,'
+        '"context_relations":[{"target_node_id":"intro","relation":"continuity",'
+        '"guidance":"承接背景"}],"subtasks":[{"subtask_id":"st-1",'
+        '"node_id":"sec-1","question":"补充行业数据","subtask_type":"retrieve",'
+        '"status":"pending"}]} -->',
+    ])
+
+    document = parse_document_markdown(markdown, document_id='outline-md', stage='outline')
+    section = document.block_by_id('sec-1')
+    assert section is not None
+    assert section.target_chars == 900
+    assert section.context_relations[0].guidance == '承接背景'
+    assert section.subtasks[0].question == '补充行业数据'
+
+    section.target_chars = 1000
+    restored = apply_markdown_outline_instructions(markdown, document)
+    fields = parse_markdown_outline_instructions(restored)['sec-1']
+    assert fields['target_chars'] == 1000
+    assert restored.count('writer:outline') == 1
+
+
+def test_complete_user_markdown_outline_adds_anchors_and_instruction_sidecars():
+    source = '# 方案\n\n## 系统设计\n'
+    anchored = WriterPlanningTools._normalize_markdown_outline(source)
+    proposed = parse_document_markdown(
+        anchored, document_id='ctx-user-outline-outline-markdown', stage='outline',
+    )
+    section = proposed.blocks[0]
+    section.target_chars = 800
+    section.subtasks = [WritingSubTask(
+        subtask_id='st-1', node_id=section.node_id,
+        question='比较两种方案', subtask_type='reason',
+    )]
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterPlanningTools(artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=proposed):
+            result = tool._complete_outline_instructions(
+                outline=source,
+                task=WritingTask(
+                    task_id='task-user-outline', query='按大纲写作', task_type='write',
+                ),
+                context=WritingContext(context_id='ctx-user-outline'),
+            )
+        completed = Path(result['artifact_path']).read_text(encoding='utf-8')
+
+    assert '<a id="block-sec-001"></a>\n## 系统设计' in completed
+    assert 'writer:outline' in completed
+    assert '比较两种方案' in completed
 
 
 def test_structured_response_selects_one_schema_valid_candidate():
@@ -152,6 +228,26 @@ def test_stream_markdown_draft_is_isolated_and_returns_tool_result():
     assert artifact == markdown
     assert result['metadata']['extra']['representation'] == 'markdown'
     assert queue.dequeue() == []
+
+
+def test_stream_markdown_draft_does_not_fail_when_model_omits_subheadings():
+    task, instruction, context = _markdown_draft_inputs()
+    instruction.heading_structure = [
+        HeadingStructureItem(level=2, title='背景'),
+        HeadingStructureItem(level=2, title='结论'),
+    ]
+
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterDraftingTools(
+            llm=_StreamingTextLLM([('text', '模型直接生成正文，没有生成子标题。')]),
+            artifact_store=directory,
+        )
+        stream = tool.stream_draft_section(task, instruction, context)
+        list(stream)
+        result = stream.result()
+        markdown = Path(result['artifact_path']).read_text(encoding='utf-8')
+
+    assert markdown == '## 第一章\n\n模型直接生成正文，没有生成子标题。\n'
 
 
 def test_stream_markdown_draft_rejects_ir_instruction():
@@ -833,6 +929,238 @@ def test_generate_section_instructions_preserves_outline_references():
         instruction = instructions.instructions[0]
         assert instruction.references == references
         assert instruction.fact_constraints == []
+
+
+def test_generate_section_instructions_consumes_existing_outline_instruction_fields():
+    context = WritingContext(context_id='ctx-outline-instructions')
+    outline = WriterDocument(
+        document_id='outline-instructions',
+        stage='outline',
+        title='大纲指令测试',
+        blocks=[
+            WriterBlock(
+                node_id='section-1', type='heading', content='背景', stage='outline',
+                    target_chars=240,
+                    context_relations=[ContextRelation(
+                        target_node_id='section-2', relation='continuity',
+                        guidance='承接全文问题定义。',
+                    )],
+                subtasks=[WritingSubTask(
+                    subtask_id='research-data', node_id='section-1',
+                    question='提取两项行业数据。', subtask_type='extract',
+                )],
+                children=[WriterBlock(
+                    node_id='section-1-1', type='heading', content='行业现状',
+                    target_chars=120, numbering={'level': 2}, stage='outline',
+                )],
+            ),
+            WriterBlock(node_id='section-2', type='heading', content='方案', stage='outline'),
+        ],
+    )
+    llm_result = SectionInstructionList(instructions=[
+        SectionInstruction(
+            instruction_id='instruction-1', content_ref=ContentRef(node_id='section-1'),
+            section_title='背景', section_goal='说明背景',
+            relation_constraints=['LLM 生成的关联不应覆盖大纲字段。'],
+            meta={'target_chars': 999},
+        ),
+        SectionInstruction(
+            instruction_id='instruction-2', content_ref=ContentRef(node_id='section-2'),
+            section_title='方案', section_goal='说明方案', meta={'target_chars': 560},
+        ),
+    ])
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterPlanningTools(artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=llm_result):
+            result = tool.generate_section_instructions(outline=outline, context=context)
+        instructions = load_artifact_json(
+            result['metadata']['artifact_paths']['section_instructions'],
+            SectionInstructionList,
+        )
+
+    first = instructions.instructions[0]
+    assert first.meta['target_chars'] == 240
+    assert first.heading_structure[0].target_chars == 120
+    assert first.relation_constraints == ['承接全文问题定义。']
+    assert first.pending_subtasks == ['提取两项行业数据。']
+
+
+def test_outline_char_budgets_are_recursive_and_reach_markdown_instructions():
+    def heading(node_id, title, weight=None, children=None):
+        return WriterBlock(
+            node_id=node_id, type='heading', content=title, stage='outline',
+            target_chars=weight, children=children or [],
+        )
+
+    task = WritingTask(
+        task_id='task-outline-budget', query='写一篇小说', task_type='write',
+        constraints={'target_chars': 1200, 'max_chars': 1200},
+    )
+    outline = WriterDocument(
+        document_id='outline-budget', stage='outline', title='深海',
+        blocks=[heading('s1', '第一章', children=[
+            heading('s11', '前兆', 1, [
+                heading('s111', '风声', 1), heading('s112', '海雾', 3),
+            ]),
+            heading('s12', '真相', 2),
+        ])],
+    )
+
+    WriterPlanningTools._ensure_outline_fields(outline, task)
+
+    section = outline.blocks[0]
+    assert [child.target_chars for child in section.children] == [400, 800]
+    assert sum(child.target_chars for child in section.children) == section.target_chars
+    assert [child.target_chars for child in section.children[0].children] == [100, 300]
+    assert sum(child.target_chars for child in section.children[0].children) \
+        == section.children[0].target_chars
+    markdown = apply_markdown_outline_instructions(
+        '# 深海\n<a id="block-s1"></a>\n## 第一章\n'
+        '<a id="block-s11"></a>\n### 前兆\n'
+        '<a id="block-s111"></a>\n#### 风声\n'
+        '<a id="block-s112"></a>\n#### 海雾\n'
+        '<a id="block-s12"></a>\n### 真相\n',
+        outline,
+    )
+    items = next(iter(WriterPlanningTools._markdown_heading_structure(markdown).values()))
+    assert [(item.title, item.target_chars) for item in items] == [
+        ('前兆', 400), ('风声', 100), ('海雾', 300), ('真相', 800),
+    ]
+
+
+def test_generate_markdown_section_instructions_synthesizes_missing_sections():
+    context = WritingContext(context_id='ctx-markdown-instruction-fallback')
+    task = WritingTask(
+        task_id='task-markdown-instruction-fallback',
+        query='写一篇两章小说', task_type='write',
+        constraints={'target_chars': 2000, 'max_chars': 2400},
+    )
+    outline = (
+        '# 深渊\n\n'
+        '## 旧日来信\n\n### 发现信件\n\n'
+        '## 深渊真相\n\n### 接近真相\n'
+    )
+    partial = SectionInstructionList(instructions=[SectionInstruction(
+        instruction_id='instruction-1',
+        content_ref=ContentRef(heading_path=['深渊', '旧日来信']),
+        section_title='旧日来信', section_goal='介绍故事开端。',
+        meta={'target_chars': 1},
+    )])
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterPlanningTools(artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=partial):
+            result = tool.generate_section_instructions(
+                outline=outline, context=context, task=task,
+            )
+        instructions = load_artifact_json(
+            result['artifact_path'], SectionInstructionList,
+        )
+
+    assert [item.section_title for item in instructions.instructions] == ['旧日来信', '深渊真相']
+    assert instructions.instructions[0].section_goal == '介绍故事开端。'
+    assert instructions.instructions[1].meta['synthesized'] is True
+    assert instructions.instructions[1].required_points == ['接近真相']
+    assert sum(item.meta['target_chars'] for item in instructions.instructions) == 2000
+    assert instructions.meta['synthesized_instruction_refs'] == [{
+        'heading_path': ['深渊', '深渊真相'], 'occurrence': 1,
+    }]
+
+
+def test_markdown_section_instructions_use_persisted_outline_node_ids_and_fields():
+    context = WritingContext(context_id='ctx-markdown-sidecar')
+    outline = '\n'.join([
+        '# 方案',
+        '<a id="block-custom-section"></a>',
+        '## 系统设计',
+        '<!-- writer:outline {"node_id":"custom-section","target_chars":900,'
+        '"context_relations":[],"subtasks":[{"subtask_id":"st-1",'
+        '"node_id":"custom-section","question":"比较两种方案",'
+        '"subtask_type":"reason","status":"completed","result_summary":"A 方案更稳定"}]} -->',
+    ])
+    llm_result = SectionInstructionList(instructions=[SectionInstruction(
+        instruction_id='instruction-1',
+        content_ref=ContentRef(heading_path=['方案', '系统设计']),
+        section_title='系统设计', section_goal='说明系统设计。',
+    )])
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterPlanningTools(artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=llm_result):
+            result = tool.generate_section_instructions(outline=outline, context=context)
+        instructions = load_artifact_json(result['artifact_path'], SectionInstructionList)
+
+    instruction = instructions.instructions[0]
+    assert instruction.meta['outline_node_id'] == 'custom-section'
+    assert instruction.meta['target_chars'] == 900
+    assert instruction.pending_subtasks == []
+    assert '子任务结果（比较两种方案）：A 方案更稳定' in instruction.required_points
+
+
+def test_execute_writing_subtasks_retries_and_persists_outline_state():
+    outline = WriterDocument(
+        document_id='outline-subtasks', stage='outline',
+        blocks=[WriterBlock(
+            node_id='section-1', type='heading', content='背景', stage='outline',
+            subtasks=[WritingSubTask(
+                subtask_id='extract-data', node_id='section-1',
+                question='提取行业数据。', subtask_type='extract',
+            )],
+        )],
+    )
+    resolution = MagicMock(
+        result_summary='2025 年行业规模为 100 亿元。',
+        result_references=[{'id': 'fact-market-size'}],
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterExecutionTools(artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', side_effect=[RuntimeError('temporary'), resolution]):
+            result = tool.execute_writing_subtasks(outline, WritingContext(context_id='ctx-subtasks'))
+        restored = load_artifact_json(result['artifact_path'], WriterDocument)
+
+    subtask = restored.block_by_id('section-1').subtasks[0]
+    assert subtask.status == 'completed'
+    assert subtask.retry_count == 1
+    assert subtask.result_references == [{'id': 'fact-market-size'}]
+    assert subtask.tools_used == ['llm']
+
+
+def test_execute_writing_subtasks_can_resume_a_failed_retrieval():
+    failed = WritingSubTask(
+        subtask_id='retrieve-policy', node_id='section-1',
+        question='检索最新政策。', subtask_type='retrieve',
+        status='failed', retry_count=2, result_summary='previous failure',
+    )
+    outline = WriterDocument(
+        document_id='outline-recovery', stage='outline',
+        blocks=[WriterBlock(
+            node_id='section-1', type='heading', content='政策背景', stage='outline',
+            subtasks=[failed],
+        )],
+    )
+    resolution = MagicMock(result_summary='已找到政策要点。', result_references=[])
+    progress = []
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterExecutionTools(artifact_store=d)
+        retrieve = MagicMock(return_value={'documents': ['policy']})
+        with patch.object(tool, '_call_llm_structured', return_value=resolution) as call_llm:
+            result = tool.execute_writing_subtasks(
+                outline, WritingContext(context_id='ctx-recovery'),
+                retry_failed=True, retrieve=retrieve, on_progress=progress.append,
+            )
+        restored = load_artifact_json(result['artifact_path'], WriterDocument)
+
+    subtask = restored.block_by_id('section-1').subtasks[0]
+    assert subtask.status == 'completed'
+    assert subtask.retry_count == 2
+    assert subtask.tools_used == ['kb_search', 'llm']
+    retrieve.assert_called_once_with('检索最新政策。')
+    assert 'policy' in call_llm.call_args.args[0]
+    assert progress[0][0]['status'] == 'failed'
+    assert progress[-1][0]['status'] == 'completed'
 
 
 def test_short_section_instructions_scope_image_directives_to_visual_section():

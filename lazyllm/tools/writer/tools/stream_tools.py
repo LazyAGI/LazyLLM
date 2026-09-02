@@ -860,6 +860,7 @@ def build_outline_stream(
 
         def finalize_markdown(outline: str) -> dict:
             outline = tools._normalize_markdown_outline(outline.strip() + '\n')
+            outline = tools._complete_markdown_outline_fields(outline, writing_task)
             _, targets = get_markdown_outline_targets(outline)
             path = tools._write_markdown_artifact('outline.md', outline)
             return make_markdown_tool_result(

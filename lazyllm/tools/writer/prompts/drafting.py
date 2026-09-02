@@ -8,6 +8,9 @@ Requirements:
 - When heading_structure is present, reproduce one descendant heading for every listed item,
   using its exact title and order. The system assigns node_id and numbering.level. Do not add
   other headings. An empty list means no subheadings.
+- A heading_structure item's target_chars is the total prose budget for that heading's subtree.
+  Its direct child heading budgets already sum to it, so never add the parent and child budgets.
+  The section-level target and maximum remain authoritative for the whole section.
 - A paragraph child usually represents one substantial paragraph or paragraph group.
 - The section instruction is a writing plan, not a list of visible headings.
 - Write headings without visible numbering; the system renders numbers.
@@ -82,6 +85,9 @@ Requirements:
   title and order, using item.level + 1 as its Markdown heading level (for example, level=2
   means `###`). Begin with the first listed heading. Do not add other headings. When
   heading_structure is absent or empty, begin directly with prose.
+- A heading_structure item's target_chars is the total prose budget for that heading's subtree.
+  Its direct child heading budgets already sum to it, so never add the parent and child budgets.
+  The section-level target and maximum remain authoritative for the whole section.
 - Follow the section instruction as a writing plan, not as a list of visible headings.
 - Treat expected_blocks as coverage priorities, not minimum paragraph counts. Combine or
   omit secondary cues when necessary to fit the section budget.

@@ -42,6 +42,7 @@ class WritingSubTask(BaseModel):
     result_summary: str = ''
     retry_count: int = Field(default=0, ge=0)
     result_references: List[Dict[str, Any]] = Field(default_factory=list)
+    tools_used: List[str] = Field(default_factory=list)
 
 
 class WriterSpan(BaseModel):

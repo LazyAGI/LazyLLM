@@ -8,7 +8,13 @@ from ..data_models.context import WritingContext
 from ..data_models.multimodal import VisualPlan
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
-from ..data_models.writer_ir import ContentRef, WriterBlock, WriterDocument
+from ..data_models.writer_ir import (
+    ContentRef,
+    ContextRelation,
+    WritingSubTask,
+    WriterBlock,
+    WriterDocument,
+)
 from ..data_models.planning import (
     HeadingStructureItem,
     SectionInstruction,
@@ -17,6 +23,7 @@ from ..data_models.planning import (
 )
 from ..numbering import ensure_markdown_heading_anchors
 from ..prompts import (
+    COMPLETE_OUTLINE_INSTRUCTIONS_PROMPT,
     GENERATE_OUTLINE_MARKDOWN_PROMPT,
     GENERATE_OUTLINE_PROMPT,
     GENERATE_REWRITE_OUTLINE_PROMPT,
@@ -28,9 +35,12 @@ from ..prompts import (
     GENERATE_VISUAL_PLAN_PROMPT,
 )
 from ..utils import (
+    apply_markdown_outline_instructions,
     get_markdown_outline_targets,
     make_markdown_tool_result,
     parse_markdown_sections,
+    parse_markdown_outline_instructions,
+    parse_document_markdown,
     render_block_markdown,
     render_document_markdown,
     strip_heading_numbering,
@@ -82,6 +92,7 @@ class WriterPlanningTools(WriterToolBase):
             )
             outline = self._call_llm_text(prompt).strip() + '\n'
             outline = self._normalize_markdown_outline(outline)
+            outline = self._complete_markdown_outline_fields(outline, writing_task)
             _, targets = get_markdown_outline_targets(outline)
             path = self._write_markdown_artifact('outline.md', outline)
             return make_markdown_tool_result(
@@ -134,6 +145,68 @@ class WriterPlanningTools(WriterToolBase):
             },
         )
         return result.model_dump()
+
+    def _complete_outline_instructions(
+        self,
+        outline: Any,
+        task: Any,
+        context: Any,
+    ) -> dict:
+        '''Fill instruction fields without changing an existing outline's structure.'''
+        source = self._unified_document(outline)
+        writing_task = self._unified_model(task, WritingTask)
+        writing_context = self._unified_model(context, WritingContext)
+        is_markdown = isinstance(source, str)
+        if is_markdown:
+            source = ensure_markdown_heading_anchors(source)
+        document = parse_document_markdown(
+            source,
+            document_id=f'{writing_context.context_id}-outline-markdown',
+            stage='outline',
+        ) if is_markdown else source
+        if not isinstance(document, WriterDocument):
+            raise TypeError('Outline completion requires Markdown or WriterDocument.')
+
+        prompt = COMPLETE_OUTLINE_INSTRUCTIONS_PROMPT.format(
+            task_json=to_prompt_json(writing_task),
+            context_json=to_prompt_json(writing_context),
+            outline_json=to_prompt_json(document),
+        )
+        proposed = self._call_llm_structured(prompt, WriterDocument)
+        proposed_by_id = {block.node_id: block for block in proposed.iter_blocks()}
+        for block in document.iter_blocks():
+            candidate = proposed_by_id.get(block.node_id)
+            if block.type != 'heading' or candidate is None or candidate.type != 'heading' \
+                    or candidate.content != block.content:
+                continue
+            if block.target_chars is None:
+                block.target_chars = candidate.target_chars
+            if not block.context_relations:
+                block.context_relations = candidate.context_relations
+            if not block.subtasks:
+                block.subtasks = candidate.subtasks
+
+        self._ensure_outline_fields(document, writing_task)
+        if is_markdown:
+            completed = apply_markdown_outline_instructions(source, document)
+            path = self._write_markdown_artifact('outline.md', completed)
+            return make_markdown_tool_result(
+                path=path,
+                step_name='complete_outline_instructions',
+                artifact_key='outline',
+                summary='Completed instruction fields on an existing Markdown outline.',
+                counts={'outline_nodes': len(list(document.iter_blocks()))},
+                extra={'representation': 'markdown'},
+            ).model_dump()
+        return self._save_artifacts(
+            {'outline': document},
+            step_name='complete_outline_instructions',
+            primary_key='outline',
+            context_key=None,
+            summary='Completed instruction fields on an existing Writer IR outline.',
+            counts={'outline_nodes': len(list(document.iter_blocks()))},
+            extra={'representation': 'ir'},
+        ).model_dump()
 
     def stream_outline(
         self,
@@ -729,6 +802,21 @@ class WriterPlanningTools(WriterToolBase):
             lines.append(line)
         return ensure_markdown_heading_anchors('\n'.join(lines).rstrip() + '\n')
 
+    @classmethod
+    def _complete_markdown_outline_fields(
+        cls,
+        outline: str,
+        task: WritingTask,
+    ) -> str:
+        '''Validate model sidecars and deterministically fill omitted outline fields.'''
+        document = parse_document_markdown(
+            outline,
+            document_id=f'{task.task_id}-outline-markdown',
+            stage='outline',
+        )
+        cls._ensure_outline_fields(document, task)
+        return apply_markdown_outline_instructions(outline, document)
+
     @staticmethod
     def _remove_outline_image_markup(line: str) -> str:
         '''Keep generated outlines structural; visual placement has a separate owner.'''
@@ -798,7 +886,79 @@ class WriterPlanningTools(WriterToolBase):
             )
 
         outline.metadata.setdefault('source', 'llm')
+        self._ensure_outline_fields(outline, task)
         return outline
+
+    @classmethod
+    def _ensure_outline_fields(
+        cls,
+        outline: WriterDocument,
+        task: WritingTask,
+    ) -> None:
+        headings = [block for block in outline.iter_blocks() if block.type == 'heading']
+        top_level = [block for block in outline.blocks if block.type == 'heading']
+        requested_target = task.constraints.get('target_chars')
+        if isinstance(requested_target, int) and not isinstance(requested_target, bool) \
+                and requested_target > 0 and top_level:
+            weights = [block.target_chars or max(1, len(render_block_markdown(block)))
+                       for block in top_level]
+            for block, target in zip(top_level, cls._allocate_by_weight(requested_target, weights)):
+                block.target_chars = target
+
+        def allocate_descendants(parent: WriterBlock) -> None:
+            children = [child for child in parent.children if child.type == 'heading']
+            if not children:
+                return
+            if parent.target_chars is None:
+                parent.target_chars = max(200, len(render_block_markdown(parent)) * 4)
+            if parent.target_chars < len(children):
+                raise ValueError(
+                    f'Outline heading {parent.node_id!r} has a target_chars budget smaller '
+                    'than its number of child headings.'
+                )
+            weights = [
+                child.target_chars or max(1, len(render_block_markdown(child)))
+                for child in children
+            ]
+            for child, target in zip(
+                children, cls._allocate_by_weight(parent.target_chars, weights),
+            ):
+                child.target_chars = target
+                allocate_descendants(child)
+
+        for block in top_level:
+            allocate_descendants(block)
+
+        valid_node_ids = {block.node_id for block in headings}
+        previous_top_level: WriterBlock | None = None
+        top_level_ids = {block.node_id for block in top_level}
+        for block in headings:
+            if block.target_chars is None:
+                block.target_chars = max(200, len(render_block_markdown(block)) * 4)
+            block.context_relations = [
+                relation for relation in block.context_relations
+                if relation.target_node_id in valid_node_ids
+                and relation.target_node_id != block.node_id
+            ]
+            if block.node_id in top_level_ids and previous_top_level is not None \
+                    and not block.context_relations:
+                block.context_relations = [ContextRelation(
+                    target_node_id=previous_top_level.node_id,
+                    relation='continuity',
+                    guidance='承接前一节已建立的信息和叙事进展。',
+                )]
+            if block.node_id in top_level_ids:
+                previous_top_level = block
+            block.subtasks = [
+                subtask.model_copy(update={
+                    'subtask_id': subtask.subtask_id
+                    or f'{block.node_id}-subtask-{index}',
+                    'node_id': block.node_id,
+                    'status': 'pending',
+                })
+                for index, subtask in enumerate(block.subtasks, start=1)
+                if subtask.question.strip()
+            ]
 
     def _normalize_ir_section_instructions(
         self,
@@ -886,9 +1046,10 @@ class WriterPlanningTools(WriterToolBase):
         task: WritingTask | None,
         visual_plan: VisualPlan,
     ) -> SectionInstructionList:
+        outline_fields = parse_markdown_outline_instructions(outline)
         target_by_ref = {
-            (tuple(heading_path), occurrence): (level, heading_path)
-            for level, heading_path, occurrence, _ in targets
+            (tuple(heading_path), occurrence): (level, heading_path, body)
+            for level, heading_path, occurrence, body in targets
         }
         instruction_by_ref: Dict[tuple[tuple[str, ...], int], SectionInstruction] = {}
 
@@ -908,10 +1069,50 @@ class WriterPlanningTools(WriterToolBase):
 
         missing_refs = [key for key in target_by_ref if key not in instruction_by_ref]
         if missing_refs:
-            raise ValueError(f'Missing section instructions for Markdown headings: {missing_refs!r}.')
+            heading_structures = self._markdown_heading_structure(outline)
+            synthesized_refs = []
+            for index, key in enumerate(missing_refs, start=1):
+                level, heading_path, body = target_by_ref[key]
+                target = {
+                    'content_ref': {
+                        'heading_path': heading_path,
+                        'occurrence': key[1],
+                    },
+                    'section_title': heading_path[-1],
+                    'outline_heading_level': level,
+                    'outline_body': body,
+                }
+                points = self._deterministic_outline_points(target)
+                if not points:
+                    points = [
+                        item.title for item in heading_structures.get(key, [])
+                    ]
+                instruction_by_ref[key] = SectionInstruction(
+                    instruction_id=f'synthesized-markdown-section-{index}',
+                    content_ref=ContentRef.model_validate(target['content_ref']),
+                    section_title=strip_heading_numbering(heading_path[-1]),
+                    section_goal=(
+                        f'围绕“{strip_heading_numbering(heading_path[-1])}”完成本节，'
+                        '覆盖大纲要点并遵守全文约束。'
+                    ),
+                    required_points=points,
+                    expected_blocks=points,
+                    meta={
+                        'target_chars': max(
+                            1, self._deterministic_target_weight(target, points),
+                        ),
+                        'cross_references': [],
+                        'synthesized': True,
+                    },
+                )
+                synthesized_refs.append({
+                    'heading_path': list(heading_path),
+                    'occurrence': key[1],
+                })
+            instruction_list.meta['synthesized_instruction_refs'] = synthesized_refs
 
         outline_id = f'{context.context_id}-outline-markdown'
-        node_id_by_ref = self._markdown_outline_node_ids(targets)
+        node_id_by_ref = self._markdown_outline_node_ids(targets, outline)
         headings_by_ref = self._markdown_heading_structure(outline)
         needs_by_ref = self._markdown_visual_needs_by_ref(visual_plan)
         visual_targets = {
@@ -935,6 +1136,22 @@ class WriterPlanningTools(WriterToolBase):
                 'outline_title': heading_path[0],
                 'outline_node_id': node_id_by_ref[key],
             })
+            outline_field = outline_fields.get(node_id_by_ref[key]) or {}
+            target_chars = outline_field.get('target_chars')
+            if isinstance(target_chars, int) and not isinstance(target_chars, bool) \
+                    and target_chars > 0:
+                instruction.meta['target_chars'] = target_chars
+            instruction.relation_constraints = [
+                str(item.get('guidance') or item.get('relation') or '').strip()
+                for item in outline_field.get('context_relations') or []
+                if isinstance(item, dict)
+                and str(item.get('guidance') or item.get('relation') or '').strip()
+            ]
+            self._apply_outline_subtask_results(
+                instruction,
+                [WritingSubTask.model_validate({**item, 'node_id': node_id_by_ref[key]})
+                 for item in outline_field.get('subtasks') or [] if isinstance(item, dict)],
+            )
             instruction.visual_needs = []
             self._normalize_cross_references(
                 instruction, node_id_by_ref, visual_targets,
@@ -980,7 +1197,23 @@ class WriterPlanningTools(WriterToolBase):
     @staticmethod
     def _markdown_outline_node_ids(
         targets: List[tuple[int, List[str], int, str]],
+        outline: str | None = None,
     ) -> Dict[tuple[tuple[str, ...], int], str]:
+        if outline is not None:
+            document = parse_document_markdown(
+                outline,
+                document_id='markdown-outline-node-map',
+                stage='outline',
+            )
+            top_level_headings = [
+                block for block in document.blocks if block.type == 'heading'
+            ]
+            if len(top_level_headings) == len(targets):
+                return {
+                    (tuple(heading_path), occurrence): block.node_id
+                    for (_, heading_path, occurrence, _), block
+                    in zip(targets, top_level_headings)
+                }
         ids: Dict[tuple[tuple[str, ...], int], str] = {}
         counters: List[int] = []
         for level, heading_path, occurrence, _ in targets:
@@ -996,18 +1229,28 @@ class WriterPlanningTools(WriterToolBase):
     def _markdown_heading_structure(
         outline: str,
     ) -> Dict[tuple[tuple[str, ...], int], List[HeadingStructureItem]]:
-        result: Dict[tuple[tuple[str, ...], int], List[HeadingStructureItem]] = {}
-        current: tuple[tuple[str, ...], int] | None = None
-        for level, heading_path, occurrence, _ in parse_markdown_sections(outline):
-            if level == 2:
-                current = (tuple(heading_path), occurrence)
-                result[current] = []
-            elif level > 2 and current is not None:
-                result[current].append(HeadingStructureItem(
-                    level=level - 1,
-                    title=strip_heading_numbering(heading_path[-1]),
-                ))
-        return result
+        _, targets = get_markdown_outline_targets(outline)
+        document = parse_document_markdown(
+            outline,
+            document_id='markdown-outline-heading-structure',
+            stage='outline',
+        )
+        top_level = [block for block in document.blocks if block.type == 'heading']
+        if len(top_level) != len(targets):
+            raise ValueError('Markdown outline headings could not be mapped to their structure.')
+        return {
+            (tuple(heading_path), occurrence): [
+                HeadingStructureItem(
+                    node_id=item.node_id,
+                    level=int(item.numbering.get('level') or 1),
+                    title=strip_heading_numbering(item.content),
+                    target_chars=item.target_chars,
+                )
+                for item in block.iter_blocks()
+                if item is not block and item.type == 'heading'
+            ]
+            for (_, heading_path, occurrence, _), block in zip(targets, top_level)
+        }
 
     @staticmethod
     def _markdown_visual_needs_by_ref(
@@ -1344,6 +1587,7 @@ class WriterPlanningTools(WriterToolBase):
                 node_id=node_id_by_original[item.node_id],
                 level=int(item.numbering.get('level') or 1),
                 title=strip_heading_numbering(item.content),
+                target_chars=item.target_chars,
             )
             for item in block.iter_blocks()
             if item is not block and item.type == 'heading'
@@ -1359,6 +1603,13 @@ class WriterPlanningTools(WriterToolBase):
             'outline_title': outline.title,
             'outline_node_id': outline_node_id,
         })
+        if block.target_chars is not None:
+            instruction.meta['target_chars'] = block.target_chars
+        instruction.relation_constraints = [
+            relation.guidance or relation.relation
+            for relation in block.context_relations
+        ]
+        self._apply_outline_subtask_results(instruction, block.subtasks)
         self._normalize_cross_references(
             instruction, node_id_by_original, visual_targets,
         )
@@ -1367,6 +1618,23 @@ class WriterPlanningTools(WriterToolBase):
             instruction, section_needs, visual_targets,
         )
         return instruction
+
+    @staticmethod
+    def _apply_outline_subtask_results(
+        instruction: SectionInstruction,
+        subtasks: List[WritingSubTask],
+    ) -> None:
+        completed = [
+            f"子任务结果（{subtask.question}）：{subtask.result_summary.strip()}"
+            for subtask in subtasks
+            if subtask.status == 'completed' and subtask.result_summary.strip()
+        ]
+        instruction.required_points = list(dict.fromkeys([
+            *instruction.required_points, *completed,
+        ]))
+        instruction.pending_subtasks = [
+            subtask.question for subtask in subtasks if subtask.status != 'completed'
+        ]
 
     @staticmethod
     def _ir_outline_node_ids_from_outline(outline: WriterDocument) -> Dict[str, str]:

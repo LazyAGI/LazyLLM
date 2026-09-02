@@ -7,7 +7,14 @@ from typing import Any, Dict, List, Optional
 from lazyllm.thirdparty import mistune
 
 from ..data_models.multimodal import MediaAssetLibrary
-from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterSpan, WriterStage
+from ..data_models.writer_ir import (
+    ContextRelation,
+    WritingSubTask,
+    WriterBlock,
+    WriterDocument,
+    WriterSpan,
+    WriterStage,
+)
 from ..numbering import (
     MARKDOWN_ANCHOR_RE,
     parse_markdown_anchor_numbering,
@@ -144,6 +151,109 @@ def _markdown_visible_text(token: Dict[str, Any]) -> str:
     return ''.join(_markdown_visible_text(child) for child in token.get('children') or [])
 
 
+MARKDOWN_OUTLINE_INSTRUCTION_RE = re.compile(
+    r'^\s*<!--\s*writer:outline\s+(\{.*\})\s*-->\s*$'
+)
+
+
+def parse_markdown_outline_instructions(markdown: str) -> Dict[str, Dict[str, Any]]:
+    '''Read heading-owned outline instructions from invisible Markdown sidecars.'''
+    result: Dict[str, Dict[str, Any]] = {}
+    pending_node_id = ''
+    current_heading_id = ''
+    fence: Optional[str] = None
+    for line in markdown.splitlines():
+        fence_match = re.match(r'^\s*(```+|~~~+)', line)
+        if fence_match:
+            marker = fence_match.group(1)[0]
+            fence = marker if fence is None else None if fence == marker else fence
+            continue
+        if fence is not None:
+            continue
+        anchor = re.search(r'<a\s+id=["\']block-([^"\']+)["\'][^>]*>\s*</a>', line)
+        if anchor:
+            pending_node_id = anchor.group(1)
+            continue
+        if re.match(r'^#{1,6}\s+', line):
+            current_heading_id = pending_node_id
+            pending_node_id = ''
+            continue
+        sidecar = MARKDOWN_OUTLINE_INSTRUCTION_RE.match(line)
+        if sidecar and current_heading_id:
+            try:
+                payload = json.loads(sidecar.group(1))
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                payload['node_id'] = current_heading_id
+                result[current_heading_id] = payload
+            continue
+        if line.strip():
+            current_heading_id = ''
+    return result
+
+
+def _strip_markdown_outline_instructions(markdown: str) -> str:
+    '''Remove outline sidecars before treating Markdown as visible prose.'''
+    trailing_newline = markdown.endswith('\n')
+    value = '\n'.join(
+        line for line in markdown.splitlines()
+        if not MARKDOWN_OUTLINE_INSTRUCTION_RE.match(line)
+    )
+    return f'{value}\n' if trailing_newline else value
+
+
+def apply_markdown_outline_instructions(
+    markdown: str,
+    document: 'WriterDocument',
+) -> str:
+    '''Persist WriterBlock instruction fields immediately after Markdown headings.'''
+    block_by_id = {
+        block.node_id: block
+        for block in document.iter_blocks()
+        if block.type == 'heading'
+    }
+    source = _strip_markdown_outline_instructions(markdown)
+    trailing_newline = source.endswith('\n')
+    output: List[str] = []
+    pending_node_id = ''
+    fence: Optional[str] = None
+    for line in source.splitlines():
+        output.append(line)
+        fence_match = re.match(r'^\s*(```+|~~~+)', line)
+        if fence_match:
+            marker = fence_match.group(1)[0]
+            fence = marker if fence is None else None if fence == marker else fence
+            continue
+        if fence is not None:
+            continue
+        anchor = re.search(r'<a\s+id=["\']block-([^"\']+)["\'][^>]*>\s*</a>', line)
+        if anchor:
+            pending_node_id = anchor.group(1)
+            continue
+        if not re.match(r'^#{1,6}\s+', line):
+            if line.strip():
+                pending_node_id = ''
+            continue
+        block = block_by_id.get(pending_node_id)
+        pending_node_id = ''
+        if block is None:
+            continue
+        payload = {
+            'node_id': block.node_id,
+            'target_chars': block.target_chars,
+            'context_relations': [item.model_dump() for item in block.context_relations],
+            'subtasks': [item.model_dump() for item in block.subtasks],
+        }
+        output.append(
+            '<!-- writer:outline '
+            + json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
+            + ' -->'
+        )
+    value = '\n'.join(output)
+    return f'{value}\n' if trailing_newline else value
+
+
 def parse_markdown_sections(markdown: str) -> List[tuple[int, List[str], int, str]]:
     sections: List[tuple[int, List[str], int, str]] = []
     heading_path: List[str] = []
@@ -168,7 +278,7 @@ def parse_markdown_sections(markdown: str) -> List[tuple[int, List[str], int, st
             continue
         match = re.match(r'^(#{1,6})\s+(.+?)\s*$', line)
         if not match:
-            if current is not None:
+            if current is not None and not MARKDOWN_OUTLINE_INSTRUCTION_RE.match(line):
                 current[3].append(line)
             continue
         if current is not None:
@@ -213,9 +323,11 @@ def parse_document_markdown(  # noqa: C901
     media_assets: Optional[MediaAssetLibrary] = None,
 ) -> WriterDocument:
     '''Convert the drafting Markdown subset into the existing WriterDocument IR.'''
-    heading_numbering = parse_markdown_heading_numbering_config(markdown or '')
+    outline_instructions = parse_markdown_outline_instructions(markdown or '')
+    visible_markdown = _strip_markdown_outline_instructions(markdown or '')
+    heading_numbering = parse_markdown_heading_numbering_config(visible_markdown)
     tokens = mistune.create_markdown(renderer='ast', plugins=['table'])(
-        strip_markdown_heading_numbering_config(markdown or ''),
+        strip_markdown_heading_numbering_config(visible_markdown),
     )
     outline_ids: Dict[str, List[str]] = defaultdict(list)
     if outline:
@@ -394,7 +506,7 @@ def parse_document_markdown(  # noqa: C901
         )
         append_block(block)
 
-    return WriterDocument(
+    document = WriterDocument(
         document_id=document_id,
         stage=stage,
         title=title,
@@ -410,6 +522,25 @@ def parse_document_markdown(  # noqa: C901
             } if heading_numbering else {}),
         },
     )
+    for block in document.iter_blocks():
+        payload = outline_instructions.get(block.node_id)
+        if block.type != 'heading' or not payload:
+            continue
+        target_chars = payload.get('target_chars')
+        if isinstance(target_chars, int) and not isinstance(target_chars, bool) \
+                and target_chars > 0:
+            block.target_chars = target_chars
+        block.context_relations = [
+            ContextRelation.model_validate(item)
+            for item in payload.get('context_relations') or []
+            if isinstance(item, dict)
+        ]
+        block.subtasks = [
+            WritingSubTask.model_validate({**item, 'node_id': block.node_id})
+            for item in payload.get('subtasks') or []
+            if isinstance(item, dict)
+        ]
+    return document
 
 
 def _markdown_token_text(token: Dict[str, Any]) -> str:

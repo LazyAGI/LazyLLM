@@ -419,7 +419,7 @@ class WriterToolBase(ModuleBase):
         list_fields = (
             'required_points', 'references', 'fact_constraints', 'style_constraints',
             'relation_constraints', 'visual_needs', 'expected_blocks',
-            'pending_subtasks', 'revision_notes',
+            'pending_subtasks', 'revision_notes', 'subtasks',
         )
         for field in list_fields:
             value = normalized.get(field)

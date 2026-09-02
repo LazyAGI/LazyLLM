@@ -11,10 +11,12 @@ from .artifact import (
 )
 from .serialization import (
     MarkdownSelectionError,
+    apply_markdown_outline_instructions,
     get_markdown_outline_targets,
     locate_markdown_paragraph,
     parse_document_markdown,
     parse_markdown_sections,
+    parse_markdown_outline_instructions,
     strip_caption_numbering,
     strip_heading_numbering,
     to_prompt_json,
@@ -46,8 +48,10 @@ __all__ = [
     'render_block_markdown',
     'render_document_markdown',
     'get_markdown_outline_targets',
+    'apply_markdown_outline_instructions',
     'parse_document_markdown',
     'parse_markdown_sections',
+    'parse_markdown_outline_instructions',
     'to_prompt_json',
     'MarkdownSelectionError',
     'locate_markdown_paragraph',

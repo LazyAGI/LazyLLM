@@ -28,6 +28,7 @@ class HeadingStructureItem(BaseModel):
     node_id: Optional[str] = None
     level: int = Field(ge=2, le=5)
     title: str = Field(min_length=1)
+    target_chars: Optional[int] = Field(default=None, gt=0)
 
 
 class SectionInstruction(WritingInstructionBase):
