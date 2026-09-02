@@ -4,6 +4,7 @@ import time
 from contextlib import contextmanager
 from copy import copy
 from pathlib import Path
+from threading import Event, Lock
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1161,6 +1162,53 @@ def test_execute_writing_subtasks_can_resume_a_failed_retrieval():
     assert 'policy' in call_llm.call_args.args[0]
     assert progress[0][0]['status'] == 'failed'
     assert progress[-1][0]['status'] == 'completed'
+
+
+def test_execute_writing_subtasks_runs_in_parallel_and_records_retriever():
+    subtasks = [
+        WritingSubTask(
+            subtask_id=f'retrieve-{index}', node_id='section-1',
+            question=f'检索问题 {index}。', subtask_type='retrieve',
+        )
+        for index in range(3)
+    ]
+    outline = WriterDocument(
+        document_id='outline-parallel', stage='outline',
+        blocks=[WriterBlock(
+            node_id='section-1', type='heading', content='背景', stage='outline',
+            subtasks=subtasks,
+        )],
+    )
+    active = 0
+    peak = 0
+    lock = Lock()
+    gate = Event()
+
+    def retrieve(question):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+            if peak == 3:
+                gate.set()
+        assert gate.wait(1)
+        with lock:
+            active -= 1
+        return 'sciverse_search', {'question': question}
+
+    resolution = MagicMock(result_summary='已找到资料。', result_references=[])
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterExecutionTools(artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=resolution):
+            result = tool.execute_writing_subtasks(
+                outline, WritingContext(context_id='ctx-parallel'), retrieve=retrieve,
+            )
+        restored = load_artifact_json(result['artifact_path'], WriterDocument)
+
+    assert peak == 3
+    assert all(item.status == 'completed' for item in restored.block_by_id('section-1').subtasks)
+    assert all(item.tools_used == ['sciverse_search', 'llm']
+               for item in restored.block_by_id('section-1').subtasks)
 
 
 def test_short_section_instructions_scope_image_directives_to_visual_section():

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from threading import Lock
 from typing import Any, Callable, Dict, List, Optional
 
+from lazyllm.common import ThreadPoolExecutor
 from pydantic import BaseModel, Field
 
 from .base import WriterToolBase
@@ -34,9 +36,12 @@ class WriterExecutionTools(WriterToolBase):
         retry_failed: bool = False,
         on_progress: Optional[Callable[[List[Dict[str, Any]]], None]] = None,
         retrieve: Optional[Callable[[str], Any]] = None,
+        max_workers: int = 4,
     ) -> dict:
         if max_retries < 0:
             raise ValueError('max_retries must be non-negative.')
+        if max_workers < 1:
+            raise ValueError('max_workers must be positive.')
         source = self._unified_document(outline)
         writing_context = self._unified_model(context, WritingContext)
         is_markdown = isinstance(source, str)
@@ -48,20 +53,41 @@ class WriterExecutionTools(WriterToolBase):
         if not isinstance(document, WriterDocument):
             raise TypeError('execute_writing_subtasks requires Markdown or WriterDocument.')
 
-        counts = {'completed': 0, 'failed': 0, 'skipped': 0}
-        self._publish_progress(document, on_progress)
+        pending: list[tuple[WritingSubTask, Dict[str, Any]]] = []
+        skipped = 0
         for block in document.iter_blocks():
             for subtask in block.subtasks:
                 if subtask.status == 'completed' or (
                     subtask.status == 'failed' and not retry_failed
                 ):
-                    counts['skipped'] += 1
+                    skipped += 1
                     continue
-                self._execute_subtask(
-                    subtask, block.model_dump(exclude={'subtasks'}), writing_context,
-                    max_retries, lambda: self._publish_progress(document, on_progress), retrieve,
-                )
-                counts['completed' if subtask.status == 'completed' else 'failed'] += 1
+                pending.append((subtask, block.model_dump(exclude={'subtasks'})))
+
+        progress_lock = Lock()
+
+        def publish() -> None:
+            with progress_lock:
+                self._publish_progress(document, on_progress)
+
+        publish()
+        if pending:
+            with ThreadPoolExecutor(max_workers=min(max_workers, len(pending))) as executor:
+                futures = [
+                    executor.submit(
+                        self._execute_subtask,
+                        subtask, block, writing_context, max_retries, publish, retrieve,
+                    )
+                    for subtask, block in pending
+                ]
+                for future in futures:
+                    future.result()
+
+        counts = {
+            'completed': sum(subtask.status == 'completed' for subtask, _ in pending),
+            'failed': sum(subtask.status == 'failed' for subtask, _ in pending),
+            'skipped': skipped,
+        }
 
         result_meta = {
             'step_name': 'execute_writing_subtasks',
@@ -119,9 +145,17 @@ class WriterExecutionTools(WriterToolBase):
                 if subtask.subtask_type == 'retrieve':
                     if retrieve is None:
                         raise RuntimeError('No knowledge retrieval handler is configured.')
-                    self._record_tool(subtask, 'kb_search')
+                    retrieved = retrieve(subtask.question)
+                    if (
+                        isinstance(retrieved, tuple)
+                        and len(retrieved) == 2
+                        and isinstance(retrieved[0], str)
+                    ):
+                        tool_name, retrieval_result = retrieved
+                    else:
+                        tool_name, retrieval_result = 'kb_search', retrieved
+                    self._record_tool(subtask, tool_name)
                     publish()
-                    retrieval_result = retrieve(subtask.question)
                 self._record_tool(subtask, 'llm')
                 publish()
                 resolution = self._call_llm_structured(
@@ -134,6 +168,8 @@ class WriterExecutionTools(WriterToolBase):
                 publish()
                 return
             except Exception as exc:
+                for tool_name in getattr(exc, 'tools_used', ()):
+                    self._record_tool(subtask, str(tool_name))
                 if retries_this_run >= max_retries:
                     subtask.status = 'failed'
                     subtask.result_summary = f'{type(exc).__name__}: {exc}'

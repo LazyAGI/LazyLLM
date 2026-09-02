@@ -45,6 +45,13 @@ Requirements:
   questions with subtask_id, node_id, question, subtask_type (retrieve, extract, or reason),
   and status="pending". Leave node_id empty; the system assigns stable heading ids afterwards.
 - Do not expose these instruction fields as visible outline prose.
+- Most headings should have no subtasks. Create a subtask only when an unresolved question
+  materially blocks accurate drafting; normal scene design, transitions, stylistic choices,
+  and reasoning the drafting model can perform directly are not subtasks. When the target length
+  is 3000 characters or fewer, use at most 3 subtasks across the entire outline unless the user
+  explicitly specifies a larger subtask count. Prefer one document-level question over repeating
+  similar questions on parent and child headings. Use retrieve only when external or knowledge-base
+  evidence is genuinely required, and use extract only for facts that must be recovered from supplied sources.
 - Treat task.constraints.target_chars and task.constraints.max_chars as limits for the
   entire final document, not for each section.
 - When max_chars is at most 1200 and the user did not explicitly request multiple
@@ -120,6 +127,12 @@ Requirements:
 - Use subtasks only for unresolved work that would materially improve the section. Each item
   contains subtask_id, node_id, question, subtask_type (retrieve, extract, or reason), and
   status="pending". node_id must equal the containing heading block's node_id.
+- Most headings should have no subtasks. Normal drafting decisions, scene design, transitions,
+  and stylistic reasoning belong to the drafting model rather than separate subtasks. When the
+  target length is 3000 characters or fewer, create at most 3 subtasks across the entire outline
+  unless the user explicitly specifies a larger subtask count. Avoid duplicate parent/child
+  questions. Use retrieve only when external or knowledge-base evidence is genuinely necessary,
+  and use extract only for facts that must be recovered from supplied sources.
 - Write titles and section titles without visible numbering; the system renders numbers.
 - block.references holds identifiers for facts or resources the section depends on.
 - Each element of block.references is an object with at least an "id" field. The id must match a
@@ -158,6 +171,10 @@ Do not turn ordinary drafting requirements into subtasks. Use empty arrays when 
 subtask is needed. When the writing task explicitly requests one or more writing subtasks, place
 that requested unresolved work on the relevant heading blocks; never return every subtasks array
 empty in that case.
+Most headings should have no subtasks. When the target length is 3000 characters or fewer, create
+at most 3 subtasks across the entire outline unless the user explicitly specifies a larger subtask
+count. Do not create subtasks for normal drafting decisions, scene design, transitions, or stylistic reasoning, and do
+not repeat substantially identical questions on both parent and child headings.
 
 Writing task:
 {task_json}
