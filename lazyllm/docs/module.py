@@ -3039,6 +3039,46 @@ add_example('llms.onlinemodule.supplier.qwen.set_dashscope_urls', '''\
 ... )
 ''')
 
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenText2Video', '''\
+通义万相视频生成模块。通过 DashScope 异步视频接口调用 Wan 2.6 和 Wan 3.0 系列模型，
+并将生成的视频转换为 LazyLLM 文件结果。Wan 2.6 支持文生视频或首帧图生视频；
+Wan 3.0 All-in-One 支持首尾帧、多参考图和有声视频。
+
+Args:
+    api_key (str, optional): DashScope API Key，默认读取配置中的 ``qwen_api_key``。
+    model (str, optional): 视频模型名称，默认为 ``wan3.0-video``。
+    url (str, optional): DashScope API 地址。
+    base_url (str, optional): ``url`` 的兼容别名。
+    return_trace (bool, optional): 是否返回调用链追踪信息，默认为 ``False``。
+    **kwargs: 其他传递给父类的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenText2Video', '''\
+Qwen Wan video generation module. It calls the asynchronous DashScope video API for Wan 2.6
+and Wan 3.0 models and converts generated videos into LazyLLM file results. Wan 2.6 supports
+text-to-video or first-frame image-to-video. Wan 3.0 All-in-One supports first/last frames,
+multiple reference images, and audio video generation.
+
+Args:
+    api_key (str, optional): DashScope API key. Defaults to the configured ``qwen_api_key``.
+    model (str, optional): Video model name. Defaults to ``wan3.0-video``.
+    url (str, optional): DashScope API endpoint.
+    base_url (str, optional): Compatibility alias for ``url``.
+    return_trace (bool, optional): Whether to return trace information. Defaults to ``False``.
+    **kwargs: Additional parameters passed to the parent class.
+''')
+
+add_example('llms.onlinemodule.supplier.qwen.QwenText2Video', '''\
+>>> import lazyllm
+>>> video = lazyllm.OnlineMultiModalModule(
+...     source='qwen', type='text2video', model='wan3.0-video', api_key='your-api-key')
+>>> result = video(
+...     'Create a smooth transition between the two scenes.',
+...     files=['first.png', 'last.png'],
+...     image_roles=['first_frame', 'last_frame'],
+... )
+''')
+
 add_chinese_doc('llms.onlinemodule.supplier.glm.GLMSTT', """\
 GLM语音识别模块，继承自GLMMultiModal。
 
@@ -3062,6 +3102,43 @@ Args:
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Other model parameters
 """)
+
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowText2Video', '''\
+硅基流动视频生成模块。通过 ``/v1/video/submit`` 提交任务并轮询 ``/v1/video/status``，
+支持 ``Wan-AI/Wan2.2-T2V-A14B`` 文生视频和 ``Wan-AI/Wan2.2-I2V-A14B`` 首帧图生视频，
+并将生成的视频转换为 LazyLLM 文件结果。
+
+Args:
+    api_key (str, optional): 硅基流动 API Key，默认读取配置中的 ``siliconflow_api_key``。
+    model (str, optional): 视频模型名称，默认为 ``Wan-AI/Wan2.2-I2V-A14B``。
+    url (str, optional): API 地址，默认为 ``https://api.siliconflow.cn/v1/``。
+    base_url (str, optional): ``url`` 的兼容别名。
+    return_trace (bool, optional): 是否返回调用链追踪信息，默认为 ``False``。
+    **kwargs: 其他传递给父类的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowText2Video', '''\
+SiliconFlow video generation module. It submits jobs through ``/v1/video/submit`` and polls
+``/v1/video/status``. It supports ``Wan-AI/Wan2.2-T2V-A14B`` for text-to-video and
+``Wan-AI/Wan2.2-I2V-A14B`` for first-frame image-to-video, then converts generated videos
+into LazyLLM file results.
+
+Args:
+    api_key (str, optional): SiliconFlow API key. Defaults to configured ``siliconflow_api_key``.
+    model (str, optional): Video model name. Defaults to ``Wan-AI/Wan2.2-I2V-A14B``.
+    url (str, optional): API endpoint. Defaults to ``https://api.siliconflow.cn/v1/``.
+    base_url (str, optional): Compatibility alias for ``url``.
+    return_trace (bool, optional): Whether to return trace information. Defaults to ``False``.
+    **kwargs: Additional parameters passed to the parent class.
+''')
+
+add_example('llms.onlinemodule.supplier.siliconflow.SiliconFlowText2Video', '''\
+>>> import lazyllm
+>>> video = lazyllm.OnlineMultiModalModule(
+...     source='siliconflow', type='text2video',
+...     model='Wan-AI/Wan2.2-I2V-A14B', api_key='your-api-key')
+>>> result = video('A cat running on grass.', files=['cat.png'])
+''')
 
 add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowSTT', """\
 SiliconFlow 语音转文本模块，继承自 LazyLLMOnlineSTTModuleBase。

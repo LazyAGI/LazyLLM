@@ -256,31 +256,10 @@ class SiliconFlowText2Video(LazyLLMOnlineText2VideoModuleBase):
         normalized = str(resolution or '720P').upper()
         if normalized == '480P':
             normalized = '720P'
-        try:
-            return cls._SIZE_BY_RESOLUTION_AND_RATIO[(normalized, ratio)]
-        except KeyError as exc:
-            raise ValueError(f'Unsupported SiliconFlow video size: {resolution} {ratio}') from exc
+        return cls._SIZE_BY_RESOLUTION_AND_RATIO[(normalized, ratio)]
 
-    def _forward(self, input: str = None, files: List[str] = None, image_roles: List[str] = None,
-                 resolution: str = '720p', ratio: str = '16:9', negative_prompt: str = None,
-                 seed: int = None, poll_interval: float = 3.0, timeout: float = 900,
-                 url: str = None, model: str = None, **kwargs):
-        selected_model = model or self._model_name
-        is_i2v = selected_model == 'Wan-AI/Wan2.2-I2V-A14B'
-        is_t2v = selected_model == 'Wan-AI/Wan2.2-T2V-A14B'
-        if not (is_t2v or is_i2v):
-            raise ValueError(f'Unsupported SiliconFlow video model: {selected_model}')
-
-        supplied_files = list(files or [])
-        if is_t2v and supplied_files:
-            raise ValueError(f'{selected_model} is text-to-video and does not accept image files')
-        if is_i2v and len(supplied_files) != 1:
-            raise ValueError(f'{selected_model} requires exactly one first-frame image')
-        if image_roles and len(image_roles) != len(supplied_files):
-            raise ValueError('image_roles must have the same length as files')
-        if image_roles and any(role not in {'first_frame', 'reference_image'} for role in image_roles):
-            raise ValueError(f'{selected_model} supports only a first-frame image')
-
+    def _build_video_payload(self, selected_model: str, input: str, files: List[str],
+                             resolution: str, ratio: str, negative_prompt: str, seed: int):
         payload = {
             'model': selected_model,
             'prompt': input,
@@ -290,13 +269,13 @@ class SiliconFlowText2Video(LazyLLMOnlineText2VideoModuleBase):
             payload['negative_prompt'] = negative_prompt
         if seed is not None:
             payload['seed'] = int(seed)
-        if is_i2v:
-            payload['image'] = self._format_image(supplied_files[0])
+        if '-I2V-' in selected_model and files:
+            payload['image'] = self._format_image(files[0])
+        return payload
 
-        base = (url or self._base_url).rstrip('/') + '/'
-        submit_url = urljoin(base, 'video/submit')
-        status_url = urljoin(base, 'video/status')
-        response = requests.post(submit_url, headers=self._header, json=payload, timeout=60)
+    def _create_video_task(self, base: str, payload: Dict) -> str:
+        response = requests.post(
+            urljoin(base, 'video/submit'), headers=self._header, json=payload, timeout=60)
         response.raise_for_status()
         created = response.json()
         request_id = created.get('requestId')
@@ -304,23 +283,21 @@ class SiliconFlowText2Video(LazyLLMOnlineText2VideoModuleBase):
             raise RuntimeError(
                 f'SiliconFlow video task creation failed: {created.get("message") or created}'
             )
+        return request_id
 
+    def _wait_video_task(self, base: str, request_id: str,
+                         poll_interval: float, timeout: float):
         deadline = time.monotonic() + float(timeout)
         while time.monotonic() < deadline:
-            task_response = requests.post(
-                status_url,
-                headers=self._header,
-                json={'requestId': request_id},
-                timeout=60,
+            response = requests.post(
+                urljoin(base, 'video/status'), headers=self._header,
+                json={'requestId': request_id}, timeout=60,
             )
-            task_response.raise_for_status()
-            task = task_response.json()
+            response.raise_for_status()
+            task = response.json()
             status = task.get('status')
             if status == 'Succeed':
-                videos = (task.get('results') or {}).get('videos') or []
-                video_url = videos[0].get('url') if videos else None
-                if not video_url:
-                    raise RuntimeError('SiliconFlow video task succeeded but returned no video URL')
+                video_url = task['results']['videos'][0]['url']
                 video_response = requests.get(video_url, timeout=180)
                 video_response.raise_for_status()
                 return encode_query_with_filepaths(None, bytes_to_file([video_response.content]))
@@ -328,11 +305,20 @@ class SiliconFlowText2Video(LazyLLMOnlineText2VideoModuleBase):
                 raise RuntimeError(
                     f'SiliconFlow video generation failed: {task.get("reason") or "unknown reason"}'
                 )
-            if status not in {'InQueue', 'InProgress'}:
-                raise RuntimeError(f'SiliconFlow video task returned unknown status: {task}')
             if poll_interval > 0:
                 time.sleep(poll_interval)
         raise TimeoutError(f'SiliconFlow video generation timed out after {timeout} seconds')
+
+    def _forward(self, input: str = None, files: List[str] = None, image_roles: List[str] = None,
+                 resolution: str = '720p', ratio: str = '16:9', negative_prompt: str = None,
+                 seed: int = None, poll_interval: float = 3.0, timeout: float = 900,
+                 url: str = None, model: str = None, **kwargs):
+        selected_model = model or self._model_name
+        base = (url or self._base_url).rstrip('/') + '/'
+        payload = self._build_video_payload(
+            selected_model, input, list(files or []), resolution, ratio, negative_prompt, seed)
+        request_id = self._create_video_task(base, payload)
+        return self._wait_video_task(base, request_id, poll_interval, timeout)
 
 
 class SiliconFlowSTT(LazyLLMOnlineSTTModuleBase):
