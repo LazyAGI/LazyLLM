@@ -599,15 +599,22 @@ locator kind per reference. Return valid JSON only.
                 )
             return
 
-        target = revised.block_by_id(self._node_id(instruction.content_ref, 'content_ref'))
-        self._remove_block(revised, target)
         if instruction.modify_type == 'move':
+            target = revised.block_by_id(
+                self._node_id(instruction.content_ref, 'content_ref'))
+            if target is None:
+                raise ValueError('move source block is absent from the revised document.')
+            self._remove_block(revised, target)
             parent_id, index = self._insertion_point(
                 revised,
                 self._node_id(instruction.destination_ref, 'destination_ref'),
                 instruction.position,
             )
             self._children_for_parent(revised, parent_id).insert(index, target)
+            return
+
+        target = revised.block_by_id(self._node_id(instruction.content_ref, 'content_ref'))
+        self._remove_block(revised, target)
 
     def _apply_block_content(
         self,
@@ -905,8 +912,11 @@ locator kind per reference. Return valid JSON only.
             hunks=hunks,
             meta={'source': 'document_diff'},
         )
-        applied, _ = apply_patch_to_ir(source, patch, media_assets=media_assets)
-        self._assert_revision_applied(applied, revised)
+        if patch.hunks or patch.new_title is not None:
+            applied, _ = apply_patch_to_ir(source, patch, media_assets=media_assets)
+            self._assert_revision_applied(applied, revised)
+        else:
+            self._assert_revision_applied(source, revised)
         return patch
 
     @staticmethod
@@ -929,8 +939,16 @@ locator kind per reference. Return valid JSON only.
 
     @staticmethod
     def _same_mutable_block_fields(source: WriterBlock, revised: WriterBlock) -> bool:
+        def visible_references(block: WriterBlock) -> List[Dict[str, Any]]:
+            return [
+                reference for reference in block.references
+                if reference.get('type') != 'preview_asset'
+            ]
+
         return all(
-            getattr(source, field) == getattr(revised, field)
+            visible_references(source) == visible_references(revised)
+            if field == 'references'
+            else getattr(source, field) == getattr(revised, field)
             for field in WRITER_BLOCK_MUTABLE_FIELDS
         )
 
@@ -999,6 +1017,10 @@ locator kind per reference. Return valid JSON only.
     @classmethod
     def _visible_block(cls, block: WriterBlock) -> Dict[str, Any]:
         visible = block.model_dump(include=set(WRITER_BLOCK_MUTABLE_FIELDS))
+        visible['references'] = [
+            reference for reference in block.references
+            if reference.get('type') != 'preview_asset'
+        ]
         visible['node_id'] = block.node_id
         visible['children'] = [cls._visible_block(child) for child in block.children]
         return visible
@@ -1084,10 +1106,65 @@ locator kind per reference. Return valid JSON only.
                     raise ValueError('move instruction cannot use its source as the destination.')
             normalized.append(instr)
 
+        if document is not None:
+            normalized = self._chain_contiguous_moves(normalized, document)
+
         if located_set and not normalized and not target_title:
             raise ValueError('modify_plan contains no operations for the located revision scope.')
         plan.instructions = normalized
         return plan
+
+    def _chain_contiguous_moves(
+        self,
+        instructions: List[ModifyInstruction],
+        document: WriterDocument,
+    ) -> List[ModifyInstruction]:
+        """Chain contiguous same-destination moves without changing their source order."""
+        result: List[ModifyInstruction] = []
+        index = 0
+        while index < len(instructions):
+            first = instructions[index]
+            if first.modify_type != 'move':
+                result.append(first)
+                index += 1
+                continue
+
+            destination_key = self._content_ref_key(first.destination_ref)
+            position = first.position
+            end = index + 1
+            while end < len(instructions):
+                candidate = instructions[end]
+                if candidate.modify_type != 'move' \
+                        or candidate.position != position \
+                        or self._content_ref_key(candidate.destination_ref) != destination_key:
+                    break
+                end += 1
+            group = instructions[index:end]
+            locations = []
+            for instruction in group:
+                node_id = self._node_id(instruction.content_ref, 'content_ref')
+                parent_id, source_index = self._block_parent_index(document, node_id)
+                locations.append((parent_id, source_index, instruction))
+            ordered = sorted(locations, key=lambda item: item[1])
+            source_indexes = [item[1] for item in ordered]
+            source_keys = {
+                self._content_ref_key(item[2].content_ref) for item in ordered
+            }
+            contiguous = len({item[0] for item in ordered}) == 1 and source_indexes == list(
+                range(source_indexes[0], source_indexes[0] + len(source_indexes)))
+            if len(group) > 1 and contiguous:
+                if destination_key in source_keys:
+                    raise ValueError('move destination cannot be inside the moved block group.')
+                chained = [item[2] for item in ordered]
+                for offset in range(1, len(chained)):
+                    chained[offset].destination_ref = chained[offset - 1].content_ref.model_copy(
+                        deep=True)
+                    chained[offset].position = 'after'
+                result.extend(chained)
+            else:
+                result.extend(group)
+            index = end
+        return result
 
     @staticmethod
     def _validate_modify_instruction(
@@ -1139,7 +1216,7 @@ locator kind per reference. Return valid JSON only.
                     'content': block.content,
                 }
                 for block in document.iter_blocks()
-                if block.editable or block.type == 'image'
+                if block.editable or block.type in {'image', 'table', 'table_row'}
             ]
         sections = parse_markdown_sections(document)
         if not sections:
@@ -1179,7 +1256,8 @@ locator kind per reference. Return valid JSON only.
     def _invalid_plan_refs(cls, plan: ModifyPlan) -> List[Dict[str, Any]]:
         invalid: List[Dict[str, Any]] = []
         for instruction in plan.instructions:
-            for reference in (instruction.content_ref, instruction.destination_ref):
+            references = [instruction.content_ref, instruction.destination_ref]
+            for reference in references:
                 if reference is not None and not cls._revision_ref_is_exclusive(reference):
                     invalid.append(reference.model_dump(exclude_none=True))
         return invalid

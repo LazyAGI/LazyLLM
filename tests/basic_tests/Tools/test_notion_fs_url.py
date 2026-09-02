@@ -27,6 +27,17 @@ BLOCK_RAW = 'aaaaaaaaaaaabbbbccccdddddddddddd'
 BLOCK_ID = 'aaaaaaaa-aaaa-bbbb-cccc-dddddddddddd'
 
 
+def _append_response(created):
+    return {
+        'type': 'block',
+        'block': {},
+        'object': 'list',
+        'next_cursor': None,
+        'has_more': False,
+        'results': [{**created, 'object': 'block'}],
+    }
+
+
 def _notion_object_not_found() -> requests.HTTPError:
     response = requests.Response()
     response.status_code = 404
@@ -153,6 +164,7 @@ class TestNotionDynamicAuth(unittest.TestCase):
 
     def test_dynamic_token_is_required_and_injected(self):
         fs = NotionFS(dynamic_auth=True)
+        self.assertEqual(fs._session.headers['Notion-Version'], '2026-03-11')
         with self.assertRaises(ValueError):
             fs.inject_auth_header()
 
@@ -481,7 +493,6 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
         fs.replace_page_markdown(PAGE_RAW, '# Hello')
 
         self.assertEqual(calls[0][0], f'https://api.notion.com/v1/pages/{PAGE_ID}/markdown')
-        self.assertEqual(calls[0][1]['headers']['Notion-Version'], '2026-03-11')
         self.assertEqual(calls[0][1]['json']['type'], 'replace_content')
         self.assertEqual(calls[0][1]['json']['replace_content']['new_str'], '# Hello')
 
@@ -514,7 +525,6 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
 
         self.assertEqual(calls[0][1], f'https://api.notion.com/v1/pages/{PAGE_ID}/move')
         self.assertEqual(calls[0][2]['json']['parent']['page_id'], CHILD_ID)
-        self.assertEqual(calls[0][2]['headers']['Notion-Version'], '2026-03-11')
         self.assertEqual(calls[1], ('rename', PAGE_ID, 'New Title'))
 
     def test_mkdir_under_database_uses_data_source_parent(self):
@@ -537,8 +547,10 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
         fs.mkdir(f'/~database/{DB_RAW}/New Page')
 
         self.assertEqual(calls[0][0], 'https://api.notion.com/v1/pages')
-        self.assertEqual(calls[0][1]['json']['parent'], {'data_source_id': data_source_id})
-        self.assertEqual(calls[0][1]['headers']['Notion-Version'], '2026-03-11')
+        self.assertEqual(
+            calls[0][1]['json']['parent'],
+            {'type': 'data_source_id', 'data_source_id': data_source_id},
+        )
         self.assertEqual(
             calls[0][1]['json']['properties']['Name']['title'][0]['text']['content'],
             'New Page',
@@ -561,7 +573,6 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
         self.assertEqual(fs._query_database(DB_ID), [])
 
         self.assertEqual(calls[0][0], f'https://api.notion.com/v1/data_sources/{data_source_id}/query')
-        self.assertEqual(calls[0][1]['headers']['Notion-Version'], '2026-03-11')
 
     def test_mkdir_under_explicit_data_source(self):
         fs = NotionFS(token='secret-token')
@@ -576,7 +587,10 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
 
         fs.mkdir(f'/~data_source/{data_source_id}/New Task')
 
-        self.assertEqual(calls[0][1]['json']['parent'], {'data_source_id': data_source_id})
+        self.assertEqual(
+            calls[0][1]['json']['parent'],
+            {'type': 'data_source_id', 'data_source_id': data_source_id},
+        )
         self.assertEqual(
             calls[0][1]['json']['properties']['Task']['title'][0]['text']['content'],
             'New Task',
@@ -607,74 +621,337 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
             calls[0][2]['json']['parent'],
             {'type': 'data_source_id', 'data_source_id': data_source_id},
         )
-        self.assertEqual(calls[0][2]['headers']['Notion-Version'], '2026-03-11')
         self.assertEqual(calls[1], ('rename', PAGE_ID, 'New Title'))
 
-    def test_rmdir_rejects_data_source_paths(self):
-        fs = NotionFS(token='secret-token')
-        fs._retrieve_page = lambda _page_id: (_ for _ in ()).throw(_notion_object_not_found())
-        fs._retrieve_database = lambda _database_id: (_ for _ in ()).throw(_notion_object_not_found())
-        fs._retrieve_data_source = lambda _data_source_id: {
-            'id': DB_ID,
-            'object': 'data_source',
-            'properties': {'Task': {'type': 'title'}},
-        }
+    def test_delete_notion_objects_uses_active_api_and_in_trash(self):
+        cases = [
+            ('page', 'rm_file', f'/~page/{PAGE_RAW}', 'pages'),
+            ('database', 'rmdir', f'/~database/{DB_RAW}', 'databases'),
+            ('resolved data source', 'rmdir', f'/{DB_RAW}', 'data_sources'),
+        ]
+        for name, method, path, endpoint in cases:
+            with self.subTest(name=name):
+                fs = NotionFS(token='secret-token', skip_instance_cache=True)
+                calls = []
+                if endpoint == 'data_sources':
+                    fs._retrieve_page = lambda _id: (_ for _ in ()).throw(
+                        _notion_object_not_found())
+                    fs._retrieve_database = lambda _id: (_ for _ in ()).throw(
+                        _notion_object_not_found())
+                    fs._retrieve_data_source = lambda _id: {
+                        'id': DB_ID,
+                        'object': 'data_source',
+                        'properties': {'Task': {'type': 'title'}},
+                    }
+                fs._patch = lambda url, **kwargs: calls.append((url, kwargs)) or {}
 
-        with self.assertRaises(NotImplementedError):
-            fs.rmdir(f'/{DB_RAW}')
+                getattr(fs, method)(path)
+
+                self.assertEqual(calls, [(
+                    f'https://api.notion.com/v1/{endpoint}/{DB_ID if endpoint != "pages" else PAGE_ID}',
+                    {'json': {'in_trash': True}},
+                )])
 
     def test_get_document_id_and_doc_blocks(self):
         fs = NotionFS(token='secret-token')
+        rich_text = [{
+            'type': 'text',
+            'plain_text': 'Hello',
+            'text': {'content': 'Hello', 'link': {'url': 'https://example.com'}},
+            'annotations': {'bold': True, 'italic': False},
+        }]
         fs._list_children_raw = lambda block_id: [{
             'id': BLOCK_ID,
+            'object': 'block',
             'type': 'paragraph',
             'parent': {'type': 'page_id', 'page_id': PAGE_ID},
-            'paragraph': {'rich_text': [{'plain_text': 'Hello'}]},
+            'paragraph': {'rich_text': rich_text, 'color': 'default'},
+            'created_time': '2026-08-26T00:00:00.000Z',
         }] if block_id == PAGE_ID else []
 
         self.assertEqual(fs.get_document_id(f'/~page/{PAGE_RAW}'), PAGE_ID)
         blocks = fs.get_doc_blocks(f'/~page/{PAGE_RAW}')
         self.assertEqual(blocks[0]['block_id'], BLOCK_ID)
         self.assertEqual(blocks[0]['block_type'], 'paragraph')
-        self.assertEqual(blocks[0]['plain_text'], 'Hello')
+        self.assertEqual(blocks[0]['plain_text'], '[**Hello**](https://example.com)')
         self.assertEqual(blocks[0]['parent_id'], PAGE_ID)
+        self.assertEqual(blocks[0]['id'], BLOCK_ID)
+        self.assertEqual(blocks[0]['type'], 'paragraph')
+        self.assertEqual(blocks[0]['parent'], {'type': 'page_id', 'page_id': PAGE_ID})
+        self.assertEqual(blocks[0]['paragraph']['rich_text'], rich_text)
+        self.assertEqual(blocks[0]['paragraph']['color'], 'default')
+        self.assertEqual(blocks[0]['created_time'], '2026-08-26T00:00:00.000Z')
 
-    def test_update_doc_block_text_patches_rich_text(self):
+    def test_replace_doc_blocks_creates_nested_tree_before_deleting_old_roots(self):
         fs = NotionFS(token='secret-token')
-        calls = []
-        fs._list_children_raw = lambda block_id: [{
+        new_root = 'bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee'
+        new_child = 'cccccccc-cccc-dddd-eeee-ffffffffffff'
+        visible = {PAGE_ID: [{
+            'id': BLOCK_ID, 'type': 'paragraph', 'paragraph': {'rich_text': []},
+        }]}
+        patch_calls = []
+        delete_calls = []
+        created_ids = iter([new_root, new_child])
+
+        def patch(url, **kwargs):
+            parent_id = url.split('/blocks/', 1)[1].split('/children', 1)[0]
+            created_id = next(created_ids)
+            source = kwargs['json']['children'][0]
+            created = {**source, 'id': created_id, 'has_children': source['type'] == 'paragraph'}
+            visible.setdefault(parent_id, []).append(created)
+            visible.setdefault(created_id, [])
+            patch_calls.append((url, kwargs))
+            return _append_response(created)
+
+        def delete(url, **kwargs):
+            block_id = url.rsplit('/', 1)[-1]
+            delete_calls.append(block_id)
+            for children in visible.values():
+                children[:] = [child for child in children if child.get('id') != block_id]
+            return {'id': block_id, 'in_trash': True}
+
+        fs._patch = patch
+        fs._delete = delete
+        fs._list_children_raw = lambda block_id: list(visible.get(block_id, []))
+        blocks = [{
+            'object': 'block',
+            'type': 'paragraph',
+            'paragraph': {
+                'rich_text': [{'type': 'text', 'text': {'content': 'Root'}}],
+                'children': [{
+                    'object': 'block',
+                    'type': 'bulleted_list_item',
+                    'bulleted_list_item': {
+                        'rich_text': [{'type': 'text', 'text': {'content': 'Child'}}],
+                    },
+                }],
+            },
+        }]
+
+        result = fs.replace_doc_blocks(PAGE_RAW, blocks)
+
+        self.assertEqual(delete_calls, [BLOCK_ID])
+        self.assertEqual(patch_calls[0][0], f'https://api.notion.com/v1/blocks/{PAGE_ID}/children')
+        self.assertNotIn('children', patch_calls[0][1]['json']['children'][0]['paragraph'])
+        self.assertEqual(
+            patch_calls[1][0], f'https://api.notion.com/v1/blocks/{new_root}/children')
+        self.assertEqual([block['id'] for block in result], [new_root, new_child])
+
+    def test_replace_doc_blocks_rebinds_internal_links_before_deleting_old_blocks(self):
+        fs = NotionFS(token='secret-token')
+        new_target = 'bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee'
+        new_source = 'cccccccc-cccc-dddd-eeee-ffffffffffff'
+        visible = [{
             'id': BLOCK_ID,
             'type': 'paragraph',
-            'parent': {'type': 'page_id', 'page_id': PAGE_ID},
-            'paragraph': {'rich_text': [{'plain_text': 'Old'}]},
-        }] if block_id == PAGE_ID else []
-        fs._retrieve_block = lambda block_id: {
-            'id': block_id,
-            'type': 'paragraph',
-            'paragraph': {'rich_text': [{'plain_text': 'Old'}]},
-        }
-        fs._patch = lambda url, **kwargs: calls.append((url, kwargs)) or {}
-        fs.update_doc_block_text(f'/~page/{PAGE_RAW}', BLOCK_RAW, 'New text')
+            'paragraph': {'rich_text': []},
+            'has_children': False,
+        }]
+        created_ids = iter([new_target, new_source])
+        events = []
 
-        self.assertEqual(calls[0][0], f'https://api.notion.com/v1/blocks/{BLOCK_ID}')
-        rich = calls[0][1]['json']['paragraph']['rich_text']
-        self.assertEqual(rich[0]['text']['content'], 'New text')
+        def patch(url, **kwargs):
+            if url.endswith('/children'):
+                created_id = next(created_ids)
+                source = kwargs['json']['children'][0]
+                created = {**source, 'id': created_id, 'has_children': False}
+                visible.append(created)
+                events.append(('create', created_id, kwargs['json']))
+                return _append_response(created)
+            events.append(('update', url.rsplit('/', 1)[-1], kwargs['json']))
+            return {}
 
-    def test_update_doc_block_text_rejects_block_outside_document(self):
-        fs = NotionFS(token='secret-token')
+        def delete(url, **_kwargs):
+            block_id = url.rsplit('/', 1)[-1]
+            events.append(('delete', block_id, None))
+            visible[:] = [block for block in visible if block.get('id') != block_id]
+            return {'id': block_id, 'in_trash': True}
+
+        fs._patch = patch
+        fs._delete = delete
+        fs._list_children_raw = lambda block_id: list(visible) if block_id == PAGE_ID else []
+        blocks = [
+            {
+                '_temporary_node_id': 'target-node',
+                'type': 'heading_1',
+                'heading_1': {'rich_text': []},
+            },
+            {
+                '_temporary_node_id': 'source-node',
+                'type': 'paragraph',
+                'paragraph': {
+                    'rich_text': [{
+                        'type': 'text',
+                        'text': {
+                            'content': '跳转',
+                            'link': {
+                                'url': f'https://notion.so/{PAGE_RAW}#{BLOCK_RAW}',
+                                '_target_node_id': 'target-node',
+                            },
+                        },
+                    }],
+                },
+            },
+        ]
+
+        fs.replace_doc_blocks(PAGE_ID, blocks)
+
+        self.assertEqual([event[0] for event in events], [
+            'create', 'create', 'update', 'delete',
+        ])
+        update = events[2]
+        self.assertEqual(update[1], new_source)
+        link = update[2]['paragraph']['rich_text'][0]['text']['link']
+        self.assertEqual(
+            link,
+            {'url': f'https://notion.so/{PAGE_RAW}#{new_target.replace("-", "")}'},
+        )
+
+    def test_append_request_converts_internal_file_to_external_media(self):
+        request, _ = NotionFS._split_native_children({
+            'type': 'image',
+            'image': {
+                'type': 'file',
+                'file': {
+                    'url': 'https://prod-files-secure.s3.us-west-2.amazonaws.com/image.png?sig=test',
+                    'expiry_time': '2026-08-26T08:58:31.930Z',
+                },
+                'caption': [],
+            },
+        })
+
+        self.assertEqual(request['image'], {
+            'type': 'external',
+            'external': {
+                'url': 'https://prod-files-secure.s3.us-west-2.amazonaws.com/image.png?sig=test',
+            },
+            'caption': [],
+        })
+
+    def test_append_tree_reuploads_internal_notion_image(self):
+        fs = NotionFS(token='notion-image-reupload-token', skip_instance_cache=True)
+        created_id = 'bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee'
+        patch_calls = []
+        fs._download_notion_file = lambda _url: (b'image-bytes', 'image.png', 'image/png')
+        fs._upload_notion_file = lambda data, filename, content_type: (
+            self.assertEqual(data, b'image-bytes')
+            or self.assertEqual(filename, 'image.png')
+            or self.assertEqual(content_type, 'image/png')
+            or 'upload-id'
+        )
+        fs._patch = lambda url, **kwargs: patch_calls.append((url, kwargs)) or \
+            _append_response({'id': created_id, 'type': 'image'})
         fs._list_children_raw = lambda _block_id: []
 
-        with self.assertRaises(ValueError):
-            fs.update_doc_block_text(f'/~page/{PAGE_RAW}', BLOCK_RAW, 'New text')
+        fs._append_block_tree(PAGE_ID, {
+            'type': 'image',
+            'image': {
+                'type': 'file',
+                'file': {
+                    'url': 'https://prod-files-secure.s3.us-west-2.amazonaws.com/image.png',
+                    'expiry_time': '2026-08-26T08:58:31.930Z',
+                },
+                'caption': [],
+            },
+        })
 
-    def test_rm_block_uses_block_delete_endpoint(self):
+        request_image = patch_calls[0][1]['json']['children'][0]['image']
+        self.assertEqual(request_image, {
+            'type': 'file_upload',
+            'file_upload': {'id': 'upload-id'},
+            'caption': [],
+        })
+
+    def test_create_block_recursively_handles_table_and_returns_id_relations(self):
         fs = NotionFS(token='secret-token')
+        table_id = 'bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee'
+        first_row_id = 'cccccccc-cccc-dddd-eeee-ffffffffffff'
+        second_row_id = 'dddddddd-dddd-eeee-ffff-aaaaaaaaaaaa'
+        patch_calls = []
+        created_ids = iter([table_id, second_row_id])
+
+        def patch(url, **kwargs):
+            created_id = next(created_ids)
+            source = kwargs['json']['children'][0]
+            patch_calls.append((url, kwargs))
+            return _append_response({**source, 'id': created_id})
+
+        fs._patch = patch
+        fs._list_children_raw = lambda block_id: ([{
+            'id': first_row_id, 'type': 'table_row', 'table_row': {'cells': [[]]},
+        }] if block_id == table_id else [])
+        table = {
+            '_temporary_node_id': 'table-node',
+            'object': 'block', 'type': 'table',
+            'table': {
+                'table_width': 1,
+                'has_column_header': False,
+                'has_row_header': False,
+                'children': [
+                    {
+                        '_temporary_node_id': 'row-1',
+                        'object': 'block', 'type': 'table_row',
+                        'table_row': {'cells': [[{'type': 'text', 'text': {'content': 'A'}}]]},
+                    },
+                    {
+                        '_temporary_node_id': 'row-2',
+                        'object': 'block', 'type': 'table_row',
+                        'table_row': {'cells': [[{'type': 'text', 'text': {'content': 'B'}}]]},
+                    },
+                ],
+            },
+        }
+
+        result = fs.create_block(PAGE_RAW, PAGE_RAW, table, index=0)
+
+        first_request = patch_calls[0][1]['json']
+        self.assertEqual(first_request['position'], {'type': 'start'})
+        self.assertEqual(first_request['children'][0]['table']['children'][0]['type'], 'table_row')
+        self.assertNotIn('_temporary_node_id', first_request['children'][0])
+        self.assertNotIn(
+            '_temporary_node_id', first_request['children'][0]['table']['children'][0])
+        self.assertEqual(
+            patch_calls[1][0], f'https://api.notion.com/v1/blocks/{table_id}/children')
+        self.assertEqual(result['block_id'], table_id)
+        self.assertEqual(result['block_id_relations'], [
+            {'temporary_block_id': 'table-node', 'block_id': table_id},
+            {'temporary_block_id': 'row-1', 'block_id': first_row_id},
+            {'temporary_block_id': 'row-2', 'block_id': second_row_id},
+        ])
+
+    def test_move_block_corrects_same_parent_index_and_deletes_after_verification(self):
+        fs = NotionFS(token='notion-move-token', skip_instance_cache=True)
+        second_id = '22222222-2222-2222-2222-222222222222'
+        third_id = '33333333-3333-3333-3333-333333333333'
+        moved_id = '44444444-4444-4444-4444-444444444444'
+        original = [{'id': BLOCK_ID}, {'id': second_id}, {'id': third_id}]
         calls = []
-        fs._delete = lambda url, **kwargs: calls.append((url, kwargs)) or {}
+        fs._ensure_block_belongs_to_document = lambda *_args: None
+        fs._list_children_raw = lambda _parent: (
+            original if sum(1 for call in calls if call[0] == 'append') == 0
+            else [*original, {'id': moved_id}]
+        )
 
-        fs.rm_file(f'/~block/{BLOCK_RAW}')
+        def append(parent, block, *, position=None, relations=None):
+            calls.append(('append', parent, position))
+            relations.append({
+                'temporary_block_id': 'source-node', 'block_id': moved_id,
+            })
+            return {'id': moved_id, 'type': 'paragraph'}
 
-        self.assertEqual(calls, [(f'https://api.notion.com/v1/blocks/{BLOCK_ID}', {})])
+        fs._append_block_tree = append
+        fs._rebind_internal_links = lambda *args, **kwargs: calls.append(('rebind',))
+        fs._delete = lambda url: calls.append(('delete', url)) or {'id': BLOCK_ID}
+
+        result = fs.move_block(
+            PAGE_RAW, BLOCK_RAW, PAGE_RAW, 0, PAGE_RAW, 2,
+            {'type': 'paragraph', 'paragraph': {'rich_text': []}},
+        )
+
+        self.assertEqual(calls[0], ('append', PAGE_ID, {'type': 'end'}))
+        self.assertEqual(calls[-1], ('delete', f'https://api.notion.com/v1/blocks/{BLOCK_ID}'))
+        self.assertEqual(result['block_id'], moved_id)
+        self.assertEqual(result['block_id_relations'][0]['temporary_block_id'], 'source-node')
 
     def test_insert_page_markdown_uses_content_field(self):
         fs = NotionFS(token='secret-token')
