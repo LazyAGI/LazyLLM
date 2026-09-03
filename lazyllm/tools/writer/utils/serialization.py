@@ -17,6 +17,7 @@ from ..data_models.writer_ir import (
 )
 from ..numbering import (
     MARKDOWN_ANCHOR_RE,
+    find_markdown_images,
     parse_markdown_anchor_numbering,
     parse_markdown_heading_numbering_config,
     strip_markdown_heading_numbering_config,
@@ -426,6 +427,44 @@ def parse_document_markdown(  # noqa: C901
 
         if token_type == 'paragraph':
             children = token.get('children') or []
+            raw_paragraph = _markdown_token_text(token).strip()
+            anchor_matches = list(MARKDOWN_ANCHOR_RE.finditer(raw_paragraph))
+            without_anchors = raw_paragraph
+            for match in reversed(anchor_matches):
+                without_anchors = (
+                    without_anchors[:match.start()] + without_anchors[match.end():]
+                )
+            html_images = [
+                image for image in find_markdown_images(without_anchors)
+                if image.syntax == 'html'
+            ]
+            if len(html_images) == 1 and (
+                without_anchors[:html_images[0].start]
+                + without_anchors[html_images[0].end:]
+            ).strip() == '':
+                image = html_images[0]
+                if anchor_matches:
+                    node_id = normalize_anchor_target(anchor_matches[0].group(1))
+                    if node_id in used_ids:
+                        raise ValueError(f'duplicate Markdown anchor target: {node_id!r}')
+                    used_ids.add(node_id)
+                else:
+                    node_id = take_pending_node_id('image')
+                asset_id = next(
+                    (
+                        key for key, asset in (media_assets.assets if media_assets else {}).items()
+                        if image.source in {str(asset.local_path or ''), str(asset.uri or '')}
+                    ),
+                    '',
+                )
+                append_block(WriterBlock(
+                    node_id=node_id,
+                    type='image',
+                    content=image.caption,
+                    references=([{'type': 'media_asset', 'id': asset_id}] if asset_id else []),
+                    stage=stage,
+                ))
+                continue
             visible = [
                 child for child in children
                 if child.get('type') not in {'softbreak', 'linebreak', 'inline_html'}
@@ -462,8 +501,6 @@ def parse_document_markdown(  # noqa: C901
                 )
                 append_block(block)
                 continue
-            raw_paragraph = _markdown_token_text(token).strip()
-            anchor_matches = list(MARKDOWN_ANCHOR_RE.finditer(raw_paragraph))
             anchors = [
                 (
                     normalize_anchor_target(match.group(1)),

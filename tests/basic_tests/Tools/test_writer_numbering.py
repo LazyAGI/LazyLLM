@@ -144,6 +144,52 @@ def test_markdown_numbering_metadata_survives_ir_conversion():
     assert 'numbering="mode=unordered"' in rendered
 
 
+def test_html_image_keeps_its_anchor_and_does_not_steal_the_next_heading():
+    source = '\n'.join([
+        '# 标题',
+        '<a id="block-sec-002"></a>',
+        '## 深入',
+        '<a id="block-sec-002-001"></a>',
+        '### 证据与谜团',
+        '[因果链](#block-IMAGE-1)',
+        '',
+        '<a id="block-IMAGE-1"></a>',
+        '',
+        '<img height="712" width="712" alt="恐惧递进因果链" src="/data/chain.jpg" />',
+        '',
+        '<a id="block-sec-002-002"></a>',
+        '### 不可名状的征兆',
+    ])
+
+    view = build_numbering_view_from_markdown(source)
+    numbering = compute_numbering(view)
+    assert [(target.id, target.kind) for target in view.targets] == [
+        ('sec-002', 'section'),
+        ('sec-002-001', 'section'),
+        ('IMAGE-1', 'figure'),
+        ('sec-002-002', 'section'),
+    ]
+    assert numbering['sec-002-002'].label == '1.2.'
+
+    document = parse_document_markdown(source, 'document')
+    blocks = list(document.iter_blocks())
+    assert any(block.node_id == 'IMAGE-1' and block.type == 'image' for block in blocks)
+    assert any(
+        block.node_id == 'sec-002-002'
+        and block.type == 'heading'
+        and block.content == '不可名状的征兆'
+        for block in blocks
+    )
+    assert any(
+        span.style.get('link', {}).get('target_node_id') == 'IMAGE-1'
+        for block in blocks for span in block.spans
+    )
+
+    materialized = materialize_markdown(source, view, numbering)
+    assert '<img height="712" width="712"' in materialized
+    assert dematerialize_markdown(materialized, numbering) == source
+
+
 def test_backend_updates_metadata_and_recomputes_labels():
     source = '\n'.join([
         '# 标题',

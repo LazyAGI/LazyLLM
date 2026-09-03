@@ -47,6 +47,16 @@ class NumberingEntry:
 
 NumberingMap = dict[str, NumberingEntry]
 
+
+@dataclass(frozen=True, slots=True)
+class MarkdownImage:
+    raw: str
+    start: int
+    end: int
+    caption: str
+    source: str
+    syntax: Literal['markdown', 'html']
+
 _KIND_BY_TYPE = {
     'heading': 'section',
     'image': 'figure',
@@ -72,11 +82,42 @@ MARKDOWN_HEADING_NUMBERING_CONFIG_RE = re.compile(
     re.IGNORECASE,
 )
 _HEADING_RE = re.compile(r'^(#{2,6})\s+(.+?)\s*$')
-_IMAGE_RE = re.compile(r'!\[([^\]]*)\]\([^)]*\)')
+_IMAGE_RE = re.compile(r'!\[([^\]]*)\]\(([^)]*)\)')
+_HTML_IMAGE_RE = re.compile(r'<img\b[^>]*?/?>', re.IGNORECASE)
+_HTML_IMAGE_ATTR_RE = re.compile(
+    r'\b(src|alt)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+))',
+    re.IGNORECASE,
+)
 _INTERNAL_LINK_RE = re.compile(r'\[([^\]]*)\]\(#(block-[^)]+)\)')
 _CODE_FENCE_RE = re.compile(r'^\s*(```+|~~~+)(.*)$')
 
 _ORDERED_STYLES = {'hierarchical', 'chinese', 'parenthesized'}
+
+
+def find_markdown_images(line: str) -> tuple[MarkdownImage, ...]:
+    """Return CommonMark and standalone HTML images in source order."""
+    images = [
+        MarkdownImage(
+            raw=match.group(0), start=match.start(), end=match.end(),
+            caption=match.group(1).strip(), source=match.group(2).strip(),
+            syntax='markdown',
+        )
+        for match in _IMAGE_RE.finditer(line)
+    ]
+    for match in _HTML_IMAGE_RE.finditer(line):
+        attributes: dict[str, str] = {}
+        for attribute in _HTML_IMAGE_ATTR_RE.finditer(match.group(0)):
+            attributes[attribute.group(1).lower()] = (
+                attribute.group(2) or attribute.group(3) or attribute.group(4) or ''
+            )
+        source = attributes.get('src', '').strip()
+        if source:
+            images.append(MarkdownImage(
+                raw=match.group(0), start=match.start(), end=match.end(),
+                caption=attributes.get('alt', '').strip(), source=source,
+                syntax='html',
+            ))
+    return tuple(sorted(images, key=lambda image: image.start))
 
 
 def parse_markdown_heading_numbering_config(markdown: str) -> dict[str, Any]:
@@ -238,11 +279,16 @@ def _markdown_semantic_items(markdown: str):
             yield index, line, 'heading', heading.group(2).strip(), pending_anchors
             pending_anchors = []
             continue
-        for image in _IMAGE_RE.finditer(line):
-            yield index, line, 'image', image.group(1).strip(), pending_anchors
+        images = find_markdown_images(line)
+        for image in images:
+            yield index, line, 'image', image.caption, pending_anchors
             pending_anchors = []
         if _is_table_header(lines, index):
             yield index, line, 'table', '', pending_anchors
+            pending_anchors = []
+        elif not images and MARKDOWN_ANCHOR_RE.sub('', line).strip():
+            # A target anchor applies only to the next semantic target. Do not
+            # leak it across ordinary or unsupported content into a later heading.
             pending_anchors = []
 
 
@@ -562,7 +608,7 @@ def materialize_markdown(
                 visible_prefix = f'{prefix} ' if prefix else ''
                 line = f'{heading.group(1)} {visible_prefix}{heading.group(2)}'
         else:
-            images = list(_IMAGE_RE.finditer(line))
+            images = find_markdown_images(line)
             targets = [
                 target for target in targets_by_line.get(index, [])
                 if target.kind == 'figure'
@@ -571,16 +617,16 @@ def materialize_markdown(
                 pieces: list[str] = []
                 last = 0
                 for image, target in zip(images, targets):
-                    caption = image.group(1).strip()
+                    caption = image.caption
                     label = format_target_number(numbering[target.id])
-                    replacement = image.group(0).replace(
-                        f'![{image.group(1)}]',
-                        f'![{label} {caption}]',
-                        1,
-                    )
-                    pieces.append(line[last:image.start()])
+                    replacement = image.raw
+                    if image.syntax == 'markdown':
+                        replacement = replacement.replace(
+                            f'![{caption}]', f'![{label} {caption}]', 1,
+                        )
+                    pieces.append(line[last:image.start])
                     pieces.append(replacement)
-                    last = image.end()
+                    last = image.end
                 pieces.append(line[last:])
                 line = ''.join(pieces)
         output.append(line)
@@ -667,7 +713,7 @@ def dematerialize_markdown(markdown: str, base_numbering: NumberingMap | None = 
                     title = title[len(prefix):]
                 line = f'{heading.group(1)} {title}'.rstrip()
         else:
-            images = list(_IMAGE_RE.finditer(line))
+            images = find_markdown_images(line)
             targets = [
                 target for target in targets_by_line.get(index, [])
                 if target.kind == 'figure'
@@ -676,21 +722,21 @@ def dematerialize_markdown(markdown: str, base_numbering: NumberingMap | None = 
                 pieces: list[str] = []
                 last = 0
                 for image, target in zip(images, targets):
-                    replacement = image.group(0)
+                    replacement = image.raw
                     entry = entry_for(target)
                     prefix = (
                         f'{format_target_number(entry)} '
                         if entry is not None and entry.kind == target.kind
                         else None
                     )
-                    if prefix and image.group(1).startswith(prefix):
+                    if prefix and image.syntax == 'markdown' and image.caption.startswith(prefix):
                         replacement = replacement.replace(
-                            f'![{image.group(1)}]',
-                            f'![{image.group(1)[len(prefix):]}]',
+                            f'![{image.caption}]',
+                            f'![{image.caption[len(prefix):]}]',
                             1,
                         )
-                    pieces.extend((line[last:image.start()], replacement))
-                    last = image.end()
+                    pieces.extend((line[last:image.start], replacement))
+                    last = image.end
                 pieces.append(line[last:])
                 line = ''.join(pieces)
         output.append(line)
@@ -830,6 +876,7 @@ __all__ = [
     'ensure_markdown_heading_anchors',
     'format_markdown_anchor_numbering',
     'format_target_number',
+    'find_markdown_images',
     'format_markdown_heading_numbering_config',
     'materialize_markdown',
     'materialize_ir',
