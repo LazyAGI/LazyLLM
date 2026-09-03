@@ -37,3 +37,31 @@ def test_register_tool_auth_rejects_unknown_bucket():
         raise AssertionError('expected ValueError')
     except ValueError as orig:
         assert 'config_key' in str(orig)
+
+
+def test_register_tool_auth_conflict_policy():
+    previous = TOOL_AUTH_REGISTRY.get('conflict_auth_tool')
+    try:
+        register_tool_auth('conflict_auth_tool', 'dynamic_tool_auth')
+        register_tool_auth('conflict_auth_tool', 'dynamic_tool_auth')
+        try:
+            register_tool_auth('conflict_auth_tool', 'dynamic_fs_auth')
+            raise AssertionError('expected ValueError')
+        except ValueError as orig:
+            assert 'already registered' in str(orig)
+        assert TOOL_AUTH_REGISTRY['conflict_auth_tool'] == 'dynamic_tool_auth'
+
+        register_tool_auth(
+            'conflict_auth_tool', 'dynamic_fs_auth', on_conflict='ignore',
+        )
+        assert TOOL_AUTH_REGISTRY['conflict_auth_tool'] == 'dynamic_tool_auth'
+
+        register_tool_auth(
+            'conflict_auth_tool', 'dynamic_fs_auth', on_conflict='replace',
+        )
+        assert TOOL_AUTH_REGISTRY['conflict_auth_tool'] == 'dynamic_fs_auth'
+    finally:
+        if previous is None:
+            TOOL_AUTH_REGISTRY.pop('conflict_auth_tool', None)
+        else:
+            TOOL_AUTH_REGISTRY['conflict_auth_tool'] = previous

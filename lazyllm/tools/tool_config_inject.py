@@ -1,7 +1,7 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 import lazyllm
 from lazyllm import LOG
@@ -50,12 +50,21 @@ _DEFAULT_CONFIG_KEY = 'dynamic_tool_auth'
 _ALLOWED_AUTH_KEYS = frozenset({'dynamic_tool_auth', 'dynamic_fs_auth'})
 
 
-def register_tool_auth(tool_name: str, config_key: str) -> None:
+def register_tool_auth(
+    tool_name: str,
+    config_key: str,
+    *,
+    on_conflict: Literal['error', 'replace', 'ignore'] = 'error',
+) -> None:
     '''Register a tool name onto a dynamic auth config bucket.
 
     ``config_key`` must be ``dynamic_tool_auth`` or ``dynamic_fs_auth``.
-    Callers that own product-specific tools (for example LazyMind mail)
-    register here; this module does not know those product concepts.
+    Callers that own product-specific tools register here; this module
+    does not know those product concepts.
+
+    If ``tool_name`` is already registered to the same ``config_key``, this
+    is a no-op. If it is registered to a different key, ``on_conflict``
+    decides: ``error`` (default), ``replace``, or ``ignore``.
     '''
     canonical = str(tool_name or '').lower().strip()
     key = str(config_key or '').strip()
@@ -65,6 +74,20 @@ def register_tool_auth(tool_name: str, config_key: str) -> None:
         raise ValueError(
             f'config_key must be one of {sorted(_ALLOWED_AUTH_KEYS)}, got {key!r}'
         )
+    if on_conflict not in {'error', 'replace', 'ignore'}:
+        raise ValueError(
+            f'on_conflict must be one of error/replace/ignore, got {on_conflict!r}'
+        )
+    existing = TOOL_AUTH_REGISTRY.get(canonical)
+    if existing == key:
+        return
+    if existing is not None:
+        if on_conflict == 'ignore':
+            return
+        if on_conflict == 'error':
+            raise ValueError(
+                f'tool {canonical!r} is already registered to {existing!r}'
+            )
     TOOL_AUTH_REGISTRY[canonical] = key
 
 
