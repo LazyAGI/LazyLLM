@@ -54,6 +54,7 @@ if TYPE_CHECKING:
         get_dynamic_env_vars,
         inject_env_vars,
         inject_tool_config,
+        register_tool_auth,
     )
 
 
@@ -174,6 +175,7 @@ _SUBMOD_MAP = {
         'inject_env_vars',
         'get_dynamic_env_vars',
         'effective_env_value',
+        'register_tool_auth',
     ],
     'fs': [
         'LazyLLMFSBase',

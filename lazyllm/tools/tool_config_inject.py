@@ -32,12 +32,6 @@ TOOL_AUTH_REGISTRY: Dict[str, str] = {
     'yuque': 'dynamic_fs_auth',
     'ones': 'dynamic_fs_auth',
     's3': 'dynamic_fs_auth',
-    'gmailimap': 'dynamic_tool_auth',
-    'qqmail': 'dynamic_tool_auth',
-    'qqexmail': 'dynamic_tool_auth',
-    'netease163': 'dynamic_tool_auth',
-    'neteaseqiye': 'dynamic_tool_auth',
-    'mail': 'dynamic_tool_auth',
     # ── Search / API-key tools (SearchBase) ──────────────────────────────
     'bing': 'dynamic_tool_auth',
     'google': 'dynamic_tool_auth',
@@ -53,6 +47,25 @@ TOOL_AUTH_REGISTRY: Dict[str, str] = {
 
 # Default config key for tools not listed in TOOL_AUTH_REGISTRY.
 _DEFAULT_CONFIG_KEY = 'dynamic_tool_auth'
+_ALLOWED_AUTH_KEYS = frozenset({'dynamic_tool_auth', 'dynamic_fs_auth'})
+
+
+def register_tool_auth(tool_name: str, config_key: str) -> None:
+    '''Register a tool name onto a dynamic auth config bucket.
+
+    ``config_key`` must be ``dynamic_tool_auth`` or ``dynamic_fs_auth``.
+    Callers that own product-specific tools (for example LazyMind mail)
+    register here; this module does not know those product concepts.
+    '''
+    canonical = str(tool_name or '').lower().strip()
+    key = str(config_key or '').strip()
+    if not canonical:
+        raise ValueError('tool_name is required')
+    if key not in _ALLOWED_AUTH_KEYS:
+        raise ValueError(
+            f'config_key must be one of {sorted(_ALLOWED_AUTH_KEYS)}, got {key!r}'
+        )
+    TOOL_AUTH_REGISTRY[canonical] = key
 
 
 def inject_tool_config(tool_config: Optional[Dict[str, Any]]) -> None:
