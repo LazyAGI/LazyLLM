@@ -35,9 +35,16 @@ test_models = {
         'doubao-seedream-4-0-250828',
     ],
     'text2video': [
+        'doubao-seedance-2-5-260628',
         'doubao-seedance-1-0-pro-fast-251015',
         'doubao-seedance-1-0-pro-250528',
         'doubao-seedance-1-5-pro-251215',
+        'wan2.6-t2v',
+        'wan2.6-i2v-flash',
+        'wan3.0-video',
+        'wan3.0-video-prime',
+        'Wan-AI/Wan2.2-T2V-A14B',
+        'Wan-AI/Wan2.2-I2V-A14B',
     ],
     'cross_modal_embed': [
         'doubao-embedding-vision-250615'

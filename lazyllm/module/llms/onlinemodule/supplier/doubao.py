@@ -162,9 +162,11 @@ class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase):
 
 
 class DoubaoText2Video(LazyLLMOnlineText2VideoModuleBase):
+    SUPPORTED_IMAGE_ROLES = True
     # Default to the cheapest free model for traffic-saving usage.
     MODEL_NAME = 'doubao-seedance-1-0-pro-fast-251015'
     MODEL_NAMES = (
+        'doubao-seedance-2-5-260628',
         'doubao-seedance-2-0',
         'doubao-seedance-2-0-fast',
         'doubao-seedance-1-5-pro-251215',
@@ -189,37 +191,79 @@ class DoubaoText2Video(LazyLLMOnlineText2VideoModuleBase):
     def _ark_client(self, base_url=None):
         return volcenginesdkarkruntime.Ark(base_url=(base_url or self._base_url), api_key=self._api_key)
 
-    def _build_content(self, input: str, files: List[str] = None, resolution: str = '480p',
+    def _build_content(self, input: str, files: List[str] = None, image_roles: List[str] = None,
+                       resolution: str = '480p',
                        duration: int = 2, ratio: str = '16:9', watermark: bool = True,
                        camerafixed: bool = False) -> List[Dict]:
-        text = (f'{input} --resolution {resolution} --duration {duration} '
-                f'--ratio {ratio} --camerafixed {str(camerafixed).lower()} '
-                f'--watermark {str(watermark).lower()}')
-        content = [{'type': 'text', 'text': text}]
+        # Ark's current Contents Generations API accepts rendering options as
+        # top-level request fields. Keep the content text clean so Seedance does
+        # not interpret legacy ``--resolution`` style flags as part of the scene.
+        content = [{'type': 'text', 'text': input}]
         if files:
-            for file in files:
+            roles = list(image_roles or [])
+            if roles and len(roles) != len(files):
+                raise ValueError('image_roles must have the same length as files')
+            if not roles:
+                roles = (
+                    ['first_frame'] if len(files) == 1
+                    else ['reference_image'] * len(files)
+                )
+            supported_roles = {'first_frame', 'last_frame', 'reference_image'}
+            if any(role not in supported_roles for role in roles):
+                raise ValueError(
+                    'image_roles may contain only first_frame, last_frame, or reference_image'
+                )
+            for file, image_role in zip(files, roles):
                 if file.startswith(('http://', 'https://', 'data:')):
                     image_url = file
                 else:
                     b64, _ = self._load_images(file)[0]
                     image_url = f'data:image/png;base64,{b64}'
-                content.append({'type': 'image_url', 'image_url': {'url': image_url}})
+                content.append({
+                    'type': 'image_url',
+                    'image_url': {'url': image_url},
+                    'role': image_role,
+                })
         return content
 
-    def _forward(self, input: str = None, files: List[str] = None, resolution: str = '480p',
+    def _forward(self, input: str = None, files: List[str] = None, image_roles: List[str] = None,
+                 resolution: str = '480p',
                  duration: int = 2, ratio: str = '16:9', watermark: bool = True,
                  camerafixed: bool = False, poll_interval: float = 3.0,
                  model: str = None, url: str = None, **kwargs):
         # kwargs may include LazyLLM framework fields (stream_output / priority); ignore them.
+        resolved_image_roles = image_roles
+        if files and not resolved_image_roles:
+            resolved_image_roles = (
+                ['first_frame'] if len(files) == 1
+                else ['reference_image'] * len(files)
+            )
         content = self._build_content(
-            input=input, files=files, resolution=resolution, duration=duration,
+            input=input, files=files, image_roles=resolved_image_roles,
+            resolution=resolution, duration=duration,
             ratio=ratio, watermark=watermark, camerafixed=camerafixed)
         client = self._ark_client(base_url=url)
-        # Only pass fields required by Ark content_generation.tasks.create.
-        create_result = client.content_generation.tasks.create(
-            model=model or self._model_name,
+        selected_model = model or self._model_name
+        create_kwargs = dict(
+            model=selected_model,
             content=content,
+            resolution=resolution,
+            duration=duration,
+            ratio=ratio,
+            watermark=watermark,
         )
+        # camera_fixed is unsupported by some reference-image and Seedance 2.x
+        # modes. Omit the default false value; pass it only when explicitly on
+        # so the provider can return its precise capability error if necessary.
+        if camerafixed:
+            create_kwargs['camera_fixed'] = True
+        if (
+            selected_model.startswith('doubao-seedance-2-5')
+            and resolved_image_roles
+            and all(role == 'reference_image' for role in resolved_image_roles)
+        ):
+            create_kwargs['omni_reference_task_type'] = 'auto'
+        create_result = client.content_generation.tasks.create(**create_kwargs)
         task_id = create_result.id
         while True:
             get_result = client.content_generation.tasks.get(task_id=task_id)
