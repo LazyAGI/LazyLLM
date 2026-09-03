@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
@@ -6,7 +7,7 @@ from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
     ModelFailureCode, OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineMultimodalEmbedModuleBase,
     LazyLLMOnlineRerankModuleBase, LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase,
-    LazyLLMOnlineTTSModuleBase,
+    LazyLLMOnlineTTSModuleBase, LazyLLMOnlineText2VideoModuleBase,
 )
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file, _image_to_base64
@@ -215,6 +216,109 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
         ai_img_path = os.path.join(config['temp_dir'], 'ai_img')
         file_paths = bytes_to_file(image_bytes, target_dir=ai_img_path)
         return encode_query_with_filepaths(None, file_paths)
+
+
+class SiliconFlowText2Video(LazyLLMOnlineText2VideoModuleBase):
+    SUPPORTED_IMAGE_ROLES = True
+    MODEL_NAME = 'Wan-AI/Wan2.2-I2V-A14B'
+    MODEL_NAMES = (
+        'Wan-AI/Wan2.2-T2V-A14B',
+        'Wan-AI/Wan2.2-I2V-A14B',
+    )
+    _SIZE_BY_RESOLUTION_AND_RATIO = {
+        ('720P', '16:9'): '1280x720',
+        ('720P', '9:16'): '720x1280',
+        ('720P', '1:1'): '960x960',
+        ('1080P', '16:9'): '1280x720',
+        ('1080P', '9:16'): '720x1280',
+        ('1080P', '1:1'): '960x960',
+    }
+
+    def __init__(self, api_key: str = None, model: str = None,
+                 url: Optional[str] = None, base_url: Optional[str] = None,
+                 return_trace: bool = False, **kwargs):
+        endpoint = url or base_url or 'https://api.siliconflow.cn/v1/'
+        resolved_model = model or config['siliconflow_text2video_model_name'] or self.MODEL_NAME
+        super().__init__(api_key=api_key or self._default_api_key(), model=resolved_model,
+                         url=endpoint, return_trace=return_trace, **kwargs)
+
+    @staticmethod
+    def _format_image(image: str) -> str:
+        if image.startswith(('http://', 'https://', 'data:')):
+            return image
+        encoded, mime = _image_to_base64(image)
+        if not encoded or not mime:
+            raise ValueError(f'Unsupported image file: {image}')
+        return f'data:{mime};base64,{encoded}'
+
+    @classmethod
+    def _video_size(cls, resolution: str, ratio: str) -> str:
+        normalized = str(resolution or '720P').upper()
+        if normalized == '480P':
+            normalized = '720P'
+        return cls._SIZE_BY_RESOLUTION_AND_RATIO[(normalized, ratio)]
+
+    def _build_video_payload(self, selected_model: str, input: str, files: List[str],
+                             resolution: str, ratio: str, negative_prompt: str, seed: int):
+        payload = {
+            'model': selected_model,
+            'prompt': input,
+            'image_size': self._video_size(resolution, ratio),
+        }
+        if negative_prompt:
+            payload['negative_prompt'] = negative_prompt
+        if seed is not None:
+            payload['seed'] = int(seed)
+        if '-I2V-' in selected_model and files:
+            payload['image'] = self._format_image(files[0])
+        return payload
+
+    def _create_video_task(self, base: str, payload: Dict) -> str:
+        response = requests.post(
+            urljoin(base, 'video/submit'), headers=self._header, json=payload, timeout=60)
+        response.raise_for_status()
+        created = response.json()
+        request_id = created.get('requestId')
+        if not request_id:
+            raise RuntimeError(
+                f'SiliconFlow video task creation failed: {created.get("message") or created}'
+            )
+        return request_id
+
+    def _wait_video_task(self, base: str, request_id: str,
+                         poll_interval: float, timeout: float):
+        deadline = time.monotonic() + float(timeout)
+        while time.monotonic() < deadline:
+            response = requests.post(
+                urljoin(base, 'video/status'), headers=self._header,
+                json={'requestId': request_id}, timeout=60,
+            )
+            response.raise_for_status()
+            task = response.json()
+            status = task.get('status')
+            if status == 'Succeed':
+                video_url = task['results']['videos'][0]['url']
+                video_response = requests.get(video_url, timeout=180)
+                video_response.raise_for_status()
+                return encode_query_with_filepaths(None, bytes_to_file([video_response.content]))
+            if status == 'Failed':
+                raise RuntimeError(
+                    f'SiliconFlow video generation failed: {task.get("reason") or "unknown reason"}'
+                )
+            if poll_interval > 0:
+                time.sleep(poll_interval)
+        raise TimeoutError(f'SiliconFlow video generation timed out after {timeout} seconds')
+
+    def _forward(self, input: str = None, files: List[str] = None, image_roles: List[str] = None,
+                 resolution: str = '720p', ratio: str = '16:9', negative_prompt: str = None,
+                 seed: int = None, poll_interval: float = 3.0, timeout: float = 900,
+                 url: str = None, model: str = None, **kwargs):
+        selected_model = model or self._model_name
+        base = (url or self._base_url).rstrip('/') + '/'
+        payload = self._build_video_payload(
+            selected_model, input, list(files or []), resolution, ratio, negative_prompt, seed)
+        request_id = self._create_video_task(base, payload)
+        return self._wait_video_task(base, request_id, poll_interval, timeout)
 
 
 class SiliconFlowSTT(LazyLLMOnlineSTTModuleBase):

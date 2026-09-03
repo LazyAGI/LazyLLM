@@ -76,3 +76,23 @@ class TestThirdparty(object):
         # its import name (multipart) differs from its PyPI name
         assert thirdparty.package_name_map.get('multipart') == 'python-multipart'
         assert thirdparty.package_name_map_reverse.get('python-multipart') == 'multipart'
+
+    def test_import_error_hint_when_module_not_installed(self):
+        w = thirdparty.PackageWrapper('nonexistent_module_kasduf45123')
+        with pytest.raises(ImportError) as exc_info:
+            _ = w.prop
+        msg = str(exc_info.value)
+        assert 'Cannot import module `nonexistent_module_kasduf45123`' in msg
+        assert 'please install it by `pip install nonexistent_module_kasduf45123`' in msg
+
+    def test_import_error_hint_when_installed_but_internal_failure(self, monkeypatch):
+        def broken_import(*args, **kwargs):
+            raise ImportError('failed to resolve old huggingface-hub dependency')
+        monkeypatch.setattr('importlib.import_module', broken_import)
+        w = thirdparty.PackageWrapper('transformers')
+        with pytest.raises(ImportError) as exc_info:
+            _ = w.model
+        msg = str(exc_info.value)
+        assert 'Module `transformers` is installed, but importing it failed' in msg
+        assert 'huggingface-hub' in msg
+        assert 'old huggingface-hub dependency' in msg
