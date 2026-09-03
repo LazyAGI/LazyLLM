@@ -250,7 +250,7 @@ class EvalHardness:
             idx += 1
 
         if toks[idx] == 'select':
-            idx, val = self.parse_sql(toks, idx, tables_with_alias, schema)
+            idx, val = self.parse_sql(idx)
         elif isinstance(toks[idx], str) and toks[idx] not in schema.idMap:
             val = toks[idx]
             idx += 1
@@ -353,7 +353,7 @@ class EvalHardness:
                 idx += 1
 
             if toks[idx] == 'select':
-                idx, sql = self.parse_sql(toks, idx, tables_with_alias, schema)
+                idx, sql = self.parse_sql(idx)
                 table_units.append((self.TABLE_TYPE['sql'], sql))
             else:
                 if idx < len_ and toks[idx] == 'join':
