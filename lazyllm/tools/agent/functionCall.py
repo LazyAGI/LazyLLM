@@ -358,13 +358,12 @@ class FunctionCall(ModuleBase):
                 current_round,
                 remaining_rounds,
             )
-        compacted_prior, _compacted_current = self._compact_history(
+        compacted_prior, _ = self._compact_history(
             workspace['history'][:history_idx],
             current_input=current_input,
             workspace=workspace,
             remaining_rounds=remaining_rounds,
         )
-        compacted_current = _compacted_current + self._consume_model_context()
         locals['chat_history'][self._llm._module_id] = compacted_prior
         self._notify_history_ready(workspace, current_round, compacted_prior)
         return input
