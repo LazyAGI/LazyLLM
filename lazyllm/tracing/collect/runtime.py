@@ -175,6 +175,9 @@ class TracingRuntime:
         if span_kind == 'module':
             return getattr(target, 'name', None) or getattr(target, '_module_name', None) or target.__class__.__name__
         if span_kind == 'callable':
+            override = getattr(target, '__span_name__', None)
+            if override:
+                return str(override)
             return getattr(target, '__name__', None) or target.__class__.__name__
         override = getattr(target, '__span_name__', None)
         if override:
@@ -431,6 +434,11 @@ class TracingRuntime:
 
         if span.semantic_type == SemanticType.LLM and span.config.get('model'):
             attrs['gen_ai.request.model'] = str(span.config['model'])
+        if span.semantic_type == SemanticType.AGENT:
+            attrs['gen_ai.operation.name'] = 'invoke_agent'
+            attrs['gen_ai.agent.name'] = str(span.config.get('agent_name') or span.name)
+            if span.session_id:
+                attrs['gen_ai.conversation.id'] = span.session_id
 
         self._set_root_span_attrs(attrs, span)
         self._set_trace_metadata_attrs(attrs, span, trace)
@@ -513,6 +521,7 @@ def finish_span(handle):
 
 _TRACE_CONFIG_KEYS = (
     'trace_id', 'parent_span_id', 'session_id', 'user_id', 'request_tags', 'module_trace',
+    'debug_capture_payload',
 )
 
 
@@ -617,6 +626,8 @@ def _run_with_trace(func, args, kwargs, trace_config):
 
     new_ctx_data['request_tags'] = request_tags if request_tags is not None else []
     new_ctx_data['module_trace'] = module_trace
+    if 'debug_capture_payload' in trace_config:
+        new_ctx_data['debug_capture_payload'] = trace_config['debug_capture_payload']
     new_ctx_data['enabled'] = True
 
     new_ctx = LazyTraceContext.from_dict(new_ctx_data)
