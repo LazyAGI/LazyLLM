@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 import requests
 from typing import Any, Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
@@ -10,7 +11,7 @@ from ..base import (
     ModelFailureCode, OnlineChatModuleBase,
     LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineMultimodalEmbedModuleBase,
     LazyLLMOnlineRerankModuleBase, LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase,
-    LazyLLMOnlineTTSModuleBase
+    LazyLLMOnlineTTSModuleBase, LazyLLMOnlineText2VideoModuleBase,
 )
 from ..base.utils import resolve_online_params
 from ..fileHandler import FileHandlerBase
@@ -747,6 +748,154 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
         image_results = self._load_images(image_urls)
         image_bytes = [data for _, data in image_results]
         return encode_query_with_filepaths(None, bytes_to_file(image_bytes))
+
+
+class QwenText2Video(LazyLLMOnlineText2VideoModuleBase):
+    SUPPORTED_IMAGE_ROLES = True
+    MODEL_NAME = 'wan3.0-video'
+    MODEL_NAMES = (
+        'wan3.0-video',
+        'wan3.0-video-prime',
+        'wan2.6-t2v',
+        'wan2.6-i2v',
+        'wan2.6-i2v-flash',
+    )
+    _SIZE_BY_RESOLUTION_AND_RATIO = {
+        ('480P', '16:9'): '832*480',
+        ('480P', '9:16'): '480*832',
+        ('480P', '1:1'): '624*624',
+        ('720P', '16:9'): '1280*720',
+        ('720P', '9:16'): '720*1280',
+        ('720P', '1:1'): '960*960',
+        ('720P', '4:3'): '1088*832',
+        ('720P', '3:4'): '832*1088',
+        ('1080P', '16:9'): '1920*1080',
+        ('1080P', '9:16'): '1080*1920',
+        ('1080P', '1:1'): '1440*1440',
+        ('1080P', '4:3'): '1632*1248',
+        ('1080P', '3:4'): '1248*1632',
+    }
+
+    def __init__(self, api_key: str = None, model: str = None,
+                 url: Optional[str] = None, base_url: Optional[str] = None,
+                 return_trace: bool = False, **kwargs):
+        endpoint = url or base_url or 'https://dashscope.aliyuncs.com/'
+        resolved_model = model or lazyllm.config['qwen_text2video_model_name'] or self.MODEL_NAME
+        super().__init__(api_key=api_key or self._default_api_key(), model=resolved_model,
+                         url=endpoint, return_trace=return_trace, **kwargs)
+
+    @staticmethod
+    def _api_root(base_url: str) -> str:
+        base = (base_url or 'https://dashscope.aliyuncs.com/').rstrip('/') + '/'
+        if base.rstrip('/').endswith('/api/v1'):
+            return base
+        return urljoin(base, 'api/v1/')
+
+    @staticmethod
+    def _format_image(image: str) -> str:
+        if image.startswith(('http://', 'https://', 'data:')):
+            return image
+        encoded, mime = _image_to_base64(image)
+        if not encoded or not mime:
+            raise ValueError(f'Unsupported image file: {image}')
+        return f'data:{mime};base64,{encoded}'
+
+    @classmethod
+    def _effective_resolution(cls, model: str, resolution: str) -> str:
+        normalized = str(resolution or '720P').upper()
+        if model.startswith('wan2.6-') and normalized == '480P':
+            return '720P'
+        return normalized
+
+    @classmethod
+    def _video_size(cls, resolution: str, ratio: str) -> str:
+        return cls._SIZE_BY_RESOLUTION_AND_RATIO[(resolution, ratio)]
+
+    def _build_video_request(self, selected_model: str, input: str, files: List[str],
+                             image_roles: List[str], resolution: str, duration: int,
+                             ratio: str, watermark: bool, prompt_extend: bool, audio: bool):
+        is_all_in_one = selected_model in {'wan3.0-video', 'wan3.0-video-prime'}
+        supplied_files = list(files or [])
+        default_role = 'first_frame' if len(supplied_files) == 1 else 'reference_image'
+        roles = [
+            image_roles[index] if image_roles and index < len(image_roles) else default_role
+            for index in range(len(supplied_files))
+        ]
+        request_input = {'prompt': input}
+        if is_all_in_one and supplied_files:
+            request_input['media'] = [
+                {'type': role, 'url': self._format_image(file)}
+                for file, role in zip(supplied_files, roles)
+            ]
+        elif '-i2v' in selected_model and supplied_files:
+            request_input['img_url'] = self._format_image(supplied_files[0])
+
+        effective_resolution = self._effective_resolution(selected_model, resolution)
+        parameters = {'duration': int(duration), 'prompt_extend': bool(prompt_extend)}
+        if is_all_in_one:
+            parameters.update(resolution=effective_resolution, ratio=ratio, audio=bool(audio))
+            if watermark:
+                parameters['watermark'] = True
+        elif '-t2v' in selected_model:
+            parameters.update(
+                watermark=bool(watermark),
+                size=self._video_size(effective_resolution, ratio),
+            )
+        else:
+            parameters.update(watermark=bool(watermark), resolution=effective_resolution)
+        return request_input, parameters
+
+    def _create_video_task(self, api_root: str, selected_model: str,
+                           request_input: Dict, parameters: Dict) -> str:
+        headers = {**self._header, 'X-DashScope-Async': 'enable'}
+        response = requests.post(
+            urljoin(api_root, 'services/aigc/video-generation/video-synthesis'),
+            headers=headers,
+            json={'model': selected_model, 'input': request_input, 'parameters': parameters},
+            timeout=60,
+        )
+        response.raise_for_status()
+        created = response.json()
+        task_id = (created.get('output') or {}).get('task_id')
+        if not task_id:
+            raise RuntimeError(f'Qwen video task creation failed: {created.get("message") or created}')
+        return task_id
+
+    def _wait_video_task(self, api_root: str, task_id: str,
+                         poll_interval: float, timeout: float):
+        deadline = time.monotonic() + float(timeout)
+        task_url = urljoin(api_root, f'tasks/{task_id}')
+        while time.monotonic() < deadline:
+            response = requests.get(task_url, headers=self._header, timeout=60)
+            response.raise_for_status()
+            task = response.json()
+            output = task.get('output') or {}
+            status = str(output.get('task_status') or '').upper()
+            if status == 'SUCCEEDED':
+                video_response = requests.get(output['video_url'], timeout=180)
+                video_response.raise_for_status()
+                return encode_query_with_filepaths(None, bytes_to_file([video_response.content]))
+            if status in {'FAILED', 'CANCELED', 'UNKNOWN'}:
+                reason = task.get('message') or output.get('message') or task.get('code') or status
+                raise RuntimeError(f'Qwen video generation failed: {reason}')
+            if poll_interval > 0:
+                time.sleep(poll_interval)
+        raise TimeoutError(f'Qwen video generation timed out after {timeout} seconds')
+
+    def _forward(self, input: str = None, files: List[str] = None, image_roles: List[str] = None,
+                 resolution: str = '720p', duration: int = 5, ratio: str = '16:9',
+                 watermark: bool = False, prompt_extend: bool = True,
+                 audio: bool = True,
+                 poll_interval: float = 3.0, timeout: float = 900,
+                 url: str = None, model: str = None, **kwargs):
+        selected_model = model or self._model_name
+        api_root = self._api_root(url or self._base_url)
+        request_input, parameters = self._build_video_request(
+            selected_model, input, files, image_roles, resolution, duration,
+            ratio, watermark, prompt_extend, audio,
+        )
+        task_id = self._create_video_task(api_root, selected_model, request_input, parameters)
+        return self._wait_video_task(api_root, task_id, poll_interval, timeout)
 
 
 def synthesize_qwentts(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,

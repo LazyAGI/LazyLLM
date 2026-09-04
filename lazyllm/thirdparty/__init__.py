@@ -133,10 +133,17 @@ class PackageWrapper(object):
             try:
                 self._Wrapper__lib = importlib.import_module(self._Wrapper__key, package=self._Wrapper__package)
                 for patch_func in self._Wrapper__patches: patch_func()
-            except ImportError:
-                pip_cmd = get_pip_install_cmd([self._Wrapper__key])
-                err_msg = f'Cannot import module `{self._Wrapper__key}`, please install it by `{pip_cmd}`'
-                raise ImportError(err_msg) from None
+            except ImportError as error:
+                if isinstance(error, ModuleNotFoundError) and (error.name in (self._Wrapper__key, None)):
+                    pip_cmd = get_pip_install_cmd([self._Wrapper__key])
+                    err_msg = (f'Cannot import module `{self._Wrapper__key}`, '
+                               f'please install it by `{pip_cmd}`')
+                else:
+                    err_msg = (f'Module `{self._Wrapper__key}` is installed, but importing it failed. '
+                               f'This is usually caused by an outdated or incompatible dependency '
+                               f'(e.g. an old `huggingface-hub` used by `transformers`). '
+                               f'Original error: {error}')
+                raise ImportError(err_msg) from error
         return getattr(self._Wrapper__lib, __name)
 
     def __setattr__(self, __name, __value):
