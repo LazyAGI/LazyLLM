@@ -797,3 +797,37 @@ def test_record_usage_accumulates_repeated_calls_on_same_module():
         },
     ]
     assert 'provider_usage' not in recorded
+
+
+def test_record_usage_preserves_known_provider_frames_across_unknown_call():
+    module = OpenAIChat(
+        base_url='http://provider.test/v1/', model='test-model', api_key='',
+        stream=False, skip_auth=True,
+    )
+    first_provider_usage = {
+        'prompt_tokens': 100,
+        'completion_tokens': 10,
+        'prompt_tokens_details': {'cached_tokens': 80},
+    }
+    third_provider_usage = {
+        'prompt_tokens': 50,
+        'completion_tokens': 20,
+        'prompt_tokens_details': {'cached_tokens': 0},
+    }
+
+    module._record_usage({
+        'prompt_tokens': 100,
+        'completion_tokens': 10,
+        'provider_usage': first_provider_usage,
+    })
+    module._record_usage({'prompt_tokens': -1, 'completion_tokens': -1})
+    module._record_usage({
+        'prompt_tokens': 50,
+        'completion_tokens': 20,
+        'provider_usage': third_provider_usage,
+    })
+
+    recorded = lazyllm.globals['usage'][module._module_id]
+    assert recorded['prompt_tokens'] == -1
+    assert recorded['completion_tokens'] == -1
+    assert recorded['provider_usages'] == [first_provider_usage, third_provider_usage]

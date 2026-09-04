@@ -353,8 +353,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
     @classmethod
     def _merge_usage_records(cls, existing: dict, usage: dict) -> Dict[str, Any]:
-        if existing.get('prompt_tokens') == -1 or usage.get('prompt_tokens') == -1:
-            return {'prompt_tokens': -1, 'completion_tokens': -1}
+        aggregate_unknown = existing.get('prompt_tokens') == -1 or usage.get('prompt_tokens') == -1
         merged = dict(existing)
         for key, value in usage.items():
             if key in ('provider_usage', 'provider_usages'):
@@ -366,6 +365,9 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                 merged[key] = current + value
             elif key not in merged:
                 merged[key] = value
+        if aggregate_unknown:
+            merged['prompt_tokens'] = -1
+            merged['completion_tokens'] = -1
         frames = cls._provider_usage_frames(existing)
         frames.extend(cls._provider_usage_frames(usage))
         merged.pop('provider_usage', None)
