@@ -11,7 +11,7 @@ from lazyllm.tools.rag.transform.base import NodeTransform, _TextSplitterBase, _
 from lazyllm.tools.rag.doc_node import DocNode, RichDocNode
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from lazyllm.tools.rag.document import Document
 from lazyllm.tools.rag.retriever import Retriever
 from lazyllm.tools.rag.store import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
@@ -2115,6 +2115,32 @@ class TestBatchForwardRefPath:
                           kb_id='default', strategy='reembed')
 
         processor._reembed_group.assert_called_once_with('block', ng, doc_ids=[self._REPARSE_DOC], kb_id='default')
+
+    def test_reparse_reembed_falls_back_to_full_reparse_when_nodes_missing(self):
+        '''strategy='reembed' with nothing materialized -> full reparse of the docs.
+
+        _reparse_docs() requires doc_paths and metadatas, so the fallback only works if
+        reparse() forwards the reparse kwargs into _reembed_group(). autospec=True is what
+        makes this a regression test: without the forwarding the call cannot bind and
+        raises TypeError instead of reaching the assertion below.
+        '''
+        ng = self._make_node_groups()
+        store = MagicMock()
+        store.get_nodes.return_value = []  # nodes not materialized yet
+        store._group_embed_keys = {'block': {'default'}}
+        store.activated_groups.return_value = []
+        reader = MagicMock()
+
+        processor = _Processor(store=store)
+
+        with patch.object(_Processor, '_reparse_docs', autospec=True) as reparse_docs:
+            processor.reparse(group_name='block', node_groups=ng, doc_ids=[self._REPARSE_DOC],
+                              kb_id='default', strategy='reembed',
+                              doc_paths=[self._REPARSE_PATH], metadatas=[{}], reader=reader)
+
+        reparse_docs.assert_called_once_with(
+            processor, group_name='block', node_groups=ng, doc_ids=[self._REPARSE_DOC],
+            kb_id='default', doc_paths=[self._REPARSE_PATH], metadatas=[{}], reader=reader)
 
 
 class TestCallableSig:
