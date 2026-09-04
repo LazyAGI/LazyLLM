@@ -13,6 +13,7 @@ from lazyllm.flow.flow import FlowException
 from typing import Callable, Any, Union, Optional, get_type_hints, List, Dict, Type, Set
 import inspect
 import re
+import time
 import uuid
 from pydantic import create_model, BaseModel, ConfigDict, ValidationError
 from lazyllm import LOG, locals as lazyllm_locals
@@ -794,6 +795,7 @@ class ToolManager(ModuleBase):
         self._format_tools()
         self._tools_desc = self._transform_to_openai_function()
         self._sandbox = sandbox
+        self.last_execution_duration_ms = None
 
     @property
     def all_tools(self) -> List[ModuleTool]:
@@ -1189,8 +1191,14 @@ class ToolManager(ModuleBase):
 
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False,
                 allowed_tool_names: Optional[Set[str]] = None):
-        return self.execute_with_records(
-            tools,
-            verbose=verbose,
-            allowed_tool_names=allowed_tool_names,
-        ).results
+        started = time.monotonic()
+        try:
+            return self.execute_with_records(
+                tools,
+                verbose=verbose,
+                allowed_tool_names=allowed_tool_names,
+            ).results
+        finally:
+            self.last_execution_duration_ms = round(
+                max(0.0, (time.monotonic() - started) * 1000.0)
+            )
