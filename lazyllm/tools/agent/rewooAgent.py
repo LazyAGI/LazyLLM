@@ -125,9 +125,11 @@ class ReWOOAgent(LazyLLMAgentBase):
             _write_agent_data('tool_calls', tool_calls=tool_calls)
         result = self._tools_manager(tool_calls)
         if self._stream:
-            _write_agent_data('tool_results',
-                              tool_results=self._normalize_tool_results(tool_calls, result),
-                              duration_ms=self._tools_manager.last_execution_duration_ms)
+            _write_agent_data(
+                'tool_results',
+                tool_results=self._normalize_tool_results(tool_calls, result),
+                duration_ms=self._tools_manager.last_execution_duration_ms,
+            )
         locals['_lazyllm_agent']['workspace']['tool_call_trace'].append(
             {**tool_calls[0], 'tool_call_result': result[0]}
         )

@@ -49,8 +49,6 @@ class StreamResponse():
 
 
 _ROUND_TOOLS_KEY = '_function_call_round_tools'
-_MODEL_CONTEXT_MAX_CHARS = 2048
-_MODEL_CONTEXT_RESERVED_TOKENS = 512
 
 
 def _structured_compact_parts(compacted: Any) -> Optional[tuple]:
@@ -93,8 +91,7 @@ class FunctionCall(ModuleBase):
                  keep_full_turns: int = 0, stop_tools: Optional[List[str]] = None,
                  round_limit: Optional[int] = None,
                  history_compactor: Optional[Callable[..., Any]] = None,
-                 runtime_observer: Optional[Callable[..., Any]] = None,
-                 model_context_provider: Optional[Callable[[], Optional[str]]] = None):
+                 runtime_observer: Optional[Callable[..., Any]] = None):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
@@ -112,7 +109,6 @@ class FunctionCall(ModuleBase):
         self._stop_tools: set = set(stop_tools) if stop_tools else set()
         self._round_limit = round_limit
         self._runtime_observer = runtime_observer
-        self._model_context_provider = model_context_provider
         prompt = _prompt or FC_PROMPT
         self._system_prompt = prompt
         self._prompter = ChatPrompter(
@@ -187,7 +183,7 @@ class FunctionCall(ModuleBase):
             remaining_rounds,
         )
 
-    def _compact_history(  # noqa: C901
+    def _compact_history(
         self,
         prior_history: List[Dict[str, Any]],
         current_input: Any = None,
@@ -208,8 +204,6 @@ class FunctionCall(ModuleBase):
             'current_input': current_input,
             'current_round_messages': current,
         }
-        if self._model_context_provider is not None:
-            kwargs['reserved_runtime_context_tokens'] = _MODEL_CONTEXT_RESERVED_TOKENS
         try:
             signature = inspect.signature(self._history_compactor)
             accepts_kwargs = any(
@@ -230,8 +224,6 @@ class FunctionCall(ModuleBase):
                 kwargs.pop('current_input', None)
             if not accepts_kwargs and 'prefix' not in signature.parameters:
                 kwargs.pop('prefix', None)
-            if not accepts_kwargs and 'reserved_runtime_context_tokens' not in signature.parameters:
-                kwargs.pop('reserved_runtime_context_tokens', None)
         except (TypeError, ValueError):
             pass
         compacted = self._history_compactor(
@@ -259,25 +251,6 @@ class FunctionCall(ModuleBase):
             round=current_round or workspace.get('_react_round_number'),
             history=history,
         )
-
-    def _consume_model_context(self) -> List[Dict[str, str]]:
-        if self._model_context_provider is None:
-            return []
-        try:
-            content = self._model_context_provider()
-        except Exception as error:
-            LOG.warning(
-                f'[ModelContextProvider] failed: {type(error).__name__}: {error}'
-            )
-            return []
-        if not isinstance(content, str) or not content.strip():
-            return []
-        content = content.strip()
-        if len(content) > _MODEL_CONTEXT_MAX_CHARS:
-            content = content[:_MODEL_CONTEXT_MAX_CHARS]
-            LOG.warning('[ModelContextProvider] context was truncated to fit the input budget')
-        self._observe_runtime('runtime_context_delivered', context_count=1)
-        return [{'role': 'user', 'content': content}]
 
     def _build_current_tool_messages(
         self,
@@ -328,7 +301,6 @@ class FunctionCall(ModuleBase):
             workspace=workspace,
             remaining_rounds=remaining_rounds,
         )
-        compacted_current.extend(self._consume_model_context())
         locals['chat_history'][self._llm._module_id] = compacted_prior
         self._notify_history_ready(workspace, current_round, compacted_prior + compacted_current)
         return {'input': compacted_current}
@@ -390,10 +362,11 @@ class FunctionCall(ModuleBase):
                 allowed_tool_names=self._get_visible_tool_names(),
             )
             if self._stream:
-                _write_agent_data('tool_results',
-                                  tool_results=LazyLLMAgentBase._normalize_tool_results(tool_calls,
-                                                                                        tool_calls_results),
-                                  duration_ms=self._tools_manager.last_execution_duration_ms)
+                _write_agent_data(
+                    'tool_results',
+                    tool_results=LazyLLMAgentBase._normalize_tool_results(tool_calls, tool_calls_results),
+                    duration_ms=self._tools_manager.last_execution_duration_ms,
+                )
             locals['_lazyllm_agent']['workspace']['tool_call_trace'] = [
                 {**tool_call, 'tool_call_result': tool_result}
                 for tool_call, tool_result in zip(tool_calls, tool_calls_results)
