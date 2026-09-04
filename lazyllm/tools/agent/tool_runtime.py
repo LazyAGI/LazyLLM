@@ -110,6 +110,20 @@ class ToolExecutionRecord:
 class ToolExecutionBatch:
     results: Any
     records: Tuple[ToolExecutionRecord, ...] = ()
+    duration_ms: Optional[int] = None
+
+    def stamped_results(self):
+        results = self.results
+        if self.duration_ms is None:
+            return results
+        try:
+            results.duration_ms = self.duration_ms
+            return results
+        except (AttributeError, TypeError):
+            from lazyllm.common import package
+            stamped = package(() if results is None else results)
+            stamped.duration_ms = self.duration_ms
+            return stamped
 
 
 @dataclass(frozen=True)

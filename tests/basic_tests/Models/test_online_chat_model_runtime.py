@@ -22,6 +22,7 @@ from lazyllm.module.llms.onlinemodule.base.onlineChatModuleBase import LazyLLMOn
 from lazyllm.module.llms.onlinemodule.base.provider_response import (
     OPENAI_COMPATIBLE_PROFILE,
     raise_for_http_error,
+    usage_from_frames,
 )
 from lazyllm.module.llms.onlinemodule.supplier.claude import ClaudeChat
 from lazyllm.module.llms.onlinemodule.supplier.deepseek import DeepSeekChat
@@ -268,9 +269,31 @@ def test_runner_retries_only_pre_output_transport_failures():
     assert result
     assert attempts == 3
     assert [event[0] for event in events] == [
-        'model_retry_scheduled', 'model_retry_scheduled', 'model_call_finished',
+        'model_call_started', 'model_retry_scheduled', 'model_retry_scheduled', 'model_call_finished',
     ]
     assert len({event[1]['model_call_id'] for event in events}) == 1
+
+
+def test_runner_emits_measured_model_call_duration():
+    events = []
+    timestamps = iter((10.0, 10.25))
+
+    def execute(state):
+        state.semantic_output = True
+        state.finish = ModelFinish.STOP
+        return [{'choices': [{'delta': {'content': 'ok'}, 'finish_reason': 'stop'}]}]
+
+    runner = _ModelCallRunner(
+        emit_event=lambda event_type, data: events.append((event_type, data)),
+        clock=lambda: next(timestamps),
+        sleep=lambda delay: None,
+    )
+    runner.run(execute, max_attempts=1)
+
+    assert events[0][0] == 'model_call_started'
+    assert events[0][1]['model_call_id'] == events[-1][1]['model_call_id']
+    assert events[-1][0] == 'model_call_finished'
+    assert events[-1][1]['duration_ms'] == 250
 
 
 @pytest.mark.parametrize(('errno', 'retryable'), [
@@ -303,9 +326,9 @@ def test_runner_does_not_retry_after_semantic_output():
         runner.run(execute, max_attempts=3)
 
     assert attempts == 1
-    assert [event[0] for event in events] == ['model_call_finished']
-    assert events[0][1]['failure']['origin'] == 'transport'
-    assert events[0][1]['failure']['code'] == 'transport_error'
+    assert [event[0] for event in events] == ['model_call_started', 'model_call_finished']
+    assert events[-1][1]['failure']['origin'] == 'transport'
+    assert events[-1][1]['failure']['code'] == 'transport_error'
 
 
 def test_runner_does_not_retry_after_response_headers(monkeypatch):
@@ -336,8 +359,8 @@ def test_runner_does_not_retry_after_response_headers(monkeypatch):
         )
 
     assert calls == 1
-    assert [event[0] for event in events] == ['model_call_finished']
-    assert events[0][1]['failure']['code'] == 'transport_error'
+    assert [event[0] for event in events] == ['model_call_started', 'model_call_finished']
+    assert events[-1][1]['failure']['code'] == 'transport_error'
     assert len(failures) == 1
     assert failures[0].response_started is True
 
@@ -357,8 +380,8 @@ def test_unknown_finish_interrupts_after_one_terminal():
     with pytest.raises(ModelCallError):
         runner.run(execute, max_attempts=3)
 
-    assert [event[0] for event in events] == ['model_call_finished']
-    assert events[0][1]['finish'] == 'unknown'
+    assert [event[0] for event in events] == ['model_call_started', 'model_call_finished']
+    assert events[-1][1]['finish'] == 'unknown'
 
 
 def test_http_failure_is_not_retried(monkeypatch):
@@ -391,13 +414,13 @@ def test_http_failure_is_not_retried(monkeypatch):
         )
 
     assert calls == 1
-    assert [event[0] for event in events] == ['model_call_finished']
-    assert events[0][1]['failure']['origin'] == 'http'
-    assert events[0][1]['failure']['code'] == 'rate_limited'
-    assert 'provider_http_status' not in events[0][1]['failure']
-    assert 'retry_after_ms' not in events[0][1]['failure']
-    assert 'provider_error_code' not in events[0][1]['failure']
-    assert 'provider_error_type' not in events[0][1]['failure']
+    assert [event[0] for event in events] == ['model_call_started', 'model_call_finished']
+    assert events[-1][1]['failure']['origin'] == 'http'
+    assert events[-1][1]['failure']['code'] == 'rate_limited'
+    assert 'provider_http_status' not in events[-1][1]['failure']
+    assert 'retry_after_ms' not in events[-1][1]['failure']
+    assert 'provider_error_code' not in events[-1][1]['failure']
+    assert 'provider_error_type' not in events[-1][1]['failure']
 
 
 def test_http_status_survives_error_body_transport_failure():
@@ -678,7 +701,7 @@ def test_minimax_stream_business_error_preserves_partial_output(monkeypatch):
             max_attempts=3,
         )
 
-    terminal = events[0][1]
+    terminal = events[-1][1]
     assert terminal['has_semantic_output'] is True
     assert terminal['failure']['origin'] == 'provider'
     assert terminal['failure']['code'] == 'output_filtered'
@@ -709,8 +732,13 @@ def test_non_stream_interruption_survives_module_boundary_with_partial_and_usage
     error = exc_info.value
     assert error.terminal.finish is ModelFinish.LENGTH
     assert error.partial_response[0]['choices'][0]['message']['content'] == 'partial answer'
-    assert error.usage == {'prompt_tokens': 11, 'completion_tokens': 7}
-    assert lazyllm.globals['usage'][module._module_id] == error.usage
+    assert error.usage['prompt_tokens'] == 11
+    assert error.usage['completion_tokens'] == 7
+    assert error.usage['provider_usage'] == {'prompt_tokens': 11, 'completion_tokens': 7}
+    assert lazyllm.globals['usage'][module._module_id]['prompt_tokens'] == 11
+    assert lazyllm.globals['usage'][module._module_id]['provider_usages'] == [
+        {'prompt_tokens': 11, 'completion_tokens': 7},
+    ]
 
 
 def test_claude_keeps_pre_response_transport_retry(monkeypatch):
@@ -741,3 +769,87 @@ def test_claude_keeps_pre_response_transport_retry(monkeypatch):
 
     assert calls == 2
     assert result[0]['choices'][0]['message']['content'] == 'ok'
+
+
+def test_usage_from_frames_scans_backwards():
+    frames = [
+        {'choices': [{'delta': {'content': 'hi'}}]},
+        {'usage': {'prompt_tokens': 3, 'completion_tokens': 1}},
+        {'choices': []},
+    ]
+    assert usage_from_frames(frames) == {'prompt_tokens': 3, 'completion_tokens': 1}
+
+
+def test_record_usage_accumulates_repeated_calls_on_same_module():
+    module = OpenAIChat(
+        base_url='http://provider.test/v1/', model='test-model', api_key='',
+        stream=False, skip_auth=True,
+    )
+    module._record_usage({
+        'prompt_tokens': 100,
+        'completion_tokens': 10,
+        'provider_usage': {
+            'prompt_tokens': 100,
+            'completion_tokens': 10,
+            'prompt_tokens_details': {'cached_tokens': 80},
+        },
+    })
+    module._record_usage({
+        'prompt_tokens': 50,
+        'completion_tokens': 20,
+        'provider_usage': {
+            'prompt_tokens': 50,
+            'completion_tokens': 20,
+            'prompt_tokens_details': {'cached_tokens': 0},
+        },
+    })
+    recorded = lazyllm.globals['usage'][module._module_id]
+    assert recorded['prompt_tokens'] == 150
+    assert recorded['completion_tokens'] == 30
+    assert recorded['provider_usages'] == [
+        {
+            'prompt_tokens': 100,
+            'completion_tokens': 10,
+            'prompt_tokens_details': {'cached_tokens': 80},
+        },
+        {
+            'prompt_tokens': 50,
+            'completion_tokens': 20,
+            'prompt_tokens_details': {'cached_tokens': 0},
+        },
+    ]
+    assert 'provider_usage' not in recorded
+
+
+def test_record_usage_preserves_known_provider_frames_across_unknown_call():
+    module = OpenAIChat(
+        base_url='http://provider.test/v1/', model='test-model', api_key='',
+        stream=False, skip_auth=True,
+    )
+    first_provider_usage = {
+        'prompt_tokens': 100,
+        'completion_tokens': 10,
+        'prompt_tokens_details': {'cached_tokens': 80},
+    }
+    third_provider_usage = {
+        'prompt_tokens': 50,
+        'completion_tokens': 20,
+        'prompt_tokens_details': {'cached_tokens': 0},
+    }
+
+    module._record_usage({
+        'prompt_tokens': 100,
+        'completion_tokens': 10,
+        'provider_usage': first_provider_usage,
+    })
+    module._record_usage({'prompt_tokens': -1, 'completion_tokens': -1})
+    module._record_usage({
+        'prompt_tokens': 50,
+        'completion_tokens': 20,
+        'provider_usage': third_provider_usage,
+    })
+
+    recorded = lazyllm.globals['usage'][module._module_id]
+    assert recorded['prompt_tokens'] == -1
+    assert recorded['completion_tokens'] == -1
+    assert recorded['provider_usages'] == [first_provider_usage, third_provider_usage]

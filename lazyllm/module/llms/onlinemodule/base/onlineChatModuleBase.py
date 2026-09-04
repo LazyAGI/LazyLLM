@@ -26,6 +26,7 @@ from .provider_response import (
     _OpenAICompatibleResponseParser,
     raise_for_http_error,
     select_primary_choice,
+    usage_from_frames,
 )
 from .utils import LazyLLMOnlineBase, resolve_online_params
 
@@ -208,12 +209,18 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
             with self.stream_output(stream_output):
                 if self._message_format != 'openai':
-                    return list(filter(lambda x: x, (
+                    result = list(filter(lambda x: x, (
                         [self._parse_response_frame(line, stream_output) for line in r.iter_lines() if len(line)]
                         if stream_output else [self._parse_response_frame(r.text, stream_output)]
                     )))
+                    if state is not None:
+                        state.usage = self._extract_usage(result)
+                    return result
                 frames = r.iter_lines() if stream_output else [r.text]
-                return self._response_parser(stream_output).collect(frames, state)
+                result = self._response_parser(stream_output).collect(frames, state)
+                if state is not None:
+                    state.usage = self._extract_usage(result)
+                return result
 
     def _request_timeout(self, data: Dict[str, Any],
                          default_timeout: Optional[Union[int, float, Tuple[int, int], Tuple[float, float]]] = None,
@@ -313,27 +320,77 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         return self._formatter(extractor) if extractor else ''
 
     @staticmethod
-    def _extract_usage(msg_json: List[Dict[str, Any]]) -> Dict[str, int]:
-        usage = {'prompt_tokens': -1, 'completion_tokens': -1}
-        if len(msg_json) > 0 and 'usage' in msg_json[-1] and isinstance(msg_json[-1]['usage'], dict):
-            for k in usage:
-                usage[k] = msg_json[-1]['usage'].get(k, usage[k])
+    def _extract_usage(msg_json: List[Dict[str, Any]]) -> Dict[str, Any]:
+        usage: Dict[str, Any] = {'prompt_tokens': -1, 'completion_tokens': -1}
+        raw_usage = usage_from_frames(msg_json)
+        if raw_usage is not None:
+            usage['prompt_tokens'] = raw_usage.get('prompt_tokens', usage['prompt_tokens'])
+            usage['completion_tokens'] = raw_usage.get('completion_tokens', usage['completion_tokens'])
+            usage['provider_usage'] = dict(raw_usage)
         return usage
 
+    @staticmethod
+    def _provider_usage_frames(usage: dict) -> List[Dict[str, Any]]:
+        frames: List[Dict[str, Any]] = []
+        listed = usage.get('provider_usages')
+        if isinstance(listed, list):
+            frames.extend(item for item in listed if isinstance(item, dict))
+        raw = usage.get('provider_usage')
+        if isinstance(raw, dict):
+            frames.append(raw)
+        return frames
+
+    @classmethod
+    def _normalize_usage_record(cls, usage: dict) -> Dict[str, Any]:
+        record = {
+            key: value for key, value in usage.items()
+            if key not in ('provider_usage', 'provider_usages')
+        }
+        frames = cls._provider_usage_frames(usage)
+        if frames:
+            record['provider_usages'] = frames
+        return record
+
+    @classmethod
+    def _merge_usage_records(cls, existing: dict, usage: dict) -> Dict[str, Any]:
+        aggregate_unknown = existing.get('prompt_tokens') == -1 or usage.get('prompt_tokens') == -1
+        merged = dict(existing)
+        for key, value in usage.items():
+            if key in ('provider_usage', 'provider_usages'):
+                continue
+            if not isinstance(value, (int, float)):
+                continue
+            current = merged.get(key)
+            if isinstance(current, (int, float)):
+                merged[key] = current + value
+            elif key not in merged:
+                merged[key] = value
+        if aggregate_unknown:
+            merged['prompt_tokens'] = -1
+            merged['completion_tokens'] = -1
+        frames = cls._provider_usage_frames(existing)
+        frames.extend(cls._provider_usage_frames(usage))
+        merged.pop('provider_usage', None)
+        if frames:
+            merged['provider_usages'] = frames
+        else:
+            merged.pop('provider_usages', None)
+        return merged
+
     def _record_usage(self, usage: dict):
-        globals['usage'][self._module_id] = usage
+        current = globals['usage'].get(self._module_id)
+        if current is None:
+            globals['usage'][self._module_id] = self._normalize_usage_record(usage)
+        else:
+            globals['usage'][self._module_id] = self._merge_usage_records(current, usage)
         par_muduleid = self._used_by_moduleid
         if par_muduleid is None:
             return
-        if par_muduleid not in globals['usage']:
-            globals['usage'][par_muduleid] = usage
+        parent = globals['usage'].get(par_muduleid)
+        if parent is None:
+            globals['usage'][par_muduleid] = self._normalize_usage_record(usage)
             return
-        existing_usage = globals['usage'][par_muduleid]
-        if existing_usage['prompt_tokens'] == -1 or usage['prompt_tokens'] == -1:
-            globals['usage'][par_muduleid] = {'prompt_tokens': -1, 'completion_tokens': -1}
-        else:
-            for k in globals['usage'][par_muduleid]:
-                globals['usage'][par_muduleid][k] += usage[k]
+        globals['usage'][par_muduleid] = self._merge_usage_records(parent, usage)
 
     def _upload_train_file(self, train_file) -> str:
         raise NotImplementedError(f'{self.series} not implemented _upload_train_file method in subclass')
