@@ -434,6 +434,11 @@ class TracingRuntime:
 
         if span.semantic_type == SemanticType.LLM and span.config.get('model'):
             attrs['gen_ai.request.model'] = str(span.config['model'])
+        if span.semantic_type == SemanticType.LLM:
+            attrs['gen_ai.operation.name'] = 'chat'
+            provider = span.config.get('provider')
+            if provider:
+                attrs['gen_ai.provider.name'] = str(provider)
         if span.semantic_type == SemanticType.AGENT:
             attrs['gen_ai.operation.name'] = 'invoke_agent'
             attrs['gen_ai.agent.name'] = str(span.config.get('agent_name') or span.name)
