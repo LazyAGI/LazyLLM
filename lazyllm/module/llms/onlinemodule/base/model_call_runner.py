@@ -52,6 +52,7 @@ class ModelAttemptState:
     response_started: bool = False
     finish: Optional[ModelFinish] = None
     frames: List[dict] = field(default_factory=list)
+    usage: Optional[dict] = None
 
 
 class _ModelCallRunner:
@@ -80,6 +81,7 @@ class _ModelCallRunner:
                     kind='finish',
                     finish=state.finish,
                     has_semantic_output=semantic_output,
+                    usage=state.usage,
                 )
                 self._emit_event('model_call_finished', terminal.public_dict())
                 if state.finish in (ModelFinish.STOP, ModelFinish.TOOL_CALLS):
@@ -99,6 +101,7 @@ class _ModelCallRunner:
                     kind='failure',
                     failure=exc.failure,
                     has_semantic_output=semantic_output,
+                    usage=state.usage,
                 )
                 self._emit_event('model_call_finished', terminal.public_dict())
                 raise ModelCallError(str(exc), terminal, state.frames) from exc
@@ -128,6 +131,7 @@ class _ModelCallRunner:
                     kind='failure',
                     failure=failure,
                     has_semantic_output=semantic_output,
+                    usage=state.usage,
                 )
                 self._emit_event('model_call_finished', terminal.public_dict())
                 raise ModelCallError('Model transport failed.', terminal, state.frames) from exc

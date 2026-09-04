@@ -75,6 +75,7 @@ class ModelCallTerminal:
     has_semantic_output: bool
     finish: Optional[ModelFinish] = None
     failure: Optional[ModelFailure] = None
+    usage: Optional[Dict[str, Any]] = None
 
     def public_dict(self) -> Dict[str, Any]:
         result = {
@@ -87,6 +88,8 @@ class ModelCallTerminal:
             result['finish'] = self.finish.value
         if self.failure is not None:
             result['failure'] = self.failure.public_dict()
+        if self.usage:
+            result['usage'] = self.usage
         return result
 
 

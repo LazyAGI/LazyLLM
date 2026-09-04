@@ -208,12 +208,16 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
             with self.stream_output(stream_output):
                 if self._message_format != 'openai':
-                    return list(filter(lambda x: x, (
+                    result = list(filter(lambda x: x, (
                         [self._parse_response_frame(line, stream_output) for line in r.iter_lines() if len(line)]
                         if stream_output else [self._parse_response_frame(r.text, stream_output)]
                     )))
+                    state.usage = self._extract_usage(result)
+                    return result
                 frames = r.iter_lines() if stream_output else [r.text]
-                return self._response_parser(stream_output).collect(frames, state)
+                result = self._response_parser(stream_output).collect(frames, state)
+                state.usage = self._extract_usage(result)
+                return result
 
     def _request_timeout(self, data: Dict[str, Any],
                          default_timeout: Optional[Union[int, float, Tuple[int, int], Tuple[float, float]]] = None,
@@ -315,7 +319,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     @staticmethod
     def _extract_usage(msg_json: List[Dict[str, Any]]) -> Dict[str, int]:
         usage = {'prompt_tokens': -1, 'completion_tokens': -1}
-        if len(msg_json) > 0 and 'usage' in msg_json[-1] and isinstance(msg_json[-1]['usage'], dict):
+        if (len(msg_json) > 0 and isinstance(msg_json[-1], dict)
+                and 'usage' in msg_json[-1] and isinstance(msg_json[-1]['usage'], dict)):
             for k in usage:
                 usage[k] = msg_json[-1]['usage'].get(k, usage[k])
         return usage
