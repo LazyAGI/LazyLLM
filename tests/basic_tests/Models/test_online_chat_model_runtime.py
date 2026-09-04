@@ -269,9 +269,31 @@ def test_runner_retries_only_pre_output_transport_failures():
     assert result
     assert attempts == 3
     assert [event[0] for event in events] == [
-        'model_retry_scheduled', 'model_retry_scheduled', 'model_call_finished',
+        'model_call_started', 'model_retry_scheduled', 'model_retry_scheduled', 'model_call_finished',
     ]
     assert len({event[1]['model_call_id'] for event in events}) == 1
+
+
+def test_runner_emits_measured_model_call_duration():
+    events = []
+    timestamps = iter((10.0, 10.25))
+
+    def execute(state):
+        state.semantic_output = True
+        state.finish = ModelFinish.STOP
+        return [{'choices': [{'delta': {'content': 'ok'}, 'finish_reason': 'stop'}]}]
+
+    runner = _ModelCallRunner(
+        emit_event=lambda event_type, data: events.append((event_type, data)),
+        clock=lambda: next(timestamps),
+        sleep=lambda delay: None,
+    )
+    runner.run(execute, max_attempts=1)
+
+    assert events[0][0] == 'model_call_started'
+    assert events[0][1]['model_call_id'] == events[-1][1]['model_call_id']
+    assert events[-1][0] == 'model_call_finished'
+    assert events[-1][1]['duration_ms'] == 250
 
 
 @pytest.mark.parametrize(('errno', 'retryable'), [
@@ -304,9 +326,9 @@ def test_runner_does_not_retry_after_semantic_output():
         runner.run(execute, max_attempts=3)
 
     assert attempts == 1
-    assert [event[0] for event in events] == ['model_call_finished']
-    assert events[0][1]['failure']['origin'] == 'transport'
-    assert events[0][1]['failure']['code'] == 'transport_error'
+    assert [event[0] for event in events] == ['model_call_started', 'model_call_finished']
+    assert events[-1][1]['failure']['origin'] == 'transport'
+    assert events[-1][1]['failure']['code'] == 'transport_error'
 
 
 def test_runner_does_not_retry_after_response_headers(monkeypatch):
@@ -337,8 +359,8 @@ def test_runner_does_not_retry_after_response_headers(monkeypatch):
         )
 
     assert calls == 1
-    assert [event[0] for event in events] == ['model_call_finished']
-    assert events[0][1]['failure']['code'] == 'transport_error'
+    assert [event[0] for event in events] == ['model_call_started', 'model_call_finished']
+    assert events[-1][1]['failure']['code'] == 'transport_error'
     assert len(failures) == 1
     assert failures[0].response_started is True
 
@@ -358,8 +380,8 @@ def test_unknown_finish_interrupts_after_one_terminal():
     with pytest.raises(ModelCallError):
         runner.run(execute, max_attempts=3)
 
-    assert [event[0] for event in events] == ['model_call_finished']
-    assert events[0][1]['finish'] == 'unknown'
+    assert [event[0] for event in events] == ['model_call_started', 'model_call_finished']
+    assert events[-1][1]['finish'] == 'unknown'
 
 
 def test_http_failure_is_not_retried(monkeypatch):
@@ -392,13 +414,13 @@ def test_http_failure_is_not_retried(monkeypatch):
         )
 
     assert calls == 1
-    assert [event[0] for event in events] == ['model_call_finished']
-    assert events[0][1]['failure']['origin'] == 'http'
-    assert events[0][1]['failure']['code'] == 'rate_limited'
-    assert 'provider_http_status' not in events[0][1]['failure']
-    assert 'retry_after_ms' not in events[0][1]['failure']
-    assert 'provider_error_code' not in events[0][1]['failure']
-    assert 'provider_error_type' not in events[0][1]['failure']
+    assert [event[0] for event in events] == ['model_call_started', 'model_call_finished']
+    assert events[-1][1]['failure']['origin'] == 'http'
+    assert events[-1][1]['failure']['code'] == 'rate_limited'
+    assert 'provider_http_status' not in events[-1][1]['failure']
+    assert 'retry_after_ms' not in events[-1][1]['failure']
+    assert 'provider_error_code' not in events[-1][1]['failure']
+    assert 'provider_error_type' not in events[-1][1]['failure']
 
 
 def test_http_status_survives_error_body_transport_failure():
@@ -679,7 +701,7 @@ def test_minimax_stream_business_error_preserves_partial_output(monkeypatch):
             max_attempts=3,
         )
 
-    terminal = events[0][1]
+    terminal = events[-1][1]
     assert terminal['has_semantic_output'] is True
     assert terminal['failure']['origin'] == 'provider'
     assert terminal['failure']['code'] == 'output_filtered'

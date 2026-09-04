@@ -73,6 +73,7 @@ class ModelCallTerminal:
     attempt_count: int
     kind: str
     has_semantic_output: bool
+    duration_ms: Optional[int] = None
     finish: Optional[ModelFinish] = None
     failure: Optional[ModelFailure] = None
     usage: Optional[Dict[str, Any]] = None
@@ -84,6 +85,8 @@ class ModelCallTerminal:
             'kind': self.kind,
             'has_semantic_output': self.has_semantic_output,
         }
+        if self.duration_ms is not None:
+            result['duration_ms'] = self.duration_ms
         if self.finish is not None:
             result['finish'] = self.finish.value
         if self.failure is not None:
