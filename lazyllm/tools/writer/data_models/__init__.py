@@ -23,7 +23,15 @@ from .revision import (
 )
 from .multimodal import MediaAsset, MediaAssetLibrary, VisualInstruction, VisualPlan
 from .quality import AuditIssue, AuditResult, ReviewReport
-from .writer_ir import ContentRef, WriterBlock, WriterDocument, WriterSpan, WriterStage
+from .writer_ir import (
+    ContentRef,
+    ContextRelation,
+    WritingSubTask,
+    WriterBlock,
+    WriterDocument,
+    WriterSpan,
+    WriterStage,
+)
 
 __all__ = [
     'InputResource',
@@ -31,6 +39,7 @@ __all__ = [
     'TargetDocument',
     'WritingTask',
     'ContentRef',
+    'ContextRelation',
     'MaterialStyle',
     'ResourceProfile',
     'BlockRelationGraph',
@@ -39,6 +48,7 @@ __all__ = [
     'DocumentSummary',
     'StyleProfile',
     'WritingContext',
+    'WritingSubTask',
     'SectionInstruction',
     'SectionInstructionList',
     'ShortWritingPlan',

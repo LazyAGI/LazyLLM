@@ -9,7 +9,14 @@ from typing import Any, Dict, Iterable, List, Literal, Optional
 from lazyllm.thirdparty import mistune
 
 from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterSpan
-from ..numbering import MARKDOWN_ANCHOR_RE
+from ..numbering import (
+    MARKDOWN_ANCHOR_RE,
+    format_markdown_anchor_numbering,
+    format_markdown_heading_numbering_config,
+    parse_markdown_anchor_numbering,
+    parse_markdown_heading_numbering_config,
+    strip_markdown_heading_numbering_config,
+)
 from .artifact import deserialize_artifact_json, serialize_artifact_json
 
 
@@ -180,10 +187,13 @@ def _slice_inline(value: _InlineContent, start: int) -> _InlineContent:
 class _MarkdownParser:
     def __init__(self, markdown: str, document_id: str):
         self.markdown = (markdown or '').replace('\r\n', '\n').replace('\r', '\n')
+        self.parser_markdown = strip_markdown_heading_numbering_config(self.markdown)
+        self.heading_numbering = parse_markdown_heading_numbering_config(self.markdown)
         self.document_id = _normalize_document_id(document_id)
         self.sequence = 0
         self.used_ids: set[str] = set()
         self.pending_anchor_ids: List[str] = []
+        self.pending_anchor_numbering: Dict[str, Dict[str, Any]] = {}
         self.title = ''
         self.emitted = False
         self.parser = mistune.create_markdown(
@@ -205,13 +215,19 @@ class _MarkdownParser:
     @staticmethod
     def leading_anchors(
         tokens: List[Dict[str, Any]],
-    ) -> tuple[List[str], List[Dict[str, Any]]]:
+    ) -> tuple[List[tuple[str, Dict[str, Any]]], List[Dict[str, Any]]]:
         index = 0
         raw = ''
         while index < len(tokens) and tokens[index].get('type') in {'inline_html', 'html_inline'}:
             raw += str(tokens[index].get('raw') or '')
             index += 1
-        anchors = [target.removeprefix('block-') for target in MARKDOWN_ANCHOR_RE.findall(raw)]
+        anchors = [
+            (
+                match.group(1).removeprefix('block-'),
+                parse_markdown_anchor_numbering(match.group(0)),
+            )
+            for match in MARKDOWN_ANCHOR_RE.finditer(raw)
+        ]
         if anchors and not MARKDOWN_ANCHOR_RE.sub('', raw).strip():
             return anchors, tokens[index:]
         return [], tokens
@@ -227,10 +243,11 @@ class _MarkdownParser:
         numbering: Optional[Dict[str, Any]] = None,
         provider_payload: Optional[Dict[str, Any]] = None,
         editable: bool = True,
+        node_id: Optional[str] = None,
         **extras: Any,
     ) -> WriterBlock:
         return WriterBlock(
-            node_id=self.next_id(block_type),
+            node_id=node_id or self.next_id(block_type),
             type=block_type,
             content=content,
             stage='final',
@@ -279,16 +296,23 @@ class _MarkdownParser:
                 if level == 1 and not self.emitted and not self.title:
                     self.title = rich.content.strip()
                 else:
+                    node_id = self.next_id('heading')
+                    numbering = {
+                        'level': max(level - 1, 1),
+                        **self.pending_anchor_numbering.pop(node_id, {}),
+                    }
                     blocks.append(self.block(
                         'heading', rich.content, spans=rich.spans,
                         references=rich.references,
-                        numbering={'level': max(level - 1, 1)},
+                        numbering=numbering,
+                        node_id=node_id,
                     ))
                 self.emitted = True
                 continue
             if token_type in {'paragraph', 'block_text'}:
                 anchors, children = self.leading_anchors(list(token.get('children') or []))
-                self.pending_anchor_ids.extend(anchors)
+                self.pending_anchor_ids.extend(anchor for anchor, _ in anchors)
+                self.pending_anchor_numbering.update(anchors)
                 if not children:
                     continue
                 rich = _inline_content(children)
@@ -427,7 +451,7 @@ class _MarkdownParser:
         return roots
 
     def parse(self) -> WriterDocument:
-        blocks = self.heading_tree(self.parse_sequence(self.parser(self.markdown)))
+        blocks = self.heading_tree(self.parse_sequence(self.parser(self.parser_markdown)))
         document = WriterDocument(
             document_id=self.document_id,
             stage='final',
@@ -437,6 +461,11 @@ class _MarkdownParser:
             metadata={
                 'source': 'lazyllm-markdown-conversion',
                 'markdown_source': self.markdown,
+                **({
+                    'heading_numbering': {
+                        'ordered_style': self.heading_numbering['ordered_style'],
+                    },
+                } if self.heading_numbering else {}),
             },
         )
         document.metadata['markdown_signature'] = _document_signature(document)
@@ -649,7 +678,8 @@ def _render_block(block: WriterBlock, depth: int, allow_raw: bool) -> str:
     if block.type == 'document':
         return _render_block_sequence(block.children, depth, allow_raw)
     anchor = (
-        f'<a id="block-{block.node_id}"></a>'
+        f'<a id="block-{block.node_id}"'
+        f'{format_markdown_anchor_numbering(block.numbering)}></a>'
         if block.type in {'heading', 'image', 'table', 'code'}
         else ''
     )
@@ -730,7 +760,12 @@ def render_document_markdown(document: WriterDocument) -> str:
         return source
     title = f'# {_escape_markdown_text(document.title.strip())}' if document.title.strip() else ''
     body = _render_block_sequence(document.blocks)
-    rendered = '\n\n'.join(filter(None, [title, body])).rstrip()
+    config = document.metadata.get('heading_numbering')
+    ordered_style = config.get('ordered_style', 'hierarchical') if isinstance(config, dict) else 'hierarchical'
+    numbering_config = format_markdown_heading_numbering_config({
+        'ordered_style': ordered_style,
+    })
+    rendered = '\n\n'.join(filter(None, [numbering_config, title, body])).rstrip()
     return f'{rendered}\n' if rendered else ''
 
 

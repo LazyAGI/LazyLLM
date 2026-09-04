@@ -7,8 +7,16 @@ Requirements:
 - Start with exactly one H1 document title.
 - Add at least one H2 section directly under the H1 title.
 - Every H2 section title must be unique.
-- Use H3-H6 only for optional subsection planning under an H2 section.
-- Write titles and section titles without visible numbering; the system renders numbers.
+- Use H3-H6 for subsection planning under an H2 section; never use list items as
+  substitutes for subsection headings.
+- Write every heading without visible numbering; the system renders numbers. Ignore
+  requested labels such as "1", "1.1", "一、", or "(1)" while preserving their structure.
+- Follow this shape when subsections are needed:
+  # Document title
+  ## Section title
+  ### Subsection title
+  ### Another subsection
+  ## Another section
 - Treat the outline as the exact structural skeleton of the final deliverable: every H2
   will become a visible section in the drafted document.
 - Do not create meta-planning H2 sections such as background and setting, character
@@ -25,10 +33,34 @@ Requirements:
 - Do not emit Markdown image syntax, HTML image tags, image paths, or image placeholders.
   The visual plan and media resolver exclusively own image selection and placement.
 - Keep the outline concise but concrete enough to guide drafting.
+- Immediately after every H2-H6 heading, output exactly one single-line hidden sidecar:
+  <!-- writer:outline {{"node_id":"","target_chars":3,"context_relations":[],"subtasks":[]}} -->
+- target_chars is a positive relative weight, not a default or a final character count. Choose
+  it independently for every heading from the expected prose work: narrative importance,
+  number of events or claims, explanatory complexity, and transition versus climax/resolution.
+  Do not copy the example value across headings. Equal sibling weights are appropriate only
+  when their expected prose work is genuinely equal; do not use equal allocation merely for
+  convenience. context_relations contains only objects
+  with target_node_id, relation, and guidance. subtasks contains only unresolved material
+  questions with subtask_id, node_id, question, subtask_type (retrieve, extract, or reason),
+  and status="pending". Leave node_id empty; the system assigns stable heading ids afterwards.
+- Do not expose these instruction fields as visible outline prose.
+- Most headings should have no subtasks. Create a subtask only when an unresolved question
+  materially blocks accurate drafting; normal scene design, transitions, stylistic choices,
+  and reasoning the drafting model can perform directly are not subtasks. When the target length
+  is 3000 characters or fewer, use at most 3 subtasks across the entire outline unless the user
+  explicitly specifies a larger subtask count. Prefer one document-level question over repeating
+  similar questions on parent and child headings. Use retrieve only when external or knowledge-base
+  evidence is genuinely required, and use extract only for facts that must be recovered from supplied sources.
 - Treat task.constraints.target_chars and task.constraints.max_chars as limits for the
   entire final document, not for each section.
 - When max_chars is at most 1200 and the user did not explicitly request multiple
   chapters or sections, prefer one H2 section and merge the essential material into it.
+- When max_chars is above 1200 but at most 2500 and the user did not explicitly request
+  a chapter count, use no more than four H2 sections and normally prefer three. Keep roughly
+  500 or more characters of prose budget per H2 instead of fragmenting a short document.
+- Merge a short prologue, epilogue, preface, or afterword into a nearby H2 as an H3 scene
+  when making it a separate H2 would violate that section-density guidance.
 - Use resource profiles and execution results as constraints, not as text to copy blindly.
 - Do not invent facts that conflict with the writing context.
 
@@ -57,6 +89,12 @@ Requirements:
   entire final document, not for each section.
 - When max_chars is at most 1200 and the user did not explicitly request multiple
   chapters or sections, generate one top-level block and merge the essential material into it.
+- When max_chars is above 1200 but at most 2500 and the user did not explicitly request
+  a chapter count, generate no more than four top-level heading blocks and normally prefer
+  three. Keep roughly 500 or more characters of prose budget per top-level section instead
+  of fragmenting a short document.
+- Merge a short prologue, epilogue, preface, or afterword into a nearby top-level section
+  as a child scene when making it independent would violate that section-density guidance.
 - Each top-level block is a section. Use type="heading" for section blocks.
 - Treat the outline as the exact structural skeleton of the final deliverable: every
   top-level heading block will become a visible section in the drafted document.
@@ -77,6 +115,24 @@ Requirements:
 - Fill node_id for every block. Use stable ids such as section-1, section-2, section-1-1.
 - Use block.numbering.level for the heading level: 1 for top-level sections, incrementing for children.
   Put child sections under block.children as heading blocks alongside any visible description blocks.
+- For every heading block, set target_chars to a positive relative weight, not a final character
+  count. Choose it independently from the expected prose work: narrative importance, number of
+  events or claims, explanatory complexity, and transition versus climax/resolution. Equal
+  sibling weights are appropriate only when their expected prose work is genuinely equal; do
+  not use equal allocation merely for convenience. The system normalizes sibling weights
+  recursively against their parent budget afterwards.
+- Use context_relations only when a section needs another section's result or definition.
+  Each item contains target_node_id, relation, and guidance; target_node_id must name another
+  heading block in this outline.
+- Use subtasks only for unresolved work that would materially improve the section. Each item
+  contains subtask_id, node_id, question, subtask_type (retrieve, extract, or reason), and
+  status="pending". node_id must equal the containing heading block's node_id.
+- Most headings should have no subtasks. Normal drafting decisions, scene design, transitions,
+  and stylistic reasoning belong to the drafting model rather than separate subtasks. When the
+  target length is 3000 characters or fewer, create at most 3 subtasks across the entire outline
+  unless the user explicitly specifies a larger subtask count. Avoid duplicate parent/child
+  questions. Use retrieve only when external or knowledge-base evidence is genuinely necessary,
+  and use extract only for facts that must be recovered from supplied sources.
 - Write titles and section titles without visible numbering; the system renders numbers.
 - block.references holds identifiers for facts or resources the section depends on.
 - Each element of block.references is an object with at least an "id" field. The id must match a
@@ -98,6 +154,36 @@ Resource profiles:
 
 Execution results:
 {execution_results_json}
+'''
+
+
+COMPLETE_OUTLINE_INSTRUCTIONS_PROMPT = '''Complete instruction fields on an existing writing outline.
+
+Return one WriterDocument object. Preserve document_id, title, every block node_id, type,
+content, order, nesting, numbering, and visible text exactly. Do not add, remove, move, rename,
+or rewrite any block. Only fill these fields on heading blocks:
+- target_chars: a positive relative writing-length budget;
+- context_relations: dependencies on other heading node_ids, each with target_node_id, relation,
+  and actionable guidance;
+- subtasks: only unresolved questions requiring retrieval, extraction, or reasoning, each with
+  subtask_id, node_id equal to the containing heading, question, subtask_type, and status="pending".
+Do not turn ordinary drafting requirements into subtasks. Use empty arrays when no relation or
+subtask is needed. When the writing task explicitly requests one or more writing subtasks, place
+that requested unresolved work on the relevant heading blocks; never return every subtasks array
+empty in that case.
+Most headings should have no subtasks. When the target length is 3000 characters or fewer, create
+at most 3 subtasks across the entire outline unless the user explicitly specifies a larger subtask
+count. Do not create subtasks for normal drafting decisions, scene design, transitions, or stylistic reasoning, and do
+not repeat substantially identical questions on both parent and child headings.
+
+Writing task:
+{task_json}
+
+Writing context:
+{context_json}
+
+Existing outline:
+{outline_json}
 '''
 
 
@@ -288,6 +374,7 @@ Requirements:
   relevant to this section. It must not contain fact IDs or resource IDs.
 - fact_constraints MUST only contain factual statements actually present in the writing context.
 - references are owned by the authoritative outline. Omit references; the system normalizes them.
+- heading_structure is owned by the authoritative outline. Omit it; the system normalizes it.
 - style_constraints should include tone, pov, audience, and style requirements when applicable.
 - Sections may be drafted independently and in parallel. Resolve document-global narrative
   choices during planning: choose one point of view, tense, narrative voice, and protagonist
@@ -308,7 +395,8 @@ Requirements:
    conclusion citing the experiments it summarizes. This is expected when the writing
    task asks for cross-references; in that case include at least one section reference.
    Represent every planned reference in SectionInstruction.meta.cross_references as
-   an object with target_ref, kind, required, and guidance.
+   an object with target_ref, required, and guidance. Omit kind; the system derives it
+   from the resolved target.
    Background continuity readers are assumed to know
    (such as narrative chapters building on earlier events) belongs in relation_constraints.
    For Writer IR, target_ref is {{"node_id": "..."}} copied from the outline.
@@ -316,7 +404,7 @@ Requirements:
    Its guidance names the information the reader needs from that target.
 - Visual plan needs own created images. Do not add must_create image objects; the system adds them.
    To reference a planned image in this or another section, use
-   target_ref: {{"node_id": "<that visual need_id>"}} with must_create=false and kind="image".
+   target_ref: {{"node_id": "<that visual need_id>"}} with required=false and must_create=false.
 - Use guidance to describe what natural wording should carry each reference link.
 - Do not invent facts that conflict with writing context.
 

@@ -1,28 +1,18 @@
 from __future__ import annotations
-from copy import deepcopy
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from lazyllm import LOG
 from pydantic import TypeAdapter, ValidationError
 
 from .base import WriterToolBase
-from ..adapter.base import NativePatchOperation, WriterAdapterBase
-from ..adapter.feishu import FeishuWriterAdapter, feishu_block_url
 from ..data_models.resource import MaterialStyle, ResourceProfile
 from ..data_models.multimodal import MediaAssetLibrary
-from ..data_models.revision import PatchHunk, PatchResult, PatchSet
+from ..data_models.revision import PatchSet
 from ..data_models.task import InputResource, TargetDocument, WritingTask
-from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterStage
-from ..numbering import (
-    build_numbering_view_from_ir,
-    compute_numbering,
-    format_target_number,
-    materialize_ir,
-)
+from ..data_models.writer_ir import WriterDocument, WriterStage
 from ..prompts.profile_resources import RESOURCE_PROFILE_PROMPT
-from ..tools.revision_tools import apply_patch_to_ir
-from ..utils import parse_document_markdown, strip_heading_numbering
+from ..provider import get_writer_provider, match_writer_provider
+from ..utils import make_markdown_tool_result
 
 _WRITER_STAGE_ADAPTER = TypeAdapter(WriterStage)
 
@@ -30,6 +20,7 @@ _WRITER_STAGE_ADAPTER = TypeAdapter(WriterStage)
 class WriterResourceTools(WriterToolBase):
     __public_apis__ = [
         'profile_resources',
+        'load_document',
         'document_to_docir',
         'create_document',
         'write_to_document',
@@ -37,10 +28,6 @@ class WriterResourceTools(WriterToolBase):
         'replace_document',
         'apply_patch_to_document',
     ]
-
-    _DEFAULT_ADAPTERS = {
-        'feishu': FeishuWriterAdapter,
-    }
 
     def _read_resource_content(self, res: InputResource) -> str:
         if res.resource_type == 'text':
@@ -139,42 +126,96 @@ class WriterResourceTools(WriterToolBase):
     def document_to_docir(self, target_document: Any, context: Any = None) -> dict:
         '''Convert a target document into a WriterDocument artifact.'''
         target = self._unified_model(target_document, TargetDocument)
-        protocol, real_path, fs, adapter, locator, external_document_id = \
-            self._resolve_document_target(target)
-        if not hasattr(fs, 'get_doc_blocks'):
-            raise TypeError(f'{type(fs).__name__} does not support structured document reads.')
-        raw_blocks = fs.get_doc_blocks(real_path, with_descendants=True) or []
-
         try:
             stage = _WRITER_STAGE_ADAPTER.validate_python(target.meta.get('stage', 'final'))
         except ValidationError as exc:
             raise ValueError('target_document.meta.stage must be a valid WriterStage') from exc
-        title = target.title or ''
-        document = adapter.blocks_to_ir(
-            raw_blocks,
-            external_document_id=external_document_id,
-            stage=stage,
-            title=title,
-            uri=locator,
-            revision=None,
-        )
-        document.metadata.update({
-            'block_count': len(raw_blocks),
-            'source': target.model_dump(),
-        })
+        loaded = self._writer_provider(target).load_document(target, stage=stage)
+        document = loaded.get('source_document')
+        if loaded.get('representation') != 'ir' or not isinstance(document, WriterDocument):
+            raise TypeError(
+                f'Provider {target.adapter!r} did not return a WriterDocument representation.')
+        block_count = int(loaded.get('block_count') or 0)
+        protocol = str(loaded.get('provider') or target.adapter or '')
 
         return self._save_artifacts(
             {'document': document},
             step_name='document_to_docir',
             primary_key='document',
             summary='Loaded target document into WriterDocument.',
-            counts={'blocks': len(raw_blocks)},
+            counts={'blocks': block_count},
             extra={
                 'adapter': protocol,
                 'document_id': document.document_id,
                 'stage': document.stage,
             },
         ).model_dump()
+
+    def load_document(self, target_document: Any, context: Any = None) -> dict:
+        '''Load a provider document while preserving its existing Writer representation.'''
+        target = self._unified_model(target_document, TargetDocument)
+        try:
+            stage = _WRITER_STAGE_ADAPTER.validate_python(target.meta.get('stage', 'final'))
+        except ValidationError as exc:
+            raise ValueError('target_document.meta.stage must be a valid WriterStage') from exc
+        loaded = self._writer_provider(target).load_document(target, stage=stage)
+        representation = str(loaded.get('representation') or '').strip().lower()
+        source = loaded.get('source_document')
+        resolved_target = self._unified_model(
+            loaded.get('target_document', target), TargetDocument)
+        provider = str(
+            loaded.get('provider') or resolved_target.adapter or target.adapter or '',
+        ).strip().lower()
+        block_count = int(loaded.get('block_count') or 0)
+        extra = {
+            'adapter': provider,
+            'document_id': str(resolved_target.doc_id or target.doc_id or ''),
+            'representation': representation,
+            'stage': stage,
+        }
+        if representation == 'ir':
+            if not isinstance(source, WriterDocument):
+                raise TypeError(f'Provider {provider!r} returned invalid WriterDocument content.')
+            result = self._save_artifacts(
+                {'source_document': source, 'target_document': resolved_target},
+                step_name='load_document',
+                primary_key='source_document',
+                context_key=None,
+                summary='Loaded provider document into Writer IR.',
+                counts={'blocks': block_count},
+                extra=extra,
+            ).model_dump()
+        elif representation == 'markdown':
+            if not isinstance(source, str):
+                raise TypeError(f'Provider {provider!r} returned invalid Markdown content.')
+            source_path = self._write_markdown_artifact('source_document.md', source)
+            result = make_markdown_tool_result(
+                path=source_path,
+                step_name='load_document',
+                artifact_key='source_document',
+                summary='Loaded provider document as Markdown.',
+                counts={'characters': len(source)},
+                extra=extra,
+            ).model_dump()
+            target_path = self._write_single_artifact(
+                resolved_target,
+                'target_document.json',
+                artifact_key='target_document',
+                extra_meta={
+                    'step_name': 'load_document',
+                    'artifact_key': 'target_document',
+                    'primary_key': 'source_document',
+                    'status': 'success',
+                },
+            )
+            result['metadata']['artifact_paths']['target_document'] = target_path
+            result['metadata']['schema_names']['target_document'] = self._artifact_schema_name(
+                resolved_target, 'target_document')
+        else:
+            raise ValueError(
+                f'Provider {provider!r} returned unsupported representation {representation!r}.')
+        result['representation'] = representation
+        return result
 
     def create_document(
         self,
@@ -189,45 +230,9 @@ class WriterResourceTools(WriterToolBase):
         adapter = (adapter or '').strip().lower()
         if not adapter:
             raise ValueError('adapter is required')
-
-        import lazyllm.tools.fs.client as _fs_client
-        parent_locator = (parent_uri or '').strip() or f'{adapter}:/'
-        protocol, space_id, real_path = _fs_client.FS._parse(parent_locator)
-        if protocol != adapter:
-            raise ValueError(
-                f'parent URI protocol {protocol!r} does not match adapter {adapter!r}.')
-        fs = _fs_client.FS._get_or_create_fs(protocol, space_id, real_path)
-        create_document = getattr(fs, 'create_document', None)
-        if not callable(create_document):
-            raise TypeError(f'{type(fs).__name__} does not support create_document().')
-        created = create_document(title, real_path)
-        if not isinstance(created, dict):
-            raise TypeError('Document provider create_document() must return a dict.')
-
-        document_id = str(created.get('document_id') or '').strip()
-        created_path = str(created.get('path') or '').strip()
-        if not document_id or not created_path:
-            raise ValueError('Document provider returned an incomplete created document.')
-        effective_space_id = str(created.get('space_id') or '').strip()
-        internal_uri = (
-            f'{protocol}@{effective_space_id}:{created_path}'
-            if effective_space_id else f'{protocol}:{created_path}'
-        )
-        browser_url = str(created.get('browser_url') or '').strip()
-        target = TargetDocument(
-            doc_id=document_id,
-            uri=browser_url or internal_uri,
-            adapter=protocol,
-            title=str(created.get('title') or title),
-            meta={
-                'internal_uri': internal_uri,
-                'browser_url': browser_url,
-                'container': created.get('container') or '',
-                'parent_uri': (parent_uri or '').strip(),
-                'node_token': created.get('node_token') or '',
-                'space_id': effective_space_id,
-            },
-        )
+        target = get_writer_provider(adapter, adapters=self.adapters).create_document(
+            title, parent_uri)
+        document_id = str(target.doc_id or '')
         return self._save_artifacts(
             {'target_document': target},
             step_name='create_document',
@@ -236,7 +241,7 @@ class WriterResourceTools(WriterToolBase):
             summary='Created an empty provider document.',
             counts={'documents': 1},
             extra={
-                'adapter': protocol,
+                'adapter': adapter,
                 'document_id': document_id,
                 'uri': target.uri,
             },
@@ -265,65 +270,31 @@ class WriterResourceTools(WriterToolBase):
         source = self._unified_document(content)
         source_document = source if isinstance(source, WriterDocument) else None
         target = self._unified_optional_model(target_document, TargetDocument) or TargetDocument()
-        locator = self._target_locator(target, source_document)
-
-        if not locator:
+        provider_key = self._provider_key(target, source_document)
+        locator = target.uri or (
+            source_document.provider_binding.get('uri') if source_document else '')
+        if not provider_key and not locator:
             LOG.warning(
                 '%s_to_document: no target document URI or doc_id, '
                 'content not written to any platform',
                 mode,
             )
             return self._save_write_result('', '', '', 0)
-
-        protocol, real_path, fs, adapter, locator, document_id = \
-            self._resolve_document_target(target, source_document=source_document)
         media_library = self._unified_optional_model(media_assets, MediaAssetLibrary)
-        document = source_document or parse_document_markdown(
-            source, document_id=adapter.make_document_id(document_id), stage='final',
-            media_assets=media_library,
+        provider = self._writer_provider(target, source_document)
+        provider_key = provider.provider
+        result = (
+            provider.replace_document(source, target, media_assets=media_library)
+            if mode == 'replace'
+            else provider.append_document(source, target, media_assets=media_library)
         )
-        document.provider_binding = {
-            **(document.provider_binding or {}),
-            'provider': protocol,
-            'document_id': document_id,
-            'uri': locator,
-        }
-        warnings: List[str] = []
-        self._validate_available_images(document, media_library)
-        numbering = compute_numbering(build_numbering_view_from_ir(document))
-        document = materialize_ir(document, numbering)
-        method_name = 'replace_doc_blocks' if mode == 'replace' else 'write_doc_blocks'
-        write_blocks = getattr(fs, method_name, None)
-        if not callable(write_blocks):
-            raise TypeError(f'{type(fs).__name__} does not support {method_name}().')
-        native_blocks = adapter.ir_to_blocks(document, media_assets=media_library)
-        if document.title:
-            self._update_document_title(fs, document_id, document.title, document.revision)
-        if not native_blocks:
-            warnings.append('Document has no publishable blocks.')
-            return self._save_write_result(document_id, protocol, locator, 0, warnings)
-        write_blocks(document_id, native_blocks)
-        return self._save_write_result(document_id, protocol, locator, len(native_blocks), warnings)
-
-    @staticmethod
-    def _validate_available_images(
-        document: WriterDocument,
-        media_assets: Optional[MediaAssetLibrary],
-    ) -> None:
-        for block in document.iter_blocks():
-            if block.type != 'image':
-                continue
-            references = [
-                ref.get('id') for ref in block.references
-                if ref.get('type') == 'media_asset' and ref.get('id')
-            ]
-            if len(references) != 1:
-                raise ValueError(
-                    f'Image block {block.node_id!r} requires exactly one media_asset reference.'
-                )
-            asset = media_assets.assets.get(references[0]) if media_assets else None
-            if asset is None or not asset.local_path or not Path(asset.local_path).is_file():
-                raise ValueError(f'Image block {block.node_id!r} media is unavailable.')
+        return self._save_write_result(
+            str(result.get('doc_id') or ''),
+            str(result.get('adapter') or provider_key),
+            str(result.get('locator') or target.uri or ''),
+            int(result.get('block_count') or 0),
+            list(result.get('warnings') or []),
+        )
 
     def apply_patch_to_document(  # noqa: C901
         self,
@@ -336,147 +307,18 @@ class WriterResourceTools(WriterToolBase):
         patch = self._unified_model(patch_set, PatchSet)
         source = self._unified_model(source_document, WriterDocument)
         media_library = self._unified_optional_model(media_assets, MediaAssetLibrary)
-        if patch.target_doc_id != source.document_id:
-            raise ValueError(
-                f'patch target_doc_id {patch.target_doc_id!r} does not match '
-                f'document_id {source.document_id!r}.'
-            )
-        if not patch.hunks and (patch.new_title is None or patch.new_title == source.title):
-            raise ValueError('patch contains no document operations.')
-
         target = self._unified_optional_model(target_document, TargetDocument) or TargetDocument()
-        protocol, real_path, fs, adapter, locator, document_id = \
-            self._resolve_document_target(target, source_document=source)
-        revised_document, _ = apply_patch_to_ir(source, patch, media_assets=media_library)
-        final_numbering = compute_numbering(build_numbering_view_from_ir(revised_document))
-        block_id_by_node_id = {
-            block.node_id: block.provider_binding.get('block_id')
-            for block in revised_document.iter_blocks()
-        }
-
-        def refresh(previous: WriterDocument, result: Any = None, **merge_kwargs) -> WriterDocument:
-            revision = result.get('document_revision_id') if isinstance(result, dict) else None
-            if revision is not None and not isinstance(revision, bool):
-                previous = previous.model_copy(update={'revision': str(revision)})
-            refreshed = self._read_persisted_document(
-                fs=fs, adapter=adapter, real_path=real_path, locator=locator,
-                document_id=document_id, source_document=previous,
-            )
-            merge = getattr(adapter, 'merge_refreshed_document', None)
-            return merge(previous, refreshed, operation_result=result, **merge_kwargs) \
-                if callable(merge) else refreshed
-
-        applied_hunks: List[str] = []
-        persisted_document = source
-        expected_title = patch.new_title if patch.new_title is not None else source.title
-        title_updated = patch.new_title is not None and patch.new_title != source.title
-        normalized_fields: Dict[str, List[str]] = {}
-        for hunk in patch.hunks:
-            hunk = self._materialize_hunk_feishu_links(
-                hunk,
-                block_id_by_node_id=block_id_by_node_id,
-                numbering=final_numbering,
-                document_id=document_id,
-                document_uri=locator,
-            )
-            operation = adapter.patch_to_operation(
-                hunk, persisted_document, media_assets=media_library)
-            try:
-                operation_result = self._execute_native_operation(
-                    fs, document_id, operation, persisted_document.revision)
-            except Exception as exc:
-                block_id = operation.params.get('block_id')
-                if block_id is None:
-                    requests = operation.params.get('requests')
-                    if isinstance(requests, list) and requests and isinstance(requests[0], dict):
-                        block_id = requests[0].get('block_id')
-                hunk_id = hunk.hunk_id or hunk.target_node_id
-                LOG.error(
-                    'Writer provider patch failed: operation=%s hunk_id=%s block_id=%s '
-                    'revision=%s error=%s',
-                    operation.operation, hunk_id, block_id,
-                    persisted_document.revision, exc,
-                )
-                raise RuntimeError(
-                    f'provider {operation.operation} failed for block {block_id or "unknown"!r} '
-                    f'at revision {persisted_document.revision!r}: {exc}'
-                ) from exc
-            if isinstance(operation_result, dict) \
-                    and isinstance(operation_result.get('normalized_fields'), list):
-                normalized_fields[hunk.hunk_id or hunk.target_node_id] = \
-                    operation_result['normalized_fields']
-            applied_hunks.append(hunk.hunk_id or hunk.target_node_id)
-            persisted_document = refresh(
-                persisted_document.model_copy(update={'title': expected_title}),
-                operation_result, patch=hunk, operation=operation,
-            )
-
-        if title_updated:
-            title_result = self._update_document_title(
-                fs, document_id, expected_title, persisted_document.revision)
-            persisted_document = refresh(
-                persisted_document.model_copy(update={'title': expected_title}),
-                title_result,
-            )
-        elif not patch.hunks:
-            persisted_document = refresh(persisted_document)
-
-        for heading in revised_document.iter_blocks():
-            if heading.type != 'heading':
-                continue
-            entry = final_numbering.get(heading.node_id)
-            if entry is None:
-                continue
-            expected = (
-                f'{format_target_number(entry)} '
-                f'{strip_heading_numbering(heading.content)}'
-            ).strip()
-            current = persisted_document.block_by_id(heading.node_id)
-            if current is None or current.content == expected:
-                continue
-            sync_hunk = PatchHunk(
-                hunk_id=f'heading-sync-{heading.node_id}',
-                target_node_id=heading.node_id,
-                modify_type='update',
-                block=WriterBlock(
-                    node_id=heading.node_id,
-                    type='heading',
-                    content=expected,
-                    stage='draft',
-                    numbering={'level': current.numbering.get('level', 1)},
-                ),
-            )
-            sync_hunk = self._materialize_hunk_feishu_links(
-                sync_hunk,
-                block_id_by_node_id=block_id_by_node_id,
-                numbering=final_numbering,
-                document_id=document_id,
-                document_uri=locator,
-            )
-            operation = adapter.patch_to_operation(
-                sync_hunk, persisted_document, media_assets=media_library)
-            operation_result = self._execute_native_operation(
-                fs, document_id, operation, persisted_document.revision)
-            applied_hunks.append(sync_hunk.hunk_id)
-            persisted_document = refresh(
-                persisted_document.model_copy(update={'title': expected_title}),
-                operation_result, patch=sync_hunk, operation=operation,
-            )
-
-        patch_result = PatchResult(
-            patch_id=patch.patch_id,
-            success=True,
-            applied_hunks=applied_hunks,
-            failed_hunks=[],
-            message='Patch written to document.',
-            meta={
-                'provider': protocol,
-                'external_document_id': document_id,
-                'operation_count': len(applied_hunks) + int(title_updated),
-                'title_updated': title_updated,
-                'normalized_fields': normalized_fields,
-            },
+        provider = self._writer_provider(target, source)
+        result = provider.apply_patch_to_document(
+            patch,
+            source,
+            target,
+            media_assets=media_library,
         )
+        patch_result = result['patch_result']
+        persisted_document = result['persisted_document']
+        protocol = str(result.get('provider') or self._provider_key(target, source) or '')
+        document_id = str(result.get('document_id') or '')
         return self._save_artifacts(
             {
                 'patch_result': patch_result,
@@ -485,180 +327,39 @@ class WriterResourceTools(WriterToolBase):
             step_name='apply_patch_to_document',
             primary_key='patch_result',
             summary='Applied patch to provider document.',
-            counts={'applied': len(applied_hunks), 'failed': 0},
+            counts={
+                'applied': len(patch_result.applied_hunks),
+                'failed': len(patch_result.failed_hunks),
+            },
             extra={
                 'adapter': protocol,
                 'document_id': document_id,
             },
         ).model_dump()
 
-    @staticmethod
-    def _materialize_hunk_feishu_links(
-        hunk: PatchHunk,
-        *,
-        block_id_by_node_id: Dict[str, Any],
-        numbering: Dict[str, Any],
-        document_id: str,
-        document_uri: str,
-    ) -> PatchHunk:
-        if hunk.block is None:
-            return hunk
-        hunk = hunk.model_copy(deep=True)
-        block = hunk.block
-        for item in block.iter_blocks():
-            if item.type == 'heading':
-                entry = numbering.get(item.node_id)
-                if entry is not None:
-                    item.content = (
-                        f'{format_target_number(entry)} '
-                        f'{strip_heading_numbering(item.content)}'
-                    ).strip()
-                    item.spans = []
-            for span in item.spans:
-                link = span.style.get('link')
-                if not isinstance(link, dict) or link.get('type') != 'internal_ref':
-                    continue
-                target_id = link.get('target_node_id')
-                target_block_id = block_id_by_node_id.get(target_id)
-                if not target_block_id:
-                    continue
-                span.style['link'] = {
-                    'url': feishu_block_url(document_uri, document_id, target_block_id),
-                }
-        return hunk
-
-    @staticmethod
-    def _update_document_title(
-        fs: Any,
-        document_id: str,
-        title: str,
-        revision: Optional[str],
-    ) -> Any:
-        update_title = getattr(fs, 'update_document_title', None)
-        if not callable(update_title):
-            raise TypeError(f'{type(fs).__name__} does not support document title updates.')
-        try:
-            revision_id = int(revision) if revision is not None else -1
-        except (TypeError, ValueError):
-            revision_id = -1
-        return update_title(document_id, title, document_revision_id=revision_id)
-
-    def _resolve_document_target(
+    def _writer_provider(
         self,
         target: TargetDocument,
         source_document: Optional[WriterDocument] = None,
-    ) -> Tuple[str, str, Any, WriterAdapterBase, str, str]:
-        locator = self._target_locator(target, source_document)
-        if not locator:
-            raise ValueError('target_document or source_document provider_binding must provide uri or doc_id.')
-
-        import lazyllm.tools.fs.client as _fs_client
-        protocol, space_id, real_path = _fs_client.FS._parse(locator)
-        requested_adapter = target.adapter or (
-            source_document.provider_binding.get('provider') if source_document else None)
-        if requested_adapter and requested_adapter != protocol:
-            raise ValueError(
-                f'target adapter {requested_adapter!r} does not match locator protocol {protocol!r}.')
-        fs = _fs_client.FS._get_or_create_fs(protocol, space_id, real_path)
-        get_document_id = getattr(fs, 'get_document_id', None)
-        if not callable(get_document_id):
-            raise TypeError(f'{type(fs).__name__} does not support get_document_id().')
-        document_id = get_document_id(real_path)
-        if not isinstance(document_id, str) or not document_id.strip():
-            raise ValueError('Document provider returned an empty document ID.')
-        return (
-            protocol,
-            real_path,
-            fs,
-            self._writer_adapter(protocol),
-            locator,
-            document_id.strip(),
-        )
-
-    def _read_persisted_document(
-        self,
-        *,
-        fs: Any,
-        adapter: WriterAdapterBase,
-        real_path: str,
-        locator: str,
-        document_id: str,
-        source_document: WriterDocument,
-    ) -> WriterDocument:
-        if not hasattr(fs, 'get_doc_blocks'):
-            raise TypeError(f'{type(fs).__name__} does not support structured document reads.')
-        latest_blocks = fs.get_doc_blocks(real_path, with_descendants=True) or []
-        document = adapter.blocks_to_ir(
-            latest_blocks,
-            external_document_id=document_id,
-            stage=source_document.stage,
-            title=source_document.title,
-            uri=locator,
-            revision=source_document.revision,
-        )
-        document.metadata = {
-            **deepcopy(source_document.metadata),
-            'block_count': len(latest_blocks),
-            'source': source_document.metadata.get('source', {}),
-        }
-        return document
-
-    def _writer_adapter(self, protocol: str) -> WriterAdapterBase:
-        configured = self.adapters.get(protocol)
-        if configured is None:
-            configured = self._DEFAULT_ADAPTERS.get(protocol)
-        if configured is None:
-            raise ValueError(f'No Writer adapter is configured for provider {protocol!r}.')
-        adapter = configured() if isinstance(configured, type) else configured
-        if not isinstance(adapter, WriterAdapterBase):
-            raise TypeError(
-                f'Writer adapter for {protocol!r} must inherit WriterAdapterBase, '
-                f'got {type(adapter).__name__}.'
-            )
-        return adapter
+    ):
+        provider_key = self._provider_key(target, source_document)
+        if provider_key:
+            return get_writer_provider(provider_key, adapters=self.adapters)
+        locator = target.uri or ''
+        if locator:
+            return match_writer_provider(locator, adapters=self.adapters)
+        raise ValueError(
+            'target_document.adapter or source_document provider_binding.provider is required.')
 
     @staticmethod
-    def _target_locator(
+    def _provider_key(
         target: TargetDocument,
         source_document: Optional[WriterDocument] = None,
     ) -> str:
-        if target.uri:
-            return target.uri
-        if source_document:
-            source_uri = source_document.provider_binding.get('uri')
-            if isinstance(source_uri, str) and source_uri:
-                return source_uri
-
-        document_id = target.doc_id
-        provider = target.adapter or (
-            source_document.provider_binding.get('provider') if source_document else None)
-        if not document_id and source_document:
-            document_id = source_document.provider_binding.get('document_id')
-        if document_id and provider == 'feishu':
-            return f'feishu:/~docx/{document_id}'
-        return str(document_id or '')
-
-    @staticmethod
-    def _execute_native_operation(
-        fs: Any,
-        document_id: str,
-        operation: NativePatchOperation,
-        revision: Optional[str],
-    ) -> Any:
-        method_name = f'{operation.operation}_block'
-        method = getattr(fs, method_name, None)
-        if not callable(method):
-            raise TypeError(f'{type(fs).__name__} does not support {method_name}().')
-
-        params = dict(operation.params)
-        params.setdefault('document_id', document_id)
-        if operation.operation in {'create', 'update', 'replace', 'delete', 'move'} \
-                and 'document_revision_id' not in params:
-            try:
-                params['document_revision_id'] = int(revision) if revision is not None else -1
-            except (TypeError, ValueError):
-                params['document_revision_id'] = -1
-        return method(**params)
+        provider = target.adapter
+        if not provider and source_document is not None:
+            provider = source_document.provider_binding.get('provider')
+        return str(provider or '').strip().lower()
 
     def _save_write_result(
         self,
