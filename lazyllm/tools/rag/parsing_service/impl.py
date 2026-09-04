@@ -340,7 +340,7 @@ class _Processor:
                 uids: Optional[List[str]] = None, doc_ids: Optional[List[str]] = None,
                 kb_id: Optional[str] = None, strategy: str = 'rebuild', **kwargs):
         if strategy == 'reembed':
-            self._reembed_group(group_name, node_groups, doc_ids=doc_ids, kb_id=kb_id)
+            self._reembed_group(group_name, node_groups, doc_ids=doc_ids, kb_id=kb_id, **kwargs)
         elif doc_ids:
             self._reparse_docs(group_name=group_name, node_groups=node_groups,
                                doc_ids=doc_ids, kb_id=kb_id, **kwargs)
@@ -348,7 +348,7 @@ class _Processor:
             self._get_or_create_nodes(group_name, node_groups, uids)
 
     def _reembed_group(self, group_name: str, node_groups: Dict[str, Dict],
-                       doc_ids: Optional[List[str]] = None, kb_id: Optional[str] = None):
+                       doc_ids: Optional[List[str]] = None, kb_id: Optional[str] = None, **kwargs):
         embed_keys = self._store._group_embed_keys.get(group_name) or set()
         if not embed_keys:
             raise ValueError(
@@ -360,7 +360,7 @@ class _Processor:
             # nodes not yet materialized — fall back to full reparse
             if doc_ids:
                 self._reparse_docs(group_name=group_name, node_groups=node_groups,
-                                   doc_ids=doc_ids, kb_id=kb_id)
+                                   doc_ids=doc_ids, kb_id=kb_id, **kwargs)
             else:
                 self._get_or_create_nodes(group_name, node_groups, uids=None)
             return
@@ -368,7 +368,7 @@ class _Processor:
         for g in self._store.activated_groups():
             cfg = node_groups.get(g, {})
             if cfg.get('parent') == group_name and cfg.get('lazy_mode') != 'all':
-                self._reembed_group(g, node_groups, doc_ids=doc_ids, kb_id=kb_id)
+                self._reembed_group(g, node_groups, doc_ids=doc_ids, kb_id=kb_id, **kwargs)
 
     def _reparse_docs(self, group_name: Optional[str], node_groups: Dict[str, Dict],
                       doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict],
