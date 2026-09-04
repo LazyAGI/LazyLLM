@@ -200,5 +200,12 @@ def test_tool_manager_records_its_own_execution_duration():
     }])
 
     assert result[0]['value'] == 'ok'
-    assert isinstance(manager.last_execution_duration_ms, int)
-    assert manager.last_execution_duration_ms >= 0
+    assert isinstance(result.duration_ms, int)
+    assert result.duration_ms >= 0
+    batch = manager.execute_with_records([{
+        'id': 'call-2',
+        'function': {'name': 'duration_tool', 'arguments': '{"value":"ok"}'},
+    }])
+    assert isinstance(batch.duration_ms, int)
+    assert batch.duration_ms >= 0
+    assert batch.stamped_results().duration_ms == batch.duration_ms

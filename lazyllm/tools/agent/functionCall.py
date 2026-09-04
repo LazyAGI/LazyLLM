@@ -390,7 +390,7 @@ class FunctionCall(ModuleBase):
                 _write_agent_data(
                     'tool_results',
                     tool_results=LazyLLMAgentBase._normalize_tool_results(tool_calls, tool_calls_results),
-                    duration_ms=self._tools_manager.last_execution_duration_ms,
+                    duration_ms=getattr(tool_calls_results, 'duration_ms', None),
                 )
             locals['_lazyllm_agent']['workspace']['tool_call_trace'] = [
                 {**tool_call, 'tool_call_result': tool_result}
