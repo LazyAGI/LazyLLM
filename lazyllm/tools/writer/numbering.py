@@ -95,7 +95,7 @@ _ORDERED_STYLES = {'hierarchical', 'chinese', 'parenthesized'}
 
 
 def find_markdown_images(line: str) -> tuple[MarkdownImage, ...]:
-    """Return CommonMark and standalone HTML images in source order."""
+    '''Return CommonMark and standalone HTML images in source order.'''
     images = [
         MarkdownImage(
             raw=match.group(0), start=match.start(), end=match.end(),
@@ -436,7 +436,7 @@ def _hierarchical_parts(parts: tuple[int, ...]) -> str:
     return f'{".".join(str(part) for part in parts)}.'
 
 
-def _format_heading_label(
+def _format_heading_label(  # noqa: C901
     style: OrderedHeadingNumberingStyle,
     parts: tuple[int, ...],
     depth: int,
@@ -559,11 +559,11 @@ def _markdown_targets_by_line(
     return targets_by_line
 
 
-def materialize_markdown(
+def materialize_markdown(  # noqa: C901
     markdown: str,
     view: NumberingView,
     numbering: NumberingMap,
-) -> str:  # noqa: C901
+) -> str:
     targets_by_line = _markdown_targets_by_line(markdown, view)
     output: list[str] = []
     fence: str | None = None

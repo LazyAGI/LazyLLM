@@ -643,7 +643,7 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
                         'object': 'data_source',
                         'properties': {'Task': {'type': 'title'}},
                     }
-                fs._patch = lambda url, **kwargs: calls.append((url, kwargs)) or {}
+                fs._patch = lambda url, calls=calls, **kwargs: calls.append((url, kwargs)) or {}
 
                 getattr(fs, method)(path)
 

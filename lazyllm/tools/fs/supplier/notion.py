@@ -981,7 +981,7 @@ class NotionFS(LinkDocumentFSBase):
             raise RuntimeError(f'Notion deleted unexpected block {returned_id!r}; expected {block_id!r}.')
         return {**deleted, 'block_id': block_id}
 
-    def move_block(
+    def move_block(  # noqa: C901
         self,
         document_id: str,
         source_block_id: str,
@@ -1103,8 +1103,9 @@ class NotionFS(LinkDocumentFSBase):
                 raise RuntimeError(f'Notion deleted unexpected block {returned_id!r}; expected {block_id!r}.')
         return self._get_doc_blocks_raw(document_id, with_descendants=True)
 
-    def _rebind_internal_links(self, blocks: List[Dict[str, Any]], relations: List[Dict[str, str]], *,
-                               require_all: bool) -> None:
+    def _rebind_internal_links(  # noqa: C901
+            self, blocks: List[Dict[str, Any]], relations: List[Dict[str, str]], *,
+            require_all: bool) -> None:
         created_by_temporary_id = {
             relation['temporary_block_id']: relation['block_id']
             for relation in relations
@@ -1205,9 +1206,10 @@ class NotionFS(LinkDocumentFSBase):
         return self._append_block_trees(
             parent_block_id, [block], position=position, relations=relations)[0]
 
-    def _append_block_trees(self, parent_block_id: str, blocks: List[Dict[str, Any]], *,
-                            position: Optional[Dict[str, Any]] = None,
-                            relations: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, Any]]:
+    def _append_block_trees(  # noqa: C901
+            self, parent_block_id: str, blocks: List[Dict[str, Any]], *,
+            position: Optional[Dict[str, Any]] = None,
+            relations: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, Any]]:
         parent_block_id = _normalize_notion_id(parent_block_id)
         if not isinstance(blocks, list) or not blocks:
             raise ValueError('blocks must be a non-empty list.')
@@ -1586,7 +1588,8 @@ class NotionFS(LinkDocumentFSBase):
         return cleaned
 
     @staticmethod
-    def _sanitize_mention(mention: Dict[str, Any], path: str) -> Dict[str, Any]:
+    def _sanitize_mention(  # noqa: C901
+            mention: Dict[str, Any], path: str) -> Dict[str, Any]:
         mention_type = mention.get('type')
         value = mention.get(mention_type) if isinstance(mention_type, str) else None
         if not isinstance(value, dict):

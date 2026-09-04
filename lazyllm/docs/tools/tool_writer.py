@@ -15,6 +15,14 @@ add_writer_revision_models_english_doc = functools.partial(
 )
 add_writer_adapter_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.feishu'))
 add_writer_adapter_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.feishu'))
+add_writer_notion_adapter_chinese_doc = functools.partial(
+    utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.notion'))
+add_writer_notion_adapter_english_doc = functools.partial(
+    utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.notion'))
+add_writer_execution_chinese_doc = functools.partial(
+    utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.tools.execution_tools'))
+add_writer_execution_english_doc = functools.partial(
+    utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.tools.execution_tools'))
 add_writer_stream_chinese_doc = functools.partial(
     utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.tools.stream_tools'))
 add_writer_stream_english_doc = functools.partial(
@@ -60,6 +68,14 @@ add_writer_chinese_doc('WriterPlanningTools.generate_section_instructions', '''
 
 add_writer_english_doc('WriterPlanningTools.generate_section_instructions', '''
 Generate drafting instructions for the sections in an outline.
+''')
+
+add_writer_execution_chinese_doc('WriterExecutionTools.execute_writing_subtasks', '''
+并行执行大纲中的写作子任务，并记录重试、进度和结果。
+''')
+
+add_writer_execution_english_doc('WriterExecutionTools.execute_writing_subtasks', '''
+Execute writing subtasks from an outline in parallel while recording retries, progress, and results.
 ''')
 
 add_writer_models_chinese_doc('WriterDocument.iter_blocks', '''
@@ -172,6 +188,22 @@ add_writer_adapter_chinese_doc('FeishuWriterAdapter.merge_refreshed_document', '
 
 add_writer_adapter_english_doc('FeishuWriterAdapter.merge_refreshed_document', '''
 Merge refreshed Feishu bindings into a revised document.
+''')
+
+add_writer_notion_adapter_chinese_doc('NotionWriterAdapter.has_reusable_image_payload', '''
+判断 Writer 图片块是否保留了可复用的 Notion 图片载荷。
+''')
+
+add_writer_notion_adapter_english_doc('NotionWriterAdapter.has_reusable_image_payload', '''
+Return whether a Writer image block retains a reusable Notion image payload.
+''')
+
+add_writer_notion_adapter_chinese_doc('NotionWriterAdapter.merge_refreshed_document', '''
+将刷新后的 Notion 块绑定合并回修订文档，同时保留 Writer 节点标识。
+''')
+
+add_writer_notion_adapter_english_doc('NotionWriterAdapter.merge_refreshed_document', '''
+Merge refreshed Notion block bindings into a revised document while preserving Writer node identifiers.
 ''')
 
 add_writer_chinese_doc('WriterToolKit', '''

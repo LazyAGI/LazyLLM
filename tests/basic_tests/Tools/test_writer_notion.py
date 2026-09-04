@@ -336,8 +336,8 @@ class TestNotionAdapter:
                                 'code': False, 'color': 'default',
                             },
                             'text': {'content': '子段落', 'link': None},
-                            }],
-                        },
+                        }],
+                    },
                 }],
             },
         }]

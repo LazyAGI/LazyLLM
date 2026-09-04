@@ -327,11 +327,11 @@ class NotionWriterProvider(WriterProviderBase):
             self._resolve_document_target(target, source_document=source_document)
         document = source_document.model_copy(deep=True) if source_document else \
             parse_document_markdown(
-                content,
-                document_id=adapter.make_document_id(document_id),
-                stage='final',
-                media_assets=media_assets,
-            )
+            content,
+            document_id=adapter.make_document_id(document_id),
+            stage='final',
+            media_assets=media_assets,
+        )
         document.provider_binding = {
             **(document.provider_binding or {}),
             'provider': protocol,

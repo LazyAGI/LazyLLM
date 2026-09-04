@@ -1119,7 +1119,7 @@ locator kind per reference. Return valid JSON only.
         instructions: List[ModifyInstruction],
         document: WriterDocument,
     ) -> List[ModifyInstruction]:
-        """Chain contiguous same-destination moves without changing their source order."""
+        '''Chain contiguous same-destination moves without changing their source order.'''
         result: List[ModifyInstruction] = []
         index = 0
         while index < len(instructions):

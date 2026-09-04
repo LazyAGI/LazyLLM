@@ -890,7 +890,7 @@ class WriterPlanningTools(WriterToolBase):
         return outline
 
     @classmethod
-    def _ensure_outline_fields(
+    def _ensure_outline_fields(  # noqa: C901
         cls,
         outline: WriterDocument,
         task: WritingTask,
@@ -1625,7 +1625,7 @@ class WriterPlanningTools(WriterToolBase):
         subtasks: List[WritingSubTask],
     ) -> None:
         completed = [
-            f"子任务结果（{subtask.question}）：{subtask.result_summary.strip()}"
+            f'子任务结果（{subtask.question}）：{subtask.result_summary.strip()}'
             for subtask in subtasks
             if subtask.status == 'completed' and subtask.result_summary.strip()
         ]

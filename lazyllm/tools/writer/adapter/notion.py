@@ -156,13 +156,13 @@ class NotionWriterAdapter(WriterAdapterBase):
     def _ir_blocks_to_raw(self, blocks: List[WriterBlock], resolve_internal_ref: Any, *,
                           media_library: Optional[MediaAssetLibrary] = None,
                           track_internal_refs: bool = False) -> List[NativeBlock]:
-        """Serialize logical Writer siblings using Notion's physical hierarchy.
+        '''Serialize logical Writer siblings using Notion's physical hierarchy.
 
         Writer headings own their section body logically. Ordinary Notion headings are
         not containers, so their logical children must follow them as physical siblings.
         Children of real container blocks remain nested; headings inside such containers
         flatten only within that container's children list.
-        """
+        '''
         output: List[NativeBlock] = []
         for block in blocks:
             output.append(self._ir_block_to_raw(
@@ -197,9 +197,10 @@ class NotionWriterAdapter(WriterAdapterBase):
         file_object = image.get(image_type) if image_type in {'file', 'external'} else None
         return isinstance(file_object, dict) and bool(file_object.get('url'))
 
-    def _ir_block_to_raw(self, block: WriterBlock, resolve_internal_ref: Any, *,
-                         media_library: Optional[MediaAssetLibrary] = None,
-                         track_internal_refs: bool = False) -> NativeBlock:
+    def _ir_block_to_raw(  # noqa: C901
+            self, block: WriterBlock, resolve_internal_ref: Any, *,
+            media_library: Optional[MediaAssetLibrary] = None,
+            track_internal_refs: bool = False) -> NativeBlock:
         raw = self._raw_payload(block)
         original_type = str(raw.get('type') or raw.get('block_type') or '')
         block_type = self._notion_type_for_ir(block, original_type)
@@ -370,8 +371,9 @@ class NotionWriterAdapter(WriterAdapterBase):
         page = cls._canonical_notion_id(document_id) or document_id.replace('-', '')
         return f'https://www.notion.so/{page}#{fragment}'
 
-    def patch_to_operation(self, patch: PatchHunk, document: WriterDocument,
-                           media_assets: Any = None) -> NativePatchOperation:
+    def patch_to_operation(  # noqa: C901
+            self, patch: PatchHunk, document: WriterDocument,
+            media_assets: Any = None) -> NativePatchOperation:
         if not isinstance(patch, PatchHunk):
             raise TypeError(f'patch must be a PatchHunk, got {type(patch).__name__}.')
         if not isinstance(document, WriterDocument):
@@ -464,7 +466,7 @@ class NotionWriterAdapter(WriterAdapterBase):
         return NativePatchOperation(
             operation='update', params={'block_id': block_id, 'block': raw})
 
-    def merge_refreshed_document(
+    def merge_refreshed_document(  # noqa: C901
         self,
         previous_document: WriterDocument,
         refreshed_document: WriterDocument,
@@ -768,8 +770,9 @@ class NotionWriterAdapter(WriterAdapterBase):
         for block_id in source_order:
             visit(block_id)
 
-    def _raw_block_to_ir(self, raw: NativeBlock, *, source_index: int, external_document_id: str,
-                         stage: WriterStage, revision: Optional[str]) -> WriterBlock:
+    def _raw_block_to_ir(  # noqa: C901
+            self, raw: NativeBlock, *, source_index: int, external_document_id: str,
+            stage: WriterStage, revision: Optional[str]) -> WriterBlock:
         block_id = str(raw.get('block_id') or raw.get('id') or '').strip()
         block_type = str(raw.get('block_type') or raw.get('type') or '').strip()
         ir_type = _BLOCK_TYPE_NAMES.get(block_type, 'notion_unknown')
