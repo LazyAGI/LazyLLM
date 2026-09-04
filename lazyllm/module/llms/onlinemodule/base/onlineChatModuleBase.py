@@ -212,11 +212,11 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                         [self._parse_response_frame(line, stream_output) for line in r.iter_lines() if len(line)]
                         if stream_output else [self._parse_response_frame(r.text, stream_output)]
                     )))
-                    state.usage = self._extract_usage(result)
+                    state.usage = self._extract_provider_usage(result)
                     return result
                 frames = r.iter_lines() if stream_output else [r.text]
                 result = self._response_parser(stream_output).collect(frames, state)
-                state.usage = self._extract_usage(result)
+                state.usage = self._extract_provider_usage(result)
                 return result
 
     def _request_timeout(self, data: Dict[str, Any],
@@ -324,6 +324,20 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             for k in usage:
                 usage[k] = msg_json[-1]['usage'].get(k, usage[k])
         return usage
+
+    @staticmethod
+    def _extract_provider_usage(msg_json: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Return the provider usage frame without dropping cache details.
+
+        ``_extract_usage`` is the legacy global usage contract and intentionally
+        exposes only prompt/completion tokens. Runtime model-call events are a
+        newer, call-scoped contract and must retain provider-specific fields
+        such as prompt-token cache details.
+        """
+        if (msg_json and isinstance(msg_json[-1], dict)
+                and isinstance(msg_json[-1].get('usage'), dict)):
+            return dict(msg_json[-1]['usage'])
+        return {}
 
     def _record_usage(self, usage: dict):
         globals['usage'][self._module_id] = usage
