@@ -23,7 +23,19 @@ from lazyllm import LOG
 
 _DASHSCOPE_DEFAULT_HTTP_URL = 'https://dashscope.aliyuncs.com/api/v1'
 _DASHSCOPE_DEFAULT_WEBSOCKET_URL = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference'
+_COMPATIBLE_MODE_ROOT = 'compatible-mode/v1'
 _dashscope_urls_initialized = False
+
+
+def _get_compatible_mode_url(url: str, path: str) -> str:
+    # Accept host root (dashscope default) or a base that already ends with compatible-mode/v1.
+    base = (url or '').rstrip('/')
+    full = f'{_COMPATIBLE_MODE_ROOT}/{path}'
+    if base.endswith(full):
+        return base
+    if base.endswith(_COMPATIBLE_MODE_ROOT):
+        return f'{base}/{path}'
+    return urljoin(base + '/', full)
 
 
 _QWEN_ERROR_MAP = {
@@ -149,13 +161,11 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
                 'your name is Tongyi Qianwen, and you are a useful assistant.')
 
     def _get_chat_url(self, url):
-        if url.rstrip('/').endswith('compatible-mode/v1/chat/completions'):
-            return url
-        return urljoin(url, 'compatible-mode/v1/chat/completions')
+        return _get_compatible_mode_url(url, 'chat/completions')
 
     def _validate_api_key(self):
         try:
-            models_url = urljoin(self._base_url, 'compatible-mode/v1/models')
+            models_url = _get_compatible_mode_url(self._base_url, 'models')
             response = requests.get(models_url, headers=self._header, timeout=10)
             return response.status_code == 200
         except Exception:
