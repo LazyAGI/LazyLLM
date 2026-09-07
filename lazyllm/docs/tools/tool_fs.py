@@ -2046,7 +2046,7 @@ Args:
 ''')
 
 _add_fs_chinese('NotionFS', f'''\
-Notion 文件系统：基于 Notion API，以 Page/Block 为层级，支持 ls、读写、mkdir、rm（归档）。
+Notion 文件系统：基于 Notion API，以 Page/Block 为层级，支持 ls、读写、mkdir、rm（移入回收站）。
 写入页面内容时，Notion API 单 block 的 rich_text 限制为 2000 字符，超长内容会被截断。
 
 {_NOTION_DOCUMENT_LINK_WORKFLOW_ZH}
@@ -2061,7 +2061,7 @@ Notion 文件系统：基于 Notion API，以 Page/Block 为层级，支持 ls�
     4. 在集成详情页复制「Internal Integration Secret」或「API key」（形如 secret_xxx），即为本 FS 的 token。注意：需在需要访问的页面/数据库中，通过「Connections」或「Add connections」将该集成连接上，否则 API 无法访问该内容。
 ''')
 _add_fs_english('NotionFS', f'''\
-Notion FS: Notion API; Page/Block hierarchy; supports ls, read/write, mkdir, rm (archive).
+Notion FS: Notion API; Page/Block hierarchy; supports ls, read/write, mkdir, and rm (move to trash).
 When writing page content, Notion API limits rich_text to 2000 chars per block; longer content is truncated.
 
 {_NOTION_DOCUMENT_LINK_WORKFLOW_EN}
@@ -2129,11 +2129,11 @@ Returns:
     bytes: Markdown/text bytes for the page content.
 ''')
 _add_fs_chinese('NotionFS.search', '''\
-按标题搜索当前 token 可访问的 Notion 页面或数据库。该能力来自 Notion 官方 /v1/search 接口，主要用于定位资源；不是页面正文全文检索。
+按标题搜索当前 token 可访问的 Notion 页面或 Data Source。该能力来自 Notion 官方 /v1/search 接口，主要用于定位资源；不是页面正文全文检索。
 
 Args:
     query (str): 标题关键词。
-    object_type (str): 可选对象过滤，支持 page、database。
+    object_type (str): 可选对象过滤，支持 page、data_source；database 作为兼容别名会映射为 data_source。
     limit (int): 最大返回条数，默认 20，最大 100。
     sort_direction (str): 按 last_edited_time 排序方向，ascending 或 descending。
     scope (str): 可选 Notion database 或 data_source 范围，支持 notion:/~database/<id>、notion:/~data_source/<id>、database:<id>、data_source:<id>。
@@ -2143,11 +2143,11 @@ Returns:
     List[Dict[str, Any]]: 搜索结果条目，包含 title、id、notion_path、url 等字段。
 ''')
 _add_fs_english('NotionFS.search', '''\
-Search Notion pages or databases visible to the current token by title. This uses Notion's official /v1/search endpoint to locate resources; it is not full-text page-body search.
+Search Notion pages or data sources visible to the current token by title. This uses Notion's official /v1/search endpoint to locate resources; it is not full-text page-body search.
 
 Args:
     query (str): Title keyword.
-    object_type (str): Optional object filter: page or database.
+    object_type (str): Optional object filter: page or data_source; database is accepted as a compatibility alias for data_source.
     limit (int): Maximum number of results, default 20, capped at 100.
     sort_direction (str): Sort direction by last_edited_time: ascending or descending.
     scope (str): Optional Notion database or data_source scope, such as notion:/~database/<id>, notion:/~data_source/<id>, database:<id>, or data_source:<id>.
@@ -2158,7 +2158,7 @@ Returns:
 ''')
 
 _add_fs_chinese('NotionFS.find', '''\
-按页面/数据库标题正则匹配查找 Notion 对象。只匹配标题（名称），不搜索页面正文内容。
+按页面/Data Source 标题正则匹配查找 Notion 对象。只匹配标题（名称），不搜索页面正文内容。
 
 使用 Notion 官方 /v1/search 接口做宽泛查询后，在客户端按标题正则筛选。默认大小写不敏感。
 
@@ -2169,7 +2169,7 @@ _add_fs_chinese('NotionFS.find', '''\
 
 Args:
     pattern (str): 正则表达式模式，大小写不敏感。
-    object_type (str, optional): 对象类型过滤：''（全部）、page、database。
+    object_type (str, optional): 对象类型过滤：''（全部）、page、data_source；database 是 data_source 的兼容别名。
     limit (int): 最大返回条数，默认 50，最大 100。
     scope (str): 可选 Notion database 或 data_source 范围，支持 notion:/~database/<id>、notion:/~data_source/<id>、database:<id>、data_source:<id>。
 
@@ -2178,7 +2178,7 @@ Returns:
     notion_path 等字段。
 ''')
 _add_fs_english('NotionFS.find', '''\
-Find Notion pages or databases by title matching a regex pattern. Matches only titles (names),
+Find Notion pages or data sources by title matching a regex pattern. Matches only titles (names),
 not page body content.
 
 Uses Notion's official /v1/search API for broad lookup, then filters by title regex client-side.
@@ -2191,7 +2191,7 @@ Common regex examples:
 
 Args:
     pattern (str): Regular expression pattern, case-insensitive.
-    object_type (str, optional): Object type filter: '' (all), page, or database.
+    object_type (str, optional): Object type filter: '' (all), page, or data_source; database is a compatibility alias.
     limit (int): Maximum results, default 50, capped at 100.
     scope (str): Optional Notion database or data_source scope, such as notion:/~database/<id>, notion:/~data_source/<id>, database:<id>, or data_source:<id>.
 
@@ -2224,7 +2224,7 @@ Returns:
 ''')
 
 _add_fs_chinese('NotionFS.insert_page_markdown', '''\
-向页面插入 Markdown 内容。默认插入到页面末尾，适合追加总结、分析结论或同步生成的段落。
+向页面插入 Markdown 内容。默认插入到页面末尾。Notion 已将 insert_content 标为 legacy，新增调用应优先使用 update_content 或 replace_content。
 
 Args:
     page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
@@ -2235,7 +2235,7 @@ Returns:
     Dict[str, Any]: Notion API 返回体。
 ''')
 _add_fs_english('NotionFS.insert_page_markdown', '''\
-Insert Markdown content into a page. By default the content is appended to the end, which fits summaries, analysis notes, or generated paragraphs.
+Insert Markdown content into a page. Content is appended by default. Notion marks insert_content as legacy; new callers should prefer update_content or replace_content.
 
 Args:
     page_id (str): Notion page id, hyphenated or compact.

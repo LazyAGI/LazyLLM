@@ -3,7 +3,9 @@ import os
 import tempfile
 
 from lazyllm.tools.writer.data_models import (
+    ContextRelation,
     ResourceProfile,
+    WritingSubTask,
     WriterBlock,
     WriterDocument,
     WriterSpan,
@@ -54,6 +56,42 @@ def test_writer_document_roundtrip_preserves_nested_ir_fields():
     assert restored.provider_binding['document_id'] == 'external-doc-1'
     assert restored.blocks[0].children[0].spans[0].style == {'bold': True}
     assert restored.blocks[0].children[0].provider_payload == {'raw_type': 'paragraph'}
+
+
+def test_outline_node_keeps_instructions_and_subtasks_as_top_level_fields():
+    subtask = WritingSubTask(
+        subtask_id='subtask-1',
+        node_id='section-1',
+        question='提取两项可引用的客户案例。',
+        subtask_type='extract',
+        status='retrying',
+        result_summary='已找到一个案例，继续补充第二个。',
+        retry_count=1,
+        result_references=[{'resource_id': 'case-study-1'}],
+    )
+    section = WriterBlock(
+        node_id='section-1',
+        type='heading',
+        content='客户案例',
+        stage='outline',
+        target_chars=800,
+        context_relations=[
+            ContextRelation(
+                target_node_id='section-0',
+                relation='continue_from',
+                guidance='承接上一节的行业背景。',
+            )
+        ],
+        subtasks=[subtask],
+    )
+
+    restored = WriterBlock.model_validate_json(section.model_dump_json())
+
+    assert restored.target_chars == 800
+    assert restored.context_relations[0].target_node_id == 'section-0'
+    assert restored.subtasks[0].node_id == restored.node_id
+    assert restored.subtasks[0].result_references == [{'resource_id': 'case-study-1'}]
+    assert 'subtasks' not in restored.model_dump()['provider_payload']
 
 
 def test_writer_document_iter_blocks_and_block_by_id_traverse_depth_first():

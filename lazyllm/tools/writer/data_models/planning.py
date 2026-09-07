@@ -24,8 +24,16 @@ class WritingInstructionBase(BaseModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
+class HeadingStructureItem(BaseModel):
+    node_id: Optional[str] = None
+    level: int = Field(ge=2, le=5)
+    title: str = Field(min_length=1)
+    target_chars: Optional[int] = Field(default=None, gt=0)
+
+
 class SectionInstruction(WritingInstructionBase):
     relation_constraints: List[str] = Field(default_factory=list)
+    heading_structure: Optional[List[HeadingStructureItem]] = None
 
 
 class ShortWritingPlan(WritingInstructionBase):
@@ -39,4 +47,6 @@ class SectionInstructionList(ArtifactModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
-__all__ = ['SectionInstruction', 'SectionInstructionList', 'ShortWritingPlan']
+__all__ = [
+    'HeadingStructureItem', 'SectionInstruction', 'SectionInstructionList', 'ShortWritingPlan',
+]

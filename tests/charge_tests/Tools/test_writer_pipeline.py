@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 import lazyllm
 from lazyllm.tools.writer.adapter.feishu import FeishuWriterAdapter
+from lazyllm.tools.writer.provider.feishu import FeishuWriterProvider
 from lazyllm.tools.writer.tools.base import WriterToolBase
 from lazyllm.tools.writer.data_models.context import DocumentSummary, WritingContext
 from lazyllm.tools.writer.data_models.quality import AuditResult, ReviewReport
@@ -86,7 +87,7 @@ def _load_stage(stages: dict, key: str, model_class=None):
 def _mock_document_write(wf, target_document, document_id):
     write_fs = MagicMock()
     with patch.object(
-        wf.resource, '_resolve_document_target',
+        FeishuWriterProvider, '_resolve_document_target',
         return_value=(
             'feishu', f'/{document_id}.md', write_fs, FeishuWriterAdapter(),
             target_document.uri, document_id,
