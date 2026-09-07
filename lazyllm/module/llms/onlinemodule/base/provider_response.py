@@ -120,6 +120,9 @@ class ProviderResponseProfile:
     def _error_fields(payload: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
         code = payload.get('code')
         error_type = payload.get('type')
+        if (code == 400 and payload.get('param') == 'input_tokens'
+                and 'maximum context length' in str(payload.get('message', '')).lower()):
+            code = 'context_length_exceeded'
         return (
             str(code) if code is not None else None,
             str(error_type) if error_type is not None else None,
@@ -127,6 +130,7 @@ class ProviderResponseProfile:
 
 
 OPENAI_COMPATIBLE_PROFILE = ProviderResponseProfile(
+    code_map={'context_length_exceeded': ModelFailureCode.TOKEN_LIMIT},
     http_map={
         400: ModelFailureCode.INVALID_REQUEST,
         401: ModelFailureCode.AUTHENTICATION_FAILED,

@@ -417,6 +417,14 @@ def test_http_status_survives_error_body_transport_failure():
 
 @pytest.mark.parametrize(('module_cls', 'status', 'body', 'expected'), [
     (LazyLLMOnlineChatModuleBase, 400, '{"error":{}}', ModelFailureCode.INVALID_REQUEST),
+    (OpenAIChat, 400, '{"error":{"code":"context_length_exceeded"}}', ModelFailureCode.TOKEN_LIMIT),
+    (OpenAIChat, 400, json.dumps({'error': {
+        'code': 400, 'type': 'BadRequestError', 'param': 'input_tokens',
+        'message': "This model's maximum context length is 262144 tokens. Your prompt contains at least 262145 tokens.",
+    }}), ModelFailureCode.TOKEN_LIMIT),
+    (OpenAIChat, 400, json.dumps({'error': {
+        'code': 400, 'type': 'BadRequestError', 'param': 'input_tokens', 'message': 'Invalid input.',
+    }}), ModelFailureCode.INVALID_REQUEST),
     (LazyLLMOnlineChatModuleBase, 401, '{"error":{}}', ModelFailureCode.AUTHENTICATION_FAILED),
     (LazyLLMOnlineChatModuleBase, 403, '{"error":{}}', ModelFailureCode.PERMISSION_DENIED),
     (LazyLLMOnlineChatModuleBase, 404, '{"error":{}}', ModelFailureCode.NOT_FOUND),
