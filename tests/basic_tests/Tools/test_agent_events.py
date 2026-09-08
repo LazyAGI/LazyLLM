@@ -591,6 +591,8 @@ class TestReactAgentEvents(object):
                 'content': 'Error handling reference',
             },
         }
+        assert isinstance(result_event.duration_ms, int)
+        assert result_event.duration_ms >= 0
         tool_message = llm.inputs[1]['input'][0]
 
         assert tool_message['role'] == 'tool'

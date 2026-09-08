@@ -52,20 +52,25 @@ class ModelAttemptState:
     response_started: bool = False
     finish: Optional[ModelFinish] = None
     frames: List[dict] = field(default_factory=list)
+    usage: Optional[dict] = None
 
 
 class _ModelCallRunner:
     def __init__(self, *, emit_event: Callable[[str, dict], None],
                  is_retryable_transport_error: Callable[[Exception], bool] = is_retryable_transport_error,
                  report_failure: Optional[Callable[[ModelFailure], None]] = None,
-                 sleep: Callable[[float], None] = time.sleep):
+                 sleep: Callable[[float], None] = time.sleep,
+                 clock: Callable[[], float] = time.monotonic):
         self._emit_event = emit_event
         self._is_retryable_transport_error = is_retryable_transport_error
         self._report_failure = report_failure
         self._sleep = sleep
+        self._clock = clock
 
     def run(self, execute_attempt: Callable[[ModelAttemptState], List[dict]], *, max_attempts: int) -> List[dict]:
         model_call_id = uuid.uuid4().hex
+        started_at = self._clock()
+        self._emit_event('model_call_started', {'model_call_id': model_call_id})
         max_attempts = max(1, int(max_attempts))
         semantic_output = False
         for attempt_index in range(1, max_attempts + 1):
@@ -80,6 +85,8 @@ class _ModelCallRunner:
                     kind='finish',
                     finish=state.finish,
                     has_semantic_output=semantic_output,
+                    duration_ms=self._duration_ms(started_at),
+                    usage=state.usage,
                 )
                 self._emit_event('model_call_finished', terminal.public_dict())
                 if state.finish in (ModelFinish.STOP, ModelFinish.TOOL_CALLS):
@@ -99,6 +106,8 @@ class _ModelCallRunner:
                     kind='failure',
                     failure=exc.failure,
                     has_semantic_output=semantic_output,
+                    duration_ms=self._duration_ms(started_at),
+                    usage=state.usage,
                 )
                 self._emit_event('model_call_finished', terminal.public_dict())
                 raise ModelCallError(str(exc), terminal, state.frames) from exc
@@ -128,6 +137,8 @@ class _ModelCallRunner:
                     kind='failure',
                     failure=failure,
                     has_semantic_output=semantic_output,
+                    duration_ms=self._duration_ms(started_at),
+                    usage=state.usage,
                 )
                 self._emit_event('model_call_finished', terminal.public_dict())
                 raise ModelCallError('Model transport failed.', terminal, state.frames) from exc
@@ -136,6 +147,9 @@ class _ModelCallRunner:
     def _report(self, failure: ModelFailure) -> None:
         if self._report_failure is not None:
             self._report_failure(failure)
+
+    def _duration_ms(self, started_at: float) -> int:
+        return max(0, round((self._clock() - started_at) * 1000.0))
 
     @staticmethod
     def _retry_delay(retry_index: int) -> float:

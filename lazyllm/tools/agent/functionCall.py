@@ -248,6 +248,23 @@ class FunctionCall(ModuleBase):
             return compacted[:prior_len], compacted[prior_len:]
         return compacted, strip_tool_observations(current)
 
+    def _consume_model_context(self) -> List[Dict[str, str]]:
+        if self._model_context_provider is None:
+            return []
+        try:
+            content = self._model_context_provider()
+        except Exception as error:
+            LOG.warning(f'[ModelContextProvider] failed: {type(error).__name__}: {error}')
+            return []
+        if not isinstance(content, str) or not content.strip():
+            return []
+        content = content.strip()
+        if len(content) > _MODEL_CONTEXT_MAX_CHARS:
+            content = content[:_MODEL_CONTEXT_MAX_CHARS]
+            LOG.warning('[ModelContextProvider] context was truncated to fit the input budget')
+        self._observe_runtime('runtime_context_delivered', context_count=1)
+        return [{'role': 'user', 'content': content}]
+
     def _notify_history_ready(
         self,
         workspace: Dict[str, Any],
@@ -259,25 +276,6 @@ class FunctionCall(ModuleBase):
             round=current_round or workspace.get('_react_round_number'),
             history=history,
         )
-
-    def _consume_model_context(self) -> List[Dict[str, str]]:
-        if self._model_context_provider is None:
-            return []
-        try:
-            content = self._model_context_provider()
-        except Exception as error:
-            LOG.warning(
-                f'[ModelContextProvider] failed: {type(error).__name__}: {error}'
-            )
-            return []
-        if not isinstance(content, str) or not content.strip():
-            return []
-        content = content.strip()
-        if len(content) > _MODEL_CONTEXT_MAX_CHARS:
-            content = content[:_MODEL_CONTEXT_MAX_CHARS]
-            LOG.warning('[ModelContextProvider] context was truncated to fit the input budget')
-        self._observe_runtime('runtime_context_delivered', context_count=1)
-        return [{'role': 'user', 'content': content}]
 
     def _build_current_tool_messages(
         self,
@@ -328,7 +326,6 @@ class FunctionCall(ModuleBase):
             workspace=workspace,
             remaining_rounds=remaining_rounds,
         )
-        compacted_current.extend(self._consume_model_context())
         locals['chat_history'][self._llm._module_id] = compacted_prior
         self._notify_history_ready(workspace, current_round, compacted_prior + compacted_current)
         return {'input': compacted_current}
@@ -361,7 +358,7 @@ class FunctionCall(ModuleBase):
                 current_round,
                 remaining_rounds,
             )
-        compacted_prior, _compacted_current = self._compact_history(
+        compacted_prior, _ = self._compact_history(
             workspace['history'][:history_idx],
             current_input=current_input,
             workspace=workspace,
@@ -390,9 +387,11 @@ class FunctionCall(ModuleBase):
                 allowed_tool_names=self._get_visible_tool_names(),
             )
             if self._stream:
-                _write_agent_data('tool_results',
-                                  tool_results=LazyLLMAgentBase._normalize_tool_results(tool_calls,
-                                                                                        tool_calls_results))
+                _write_agent_data(
+                    'tool_results',
+                    tool_results=LazyLLMAgentBase._normalize_tool_results(tool_calls, tool_calls_results),
+                    duration_ms=getattr(tool_calls_results, 'duration_ms', None),
+                )
             locals['_lazyllm_agent']['workspace']['tool_call_trace'] = [
                 {**tool_call, 'tool_call_result': tool_result}
                 for tool_call, tool_result in zip(tool_calls, tool_calls_results)

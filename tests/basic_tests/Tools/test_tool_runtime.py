@@ -88,6 +88,7 @@ def test_execute_with_records_prepares_once_and_records_failure():
     assert snapshots[0].ready is False
     assert snapshots[1].ready is True
     assert snapshots[1].validated_arguments == {'value': 'x'}
+
     assert snapshots[1].access.read_keys
     assert snapshots[1].polling is True
     assert [record.disposition for record in batch.records] == [
@@ -188,3 +189,23 @@ def test_empty_dispatch_selection_does_not_invoke_tool():
     assert batch.results == []
     assert batch.records == ()
     assert calls == []
+
+
+def test_tool_manager_records_its_own_execution_duration():
+    manager = ToolManager([_documented_tool('duration_tool')])
+
+    result = manager([{
+        'id': 'call-1',
+        'function': {'name': 'duration_tool', 'arguments': '{"value":"ok"}'},
+    }])
+
+    assert result[0]['value'] == 'ok'
+    assert isinstance(result.duration_ms, int)
+    assert result.duration_ms >= 0
+    batch = manager.execute_with_records([{
+        'id': 'call-2',
+        'function': {'name': 'duration_tool', 'arguments': '{"value":"ok"}'},
+    }])
+    assert isinstance(batch.duration_ms, int)
+    assert batch.duration_ms >= 0
+    assert batch.stamped_results().duration_ms == batch.duration_ms

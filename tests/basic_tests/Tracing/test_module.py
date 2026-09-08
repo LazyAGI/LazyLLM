@@ -44,6 +44,7 @@ def test_online_chat_module_tracing(exporter):
     assert spans[0].name == 'OnlineChatModule'
     assert spans[0].attributes.get('lazyllm.semantic_type') == SemanticType.LLM
     assert spans[0].attributes.get('lazyllm.entity.config.model') == 'mock-chat'
+    assert spans[0].attributes.get('gen_ai.operation.name') == 'chat'
     assert spans[0].attributes.get('gen_ai.request.model') == 'mock-chat'
     assert spans[0].attributes.get('lazyllm.entity.config.base_url') == 'http://mock-api.example.com'
 

@@ -319,3 +319,12 @@ class _OpenAICompatibleResponseParser:
 
     def _extract_provider_error(self, message: Dict[str, Any]) -> ProviderErrorFields:
         return self._profile.extract_error(message)
+
+
+def usage_from_frames(msg_json: Optional[List[Dict[str, Any]]]) -> Optional[Dict[str, Any]]:
+    if not isinstance(msg_json, list):
+        return None
+    for frame in reversed(msg_json):
+        if isinstance(frame, dict) and isinstance(frame.get('usage'), dict):
+            return frame['usage']
+    return None

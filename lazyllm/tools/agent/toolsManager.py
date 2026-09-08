@@ -13,6 +13,7 @@ from lazyllm.flow.flow import FlowException
 from typing import Callable, Any, Union, Optional, get_type_hints, List, Dict, Type, Set
 import inspect
 import re
+import time
 import uuid
 from pydantic import create_model, BaseModel, ConfigDict, ValidationError
 from lazyllm import LOG, locals as lazyllm_locals
@@ -1160,9 +1161,18 @@ class ToolManager(ModuleBase):
                              *, dispatch_selector: Optional[Callable] = None):
         '''Prepare and execute tool calls once, returning results with execution records.'''
         del verbose
+        started = time.monotonic()
+
+        def _batch(results, records=()):
+            return ToolExecutionBatch(
+                results=results,
+                records=records,
+                duration_ms=round(max(0.0, (time.monotonic() - started) * 1000.0)),
+            )
+
         invocations = self._prepare_tool_invocations(tools, allowed_tool_names)
         if not invocations:
-            return ToolExecutionBatch(results=[], records=())
+            return _batch([])
         prepared = tuple(invocation.prepared for invocation in invocations)
         selected_indices = tuple(
             dispatch_selector(prepared)
@@ -1175,7 +1185,7 @@ class ToolManager(ModuleBase):
             raise ValueError('selected prepared-call indices must be unique')
         selected = [invocations[index] for index in sorted(selected_indices)]
         if not selected:
-            return ToolExecutionBatch(results=[], records=())
+            return _batch([])
         execution_inputs = [self._build_prepared_invocation(item) for item in selected]
         callables, call_arguments, accesses, dispositions = map(list, zip(*execution_inputs))
         results = self._execute_tool_calls(
@@ -1185,7 +1195,7 @@ class ToolManager(ModuleBase):
             ToolExecutionRecord(item.prepared, result, disposition)
             for item, result, disposition in zip(selected, results, dispositions)
         )
-        return ToolExecutionBatch(results=results, records=records)
+        return _batch(results, records)
 
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False,
                 allowed_tool_names: Optional[Set[str]] = None):
@@ -1193,4 +1203,4 @@ class ToolManager(ModuleBase):
             tools,
             verbose=verbose,
             allowed_tool_names=allowed_tool_names,
-        ).results
+        ).stamped_results()

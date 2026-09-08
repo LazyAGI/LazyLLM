@@ -435,6 +435,8 @@ def _semantic_from_type_value(value: Any) -> Optional[str]:
         return SemanticType.EMBEDDING
     if 'RERANK' in s:
         return SemanticType.RERANK
+    if s in ('AGENT', 'GENAI_AGENT'):
+        return SemanticType.AGENT
     sem = _semantic_from_llmtype_enum(value)
     if sem:
         return sem

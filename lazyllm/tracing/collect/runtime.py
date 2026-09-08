@@ -175,6 +175,9 @@ class TracingRuntime:
         if span_kind == 'module':
             return getattr(target, 'name', None) or getattr(target, '_module_name', None) or target.__class__.__name__
         if span_kind == 'callable':
+            override = getattr(target, '__span_name__', None)
+            if override:
+                return str(override)
             return getattr(target, '__name__', None) or target.__class__.__name__
         override = getattr(target, '__span_name__', None)
         if override:
@@ -400,6 +403,22 @@ class TracingRuntime:
         if span.output is not None:
             attrs['lazyllm.io.output'] = _stringify_payload(span.output)
 
+    @staticmethod
+    def _gen_ai_attrs(span: LazySpan) -> Dict[str, Any]:
+        attrs: Dict[str, Any] = {}
+        if span.semantic_type == SemanticType.LLM:
+            attrs['gen_ai.operation.name'] = 'chat'
+            if span.config.get('model'):
+                attrs['gen_ai.request.model'] = str(span.config['model'])
+            if span.config.get('provider'):
+                attrs['gen_ai.provider.name'] = str(span.config['provider'])
+        elif span.semantic_type == SemanticType.AGENT:
+            attrs['gen_ai.operation.name'] = 'invoke_agent'
+            attrs['gen_ai.agent.name'] = str(span.config.get('agent_name') or span.name)
+            if span.session_id:
+                attrs['gen_ai.conversation.id'] = span.session_id
+        return attrs
+
     def _build_otel_attributes(self, span: LazySpan, trace: Optional[LazyTrace] = None) -> Dict[str, Any]:
         attrs: Dict[str, Any] = {
             'lazyllm.span.kind': span.span_kind,
@@ -429,8 +448,7 @@ class TracingRuntime:
         if span.usage:
             self._set_usage_attrs(attrs, span.usage)
 
-        if span.semantic_type == SemanticType.LLM and span.config.get('model'):
-            attrs['gen_ai.request.model'] = str(span.config['model'])
+        attrs.update(self._gen_ai_attrs(span))
 
         self._set_root_span_attrs(attrs, span)
         self._set_trace_metadata_attrs(attrs, span, trace)
@@ -513,6 +531,7 @@ def finish_span(handle):
 
 _TRACE_CONFIG_KEYS = (
     'trace_id', 'parent_span_id', 'session_id', 'user_id', 'request_tags', 'module_trace',
+    'debug_capture_payload',
 )
 
 
@@ -525,6 +544,39 @@ def _detach_span_context(span):
     if span_cm is not None:
         span_cm.close()
         span._otel_span_cm = None
+
+
+def _trace_context(old_ctx: LazyTraceContext, trace_config: Dict[str, Any]) -> LazyTraceContext:
+    data = old_ctx.to_dict()
+    data['trace_id'] = trace_config.get('trace_id')
+    data['parent_span_id'] = trace_config.get('parent_span_id')
+    for key in ('session_id', 'user_id'):
+        if trace_config.get(key) is not None:
+            data[key] = trace_config[key]
+    data['request_tags'] = trace_config.get('request_tags') or []
+    data['module_trace'] = trace_config.get('module_trace')
+    if 'debug_capture_payload' in trace_config:
+        data['debug_capture_payload'] = trace_config['debug_capture_payload']
+    data['enabled'] = True
+    return LazyTraceContext.from_dict(data)
+
+
+def _callable_span(func, args, kwargs, module_trace):
+    if hasattr(func, '_module_id') or hasattr(func, '_flow_id'):
+        return None
+    if resolve_runtime_module_trace_disabled(
+        module_trace, module_name=_trace_target_name(func), module_class=func.__class__
+    ):
+        return None
+    return start_span(span_kind='callable', target=func, args=args, kwargs=kwargs)
+
+
+def _stream_wrapper(result):
+    if inspect.isasyncgen(result):
+        return _wrap_asyncgen_with_trace
+    if inspect.isgenerator(result):
+        return _wrap_generator_with_trace
+    return None
 
 
 @contextmanager
@@ -596,49 +648,14 @@ def _wrap_generator_with_trace(result, stream_ctx: LazyTraceContext, stream_trac
 
 
 def _run_with_trace(func, args, kwargs, trace_config):
-    trace_id = trace_config.get('trace_id')
-    parent_span_id = trace_config.get('parent_span_id')
-    session_id = trace_config.get('session_id')
-    user_id = trace_config.get('user_id')
-    request_tags = trace_config.get('request_tags')
-    module_trace = trace_config.get('module_trace')
-
     old_ctx = get_trace_context()
     old_trace = _current_trace.get()
-    new_ctx_data = old_ctx.to_dict()
-
-    new_ctx_data['trace_id'] = trace_id
-    new_ctx_data['parent_span_id'] = parent_span_id
-
-    if session_id is not None:
-        new_ctx_data['session_id'] = session_id
-    if user_id is not None:
-        new_ctx_data['user_id'] = user_id
-
-    new_ctx_data['request_tags'] = request_tags if request_tags is not None else []
-    new_ctx_data['module_trace'] = module_trace
-    new_ctx_data['enabled'] = True
-
-    new_ctx = LazyTraceContext.from_dict(new_ctx_data)
-    set_trace_context(new_ctx)
-
-    is_lazyllm_component = hasattr(func, '_module_id') or hasattr(func, '_flow_id')
-
-    span = None
-    if not is_lazyllm_component:
-        if not resolve_runtime_module_trace_disabled(
-            module_trace, module_name=_trace_target_name(func), module_class=func.__class__
-        ):
-            span = start_span(span_kind='callable', target=func, args=args, kwargs=kwargs)
+    set_trace_context(_trace_context(old_ctx, trace_config))
+    span = _callable_span(func, args, kwargs, trace_config.get('module_trace'))
 
     try:
         result = func(*args, **kwargs)
-        stream_wrapper = None
-        if inspect.isasyncgen(result):
-            stream_wrapper = _wrap_asyncgen_with_trace
-        elif inspect.isgenerator(result):
-            stream_wrapper = _wrap_generator_with_trace
-
+        stream_wrapper = _stream_wrapper(result)
         if stream_wrapper:
             stream_ctx = get_trace_context()
             stream_trace = _current_trace.get()
