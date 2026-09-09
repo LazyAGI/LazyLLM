@@ -71,6 +71,24 @@ def _frame(delta, finish_reason=None):
     })).encode()
 
 
+@pytest.mark.parametrize('api_key', [None, ''])
+def test_openai_skip_auth_does_not_resolve_default_api_key(monkeypatch, api_key):
+    def fail_default_api_key(cls):
+        raise AssertionError('skip_auth must not resolve the default API key')
+
+    monkeypatch.setattr(OpenAIChat, '_default_api_key', classmethod(fail_default_api_key))
+
+    module = OpenAIChat(
+        base_url='http://provider.test/v1/',
+        model='test-model',
+        api_key=api_key,
+        skip_auth=True,
+    )
+
+    assert module._api_key == ''
+    assert module._header == {'Content-Type': 'application/json'}
+
+
 @pytest.mark.parametrize(('raw', 'expected'), [
     ('stop', ModelFinish.STOP),
     ('tool_calls', ModelFinish.TOOL_CALLS),
