@@ -1,5 +1,6 @@
 import inspect
 import asyncio
+import re
 
 from typing import Any, Callable, Dict, List, Set
 from lazyllm import LOG
@@ -66,8 +67,15 @@ def _handle_tool_result(result, tool_name: str) -> str:
 
 def generate_lazyllm_tool(client, mcp_tool) -> Callable:
     tool_name = mcp_tool.name
+    exposed_tool_name = re.sub(r'\W', '_', tool_name)
+    if exposed_tool_name[:1].isdigit():
+        exposed_tool_name = '_' + exposed_tool_name
     tool_desc = mcp_tool.description
-    input_schema = mcp_tool.inputSchema
+    # MCP's Pydantic models used the JSON alias ``inputSchema`` in older
+    # releases and the Pythonic ``input_schema`` attribute in newer ones.
+    input_schema = getattr(mcp_tool, 'inputSchema', None)
+    if input_schema is None:
+        input_schema = getattr(mcp_tool, 'input_schema', {})
     properties = input_schema.get('properties', {})
     required = input_schema.get('required', [])
 
@@ -109,7 +117,10 @@ def generate_lazyllm_tool(client, mcp_tool) -> Callable:
         return _handle_tool_result(result, tool_name)
 
     # Set function attributes
-    dynamic_lazyllm_func.__name__ = tool_name
+    # LazyLLM's registry interprets dots as registry-group separators. MCP
+    # servers commonly namespace tools with dots, so expose a valid Python
+    # identifier while retaining the original name in the call closure.
+    dynamic_lazyllm_func.__name__ = exposed_tool_name
     dynamic_lazyllm_func.__doc__ = func_desc
     dynamic_lazyllm_func.__annotations__ = annotations
 
