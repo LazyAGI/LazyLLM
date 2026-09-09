@@ -542,7 +542,10 @@ class DocumentProcessorWorker(ModuleBase):
                     operations = []
                     for name in candidate_groups:
                         if strategy == 'reembed':
-                            operations.append((name, dict(strategy='reembed')))
+                            operations.append((name, dict(
+                                strategy='reembed', doc_paths=reparse_files,
+                                metadatas=reparse_metadatas, reader=reader,
+                            )))
                         else:
                             operations.append((name, dict(
                                 doc_paths=reparse_files, metadatas=reparse_metadatas, reader=reader,
