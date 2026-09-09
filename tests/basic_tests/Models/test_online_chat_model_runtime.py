@@ -440,6 +440,14 @@ def test_http_status_survives_error_body_transport_failure():
 
 @pytest.mark.parametrize(('module_cls', 'status', 'body', 'expected'), [
     (LazyLLMOnlineChatModuleBase, 400, '{"error":{}}', ModelFailureCode.INVALID_REQUEST),
+    (OpenAIChat, 400, '{"error":{"code":"context_length_exceeded"}}', ModelFailureCode.TOKEN_LIMIT),
+    (OpenAIChat, 400, json.dumps({'error': {
+        'code': 400, 'type': 'BadRequestError', 'param': 'input_tokens',
+        'message': "This model's maximum context length is 262144 tokens. Your prompt contains at least 262145 tokens.",
+    }}), ModelFailureCode.TOKEN_LIMIT),
+    (OpenAIChat, 400, json.dumps({'error': {
+        'code': 400, 'type': 'BadRequestError', 'param': 'input_tokens', 'message': 'Invalid input.',
+    }}), ModelFailureCode.INVALID_REQUEST),
     (LazyLLMOnlineChatModuleBase, 401, '{"error":{}}', ModelFailureCode.AUTHENTICATION_FAILED),
     (LazyLLMOnlineChatModuleBase, 403, '{"error":{}}', ModelFailureCode.PERMISSION_DENIED),
     (LazyLLMOnlineChatModuleBase, 404, '{"error":{}}', ModelFailureCode.NOT_FOUND),
@@ -465,6 +473,29 @@ def test_provider_http_mapping_uses_supplier_source(monkeypatch, module_cls, sta
 
     assert exc_info.value.failure.code is expected
     assert exc_info.value.failure.provider_http_status == status
+    raw_code = json.loads(body)['error'].get('code')
+    assert exc_info.value.failure.provider_error_code == (str(raw_code) if raw_code is not None else None)
+
+
+@pytest.mark.parametrize('code', [400, '400'])
+@pytest.mark.parametrize('http_error', [True, False])
+def test_vllm_capacity_error_preserves_raw_code(code, http_error):
+    body = json.dumps({'error': {
+        'code': code, 'type': 'BadRequestError', 'param': 'input_tokens',
+        'message': "This model's maximum context length is 4096 tokens. However, you requested "
+                   '4096 output tokens and your prompt contains 24 input tokens, for a total of 4120 tokens.',
+    }})
+    with pytest.raises(_ModelResponseError) as exc_info:
+        if http_error:
+            raise_for_http_error(_Response(status_code=400, body=body), OpenAIChat.RESPONSE_PROFILE)
+        else:
+            _parser(OpenAIChat).parse_response_frame('data: ' + body)
+
+    failure = exc_info.value.failure
+    assert failure.code is ModelFailureCode.TOKEN_LIMIT
+    assert failure.provider_error_code == '400'
+    assert failure.provider_error_type == 'BadRequestError'
+    assert failure.origin is (ModelFailureOrigin.HTTP if http_error else ModelFailureOrigin.PROVIDER)
 
 
 def test_deepseek_http_402_is_balance_exhausted(monkeypatch):

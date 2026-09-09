@@ -65,13 +65,21 @@ class ProviderResponseProfile:
         provider_error_code: Optional[str] = None,
         provider_error_type: Optional[str] = None,
         provider_http_status: Optional[int] = None,
+        provider_response: Optional[Dict[str, Any]] = None,
     ) -> ModelFailureCode:
         if origin == ModelFailureOrigin.PROTOCOL:
             return ModelFailureCode.PROTOCOL_ERROR
         if origin == ModelFailureOrigin.TRANSPORT:
             return ModelFailureCode.TRANSPORT_ERROR
         if provider_error_code:
-            mapped = self.code_map.get(provider_error_code.lower())
+            classification_key = provider_error_code.lower()
+            if classification_key == '400' and provider_response:
+                payload = provider_response.get('error', provider_response if self.error_at_top_level else None)
+                if (isinstance(payload, dict) and payload.get('param') == 'input_tokens'
+                        and 'maximum context length' in str(payload.get('message', '')).lower()):
+                    # Normalize the classification key without replacing the raw provider code.
+                    classification_key = 'context_length_exceeded'
+            mapped = self.code_map.get(classification_key)
             if mapped is not None: return mapped
         if provider_error_type:
             mapped = self.type_map.get(provider_error_type.lower())
@@ -101,6 +109,7 @@ class ProviderResponseProfile:
         provider_error_code: Optional[str] = None,
         provider_error_type: Optional[str] = None,
         provider_http_status: Optional[int] = None,
+        provider_response: Optional[Dict[str, Any]] = None,
     ) -> _ModelResponseError:
         return _ModelResponseError(message, ModelFailure(
             origin=origin,
@@ -109,6 +118,7 @@ class ProviderResponseProfile:
                 provider_error_code=provider_error_code,
                 provider_error_type=provider_error_type,
                 provider_http_status=provider_http_status,
+                provider_response=provider_response,
             ),
             provider_error_code=provider_error_code,
             provider_error_type=provider_error_type,
@@ -127,6 +137,7 @@ class ProviderResponseProfile:
 
 
 OPENAI_COMPATIBLE_PROFILE = ProviderResponseProfile(
+    code_map={'context_length_exceeded': ModelFailureCode.TOKEN_LIMIT},
     http_map={
         400: ModelFailureCode.INVALID_REQUEST,
         401: ModelFailureCode.AUTHENTICATION_FAILED,
@@ -165,6 +176,7 @@ def raise_for_http_error(response: Any, profile: ProviderResponseProfile) -> Non
         provider_error_code=code,
         provider_error_type=error_type,
         provider_http_status=response.status_code,
+        provider_response=error_message if isinstance(error_message, dict) else None,
     )
 
 
@@ -219,6 +231,7 @@ class _OpenAICompatibleResponseParser:
                 ModelFailureOrigin.PROVIDER,
                 provider_error_code=code,
                 provider_error_type=error_type,
+                provider_response=raw_message,
             )
         try:
             message = self._convert_message(raw_message)
