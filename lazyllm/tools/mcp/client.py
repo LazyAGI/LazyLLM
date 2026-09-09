@@ -2,7 +2,7 @@ from typing import Any, Optional, Literal
 from urllib.parse import urlparse
 from contextlib import asynccontextmanager
 
-from lazyllm.thirdparty import httpx, mcp
+from lazyllm.thirdparty import mcp
 
 from .utils import patch_sync
 from .tool_adaptor import generate_lazyllm_tool
@@ -60,12 +60,18 @@ class MCPClient(object):
 
             async with create_mcp_http_client(
                 headers=self._headers or None,
-                timeout=httpx.Timeout(self._timeout),
+                # Let the MCP SDK construct its own timeout object. Some
+                # releases vendor httpx as httpx2, which cannot consume a
+                # Timeout instance created by LazyLLM's httpx shim.
+                timeout=self._timeout,
             ) as http_client:
                 async with streamable_http_client(
                     url=self._command_or_url,
                     http_client=http_client,
-                ) as (read_stream, write_stream, _get_session_id):
+                ) as streams:
+                    # mcp SDK releases have returned both a 2-tuple and a
+                    # 3-tuple here. Only the read/write streams are required.
+                    read_stream, write_stream = streams[:2]
                     async with mcp.ClientSession(read_stream, write_stream) as session:
                         await session.initialize()
                         yield session
