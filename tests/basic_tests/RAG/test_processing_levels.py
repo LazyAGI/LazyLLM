@@ -84,13 +84,13 @@ def test_per_parent_transform_assigns_document_wide_node_numbers():
         ]
 
     transform = MagicMock()
+    transform.pattern = False
     transform.batch_forward.side_effect = split
-    transform_args = {'pattern': False}
     with patch('lazyllm.tools.rag.parsing_service.impl.make_transform', return_value=transform):
         processor._create_nodes_impl(
             parents,
             'chunks',
-            {'chunks': {'parent': LAZY_ROOT_NAME, 'transform': transform_args, 'signature': 'sig-v1'}},
+            {'chunks': {'parent': LAZY_ROOT_NAME, 'transform': transform, 'signature': 'sig-v1'}},
         )
 
     chunks = processor.store.get_nodes(group='chunks', doc_ids=['doc-1'], kb_id='kb-1')
