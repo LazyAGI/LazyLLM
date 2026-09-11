@@ -522,20 +522,6 @@ class DocumentProcessorWorker(ModuleBase):
                 else:
                     candidate_groups = [n for n in ng_names_requested if n in node_groups and n not in source_groups]
 
-                # slice_missing: keep only groups with no segments yet.
-                missing_groups = {
-                    n for n in candidate_groups
-                    if not processor.store.get_nodes(group=n, doc_ids=reparse_doc_ids, kb_id=kb_id)
-                }
-                if strategy == 'slice_missing' and processing_level != 'indexed':
-                    candidate_groups = [n for n in candidate_groups if n in missing_groups]
-                    if not candidate_groups:
-                        LOG.info(f'{self._log_prefix(task_id)} All requested groups already '
-                                 'have nodes, nothing to do')
-                        if kb_id and exec_ng_ids:
-                            self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'SUCCESS')
-                        return
-
                 # Top-most filtering: _reparse_group_recursive / _reembed_group already
                 # recurse into children, so keep only ancestors with no parent in the set.
                 top = []
@@ -563,12 +549,11 @@ class DocumentProcessorWorker(ModuleBase):
                     for name in candidate_groups:
                         if strategy == 'reembed':
                             operations.append((name, dict(strategy='reembed')))
-                        elif strategy == 'slice_missing' and name not in missing_groups:
-                            operations.append((name, dict(strategy='reembed')))
                         else:
-                            operations.append((name, dict(
-                                doc_paths=reparse_files, metadatas=reparse_metadatas, reader=reader,
-                            )))
+                            options = dict(doc_paths=reparse_files, metadatas=reparse_metadatas, reader=reader)
+                            if strategy == 'slice_missing':
+                                options['strategy'] = 'slice_missing'
+                            operations.append((name, options))
 
                 for group_name, extra_kwargs in operations:
                     LOG.info(f'{self._log_prefix(task_id)} [reparse] group={group_name!r} '

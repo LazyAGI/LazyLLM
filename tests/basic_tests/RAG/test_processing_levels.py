@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from lazyllm.tools.rag.doc_node import DocNode
@@ -73,3 +75,167 @@ def test_chunk_failure_keeps_successful_parse_root_for_retry():
 
     roots = processor.store.get_nodes(group=LAZY_ROOT_NAME, doc_ids=['doc-1'], kb_id='kb-1')
     assert len(roots) == 1
+
+
+def _root(uid='root-1'):
+    return DocNode(
+        uid=uid, text='root', group=LAZY_ROOT_NAME,
+        global_metadata={RAG_DOC_ID: 'doc-1', RAG_KB_ID: 'kb-1', RAG_DOC_PATH: '/tmp/doc.pdf'},
+    )
+
+
+def _chunk_processor(*, embed=None, group_embed_keys=None):
+    store = _DocumentStore(store=MapStore(), embed=embed, group_embed_keys=group_embed_keys)
+    store.activate_group([LAZY_ROOT_NAME, 'chunks', 'refs'])
+    return _Processor(store)
+
+
+def test_empty_transform_writes_hidden_null_node():
+    processor = _chunk_processor()
+    root = _root()
+    processor.store.update_nodes([root], copy=True)
+    transform = MagicMock()
+    transform.batch_forward.return_value = []
+    config = {'parent': LAZY_ROOT_NAME, 'transform': MagicMock(pattern=False), 'signature': 'sig-v1'}
+
+    with patch('lazyllm.tools.rag.parsing_service.impl.make_transform', return_value=transform):
+        result = processor._create_nodes_impl([root], 'chunks', {'chunks': config}, skip_embedding=True)
+
+    assert result == []
+    assert processor.store.get_nodes(group='chunks', doc_ids=['doc-1'], kb_id='kb-1') == []
+    assert processor.store.get_segments(group='chunks', doc_ids=['doc-1'], kb_id='kb-1') == []
+    markers = processor.store.get_nodes(
+        group='chunks', doc_ids=['doc-1'], kb_id='kb-1', include_null=True)
+    assert len(markers) == 1
+    assert markers[0].is_null_node
+    assert markers[0]._parent == root.uid
+
+
+def test_missing_ref_skips_transform_without_null_node():
+    processor = _chunk_processor()
+    root = _root()
+    processor.store.update_nodes([root], copy=True)
+    transform = MagicMock()
+    transform._get_ref_nodes.return_value = []
+    config = {'parent': LAZY_ROOT_NAME, 'ref': 'refs', 'transform': MagicMock(pattern=False), 'signature': 'sig-v1'}
+
+    with patch('lazyllm.tools.rag.parsing_service.impl.make_transform', return_value=transform):
+        result = processor._create_nodes_impl(
+            [root], 'chunks', {'chunks': config}, ref_path=['refs'], skip_embedding=True)
+
+    assert result == []
+    transform.batch_forward.assert_not_called()
+    assert processor.store.get_nodes(group='chunks', include_null=True) == []
+
+
+def test_fill_missing_accepts_null_node_as_completed():
+    processor = _chunk_processor()
+    root = _root()
+    processor.store.update_nodes([root], copy=True)
+    transform = MagicMock()
+    transform.batch_forward.return_value = []
+    config = {'parent': LAZY_ROOT_NAME, 'transform': MagicMock(pattern=False), 'signature': 'sig-v1'}
+
+    with patch('lazyllm.tools.rag.parsing_service.impl.make_transform', return_value=transform):
+        processor._create_nodes_impl([root], 'chunks', {'chunks': config}, skip_embedding=True)
+        processor._create_nodes_impl(
+            [root], 'chunks', {'chunks': config}, skip_embedding=True, only_missing=True)
+
+    transform.batch_forward.assert_called_once()
+
+
+def test_embedding_failure_keeps_segments_and_successful_vectors():
+    failed = {'bad'}
+    calls = []
+
+    def embed(text):
+        calls.append(text)
+        if text in failed:
+            raise ValueError('cannot embed')
+        return [1.0, 2.0]
+
+    processor = _chunk_processor(embed={'dense': embed}, group_embed_keys={'chunks': {'dense'}})
+    nodes = [
+        DocNode(uid='good', text='good', group='chunks', global_metadata={RAG_DOC_ID: 'doc-1', RAG_KB_ID: 'kb-1'}),
+        DocNode(uid='bad', text='bad', group='chunks', global_metadata={RAG_DOC_ID: 'doc-1', RAG_KB_ID: 'kb-1'}),
+    ]
+
+    with pytest.raises(ValueError, match='cannot embed'):
+        processor.store.update_nodes(nodes)
+
+    stored = {node.uid: node for node in processor.store.get_nodes(group='chunks', doc_ids=['doc-1'], kb_id='kb-1')}
+    assert set(stored) == {'good', 'bad'}
+    assert stored['good'].embedding['dense'] == [1.0, 2.0]
+    assert 'dense' not in stored['bad'].embedding
+    failed.clear()
+    processor.store.update_nodes(list(stored.values()))
+    assert calls.count('good') == 1
+    assert calls.count('bad') == 2
+    completed = {node.uid: node for node in processor.store.get_nodes(group='chunks')}
+    assert completed['bad'].embedding['dense'] == [1.0, 2.0]
+
+
+def test_failed_parent_branch_is_skipped_but_successful_branch_reaches_children():
+    store = _DocumentStore(store=MapStore())
+    store.activate_group([LAZY_ROOT_NAME, 'parent', 'child'])
+    processor = _Processor(store)
+    roots = [_root('good-root'), _root('bad-root')]
+    store.update_nodes(roots, copy=True)
+
+    parent_transform = MagicMock()
+
+    failed = {'bad-root'}
+
+    def create_parent(nodes, group_name, ref_path=None):
+        root = nodes[0]
+        if root.uid in failed:
+            raise RuntimeError('parent chunk failed')
+        node = DocNode(
+            uid=f'parent-{root.uid}', text='parent', group=group_name, parent=root,
+            global_metadata=dict(root.global_metadata),
+        )
+        root.children[group_name] = [node]
+        return [node]
+
+    parent_transform.batch_forward.side_effect = create_parent
+    child_transform = MagicMock()
+
+    def create_child(nodes, group_name, ref_path=None):
+        parent = nodes[0]
+        node = DocNode(
+            uid=f'child-{parent.uid}', text='child', group=group_name, parent=parent,
+            global_metadata=dict(parent.global_metadata),
+        )
+        parent.children[group_name] = [node]
+        return [node]
+
+    child_transform.batch_forward.side_effect = create_child
+    transforms = {'parent-transform': parent_transform, 'child-transform': child_transform}
+    node_groups = {
+        LAZY_ROOT_NAME: {'parent': None, 'transform': None},
+        'parent': {'parent': LAZY_ROOT_NAME, 'transform': MagicMock(pattern=False, name='parent-transform')},
+        'child': {'parent': 'parent', 'transform': MagicMock(pattern=False, name='child-transform')},
+    }
+
+    def make(transform, group_name):
+        return transforms[f'{group_name}-transform']
+
+    with patch('lazyllm.tools.rag.parsing_service.impl.make_transform', side_effect=make):
+        with pytest.raises(RuntimeError, match='parent chunk failed'):
+            processor._create_nodes_recursive(
+                roots, LAZY_ROOT_NAME, node_groups=node_groups, skip_embedding=True)
+
+    assert {node.uid for node in store.get_nodes(group='parent')} == {'parent-good-root'}
+    assert {node.uid for node in store.get_nodes(group='child')} == {'child-parent-good-root'}
+    child_transform.batch_forward.assert_called_once()
+
+    failed.clear()
+    with patch('lazyllm.tools.rag.parsing_service.impl.make_transform', side_effect=make):
+        processor._fill_missing_docs('parent', node_groups, ['doc-1'], 'kb-1', 'chunked')
+
+    assert {node.uid for node in store.get_nodes(group='parent')} == {
+        'parent-good-root', 'parent-bad-root'}
+    assert {node.uid for node in store.get_nodes(group='child')} == {
+        'child-parent-good-root', 'child-parent-bad-root'}
+    assert parent_transform.batch_forward.call_count == 3
+    assert child_transform.batch_forward.call_count == 2

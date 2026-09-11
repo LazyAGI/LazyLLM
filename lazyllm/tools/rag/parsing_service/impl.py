@@ -1,3 +1,4 @@
+import hashlib
 import time
 import traceback
 from typing import Any, Dict, List, Optional
@@ -8,7 +9,7 @@ from functools import cached_property
 from lazyllm import LOG
 
 from ..data_loaders import DirectoryReader
-from ..doc_node import DocNode
+from ..doc_node import DocNode, NULL_NODE_META_KEY
 from ..global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 from ..store import LAZY_IMAGE_GROUP, LAZY_ROOT_NAME
 from ..store.document_store import _DocumentStore
@@ -239,6 +240,9 @@ class _Processor:
     def _set_nodes_number(self, nodes: List[DocNode]) -> List[DocNode]:
         doc_group_number = {}
         for node in nodes:
+            if node.is_null_node:
+                node.metadata['lazyllm_store_num'] = 0
+                continue
             doc_id = node.global_metadata.get(RAG_DOC_ID)
             group_name = node.group
             if doc_id not in doc_group_number:
@@ -259,17 +263,30 @@ class _Processor:
                                 node_groups: Dict[str, Dict], skip_ng_ids: Optional[set] = None,
                                 skip_embedding: bool = False):
         graph = self._get_dependency_graph(node_groups)
+        errors = []
         for group_name in graph.topological_order:
             group = node_groups.get(group_name)
             if group['parent'] != p_name: continue
             ref_path = graph.get_shortest_path(group['parent'], group.get('ref')) if group.get('ref') else []
-            nodes = self._create_nodes_impl(p_nodes, group_name, node_groups,
-                                            ref_path=ref_path, skip_ng_ids=skip_ng_ids,
-                                            skip_embedding=skip_embedding)
+            error = None
+            try:
+                nodes = self._create_nodes_impl(p_nodes, group_name, node_groups,
+                                                ref_path=ref_path, skip_ng_ids=skip_ng_ids,
+                                                skip_embedding=skip_embedding)
+            except Exception as exc:
+                nodes = getattr(exc, '_lazyllm_successful_nodes', [])
+                error = exc
             if nodes:
-                self._create_nodes_recursive(nodes, group_name, node_groups,
-                                             skip_ng_ids=skip_ng_ids,
-                                             skip_embedding=skip_embedding)
+                try:
+                    self._create_nodes_recursive(nodes, group_name, node_groups,
+                                                 skip_ng_ids=skip_ng_ids,
+                                                 skip_embedding=skip_embedding)
+                except Exception as exc:
+                    errors.append(exc)
+            if error:
+                errors.append(error)
+        if errors:
+            raise errors[0]
 
     def _clone_node_for_transfer(
         self, node: DocNode, target_kb_id: str, target_doc_id: str, metadata: Dict[str, Any]
@@ -329,7 +346,7 @@ class _Processor:
 
     def _create_nodes_impl(self, p_nodes, group_name, node_groups: Dict[str, Dict],
                            ref_path=None, skip_ng_ids: Optional[set] = None,
-                           skip_embedding: bool = False):
+                           skip_embedding: bool = False, only_missing: bool = False):
         # NOTE transform.batch_forward will set children for p_nodes, but when calling
         # transform.batch_forward, p_nodes has been upsert in the store.
         doc_ids = list({n.global_metadata.get(RAG_DOC_ID) for n in p_nodes if n.global_metadata.get(RAG_DOC_ID)})
@@ -340,13 +357,58 @@ class _Processor:
             if not doc_ids:
                 return []
             return self._store.get_nodes(doc_ids=doc_ids, group=group_name, kb_id=kb_id)
+        p_nodes = [node for node in p_nodes if not node.is_null_node]
+        if not p_nodes:
+            return []
         t = node_groups[group_name]['transform']
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, group_name)
-        nodes = transform.batch_forward(p_nodes, group_name, ref_path=ref_path)
         skip_embed = {g for g, cfg in node_groups.items() if cfg.get('lazy_mode') in ('embed', 'all')}
         if skip_embedding:
             skip_embed.add(group_name)
-        self._store.update_nodes(self._set_nodes_number(nodes), skip_embed_groups=skip_embed or None)
+        nodes, errors = [], []
+        signature = ng_cfg.get('signature', '')
+        for parent in p_nodes:
+            children = []
+            try:
+                if only_missing:
+                    existing = self._store.get_nodes(
+                        group=group_name, kb_id=kb_id, doc_ids=doc_ids,
+                        parent=[parent.uid], include_null=True)
+                    if any(not child.is_null_node or
+                           child.metadata.get('_transform_signature') == signature for child in existing):
+                        nodes.extend(child for child in existing if not child.is_null_node)
+                        continue
+                if ref_path:
+                    ref_nodes = [node for node in transform._get_ref_nodes(parent, ref_path)
+                                 if not node.is_null_node]
+                    if not ref_nodes:
+                        continue
+                    stored_refs = self._store.get_nodes(
+                        uids=[node.uid for node in ref_nodes], group=ref_path[-1], kb_id=kb_id)
+                    if len({node.uid for node in stored_refs}) != len({node.uid for node in ref_nodes}):
+                        continue
+                children = transform.batch_forward([parent], group_name, ref_path=ref_path)
+                if not children:
+                    digest = hashlib.sha1(
+                        f'{kb_id}:{parent.uid}:{group_name}:{signature}:null'.encode()).hexdigest()
+                    children = [DocNode(
+                        uid=f'null-{digest}', content='', group=group_name, parent=parent,
+                        metadata={NULL_NODE_META_KEY: True, '_transform_signature': signature},
+                        global_metadata=dict(parent.global_metadata),
+                    )]
+                self._store.update_nodes(
+                    self._set_nodes_number(children),
+                    skip_embed_groups=(skip_embed | {group_name}) if children[0].is_null_node else (skip_embed or None),
+                )
+                nodes.extend(node for node in children if not node.is_null_node)
+            except Exception as exc:
+                if getattr(exc, '_lazyllm_segments_persisted', False):
+                    nodes.extend(node for node in children if not node.is_null_node)
+                LOG.error(f'Failed to create node group {group_name!r} for parent {parent.uid!r}: {exc}')
+                errors.append(exc)
+        if errors:
+            setattr(errors[0], '_lazyllm_successful_nodes', nodes)
+            raise errors[0]
         return nodes
 
     def _get_or_create_nodes(self, group_name, node_groups: Dict[str, Dict],
@@ -363,12 +425,43 @@ class _Processor:
                 processing_level: str = 'indexed', **kwargs):
         if strategy == 'reembed':
             self._reembed_group(group_name, node_groups, doc_ids=doc_ids, kb_id=kb_id)
+        elif strategy == 'slice_missing':
+            self._fill_missing_docs(group_name, node_groups, doc_ids=doc_ids, kb_id=kb_id,
+                                    processing_level=processing_level)
         elif doc_ids:
             self._reparse_docs(group_name=group_name, node_groups=node_groups,
                                doc_ids=doc_ids, kb_id=kb_id,
                                processing_level=processing_level, **kwargs)
         else:
             self._get_or_create_nodes(group_name, node_groups, uids)
+
+    def _fill_missing_docs(self, group_name: str, node_groups: Dict[str, Dict],
+                           doc_ids: List[str], kb_id: Optional[str], processing_level: str):
+        parent_group = node_groups[group_name]['parent']
+        parents = self._store.get_nodes(group=parent_group, doc_ids=doc_ids, kb_id=kb_id)
+        if not parents:
+            return
+        graph = self._get_dependency_graph(node_groups)
+        ref = node_groups[group_name].get('ref')
+        ref_path = graph.get_shortest_path(parent_group, ref) if ref else []
+        error = None
+        try:
+            self._create_nodes_impl(
+                parents, group_name, node_groups, ref_path=ref_path,
+                skip_embedding=processing_level == 'chunked', only_missing=True)
+        except Exception as exc:
+            error = exc
+        current = self._store.get_nodes(group=group_name, doc_ids=doc_ids, kb_id=kb_id)
+        if not current:
+            if error:
+                raise error
+            return
+        for child_name in self._store.activated_groups():
+            cfg = node_groups.get(child_name, {})
+            if cfg.get('parent') == group_name and cfg.get('lazy_mode') != 'all':
+                self._fill_missing_docs(child_name, node_groups, doc_ids, kb_id, processing_level)
+        if error:
+            raise error
 
     def _reembed_group(self, group_name: str, node_groups: Dict[str, Dict],
                        doc_ids: Optional[List[str]] = None, kb_id: Optional[str] = None):
