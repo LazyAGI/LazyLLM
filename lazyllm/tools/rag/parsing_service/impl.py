@@ -456,6 +456,11 @@ class _Processor:
             if error:
                 raise error
             return
+        if processing_level == 'indexed':
+            try:
+                self._store.update_nodes(current)
+            except Exception as exc:
+                error = error or exc
         for child_name in self._store.activated_groups():
             cfg = node_groups.get(child_name, {})
             if cfg.get('parent') == group_name and cfg.get('lazy_mode') != 'all':
