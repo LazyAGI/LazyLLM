@@ -98,11 +98,14 @@ class DocItemsRequest(BaseModel):
     idempotency_key: Optional[str] = None
     llm_config: Optional[Dict[str, Any]] = None
     ocr_config: Optional[Dict[str, Any]] = None
+    processing_level: str = 'indexed'
 
     @model_validator(mode='after')
     def validate_items(self):
         if not self.items:
             raise ValueError('items is required')
+        if self.processing_level not in ('stored', 'parsed', 'chunked', 'indexed'):
+            raise ValueError('processing_level must be stored, parsed, chunked, or indexed')
         return self
 
 
@@ -124,6 +127,7 @@ class ReparseRequest(BaseModel):
     #   "reembed"       → rebuild vectors only (skip transform, re-embed existing nodes)
     #   "slice_missing" → fill gaps (slice + embed only groups that have no segments yet)
     strategy: str = 'rebuild'
+    processing_level: str = 'indexed'
 
     @model_validator(mode='after')
     def validate_fields(self):
@@ -135,6 +139,10 @@ class ReparseRequest(BaseModel):
             raise ValueError('ng_names must not be an empty list; omit it to reparse all node groups')
         if self.algo_ids is not None and self.ng_names is not None:
             raise ValueError('algo_ids and ng_names are mutually exclusive; provide at most one.')
+        if self.processing_level not in ('stored', 'parsed', 'chunked', 'indexed'):
+            raise ValueError('processing_level must be stored, parsed, chunked, or indexed')
+        if self.strategy == 'reembed' and self.processing_level != 'indexed':
+            raise ValueError('reembed requires indexed processing_level')
         return self
 
 

@@ -759,7 +759,7 @@ class DocManager:
                             node_group_ids_to_delete: Optional[List[str]] = None,
                             llm_config: Optional[Dict[str, Any]] = None,
                             ocr_config: Optional[Dict[str, Any]] = None,
-                            strategy: str = 'rebuild'):
+                            strategy: str = 'rebuild', processing_level: str = 'indexed'):
         if task_type in (TaskType.DOC_ADD, TaskType.DOC_REPARSE, TaskType.DOC_TRANSFER):
             if not file_path:
                 raise RuntimeError(f'file_path is required for task_type {task_type.value}')
@@ -768,7 +768,8 @@ class DocManager:
                 ng_names=ng_names, extractor_names=extractor_names,
                 task_type=task_type.value,
                 callback_url=self._callback_url, transfer_params=transfer_params,
-                llm_config=llm_config, ocr_config=ocr_config, strategy=strategy)
+                llm_config=llm_config, ocr_config=ocr_config, strategy=strategy,
+                processing_level=processing_level)
         elif task_type == TaskType.DOC_UPDATE_META:
             task_resp = self._parser_client.update_meta(
                 task_id, kb_id, doc_id, metadata, file_path, callback_url=self._callback_url)
@@ -791,7 +792,7 @@ class DocManager:
                       extra_message: Optional[Dict[str, Any]] = None, parser_doc_id: Optional[str] = None,
                       llm_config: Optional[Dict[str, Any]] = None,
                       ocr_config: Optional[Dict[str, Any]] = None,
-                      strategy: str = 'rebuild'):
+                      strategy: str = 'rebuild', processing_level: str = 'indexed'):
         algo_ids = algo_ids or []
         algo_id = algo_ids[0] if algo_ids else None
         task_id = str(uuid4())
@@ -830,7 +831,8 @@ class DocManager:
                 file_path=file_path, metadata=metadata,
                 parser_kb_id=parser_kb_id, transfer_params=transfer_params,
                 node_group_ids_to_delete=exclusive_ng_ids,
-                llm_config=llm_config, ocr_config=ocr_config, strategy=strategy)
+                llm_config=llm_config, ocr_config=ocr_config, strategy=strategy,
+                processing_level=processing_level)
         except Exception as exc:
             finished_at = datetime.now()
             error_msg = str(exc)
@@ -993,7 +995,8 @@ class DocManager:
                     doc_id, request.kb_id, TaskType.DOC_ADD, algo_ids=algo_ids,
                     idempotency_key=request.idempotency_key, file_path=file_path, metadata=metadata,
                     llm_config=getattr(request, 'llm_config', None),
-                    ocr_config=getattr(request, 'ocr_config', None))
+                    ocr_config=getattr(request, 'ocr_config', None),
+                    processing_level=getattr(request, 'processing_level', 'indexed'))
             except Exception as exc:
                 snapshot = self._get_parse_snapshot(doc_id, request.kb_id) or {}
                 doc = self._get_doc(doc_id) or doc
@@ -1058,6 +1061,7 @@ class DocManager:
                 llm_config=request.llm_config,
                 ocr_config=request.ocr_config,
                 strategy=request.strategy,
+                processing_level=request.processing_level,
             )
             task_ids.append(task_id)
         LOG.info(f'[reparse] kb={request.kb_id!r} doc_ids={request.doc_ids!r} '

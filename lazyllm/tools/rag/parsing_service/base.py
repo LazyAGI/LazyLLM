@@ -51,6 +51,8 @@ class AddDocRequest(BaseModel):
     # per-request model config injected by backend (e.g. embed_main, llm).
     llm_config: Optional[Dict[str, Any]] = None
     ocr_config: Optional[Dict[str, Any]] = None
+    # Maximum materialization stage requested by the owning knowledge base.
+    processing_level: str = 'indexed'
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future
     db_info: EmptyDBInfo = None
     feedback_url: Optional[str] = None
@@ -62,6 +64,14 @@ class AddDocRequest(BaseModel):
             data = dict(data)
             data['db_info'] = None
         return data
+
+    @model_validator(mode='after')
+    def validate_processing_level(self):
+        if self.processing_level not in ('stored', 'parsed', 'chunked', 'indexed'):
+            raise ValueError('processing_level must be stored, parsed, chunked, or indexed')
+        if self.strategy == 'reembed' and self.processing_level != 'indexed':
+            raise ValueError('reembed requires indexed processing_level')
+        return self
 
 
 class UpdateMetaRequest(BaseModel):
