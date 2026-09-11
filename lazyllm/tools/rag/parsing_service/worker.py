@@ -447,7 +447,7 @@ class DocumentProcessorWorker(ModuleBase):
 
             ng_ids = [ng_id for name, ng_id in name_to_id.items()
                       if name not in (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)]
-            if processing_level in ('stored', 'parsed'):
+            if processing_level == 'parsed':
                 ng_ids = []
             if kb_id and ng_ids:
                 skip_ng_ids, exec_ng_ids = self._wait_and_decide_ng(ids, ng_ids, kb_id)
@@ -498,13 +498,13 @@ class DocumentProcessorWorker(ModuleBase):
 
             exec_ng_ids = [ng_id for name, ng_id in name_to_id.items()
                            if name not in (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)]
-            if processing_level in ('stored', 'parsed'):
+            if processing_level == 'parsed':
                 exec_ng_ids = []
             if kb_id and exec_ng_ids:
                 self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'WORKING')
 
             try:
-                if processing_level in ('stored', 'parsed'):
+                if processing_level == 'parsed':
                     processor.add_doc(
                         input_files=reparse_files, ids=reparse_doc_ids,
                         metadatas=reparse_metadatas, kb_id=kb_id,

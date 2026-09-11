@@ -4,6 +4,7 @@ import pytest
 
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.doc_service.base import ReparseRequest, UploadRequest, AddFileItem
+from lazyllm.tools.rag.parsing_service.base import AddDocRequest, FileInfo
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 from lazyllm.tools.rag.parsing_service.impl import _Processor
 from lazyllm.tools.rag.store import LAZY_ROOT_NAME, MapStore
@@ -43,6 +44,16 @@ def test_reparse_rejects_vector_rebuild_below_indexed():
 def test_processing_level_defaults_keep_legacy_indexed_behavior():
     request = UploadRequest(items=[AddFileItem(file_path='/tmp/doc.pdf')])
     assert request.processing_level == 'indexed'
+
+
+@pytest.mark.parametrize('request_factory', [
+    lambda: UploadRequest(items=[AddFileItem(file_path='/tmp/doc.pdf')], processing_level='stored'),
+    lambda: ReparseRequest(doc_ids=['doc-1'], processing_level='stored'),
+    lambda: AddDocRequest(file_infos=[FileInfo(file_path='/tmp/doc.pdf')], processing_level='stored'),
+])
+def test_stored_level_is_owned_by_caller_and_rejected_by_lazyllm(request_factory):
+    with pytest.raises(ValueError, match='processing_level must be parsed, chunked, or indexed'):
+        request_factory()
 
 
 def test_parsed_level_stores_root_without_creating_chunks():

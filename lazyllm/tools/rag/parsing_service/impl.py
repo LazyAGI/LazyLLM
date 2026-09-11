@@ -146,7 +146,7 @@ class _Processor:
             schema_errors: List[Exception] = []
             # run schema extraction in parallel for each extractor
             active_extractors = {}
-            if not transfer_mode and processing_level not in ('stored', 'parsed') and self._schema_extractors:
+            if not transfer_mode and processing_level != 'parsed' and self._schema_extractors:
                 names = extractor_names if extractor_names else list(self._schema_extractors.keys())
                 for ename in names:
                     ext = self._schema_extractors.get(ename)
@@ -166,7 +166,7 @@ class _Processor:
 
             store_start = time.time()
             if transfer_mode is None:
-                if processing_level in ('stored', 'parsed'):
+                if processing_level == 'parsed':
                     for nodes in root_nodes.values():
                         if nodes:
                             self._store.update_nodes(

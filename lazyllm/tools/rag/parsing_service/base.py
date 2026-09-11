@@ -67,8 +67,8 @@ class AddDocRequest(BaseModel):
 
     @model_validator(mode='after')
     def _validate_processing_level(self):
-        if self.processing_level not in ('stored', 'parsed', 'chunked', 'indexed'):
-            raise ValueError('processing_level must be stored, parsed, chunked, or indexed')
+        if self.processing_level not in ('parsed', 'chunked', 'indexed'):
+            raise ValueError('processing_level must be parsed, chunked, or indexed')
         if self.strategy == 'reembed' and self.processing_level != 'indexed':
             raise ValueError('reembed requires indexed processing_level')
         return self
