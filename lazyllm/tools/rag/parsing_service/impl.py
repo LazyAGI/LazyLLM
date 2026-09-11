@@ -214,6 +214,8 @@ class _Processor:
             # Keep successfully materialized upstream stages. A retry can then
             # continue from the missing node groups instead of discarding parse
             # and chunk work that is already durable.
+            if transfer_mode is not None:
+                self._cleanup_failed_add(target_doc_ids or [], target_kb_id, clear_schema=False)
             LOG.error(f'Add documents failed: {e}, {traceback.format_exc()}')
             raise e
 
@@ -237,8 +239,8 @@ class _Processor:
         self._thread_pool.shutdown(wait=True)
         self._thread_pool = None
 
-    def _set_nodes_number(self, nodes: List[DocNode]) -> List[DocNode]:
-        doc_group_number = {}
+    def _set_nodes_number(self, nodes: List[DocNode], doc_group_number: Optional[Dict] = None) -> List[DocNode]:
+        doc_group_number = doc_group_number if doc_group_number is not None else {}
         for node in nodes:
             if node.is_null_node:
                 node.metadata['lazyllm_store_num'] = 0
@@ -366,6 +368,7 @@ class _Processor:
         if skip_embedding:
             skip_embed.add(group_name)
         nodes, errors = [], []
+        doc_group_number = {}
         signature = ng_cfg.get('signature', '')
         for parent in p_nodes:
             children = []
@@ -397,7 +400,7 @@ class _Processor:
                         global_metadata=dict(parent.global_metadata),
                     )]
                 self._store.update_nodes(
-                    self._set_nodes_number(children),
+                    self._set_nodes_number(children, doc_group_number),
                     skip_embed_groups=(skip_embed | {group_name}) if children[0].is_null_node else (skip_embed or None),
                 )
                 nodes.extend(node for node in children if not node.is_null_node)

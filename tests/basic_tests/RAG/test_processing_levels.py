@@ -69,6 +69,32 @@ def test_parsed_level_stores_root_without_creating_chunks():
     assert len(roots) == 1
 
 
+def test_per_parent_transform_assigns_document_wide_node_numbers():
+    processor = _chunk_processor()
+    parents = [_root('root-1'), _root('root-2')]
+    processor.store.update_nodes(parents, copy=True)
+
+    def split(parent_nodes, group_name, ref_path=None):
+        parent = parent_nodes[0]
+        return [
+            DocNode(uid=f'{parent.uid}-a', text='a', group=group_name, parent=parent,
+                    global_metadata=dict(parent.global_metadata)),
+            DocNode(uid=f'{parent.uid}-b', text='b', group=group_name, parent=parent,
+                    global_metadata=dict(parent.global_metadata)),
+        ]
+
+    transform = MagicMock(pattern=False)
+    transform.batch_forward.side_effect = split
+    processor._create_nodes_impl(
+        parents,
+        'chunks',
+        {'chunks': {'parent': LAZY_ROOT_NAME, 'transform': transform, 'signature': 'sig-v1'}},
+    )
+
+    chunks = processor.store.get_nodes(group='chunks', doc_ids=['doc-1'], kb_id='kb-1')
+    assert sorted(node.number for node in chunks) == [1, 2, 3, 4]
+
+
 def test_chunk_failure_keeps_successful_parse_root_for_retry():
     processor = _processor()
 
