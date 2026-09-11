@@ -232,8 +232,8 @@ class _DocumentStore(object):
         elif not store.upsert(collection_name, segments):
             raise RuntimeError(f'[_DocumentStore] Failed to upsert segment data for group {group}')
 
-    def update_nodes(self, nodes: List[DocNode], copy: bool = False,
-                     skip_embed_groups: Optional[Set[str]] = None):   # noqa: C901
+    def update_nodes(self, nodes: List[DocNode], copy: bool = False,  # noqa: C901
+                     skip_embed_groups: Optional[Set[str]] = None):
         if not nodes:
             return
         try:
@@ -278,7 +278,7 @@ class _DocumentStore(object):
                 index.update([node for node in nodes if not node.is_null_node])
             LOG.info(f'[BENCHMARK] phase=store elapsed={time.time() - _t_store:.3f}s nodes={len(nodes)}')
             if embedding_error:
-                setattr(embedding_error, '_lazyllm_segments_persisted', True)
+                embedding_error._lazyllm_segments_persisted = True
                 raise embedding_error
         except Exception as e:
             LOG.error(f'[_DocumentStore] Failed to update nodes: {e}')

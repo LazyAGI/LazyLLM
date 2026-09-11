@@ -344,7 +344,7 @@ class _Processor:
                                                   p_name=group_name, node_groups=node_groups,
                                                   skip_ng_ids=skip_ng_ids)
 
-    def _create_nodes_impl(self, p_nodes, group_name, node_groups: Dict[str, Dict],
+    def _create_nodes_impl(self, p_nodes, group_name, node_groups: Dict[str, Dict],  # noqa: C901
                            ref_path=None, skip_ng_ids: Optional[set] = None,
                            skip_embedding: bool = False, only_missing: bool = False):
         # NOTE transform.batch_forward will set children for p_nodes, but when calling
@@ -374,8 +374,8 @@ class _Processor:
                     existing = self._store.get_nodes(
                         group=group_name, kb_id=kb_id, doc_ids=doc_ids,
                         parent=[parent.uid], include_null=True)
-                    if any(not child.is_null_node or
-                           child.metadata.get('_transform_signature') == signature for child in existing):
+                    if any((not child.is_null_node or child.metadata.get('_transform_signature') == signature)
+                           for child in existing):
                         nodes.extend(child for child in existing if not child.is_null_node)
                         continue
                 if ref_path:
@@ -407,7 +407,7 @@ class _Processor:
                 LOG.error(f'Failed to create node group {group_name!r} for parent {parent.uid!r}: {exc}')
                 errors.append(exc)
         if errors:
-            setattr(errors[0], '_lazyllm_successful_nodes', nodes)
+            errors[0]._lazyllm_successful_nodes = nodes
             raise errors[0]
         return nodes
 
