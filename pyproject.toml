@@ -80,7 +80,6 @@ order_group_scope = "class"
 appdirs = { version = "*", optional = true }
 loralib = { version = "*", optional = true }
 json_repair = { version = "*", optional = true }
-langfuse = { version = ">=3.0.0,<4.0.0", optional = true }
 opentelemetry-api = { version = ">=1.27.0,<2.0.0", optional = true }
 opentelemetry-sdk = { version = ">=1.27.0,<2.0.0", optional = true }
 opentelemetry-exporter-otlp-proto-http = { version = ">=1.27.0,<2.0.0", optional = true }
@@ -182,7 +181,6 @@ fsspec = { version = "*", optional = true }
 
 [tool.poetry.extras]
 tracing = [
-    "langfuse",
     "opentelemetry-api",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-http"
@@ -331,7 +329,6 @@ full = [
     "httpx",
     "async-timeout",
     "protobuf",
-    "langfuse",
     "opentelemetry-api",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-http",

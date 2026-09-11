@@ -1,6 +1,6 @@
 import base64
 import json
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from urllib.parse import parse_qs, urlparse
 
 import lazyllm
@@ -183,13 +183,18 @@ def test_export_backend_maps_langfuse_attrs():
         'lazyllm.trace.tags': ['prod', 'rag'],
         'lazyllm.trace.metadata.tenant': 'tenant-a',
         'session.id': 'session-1',
+        'user.id': 'user-1',
         'lazyllm.error.message': 'model failed',
         'gen_ai.request.model': 'gpt-4o-mini',
         'gen_ai.usage.total_tokens': 20,
     })
     child_attrs = backend.map_attributes({
         'lazyllm.semantic_type': SemanticType.RETRIEVER,
-        'lazyllm.trace.name': 'must-not-promote',
+        'lazyllm.trace.name': 'rag-run',
+        'lazyllm.trace.tags': ['prod', 'rag'],
+        'lazyllm.trace.metadata.tenant': 'tenant-a',
+        'session.id': 'session-1',
+        'user.id': 'user-1',
     })
 
     assert root_attrs['langfuse.observation.type'] == 'generation'
@@ -200,5 +205,32 @@ def test_export_backend_maps_langfuse_attrs():
     assert json.loads(root_attrs['langfuse.trace.tags']) == ['prod', 'rag']
     assert root_attrs['langfuse.trace.metadata.tenant'] == 'tenant-a'
     assert root_attrs['session.id'] == 'session-1'
-    assert 'langfuse.trace.name' not in child_attrs
+    assert root_attrs['user.id'] == 'user-1'
+
+    # v4 contract: correlation attributes must attach to child spans as well
     assert child_attrs['langfuse.observation.type'] == 'retriever'
+    assert child_attrs['langfuse.trace.name'] == 'rag-run'
+    assert json.loads(child_attrs['langfuse.trace.tags']) == ['prod', 'rag']
+    assert child_attrs['langfuse.trace.metadata.tenant'] == 'tenant-a'
+    assert child_attrs['session.id'] == 'session-1'
+    assert child_attrs['user.id'] == 'user-1'
+
+
+def test_build_exporter_configures_v4_headers(monkeypatch):
+    _set_langfuse_env(monkeypatch)
+    backend = LangfuseBackend()
+
+    mock_otlp = Mock()
+    with patch.object(
+        langfuse_backend_module.opentelemetry.exporter.otlp.proto.http.trace_exporter,
+        'OTLPSpanExporter',
+        mock_otlp,
+    ):
+        backend.build_exporter()
+
+    mock_otlp.assert_called_once()
+    _, kwargs = mock_otlp.call_args
+    assert kwargs['headers'] == {
+        'Authorization': LANGFUSE_AUTH_HEADER,
+        'x-langfuse-ingestion-version': '4',
+    }
