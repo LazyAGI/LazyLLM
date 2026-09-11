@@ -326,6 +326,7 @@ class FunctionCall(ModuleBase):
             workspace=workspace,
             remaining_rounds=remaining_rounds,
         )
+        compacted_current.extend(self._consume_model_context())
         locals['chat_history'][self._llm._module_id] = compacted_prior
         self._notify_history_ready(workspace, current_round, compacted_prior + compacted_current)
         return {'input': compacted_current}

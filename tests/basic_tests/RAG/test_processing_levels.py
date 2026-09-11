@@ -83,13 +83,15 @@ def test_per_parent_transform_assigns_document_wide_node_numbers():
                     global_metadata=dict(parent.global_metadata)),
         ]
 
-    transform = MagicMock(pattern=False)
+    transform = MagicMock()
     transform.batch_forward.side_effect = split
-    processor._create_nodes_impl(
-        parents,
-        'chunks',
-        {'chunks': {'parent': LAZY_ROOT_NAME, 'transform': transform, 'signature': 'sig-v1'}},
-    )
+    transform_args = {'pattern': False}
+    with patch('lazyllm.tools.rag.parsing_service.impl.make_transform', return_value=transform):
+        processor._create_nodes_impl(
+            parents,
+            'chunks',
+            {'chunks': {'parent': LAZY_ROOT_NAME, 'transform': transform_args, 'signature': 'sig-v1'}},
+        )
 
     chunks = processor.store.get_nodes(group='chunks', doc_ids=['doc-1'], kb_id='kb-1')
     assert sorted(node.number for node in chunks) == [1, 2, 3, 4]
@@ -217,7 +219,7 @@ def test_failed_parent_branch_is_skipped_but_successful_branch_reaches_children(
     store.activate_group([LAZY_ROOT_NAME, 'parent', 'child'])
     processor = _Processor(store)
     roots = [_root('good-root'), _root('bad-root')]
-    store.update_nodes(roots, copy=True)
+    store.update_nodes(processor._set_nodes_number(roots), copy=True)
 
     parent_transform = MagicMock()
 
@@ -276,3 +278,13 @@ def test_failed_parent_branch_is_skipped_but_successful_branch_reaches_children(
         'child-parent-good-root', 'child-parent-bad-root'}
     assert parent_transform.batch_forward.call_count == 3
     assert child_transform.batch_forward.call_count == 2
+    parents = store.get_nodes(group='parent', doc_ids=['doc-1'], kb_id='kb-1')
+    children = store.get_nodes(group='child', doc_ids=['doc-1'], kb_id='kb-1')
+    assert {node.uid: node.number for node in parents} == {
+        'parent-good-root': 1,
+        'parent-bad-root': 2,
+    }
+    assert {node.uid: node.number for node in children} == {
+        'child-parent-good-root': 1,
+        'child-parent-bad-root': 2,
+    }

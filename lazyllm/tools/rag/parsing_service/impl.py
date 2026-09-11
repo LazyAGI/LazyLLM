@@ -454,6 +454,7 @@ class _Processor:
                 skip_embedding=processing_level == 'chunked', only_missing=True)
         except Exception as exc:
             error = exc
+        self._renumber_group_by_tree(group_name, parent_group, doc_ids, kb_id)
         current = self._store.get_nodes(group=group_name, doc_ids=doc_ids, kb_id=kb_id)
         if not current:
             if error:
@@ -470,6 +471,43 @@ class _Processor:
                 self._fill_missing_docs(child_name, node_groups, doc_ids, kb_id, processing_level)
         if error:
             raise error
+
+    def _renumber_group_by_tree(self, group_name: str, parent_group: str,
+                                doc_ids: List[str], kb_id: Optional[str]) -> None:
+        parents = self._store.get_nodes(
+            group=parent_group, doc_ids=doc_ids, kb_id=kb_id, sort_by_number=True)
+        children = self._store.get_nodes(
+            group=group_name, doc_ids=doc_ids, kb_id=kb_id,
+            sort_by_number=True, include_null=True)
+        if not children:
+            return
+
+        parent_order = {}
+        for doc_id in doc_ids:
+            doc_parents = [p for p in parents if p.global_metadata.get(RAG_DOC_ID) == doc_id]
+            doc_parents.sort(key=lambda p: (p.number, p.uid))
+            parent_order[doc_id] = {parent.uid: i for i, parent in enumerate(doc_parents)}
+
+        def parent_uid(node: DocNode) -> str:
+            return node._parent.uid if isinstance(node._parent, DocNode) else node._parent
+
+        changed = []
+        for doc_id in doc_ids:
+            doc_children = [c for c in children if c.global_metadata.get(RAG_DOC_ID) == doc_id]
+            order = parent_order.get(doc_id, {})
+            doc_children.sort(key=lambda c: (order.get(parent_uid(c), len(order)), c.number, c.uid))
+            number = 1
+            for child in doc_children:
+                expected = 0 if child.is_null_node else number
+                if child.number != expected:
+                    child.number = expected
+                    changed.append(child)
+                if not child.is_null_node:
+                    number += 1
+        if changed:
+            # Renumbering changes metadata only; copy mode preserves existing
+            # embeddings and never invokes the embedding model again.
+            self._store.update_nodes(changed, copy=True)
 
     def _reembed_group(self, group_name: str, node_groups: Dict[str, Dict],
                        doc_ids: Optional[List[str]] = None, kb_id: Optional[str] = None):

@@ -1,4 +1,5 @@
 import unittest
+import os
 from lazyllm.tools import SqlCall, SqlManager, DBStatus
 import lazyllm
 from ...utils import SqlEgsData, get_db_init_keywords
@@ -31,6 +32,8 @@ class TestSqlManager(unittest.TestCase):
                                                          tables_info_dict=SqlEgsData.TEST_TABLES_INFO)]
         # MySQL has been tested with online database.
         for db_type in ['PostgreSQL']:
+            if not os.environ.get(f'LAZYLLM_{db_type.replace(" ", "_")}_URL'):
+                continue
             username, password, host, port, database = get_db_init_keywords(db_type)
             cls.sql_managers.append(SqlManager(db_type, username, password, host, port, database,
                                                tables_info_dict=SqlEgsData.TEST_TABLES_INFO))
@@ -41,11 +44,6 @@ class TestSqlManager(unittest.TestCase):
                 sql_manager.execute_commit(f'DELETE FROM {table_name}')
             for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
                 sql_manager.execute_commit(insert_script)
-
-        sql_llm = lazyllm.OnlineChatModule(source='qwen')
-        cls.sql_calls: list[SqlCall] = []
-        for sql_manager in cls.sql_managers:
-            cls.sql_calls.append(SqlCall(sql_llm, sql_manager, use_llm_for_sql_result=True))
 
     @classmethod
     def tearDownClass(cls):
@@ -86,7 +84,9 @@ class TestSqlManager(unittest.TestCase):
             self.assertIn('销售一部', f'Query: {SqlEgsData.TEST_QUERY_SCRIPTS}; result: {str_results}')
 
     def test_llm_query_online(self):
-        for sql_call in self.sql_calls:
+        sql_llm = lazyllm.OnlineChatModule(source='qwen')
+        for sql_manager in self.sql_managers:
+            sql_call = SqlCall(sql_llm, sql_manager, use_llm_for_sql_result=True)
             str_results = sql_call('去年一整年销售额最多的员工是谁，销售额是多少？')
             self.assertIn('张三', str_results)
             time.sleep(0.2)
