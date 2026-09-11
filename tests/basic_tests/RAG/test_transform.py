@@ -1859,6 +1859,7 @@ class TestBatchForwardRefPath:
             node_groups={},
             reader=reader,
             preloaded_root_nodes=reader.load_data.return_value,
+            processing_level='indexed',
         )
 
     # ---------- reparse: group × mode combinations ----------

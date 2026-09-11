@@ -231,8 +231,10 @@ class ReactAgent(LazyLLMAgentBase):
                         f'[ReactAgent] [FORCE_SUMMARY_COMPLETED] sid={lazyllm_globals._sid} workspace_retained=True '
                         f'history_messages={len(workspace.get("history") or [])}'
                     )
-                    if self._fc is not None: locals['chat_history'][self._fc._llm._module_id] = []
+                    if self._fc is not None:
+                        locals['chat_history'].pop(self._fc._llm._module_id, None)
                     return summary
-        if self._fc is not None: locals['chat_history'][self._fc._llm._module_id] = []
+        if self._fc is not None:
+            locals['chat_history'].pop(self._fc._llm._module_id, None)
         raise ValueError(f'After retrying {self._max_retries} times, the react agent still failes to call '
                          f'successfully.')

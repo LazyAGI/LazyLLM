@@ -14,6 +14,7 @@ import copy
 import json
 
 _pickle_blacklist = {'_store', '_node_groups'}
+NULL_NODE_META_KEY = '_lazyllm_null_node'
 
 
 class MetadataMode(str, Enum):
@@ -102,6 +103,10 @@ class DocNode(DocNodeCore):
     @property
     def group(self) -> str:
         return self._group
+
+    @property
+    def is_null_node(self) -> bool:
+        return bool(self._metadata.get(NULL_NODE_META_KEY))
 
     @property
     def content(self) -> Union[str, List[Any]]:

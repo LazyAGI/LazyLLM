@@ -436,6 +436,7 @@ class DocumentProcessorWorker(ModuleBase):
                            extractor_names: Optional[List[str]] = None):
             file_infos = payload.get('file_infos')
             kb_id = payload.get('kb_id', None)
+            processing_level = payload.get('processing_level', 'indexed')
             input_files = []
             ids = []
             metadatas = []
@@ -446,6 +447,8 @@ class DocumentProcessorWorker(ModuleBase):
 
             ng_ids = [ng_id for name, ng_id in name_to_id.items()
                       if name not in (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)]
+            if processing_level == 'parsed':
+                ng_ids = []
             if kb_id and ng_ids:
                 skip_ng_ids, exec_ng_ids = self._wait_and_decide_ng(ids, ng_ids, kb_id)
                 if not exec_ng_ids:
@@ -458,7 +461,8 @@ class DocumentProcessorWorker(ModuleBase):
             try:
                 processor.add_doc(input_files=input_files, ids=ids, metadatas=metadatas, kb_id=kb_id,
                                   node_groups=node_groups, reader=reader, skip_ng_ids=skip_ng_ids,
-                                  extractor_names=extractor_names)
+                                  extractor_names=extractor_names,
+                                  processing_level=processing_level)
                 if kb_id and exec_ng_ids:
                     self._write_ng_status_batch(ids, list(exec_ng_ids), kb_id, 'SUCCESS')
             except Exception as e:
@@ -474,6 +478,7 @@ class DocumentProcessorWorker(ModuleBase):
             kb_id = payload.get('kb_id', None)
             ng_names_requested = payload.get('ng_names')  # None means all groups
             strategy = payload.get('strategy', 'rebuild')
+            processing_level = payload.get('processing_level', 'indexed')
             # strategy:
             #   "rebuild"       → full reparse (reslice + reembed all selected groups)
             #   "reembed"       → rebuild vectors (skip slice, reembed existing nodes only)
@@ -488,33 +493,34 @@ class DocumentProcessorWorker(ModuleBase):
                 reparse_metadatas.append(file_info.get('metadata'))
 
             LOG.info(f'{self._log_prefix(task_id)} Execute reparse task: doc_ids={reparse_doc_ids!r}, '
-                     f'ng_names={ng_names_requested!r}, strategy={strategy!r}, kb_id={kb_id!r}')
+                     f'ng_names={ng_names_requested!r}, strategy={strategy!r}, '
+                     f'processing_level={processing_level!r}, kb_id={kb_id!r}')
 
             exec_ng_ids = [ng_id for name, ng_id in name_to_id.items()
                            if name not in (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)]
+            if processing_level == 'parsed':
+                exec_ng_ids = []
             if kb_id and exec_ng_ids:
                 self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'WORKING')
 
             try:
+                if processing_level == 'parsed':
+                    processor.add_doc(
+                        input_files=reparse_files, ids=reparse_doc_ids,
+                        metadatas=reparse_metadatas, kb_id=kb_id,
+                        node_groups=node_groups, reader=reader,
+                        processing_level='parsed',
+                    )
+                    if kb_id and exec_ng_ids:
+                        self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'SUCCESS')
+                    return
+
                 # Resolve candidate groups, excluding source groups.
                 source_groups = {LAZY_ROOT_NAME, LAZY_IMAGE_GROUP}
                 if ng_names_requested is None:
                     candidate_groups = [n for n in node_groups if n not in source_groups]
                 else:
                     candidate_groups = [n for n in ng_names_requested if n in node_groups and n not in source_groups]
-
-                # slice_missing: keep only groups with no segments yet.
-                if strategy == 'slice_missing':
-                    candidate_groups = [
-                        n for n in candidate_groups
-                        if not processor.store.get_nodes(group=n, doc_ids=reparse_doc_ids, kb_id=kb_id)
-                    ]
-                    if not candidate_groups:
-                        LOG.info(f'{self._log_prefix(task_id)} All requested groups already '
-                                 'have nodes, nothing to do')
-                        if kb_id and exec_ng_ids:
-                            self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'SUCCESS')
-                        return
 
                 # Top-most filtering: _reparse_group_recursive / _reembed_group already
                 # recurse into children, so keep only ancestors with no parent in the set.
@@ -544,9 +550,10 @@ class DocumentProcessorWorker(ModuleBase):
                         if strategy == 'reembed':
                             operations.append((name, dict(strategy='reembed')))
                         else:
-                            operations.append((name, dict(
-                                doc_paths=reparse_files, metadatas=reparse_metadatas, reader=reader,
-                            )))
+                            options = dict(doc_paths=reparse_files, metadatas=reparse_metadatas, reader=reader)
+                            if strategy == 'slice_missing':
+                                options['strategy'] = 'slice_missing'
+                            operations.append((name, options))
 
                 for group_name, extra_kwargs in operations:
                     LOG.info(f'{self._log_prefix(task_id)} [reparse] group={group_name!r} '
@@ -557,6 +564,7 @@ class DocumentProcessorWorker(ModuleBase):
                         node_groups=node_groups,
                         doc_ids=reparse_doc_ids,
                         kb_id=kb_id,
+                        processing_level=processing_level,
                         **extra_kwargs,
                     )
 

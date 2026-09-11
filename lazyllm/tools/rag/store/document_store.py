@@ -222,22 +222,26 @@ class _DocumentStore(object):
         if not self.vector_initialized_impl.upsert(collection_name, segments):
             raise RuntimeError(f'[_DocumentStore] Failed to upsert segments for group {group}')
 
-    def update_nodes(self, nodes: List[DocNode], copy: bool = False,
-                     skip_embed_groups: Optional[Set[str]] = None):   # noqa: C901
+    def _upsert_segment_data(self, group: str, segments: List[dict]) -> None:
+        collection_name = self._gen_collection_name(group)
+        store = self.vector_initialized_impl
+        if isinstance(store, HybridStore):
+            data = [{k: v for k, v in segment.items() if k != 'embedding'} for segment in segments]
+            if not store.segment_store.upsert(collection_name=collection_name, data=data):
+                raise RuntimeError(f'[_DocumentStore] Failed to upsert segment data for group {group}')
+        elif not store.upsert(collection_name, segments):
+            raise RuntimeError(f'[_DocumentStore] Failed to upsert segment data for group {group}')
+
+    def update_nodes(self, nodes: List[DocNode], copy: bool = False,  # noqa: C901
+                     skip_embed_groups: Optional[Set[str]] = None):
         if not nodes:
             return
         try:
             if self._embed and self.vector_initialized_impl.capability == StoreCapability.SEGMENT:
                 LOG.warning(f'[_DocumentStore] Embed is provided'
                             f' but store {self.vector_initialized_impl} does not support embedding')
-            if self.vector_initialized_impl.need_embedding and not copy:
-                nodes_to_embed = [n for n in nodes if n._group not in skip_embed_groups] \
-                    if skip_embed_groups else nodes
-                if nodes_to_embed:
-                    _t_emb = time.time()
-                    parallel_do_embedding(self._embed, [], nodes_to_embed, self._group_embed_keys)
-                    LOG.info(f'[BENCHMARK] phase=embed elapsed={time.time() - _t_emb:.3f}s '
-                             f'nodes={len(nodes_to_embed)}')
+            nodes_to_embed = [n for n in nodes
+                              if not n.is_null_node and n._group not in (skip_embed_groups or set())]
             group_segments = defaultdict(list)
             for node in nodes:
                 group_segments[node._group].append(self._serialize_node(node))
@@ -248,11 +252,34 @@ class _DocumentStore(object):
                     LOG.warning(f'[_DocumentStore] Group {group} is not active, skip')
                     continue
                 for i in range(0, len(segments), INSERT_BATCH_SIZE):
-                    self._upsert_segments(group, segments[i:i + INSERT_BATCH_SIZE])
+                    upsert = self._upsert_segments if copy else self._upsert_segment_data
+                    upsert(group, segments[i:i + INSERT_BATCH_SIZE])
+            embedding_error = None
+            if self._embed and self.vector_initialized_impl.need_embedding and not copy and nodes_to_embed:
+                _t_emb = time.time()
+                try:
+                    parallel_do_embedding(self._embed, [], nodes_to_embed, self._group_embed_keys)
+                except Exception as exc:
+                    embedding_error = exc
+                embedded_segments = defaultdict(list)
+                for node in nodes_to_embed:
+                    keys = self._group_embed_keys.get(node._group) if self._group_embed_keys else self._embed.keys()
+                    if not keys:
+                        continue
+                    if not node.has_missing_embedding(keys):
+                        embedded_segments[node._group].append(self._serialize_node(node))
+                for group, segments in embedded_segments.items():
+                    for i in range(0, len(segments), INSERT_BATCH_SIZE):
+                        self._upsert_segments(group, segments[i:i + INSERT_BATCH_SIZE])
+                LOG.info(f'[BENCHMARK] phase=embed elapsed={time.time() - _t_emb:.3f}s '
+                         f'nodes={len(nodes_to_embed)}')
             # update indices
             for index in self._indices.values():
-                index.update(nodes)
+                index.update([node for node in nodes if not node.is_null_node])
             LOG.info(f'[BENCHMARK] phase=store elapsed={time.time() - _t_store:.3f}s nodes={len(nodes)}')
+            if embedding_error:
+                embedding_error._lazyllm_segments_persisted = True
+                raise embedding_error
         except Exception as e:
             LOG.error(f'[_DocumentStore] Failed to update nodes: {e}')
             LOG.error(traceback.format_exc())
@@ -302,16 +329,19 @@ class _DocumentStore(object):
                   group: Optional[str] = None, kb_id: Optional[str] = None,
                   limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
                   numbers: Optional[Set] = None, sort_by_number: bool = False,
-                  **kwargs) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
+                  include_null: bool = False, **kwargs) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
         try:
             result = self.get_segments(uids=uids, doc_ids=doc_ids, group=group,
                                        kb_id=kb_id, numbers=numbers, limit=limit,
                                        offset=offset, return_total=return_total,
-                                       sort_by_number=sort_by_number, **kwargs)
+                                       sort_by_number=sort_by_number, include_null=include_null, **kwargs)
             if return_total:
                 segments, total = result
-                return [self._deserialize_node(segment) for segment in segments], total
-            return [self._deserialize_node(segment) for segment in result]
+                nodes = [self._deserialize_node(segment) for segment in segments]
+                nodes = nodes if include_null else [node for node in nodes if not node.is_null_node]
+                return nodes, total
+            nodes = [self._deserialize_node(segment) for segment in result]
+            return nodes if include_null else [node for node in nodes if not node.is_null_node]
         except Exception as e:
             LOG.error(f'[_DocumentStore] Failed to get nodes: {e}')
             raise
@@ -320,7 +350,7 @@ class _DocumentStore(object):
                      group: Optional[str] = None, kb_id: Optional[str] = None,
                      limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
                      numbers: Optional[Set] = None, sort_by_number: bool = False,
-                     **kwargs) -> Union[List[dict], Tuple[List[dict], int]]:
+                     include_null: bool = False, **kwargs) -> Union[List[dict], Tuple[List[dict], int]]:
         # get a set of segments by uids
         # get the segments of the whole file -- doc ids only
         # get the segments of a certain group for one file -- doc ids and group (kb_id is optional)
@@ -343,14 +373,24 @@ class _DocumentStore(object):
                 )
                 if return_total:
                     segments, total = result if isinstance(result, tuple) else (result, len(result))
+                    if not include_null:
+                        original_len = len(segments)
+                        segments = [segment for segment in segments
+                                    if not segment.get('meta', {}).get('_lazyllm_null_node')]
+                        total -= original_len - len(segments)
                     return segments, total
-                return result[0] if isinstance(result, tuple) else result
+                segments = result[0] if isinstance(result, tuple) else result
+                return segments if include_null else [
+                    segment for segment in segments if not segment.get('meta', {}).get('_lazyllm_null_node')]
             segments = []
             for group in groups:
                 if not self.is_group_active(group):
                     LOG.warning(f'[_DocumentStore] Group {group} is not active, skip')
                     continue
                 segments.extend(self.seg_impl.get(self._gen_collection_name(group), criteria, **kwargs))
+            if not include_null:
+                segments = [segment for segment in segments
+                            if not segment.get('meta', {}).get('_lazyllm_null_node')]
             if sort_by_number:
                 segments = self._sort_segments_by_number(segments)
             total = len(segments)
@@ -453,7 +493,8 @@ class _DocumentStore(object):
             segments.extend(self.vector_initialized_impl.search(
                 collection_name=self._gen_collection_name(group_name), query=query,
                 topk=topk, filters=filters, **kwargs))
-        return [self._deserialize_node(segment, segment.get('score', 0)) for segment in segments]
+        nodes = [self._deserialize_node(segment, segment.get('score', 0)) for segment in segments]
+        return [node for node in nodes if not node.is_null_node]
 
     def keyword_search(self, group, keyword, doc_id='', kb_id=None,
                        phrase=True, sort_by='score', size=10, file_name=None):
