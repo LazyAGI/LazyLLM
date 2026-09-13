@@ -38,6 +38,7 @@ TOOL_AUTH_REGISTRY: Dict[str, str] = {
     'tencent': 'dynamic_tool_auth',
     'bocha': 'dynamic_tool_auth',
     'serpapi': 'dynamic_tool_auth',
+    'serply': 'dynamic_tool_auth',
     'tavily': 'dynamic_tool_auth',
     'semantic_scholar': 'dynamic_tool_auth',
     'google_books': 'dynamic_tool_auth',
