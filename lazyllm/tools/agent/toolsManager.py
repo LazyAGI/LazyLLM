@@ -1016,7 +1016,9 @@ class ToolManager(ModuleBase):
             return exception_failure(exposed_name, error)
 
     def _prepare_tool_invocations(self, tools, allowed_tool_names=None):
-        tool_calls = self.normalize_tool_calls([tools] if isinstance(tools, dict) else list(tools or []))
+        tool_calls = self.normalize_tool_calls(
+            [tools] if isinstance(tools, dict) or tools is None else list(tools)
+        )
         invocations = []
         for index, tool_call in enumerate(tool_calls):
             function = tool_call.get('function') if isinstance(tool_call, dict) else None

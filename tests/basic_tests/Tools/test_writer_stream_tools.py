@@ -336,10 +336,21 @@ def test_stream_markdown_outline_returns_the_authoritative_artifact(tmp_path):
 
     assert preview == '# 测试大纲\n\n## 第一章 项目背景\n\n- 要点一\n\n## 第二章 方案设计\n\n- 要点二\n'
     artifact = Path(result['artifact_path']).read_text(encoding='utf-8')
-    assert artifact == preview.replace(
+    expected_artifact = preview.replace(
         '## 第一章 项目背景', '<a id="block-sec-001"></a>\n## 项目背景',
     ).replace(
         '## 第二章 方案设计', '<a id="block-sec-002"></a>\n## 方案设计',
+    )
+    assert artifact == expected_artifact.replace(
+        '## 项目背景',
+        '## 项目背景\n<!-- writer:outline '
+        '{"node_id":"sec-001","target_chars":200,"context_relations":[],"subtasks":[]} -->',
+    ).replace(
+        '## 方案设计',
+        '## 方案设计\n<!-- writer:outline '
+        '{"node_id":"sec-002","target_chars":200,"context_relations":['
+        '{"target_node_id":"sec-001","relation":"continuity",'
+        '"guidance":"承接前一节已建立的信息和叙事进展。"}],"subtasks":[]} -->',
     )
     assert result['metadata']['extra']['representation'] == 'markdown'
 
