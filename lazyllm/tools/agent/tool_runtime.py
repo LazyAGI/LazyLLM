@@ -1,14 +1,65 @@
+import copy
 import inspect
 import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Callable, Dict, Optional, Tuple
 
 
 _TOOL_RUNTIME_METADATA_ATTR = '__lazyllm_tool_runtime_metadata__'
 _TOOL_RUNTIME_METADATA_PATCH_ATTR = '__lazyllm_tool_runtime_metadata_patch__'
 _FILE_RESOURCE_NAMESPACE = 'file'
+
+
+class HostFileAccess(str, Enum):
+    UNDECLARED = 'UNDECLARED'
+    NONE = 'NONE'
+    DECLARED = 'DECLARED'
+    OPAQUE = 'OPAQUE'
+
+
+@dataclass(frozen=True)
+class HostFileIntent:
+    path: str
+    operation: str
+
+    def __post_init__(self):
+        if not isinstance(self.path, str) or not os.path.isabs(self.path):
+            raise ValueError('host file paths must be absolute strings')
+        if self.operation not in ('read', 'write', 'delete'):
+            raise ValueError('host file operations must be read, write, or delete')
+
+
+@dataclass(frozen=True)
+class HostFileResolution:
+    arguments: Dict[str, Any]
+    files: Tuple[HostFileIntent, ...] = ()
+
+    def __post_init__(self):
+        if not isinstance(self.arguments, dict):
+            raise TypeError('resolved arguments must be a dict')
+        if not isinstance(self.files, tuple) or not all(isinstance(item, HostFileIntent) for item in self.files):
+            raise TypeError('resolved files must be a tuple of HostFileIntent values')
+
+    @property
+    def access(self):
+        reads = frozenset(_normalize_resource_key(('file', item.path))
+                          for item in self.files if item.operation == 'read')
+        writes = frozenset(_normalize_resource_key(('file', item.path))
+                           for item in self.files if item.operation != 'read')
+        return ResolvedToolAccess(read_keys=reads - writes, write_keys=writes)
+
+
+def _readonly_snapshot(value):
+    if isinstance(value, dict):
+        return MappingProxyType({key: _readonly_snapshot(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_readonly_snapshot(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return frozenset(_readonly_snapshot(item) for item in value)
+    return copy.deepcopy(value)
 
 
 def _normalize_resource_key(key: Any):
@@ -58,10 +109,41 @@ class PreparedToolCall:
     validated_arguments: Optional[Dict[str, Any]]
     access: ResolvedToolAccess = field(default_factory=ResolvedToolAccess)
     polling: bool = False
+    host_file_access: HostFileAccess = HostFileAccess.UNDECLARED
+    host_files: Tuple[HostFileIntent, ...] = ()
 
     @property
     def ready(self) -> bool:
         return self.validated_arguments is not None
+
+
+@dataclass(frozen=True)
+class PreparedToolBatch:
+    _owner: Any = field(repr=False, compare=False)
+    _invocations: tuple = field(repr=False)
+
+    def __len__(self):
+        return len(self._invocations)
+
+    def __iter__(self):
+        return (self[index] for index in range(len(self)))
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return tuple(self)[index]
+        prepared = self._invocations[index].prepared
+        return PreparedToolCall(
+            index=prepared.index,
+            tool_call=_readonly_snapshot(prepared.tool_call),
+            call_id=prepared.call_id,
+            tool_name=prepared.tool_name,
+            arguments=_readonly_snapshot(prepared.arguments),
+            validated_arguments=_readonly_snapshot(prepared.validated_arguments),
+            access=prepared.access,
+            polling=prepared.polling,
+            host_file_access=prepared.host_file_access,
+            host_files=prepared.host_files,
+        )
 
 
 class ToolExecutionDisposition(str, Enum):
@@ -136,8 +218,21 @@ class ToolRuntimeMetadata:
     write_keys: Any = None
     exclusive: bool = False
     polling: bool = False
+    host_file_access: HostFileAccess = HostFileAccess.UNDECLARED
+    host_file_resolver: Optional[Callable] = None
+
+    def _validate_host_file_metadata(self):
+        object.__setattr__(self, 'host_file_access', HostFileAccess(self.host_file_access))
+        if self.host_file_access is HostFileAccess.DECLARED:
+            if self.host_file_resolver is None:
+                raise ValueError('DECLARED host file access requires a resolver')
+            if not callable(self.host_file_resolver):
+                raise TypeError('host_file_resolver must be callable')
+        elif self.host_file_resolver is not None:
+            raise ValueError('only DECLARED host file access accepts a resolver')
 
     def __post_init__(self):
+        self._validate_host_file_metadata()
         if not isinstance(self.execute_in_sandbox, bool):
             raise TypeError('execute_in_sandbox must be a bool')
         for name in ('input_files_parm', 'output_files_parm'):

@@ -1,6 +1,10 @@
 from .functionCall import FunctionCall, FunctionCallAgent
 from .toolsManager import fc_register, register, ToolManager
 from .tool_runtime import (
+    HostFileAccess,
+    HostFileIntent,
+    HostFileResolution,
+    PreparedToolBatch,
     PreparedToolCall,
     ResolvedToolAccess,
     ToolExecutionBatch,
@@ -41,6 +45,10 @@ __all__ = [
     'register',
     'fc_register',
     'ResolvedToolAccess',
+    'HostFileAccess',
+    'HostFileIntent',
+    'HostFileResolution',
+    'PreparedToolBatch',
     'PreparedToolCall',
     'ToolExecutionRecord',
     'ToolExecutionBatch',

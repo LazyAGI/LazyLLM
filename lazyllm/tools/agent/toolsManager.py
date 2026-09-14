@@ -19,6 +19,9 @@ from pydantic import create_model, BaseModel, ConfigDict, ValidationError
 from lazyllm import LOG, locals as lazyllm_locals
 from .toolError import exception_failure, tool_failure
 from .tool_runtime import (
+    HostFileAccess,
+    HostFileResolution,
+    PreparedToolBatch,
     PreparedToolCall,
     ResolvedToolAccess,
     ToolExecutionBatch,
@@ -348,6 +351,8 @@ _RUNTIME_METADATA_FIELDS = {
     'write_keys',
     'exclusive',
     'polling',
+    'host_file_access',
+    'host_file_resolver',
 }
 
 
@@ -1017,7 +1022,7 @@ class ToolManager(ModuleBase):
 
     def _prepare_tool_invocations(self, tools, allowed_tool_names=None):
         tool_calls = self.normalize_tool_calls(
-            [tools] if isinstance(tools, dict) or tools is None else list(tools)
+            copy.deepcopy([tools] if isinstance(tools, dict) or tools is None else list(tools))
         )
         invocations = []
         for index, tool_call in enumerate(tool_calls):
@@ -1027,6 +1032,22 @@ class ToolManager(ModuleBase):
             tool, normalized_arguments, validated_arguments, failure = self._parse_tool_call(
                 tool_call, allowed_tool_names,
             )
+            host_files = ()
+            host_access = ResolvedToolAccess()
+            if tool is not None and tool.runtime_metadata.host_file_access is HostFileAccess.DECLARED:
+                try:
+                    resolution = tool.runtime_metadata.host_file_resolver(copy.deepcopy(validated_arguments))
+                    if not isinstance(resolution, HostFileResolution):
+                        raise TypeError('host file resolver must return HostFileResolution')
+                    # Do not rerun toolkit input adapters or allow validators to change approved paths.
+                    model = tool.params_schema.model_validate(copy.deepcopy(resolution.arguments), strict=True)
+                    validated_arguments = {key: getattr(model, key) for key in resolution.arguments}
+                    if validated_arguments != resolution.arguments:
+                        raise ValueError('validation changed resolved arguments')
+                    host_files, host_access = resolution.files, resolution.access
+                except Exception:
+                    failure = tool_failure('Host file access resolution failed.')
+                    tool = None
             if tool is None:
                 view = PreparedToolCall(
                     index=index,
@@ -1043,7 +1064,10 @@ class ToolManager(ModuleBase):
                     failure=failure,
                 ))
                 continue
-            access = tool._resolve_runtime_access(validated_arguments)
+            access = tool._resolve_runtime_access(copy.deepcopy(validated_arguments))
+            reads = access.read_keys | host_access.read_keys
+            writes = access.write_keys | host_access.write_keys
+            access = ResolvedToolAccess(read_keys=reads - writes, write_keys=writes, exclusive=access.exclusive)
             view = PreparedToolCall(
                 index=index,
                 tool_call=copy.deepcopy(tool_call),
@@ -1053,11 +1077,13 @@ class ToolManager(ModuleBase):
                 validated_arguments=copy.deepcopy(validated_arguments),
                 access=access,
                 polling=tool.runtime_metadata.polling,
+                host_file_access=tool.runtime_metadata.host_file_access,
+                host_files=host_files,
             )
             invocations.append(_PreparedToolInvocation(
                 prepared=view,
                 tool=tool,
-                validated_arguments=validated_arguments,
+                validated_arguments=copy.deepcopy(validated_arguments),
             ))
         return invocations
 
@@ -1065,14 +1091,14 @@ class ToolManager(ModuleBase):
         prepared = invocation.prepared
         if not prepared.ready:
             return (
-                lambda *_, _failure=invocation.failure: _failure,
+                lambda *_, _failure=copy.deepcopy(invocation.failure): _failure,
                 {},
                 prepared.access,
                 ToolExecutionDisposition.PREPARATION_FAILED,
             )
         tool = invocation.tool
         if self._sandbox and tool.execute_in_sandbox:
-            sandbox_arguments = self._build_sandbox_args(tool, invocation.validated_arguments)
+            sandbox_arguments = self._build_sandbox_args(tool, copy.deepcopy(invocation.validated_arguments))
             return (
                 self._sandbox,
                 sandbox_arguments,
@@ -1085,7 +1111,7 @@ class ToolManager(ModuleBase):
 
         return (
             _safe_call,
-            invocation.validated_arguments,
+            copy.deepcopy(invocation.validated_arguments),
             prepared.access,
             ToolExecutionDisposition.EXECUTED,
         )
@@ -1157,47 +1183,69 @@ class ToolManager(ModuleBase):
             raise min(errors, key=lambda item: item[0])[1]
         return lazyllm.package(ordered_results)
 
+    def prepare_tool_calls(self, tools, allowed_tool_names=None, *, require_host_file_access=False):
+        if require_host_file_access:
+            exposed = self._tool_call if allowed_tool_names is None else allowed_tool_names
+            undeclared = sorted(name for name in exposed if name in self._tool_call
+                                and self._tool_call[name].runtime_metadata.host_file_access
+                                is HostFileAccess.UNDECLARED)
+            if undeclared:
+                raise ValueError(f'Tools have undeclared host file access: {undeclared}')
+        return PreparedToolBatch(self, tuple(self._prepare_tool_invocations(tools, allowed_tool_names)))
+
+    def execute_prepared(self, prepared, *, selected_indices=None):
+        return self._execute_prepared_batch(prepared, selected_indices, include_skipped=True)
+
+    def _execute_prepared_batch(self, prepared, selected_indices, *, include_skipped):
+        if not isinstance(prepared, PreparedToolBatch) or prepared._owner is not self:
+            raise ValueError('prepared batch must originate from this ToolManager')
+        started = time.monotonic()
+        invocations = prepared._invocations
+        indices = tuple(range(len(invocations)) if selected_indices is None else selected_indices)
+        if any(type(index) is not int or index < 0 or index >= len(invocations) for index in indices):
+            raise IndexError('selected prepared-call index is out of range')
+        if len(set(indices)) != len(indices):
+            raise ValueError('selected prepared-call indices must be unique')
+        selected = [invocations[index] for index in sorted(indices)]
+        records = []
+        if selected:
+            inputs = [self._build_prepared_invocation(item) for item in selected]
+            callables, arguments, accesses, dispositions = map(list, zip(*inputs))
+            results = self._execute_tool_calls(len(selected), callables, arguments, accesses)
+            records = [ToolExecutionRecord(copy.deepcopy(item.prepared), result, disposition)
+                       for item, result, disposition in zip(selected, results, dispositions)]
+        if include_skipped:
+            selected_set = set(indices)
+            for item in invocations:
+                if item.prepared.index in selected_set:
+                    continue
+                failed = not item.prepared.ready
+                records.append(ToolExecutionRecord(
+                    copy.deepcopy(item.prepared),
+                    copy.deepcopy(item.failure) if failed else tool_failure('Tool authorization rejected.'),
+                    ToolExecutionDisposition.PREPARATION_FAILED if failed else ToolExecutionDisposition.SKIPPED,
+                    '' if failed else 'authorization_rejected',
+                ))
+            records.sort(key=lambda record: record.index)
+        return ToolExecutionBatch(
+            results=lazyllm.package([record.result for record in records]) if records else [],
+            records=tuple(records),
+            duration_ms=round(max(0.0, (time.monotonic() - started) * 1000.0)),
+        )
+
     def execute_with_records(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]],
                              verbose: bool = False,
                              allowed_tool_names: Optional[Set[str]] = None,
                              *, dispatch_selector: Optional[Callable] = None):
-        '''Prepare and execute tool calls once, returning results with execution records.'''
         del verbose
         started = time.monotonic()
-
-        def _batch(results, records=()):
-            return ToolExecutionBatch(
-                results=results,
-                records=records,
-                duration_ms=round(max(0.0, (time.monotonic() - started) * 1000.0)),
-            )
-
-        invocations = self._prepare_tool_invocations(tools, allowed_tool_names)
-        if not invocations:
-            return _batch([])
-        prepared = tuple(invocation.prepared for invocation in invocations)
-        selected_indices = tuple(
-            dispatch_selector(prepared)
-            if dispatch_selector is not None else range(len(invocations))
-        )
-        if any(type(index) is not int or index < 0 or index >= len(invocations)
-               for index in selected_indices):
-            raise IndexError('selected prepared-call index is out of range')
-        if len(set(selected_indices)) != len(selected_indices):
-            raise ValueError('selected prepared-call indices must be unique')
-        selected = [invocations[index] for index in sorted(selected_indices)]
-        if not selected:
-            return _batch([])
-        execution_inputs = [self._build_prepared_invocation(item) for item in selected]
-        callables, call_arguments, accesses, dispositions = map(list, zip(*execution_inputs))
-        results = self._execute_tool_calls(
-            len(selected), callables, call_arguments, accesses,
-        )
-        records = tuple(
-            ToolExecutionRecord(item.prepared, result, disposition)
-            for item, result, disposition in zip(selected, results, dispositions)
-        )
-        return _batch(results, records)
+        tools = self.normalize_tool_calls([tools] if isinstance(tools, dict) or tools is None else list(tools))
+        prepared = self.prepare_tool_calls(tools, allowed_tool_names)
+        # Keep the legacy selector's mutable inspection copies and selected-only results.
+        snapshots = tuple(copy.deepcopy(item.prepared) for item in prepared._invocations)
+        indices = dispatch_selector(snapshots) if dispatch_selector is not None and len(prepared) else None
+        batch = self._execute_prepared_batch(prepared, indices, include_skipped=False)
+        return replace(batch, duration_ms=round(max(0.0, (time.monotonic() - started) * 1000.0)))
 
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False,
                 allowed_tool_names: Optional[Set[str]] = None):
