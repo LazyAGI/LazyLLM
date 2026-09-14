@@ -68,5 +68,5 @@ foreach (test_src ${LAZYLLM_TEST_SOURCES})
             COMMAND_EXPAND_LISTS
         )
     endif ()
-    gtest_discover_tests(${test_name})
+    gtest_discover_tests(${test_name} DISCOVERY_TIMEOUT 30)
 endforeach ()

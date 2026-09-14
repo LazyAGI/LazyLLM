@@ -326,7 +326,11 @@ class FunctionCall(ModuleBase):
             workspace=workspace,
             remaining_rounds=remaining_rounds,
         )
-        locals['chat_history'][self._llm._module_id] = compacted_prior
+        compacted_current.extend(self._consume_model_context())
+        if compacted_prior:
+            locals['chat_history'][self._llm._module_id] = compacted_prior
+        else:
+            locals['chat_history'].pop(self._llm._module_id, None)
         self._notify_history_ready(workspace, current_round, compacted_prior + compacted_current)
         return {'input': compacted_current}
 
@@ -364,7 +368,10 @@ class FunctionCall(ModuleBase):
             workspace=workspace,
             remaining_rounds=remaining_rounds,
         )
-        locals['chat_history'][self._llm._module_id] = compacted_prior
+        if compacted_prior:
+            locals['chat_history'][self._llm._module_id] = compacted_prior
+        else:
+            locals['chat_history'].pop(self._llm._module_id, None)
         self._notify_history_ready(workspace, current_round, compacted_prior)
         return input
 
@@ -466,7 +473,7 @@ class FunctionCall(ModuleBase):
             # the next call (e.g. user says "continue") does not inherit a corrupted history
             # that may contain truncated tool_calls with invalid JSON arguments.
             locals['_lazyllm_agent'].pop('workspace', None)
-            locals['chat_history'][self._llm._module_id] = []
+            locals['chat_history'].pop(self._llm._module_id, None)
             raise
 
         # If the model decides not to call any tools, the result is a string. For debugging and subsequent tasks,
@@ -477,7 +484,7 @@ class FunctionCall(ModuleBase):
             locals['_lazyllm_agent']['completed'] = workspace.pop(
                 'tool_call_trace', locals['_lazyllm_agent'].get('completed', []))
             locals['_lazyllm_agent']['history'] = workspace.pop('history', [])
-            locals['chat_history'][self._llm._module_id] = []
+            locals['chat_history'].pop(self._llm._module_id, None)
         return result
 
 @deprecated('ReactAgent')

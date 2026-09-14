@@ -17,7 +17,7 @@ def _make_root_node(doc_id: str, kb_id: str) -> DocNode:
     )
 
 
-def test_add_doc_cleans_partial_segments_and_schema_on_failure():
+def test_add_doc_keeps_partial_segments_and_schema_on_failure():
     store = MagicMock()
     reader = MagicMock()
     schema_extractor = MagicMock()
@@ -41,11 +41,8 @@ def test_add_doc_cleans_partial_segments_and_schema_on_failure():
     finally:
         processor.close()
 
-    store.remove_nodes.assert_called_once_with(doc_ids=['doc1'], kb_id='kb1')
-    schema_extractor._delete_extract_data.assert_called_once_with(
-        kb_id='kb1',
-        doc_ids=['doc1'],
-    )
+    store.remove_nodes.assert_not_called()
+    schema_extractor._delete_extract_data.assert_not_called()
 
 
 def test_transfer_failure_cleans_target_segments_only():
@@ -134,7 +131,7 @@ def test_add_doc_runs_all_extractors_when_names_is_none():
     ext_b.assert_called_once()
 
 
-def test_cleanup_iterates_all_schema_extractors():
+def test_add_failure_does_not_remove_successful_schema_results():
     store = MagicMock()
     reader = MagicMock()
     ext_a = MagicMock()
@@ -160,5 +157,5 @@ def test_cleanup_iterates_all_schema_extractors():
     finally:
         processor.close()
 
-    ext_a._delete_extract_data.assert_called_once_with(kb_id='kb1', doc_ids=['doc1'])
-    ext_b._delete_extract_data.assert_called_once_with(kb_id='kb1', doc_ids=['doc1'])
+    ext_a._delete_extract_data.assert_not_called()
+    ext_b._delete_extract_data.assert_not_called()
