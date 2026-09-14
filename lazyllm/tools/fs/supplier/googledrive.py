@@ -165,7 +165,7 @@ class GoogleDriveFS(LazyLLMFSBase):
         file_id = parts[-1]
         url = f'{self._base_url}/files/{file_id}'
         params = {
-            'fields': 'id,name,mimeType,size,modifiedTime,createdTime',
+            'fields': 'id,name,mimeType,size,modifiedTime,createdTime,webViewLink',
             'supportsAllDrives': 'true',
         }
         data = self._get(url, params=params)
@@ -231,6 +231,14 @@ class GoogleDriveFS(LazyLLMFSBase):
 
     def read(self, path: str) -> str:
         return super().read(path)
+
+    def read_bytes(self, path: str) -> bytes:
+        metadata = self.info(path)
+        mime_type = metadata.get('mime_type') or ''
+        if mime_type.startswith('application/vnd.google-apps.'):
+            # Workspace metadata has no exported byte size; buffered reads would return empty content.
+            return self._export_document(metadata['name'], mime_type)
+        return super().read_bytes(path)
 
     def read_file(self, path: str) -> str:
         return super().read_file(path)
@@ -313,21 +321,22 @@ class GoogleDriveFS(LazyLLMFSBase):
             )
             mime_type = metadata.get('mimeType') or ''
             self._mime_type_cache[file_id] = mime_type
-        if mime_type in _GOOGLE_WORKSPACE_EXPORT_TYPES:
-            resp = self._request(
-                'GET',
-                f'{self._base_url}/files/{file_id}/export',
-                params={'mimeType': _GOOGLE_WORKSPACE_EXPORT_TYPES[mime_type]},
-            )
-            return resp.content[start:end]
         if mime_type.startswith('application/vnd.google-apps.'):
-            raise NotImplementedError(f'GoogleDriveFS cannot export {mime_type} as text')
+            return self._export_document(file_id, mime_type)[start:end]
         url = f'{self._base_url}/files/{file_id}'
         headers = {'Range': f'bytes={start}-{end - 1}'}
         resp = self._request('GET', url,
                              params={'alt': 'media', 'supportsAllDrives': 'true'},
                              headers=headers)
         return resp.content
+
+    def _export_document(self, file_id: str, mime_type: str) -> bytes:
+        if mime_type not in _GOOGLE_WORKSPACE_EXPORT_TYPES:
+            raise NotImplementedError(f'GoogleDriveFS cannot export {mime_type} as text')
+        return self._request(
+            'GET', f'{self._base_url}/files/{file_id}/export',
+            params={'mimeType': _GOOGLE_WORKSPACE_EXPORT_TYPES[mime_type]},
+        ).content
 
     def _upload_data(self, path: str, data: bytes) -> None:
         parts = self._parse_path(path)

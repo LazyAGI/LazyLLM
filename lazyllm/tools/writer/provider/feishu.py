@@ -87,6 +87,7 @@ class FeishuWriterProvider(WriterProviderBase):
         resolved_target.doc_id = external_document_id
         resolved_target.uri = locator
         resolved_target.adapter = protocol
+        resolved_target.title = document.title or target.title
         return {
             'representation': 'ir',
             'source_document': document,

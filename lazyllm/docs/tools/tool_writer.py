@@ -399,6 +399,26 @@ Indicate that a Markdown selection cannot be located uniquely and safely.
 
 
 _writer_provider_module = importlib.import_module('lazyllm.tools.writer.provider')
+
+utils.add_chinese_doc('GoogleDriveWriterProvider', '''
+只读 Google Drive 文档 provider，复用 GoogleDriveFS 动态授权。
+支持 googledrive:/文件ID、Drive 文件链接和 Google Docs/Sheets 链接。
+resolve 规范化目标；load_document 返回 representation、source_document、target_document、provider 和 resource_warnings。
+正文沿用 Writer Markdown 契约：Markdown 文件原样返回，纯文本和 CSV 使用安全代码围栏保留字面内容。
+target_document.meta 包含 browser_url、mime_type、content_format 和 modified_time。
+Google Docs 文本导出不保留全部格式/媒体；Sheets CSV 仅覆盖一个工作表，并返回告警。
+支持文本类文件和 JSON；PDF、Word、Slides、目录等当前明确拒绝。仅声明 load 能力，不支持写入。
+''', module=_writer_provider_module)
+
+utils.add_english_doc('GoogleDriveWriterProvider', '''
+Read-only Google Drive provider using GoogleDriveFS dynamic credentials.
+Accepts googledrive:/FILE_ID, Drive file links, and Google Docs/Sheets links.
+resolve normalizes the target; load_document returns the existing Writer Markdown representation and resolved metadata.
+Markdown files remain unchanged; text and CSV are fenced to preserve literal content.
+Target metadata includes browser_url, mime_type, content_format and modified_time.
+Docs text export loses formatting/media; Sheets CSV covers one worksheet, with explicit warnings.
+Text files and JSON are supported; PDF, Word, Slides and folders are rejected. Only load is enabled.
+''', module=_writer_provider_module)
 utils.add_chinese_doc('WriterProviderBase.convert_document', '''
 将 WriterDocument 或 Markdown 转换为指定格式，不执行外部 IO。
 output_format 默认为 native，保留当前 Provider 的写回格式；markdown、latex、text

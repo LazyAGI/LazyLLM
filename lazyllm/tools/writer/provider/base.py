@@ -295,7 +295,6 @@ class WriterProviderBase(ABC):
             content, target=target, media_assets=media_assets,
         )
 
-    @abstractmethod
     def write_document(
         self,
         document: WriterProviderDocument,
@@ -305,7 +304,8 @@ class WriterProviderBase(ABC):
         mode: WriterProviderWriteMode = 'replace',
     ) -> dict:
         '''Persist previously converted provider content.'''
-        raise NotImplementedError
+        raise NotImplementedError(
+            f'{self.provider or type(self).__name__} does not support write_document().')
 
     def prepare_markdown_for_editor(
         self,

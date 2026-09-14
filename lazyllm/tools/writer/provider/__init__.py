@@ -11,6 +11,7 @@ from .base import (
 )
 from .feishu import FeishuWriterProvider
 from .github import GitHubWriterProvider
+from .googledrive import GoogleDriveWriterProvider
 from .notion import NotionWriterProvider
 from .wechat import WeChatWriterProvider
 from .obsidian import ObsidianWriterProvider
@@ -25,6 +26,7 @@ from .registry import (
 
 register_writer_provider(FeishuWriterProvider)
 register_writer_provider(GitHubWriterProvider)
+register_writer_provider(GoogleDriveWriterProvider)
 register_writer_provider(NotionWriterProvider)
 register_writer_provider(WeChatWriterProvider)
 register_writer_provider(ObsidianWriterProvider)
@@ -33,6 +35,7 @@ register_writer_provider(ObsidianWriterProvider)
 __all__ = [
     'FeishuWriterProvider',
     'GitHubWriterProvider',
+    'GoogleDriveWriterProvider',
     'NotionWriterProvider',
     'WeChatWriterProvider',
     'ObsidianWriterProvider',
