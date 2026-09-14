@@ -1,3 +1,4 @@
+from lazyllm.tools.agent.toolsManager import fc_register
 from typing import Optional, Dict, Any, List
 
 from lazyllm.common import QueryParamStrategy
@@ -34,6 +35,7 @@ class GoogleSearch(SearchBase):
         )
         self._search_engine_id = search_engine_id
 
+    @fc_register(host_file_access='NONE')
     def search(self, query: str,
                date_restrict: str = 'm1',
                search_engine_id: Optional[str] = None) -> List[Dict[str, Any]]:

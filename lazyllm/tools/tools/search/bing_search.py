@@ -1,3 +1,4 @@
+from lazyllm.tools.agent.toolsManager import fc_register
 from typing import List, Optional
 
 from lazyllm.common import ApiKeyHeaderStrategy
@@ -18,6 +19,7 @@ class BingSearch(SearchBase):
         self._url = endpoint
         self._timeout = timeout
 
+    @fc_register(host_file_access='NONE')
     def search(self, query: str, count: int = 10) -> List[dict]:
         params = {'q': query, 'count': min(count, 50)}
         resp = self._request('GET', self._url, params=params, timeout=self._timeout)

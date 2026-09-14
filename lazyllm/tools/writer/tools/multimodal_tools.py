@@ -14,6 +14,7 @@ import requests
 from pydantic import BaseModel, Field
 
 from lazyllm import config
+from lazyllm.tools.agent.tool_runtime import HostFileResolution
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.thirdparty import PIL, mistune
 
@@ -266,12 +267,14 @@ class WriterMultimodalTools(WriterToolBase):
             )
         if parsed.scheme not in {'', 'file'}:
             raise ValueError('image inputs must use a local file path or an HTTP(S) URL.')
-        source = Path(unquote(parsed.path) if parsed.scheme == 'file' else uri).expanduser().resolve()
+        source = Path(unquote(parsed.path) if parsed.scheme == 'file' else uri).expanduser().absolute()
         if not source.is_file():
             raise FileNotFoundError(f'image file does not exist: {source}')
         if not 0 < source.stat().st_size <= _MAX_IMAGE_BYTES:
             raise ValueError('image file must be between 1 byte and 20 MB.')
-        return self._materialize_image_bytes(source.read_bytes(), resource, suffix_hint=source.suffix)
+        with HostFileResolution.open_read(str(source)) as stream:
+            data = stream.read(_MAX_IMAGE_BYTES + 1)
+        return self._materialize_image_bytes(data, resource, suffix_hint=source.suffix)
 
     def _materialize_image_bytes(
         self,
@@ -287,8 +290,13 @@ class WriterMultimodalTools(WriterToolBase):
         digest = hashlib.sha256(data).hexdigest()
         suffix = self._image_suffix(suffix_hint, image_format)
         destination = self._assets_dir() / f'{digest}{suffix}'
-        if not destination.exists():
-            destination.write_bytes(data)
+        try:
+            with HostFileResolution.open_write(str(destination), 'x') as stream:
+                stream.write(data)
+        except FileExistsError:
+            with HostFileResolution.open_read(str(destination)) as stream:
+                if stream.read(_MAX_IMAGE_BYTES + 1) != data:
+                    raise ValueError('Existing media asset does not match its content digest.')
 
         caption = str(resource.meta.get('caption') or '').strip() or None
         summary = str(resource.summary or '').strip()
@@ -551,8 +559,8 @@ class WriterMultimodalTools(WriterToolBase):
     def _assets_dir(self) -> Path:
         if not self.artifact_store:
             raise ValueError('artifact_store is not set')
-        path = Path(self.artifact_store).expanduser().resolve() / 'assets'
-        path.mkdir(parents=True, exist_ok=True)
+        path = Path(self.artifact_store).expanduser().absolute() / 'assets'
+        HostFileResolution.makedirs(str(path), exist_ok=True)
         return path
 
     @staticmethod
@@ -570,7 +578,8 @@ class WriterMultimodalTools(WriterToolBase):
 
     @staticmethod
     def _inspect_image(path: Path) -> tuple[str, int, int]:
-        return WriterMultimodalTools._inspect_image_bytes(path.read_bytes())
+        with HostFileResolution.open_read(str(path)) as stream:
+            return WriterMultimodalTools._inspect_image_bytes(stream.read(_MAX_IMAGE_BYTES + 1))
 
     @staticmethod
     def _inspect_image_bytes(data: bytes) -> tuple[str, int, int]:

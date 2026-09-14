@@ -4,12 +4,14 @@ import urllib.request
 from typing import Optional
 
 from .toolsManager import register
-from .file_tool import _check_root, _resolve_path
+from .file_tool import _check_root, _resolve_path, _host_files
 from .toolError import ToolExecutionError
+from .tool_runtime import HostFileResolution
 
 
 @register('builtin_tools', execute_in_sandbox=False)
 @register('tool', execute_in_sandbox=False)
+@register(host_file_access='DECLARED', host_file_resolver=_host_files(('dst', 'write')))
 def download_file(url: str, dst: str, timeout: int = 30, root: Optional[str] = None,
                   allow_unsafe: bool = False) -> dict:
     '''Download a file from a URL to a local path.
@@ -37,9 +39,9 @@ def download_file(url: str, dst: str, timeout: int = 30, root: Optional[str] = N
 
     parent = os.path.dirname(dst_abs)
     if parent:
-        os.makedirs(parent, exist_ok=True)
+        HostFileResolution.makedirs(parent, exist_ok=True)
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp, open(dst_abs, 'wb') as f:
+        with urllib.request.urlopen(url, timeout=timeout) as resp, HostFileResolution.open_write(dst_abs) as f:
             data = resp.read()
             f.write(data)
         return {'status': 'ok', 'path': dst_abs, 'bytes': len(data)}

@@ -1,5 +1,6 @@
 import ast
 import copy
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 import json as std_json
 import json5 as json
@@ -17,7 +18,7 @@ import time
 import uuid
 from pydantic import create_model, BaseModel, ConfigDict, ValidationError
 from lazyllm import LOG, locals as lazyllm_locals
-from .toolError import exception_failure, tool_failure
+from .toolError import ToolExecutionError, exception_failure, tool_failure
 from .tool_runtime import (
     HostFileAccess,
     HostFileResolution,
@@ -28,6 +29,7 @@ from .tool_runtime import (
     ToolExecutionDisposition,
     ToolExecutionRecord,
     ToolRuntimeMetadata,
+    _HOST_WORKING_DIRECTORY,
     _accesses_conflict,
     _get_tool_runtime_metadata,
     _set_tool_runtime_metadata,
@@ -587,6 +589,7 @@ class ToolGroup(ToolContainer):
         group_name = self._name
         child_names = self._leaf_names
 
+        @fc_register(host_file_access='NONE')
         def _gateway_apply() -> str:
             workspace = lazyllm_locals['_lazyllm_agent'].get('workspace', {})
             active = workspace.setdefault('_active_groups', [])
@@ -889,6 +892,8 @@ class ToolManager(ModuleBase):
                 summaries.append(f'{path_text}: {item.get("msg") or "Invalid value"}')
             message = 'Invalid arguments: ' + '; '.join(summaries)
             return None, tool_failure(message)
+        except (TypeError, ValueError):
+            return None, tool_failure('Invalid tool arguments.')
 
     def _format_tools(self):
         if isinstance(self._tools, List):
@@ -1010,16 +1015,6 @@ class ToolManager(ModuleBase):
             return None, arguments, None, validation_failure
         return tool, arguments, validated_arguments, None
 
-    @staticmethod
-    def _call_tool(tool, arguments, exposed_name):
-        try:
-            value = tool(_ValidatedToolInput(arguments))
-            return {'ok': True, 'value': value}
-        except Exception as error:
-            lazyllm.LOG.warning(
-                f'[ToolCall] tool={exposed_name!r} raised: {type(error).__name__}: {error}')
-            return exception_failure(exposed_name, error)
-
     def _prepare_tool_invocations(self, tools, allowed_tool_names=None):
         tool_calls = self.normalize_tool_calls(
             copy.deepcopy([tools] if isinstance(tools, dict) or tools is None else list(tools))
@@ -1087,7 +1082,7 @@ class ToolManager(ModuleBase):
             ))
         return invocations
 
-    def _build_prepared_invocation(self, invocation: _PreparedToolInvocation):
+    def _build_prepared_invocation(self, invocation: _PreparedToolInvocation, execution_context=None):
         prepared = invocation.prepared
         if not prepared.ready:
             return (
@@ -1097,24 +1092,33 @@ class ToolManager(ModuleBase):
                 ToolExecutionDisposition.PREPARATION_FAILED,
             )
         tool = invocation.tool
-        if self._sandbox and tool.execute_in_sandbox:
+        if self._sandbox is not None and tool.execute_in_sandbox:
             sandbox_arguments = self._build_sandbox_args(tool, copy.deepcopy(invocation.validated_arguments))
-            return (
-                self._sandbox,
-                sandbox_arguments,
-                prepared.access,
-                ToolExecutionDisposition.EXECUTED,
-            )
+            if execution_context is None:
+                return (self._sandbox, sandbox_arguments, prepared.access, ToolExecutionDisposition.EXECUTED)
+            callable_, arguments = self._sandbox, sandbox_arguments
+        else:
+            callable_ = tool
+            arguments = copy.deepcopy(invocation.validated_arguments)
 
-        def _safe_call(args):
-            return self._call_tool(tool, args, prepared.tool_name)
+        def _safe_call(args=None, **sandbox_kwargs):
+            if sandbox_kwargs:
+                args = kwargs(**sandbox_kwargs)
+            try:
+                context = execution_context(copy.deepcopy(prepared)) if execution_context is not None else nullcontext()
+                with context:
+                    if callable_ is self._sandbox and self._sandbox is not None:
+                        result = self._invoke_tool_callable(callable_, args)
+                        if isinstance(result, dict) and result.get('ok') is False:
+                            raise ToolExecutionError(str(result.get('value') or 'sandbox tool failed'))
+                        return result
+                    return {'ok': True, 'value': tool(_ValidatedToolInput(args))}
+            except Exception as error:
+                lazyllm.LOG.warning(
+                    f'[ToolCall] tool={prepared.tool_name!r} raised: {type(error).__name__}: {error}')
+                return exception_failure(prepared.tool_name, error)
 
-        return (
-            _safe_call,
-            copy.deepcopy(invocation.validated_arguments),
-            prepared.access,
-            ToolExecutionDisposition.EXECUTED,
-        )
+        return (_safe_call, arguments, prepared.access, ToolExecutionDisposition.EXECUTED)
 
     @staticmethod
     def _invoke_tool_callable(callable_, arguments):
@@ -1183,7 +1187,8 @@ class ToolManager(ModuleBase):
             raise min(errors, key=lambda item: item[0])[1]
         return lazyllm.package(ordered_results)
 
-    def prepare_tool_calls(self, tools, allowed_tool_names=None, *, require_host_file_access=False):
+    def prepare_tool_calls(self, tools, allowed_tool_names=None, *,
+                           require_host_file_access=False, working_directory=None):
         if require_host_file_access:
             exposed = self._tool_call if allowed_tool_names is None else allowed_tool_names
             undeclared = sorted(name for name in exposed if name in self._tool_call
@@ -1191,12 +1196,19 @@ class ToolManager(ModuleBase):
                                 is HostFileAccess.UNDECLARED)
             if undeclared:
                 raise ValueError(f'Tools have undeclared host file access: {undeclared}')
-        return PreparedToolBatch(self, tuple(self._prepare_tool_invocations(tools, allowed_tool_names)))
+        if working_directory is not None and not os.path.isabs(working_directory):
+            raise ValueError('working_directory must be absolute')
+        token = _HOST_WORKING_DIRECTORY.set(working_directory)
+        try:
+            return PreparedToolBatch(self, tuple(self._prepare_tool_invocations(tools, allowed_tool_names)))
+        finally:
+            _HOST_WORKING_DIRECTORY.reset(token)
 
-    def execute_prepared(self, prepared, *, selected_indices=None):
-        return self._execute_prepared_batch(prepared, selected_indices, include_skipped=True)
+    def execute_prepared(self, prepared, *, selected_indices=None, execution_context=None):
+        return self._execute_prepared_batch(
+            prepared, selected_indices, include_skipped=True, execution_context=execution_context)
 
-    def _execute_prepared_batch(self, prepared, selected_indices, *, include_skipped):
+    def _execute_prepared_batch(self, prepared, selected_indices, *, include_skipped, execution_context=None):
         if not isinstance(prepared, PreparedToolBatch) or prepared._owner is not self:
             raise ValueError('prepared batch must originate from this ToolManager')
         started = time.monotonic()
@@ -1209,7 +1221,7 @@ class ToolManager(ModuleBase):
         selected = [invocations[index] for index in sorted(indices)]
         records = []
         if selected:
-            inputs = [self._build_prepared_invocation(item) for item in selected]
+            inputs = [self._build_prepared_invocation(item, execution_context) for item in selected]
             callables, arguments, accesses, dispositions = map(list, zip(*inputs))
             results = self._execute_tool_calls(len(selected), callables, arguments, accesses)
             records = [ToolExecutionRecord(copy.deepcopy(item.prepared), result, disposition)

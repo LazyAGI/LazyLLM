@@ -1,3 +1,4 @@
+from lazyllm.tools.agent.toolsManager import fc_register
 import re
 from html import unescape
 from typing import List, Dict, Any, Optional
@@ -124,8 +125,10 @@ class SearchBase(ModuleBase, CredentialMixin):
         except Exception:
             return ''
 
+    @fc_register(host_file_access='NONE')
     def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
         return _make_content_result(item, self._fetch_content_text(item))
 
+    @fc_register(host_file_access='NONE')
     def get_contents(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return [self.get_content(it) for it in items]

@@ -1,3 +1,4 @@
+from lazyllm.tools.agent.toolsManager import fc_register
 import re
 from typing import Any, Dict, List
 
@@ -15,6 +16,7 @@ class ArxivSearch(SearchBase):
         self._url = base_url
         self._timeout = timeout
 
+    @fc_register(host_file_access='NONE')
     def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
         url = item.get('url') or ''
         m = re.search(r'/abs/([\d.]+(?:v\d+)?)', url) if url else None
@@ -42,6 +44,7 @@ class ArxivSearch(SearchBase):
                 return _make_content_result(item, summary_el.text.strip().replace('\n', ' '))
         return super().get_content(item)
 
+    @fc_register(host_file_access='NONE')
     def search(self, query: str, max_results: int = 10,
                sort_by: str = 'relevance') -> List[dict]:
         params = {

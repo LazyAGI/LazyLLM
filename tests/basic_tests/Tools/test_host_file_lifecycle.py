@@ -355,3 +355,77 @@ def test_preparation_failure_results_cannot_poison_the_batch():
     second = manager.execute_prepared(prepared)
     assert not second.results[0]['ok']
     assert second.records[0].disposition is ToolExecutionDisposition.PREPARATION_FAILED
+
+
+def test_execution_context_wraps_actual_call_and_keeps_original_binding():
+    from contextlib import contextmanager
+    from contextvars import ContextVar
+
+    current = ContextVar('test_current_call', default=None)
+    seen = []
+
+    @fc_register(host_file_access='NONE')
+    def tool(value: str):
+        '''Return the executing call context.
+
+        Args:
+            value: Input value.
+        '''
+        return current.get(), value
+
+    @contextmanager
+    def scope(prepared):
+        token = current.set(prepared.index)
+        seen.append(('enter', prepared.index))
+        try:
+            yield
+        finally:
+            seen.append(('exit', prepared.index))
+            current.reset(token)
+
+    manager = ToolManager([tool])
+    apply = manager.all_tools[0].apply
+    batch = manager.prepare_tool_calls([call(value='a'), call(value='b')])
+    results = manager.execute_prepared(batch, execution_context=scope)
+    assert [item['value'] for item in results.results] == [(0, 'a'), (1, 'b')]
+    assert manager.all_tools[0].apply.__func__ is apply.__func__
+    assert manager.all_tools[0].apply.__self__ is apply.__self__
+    assert current.get() is None
+    assert sorted(seen) == [('enter', 0), ('enter', 1), ('exit', 0), ('exit', 1)]
+
+
+def test_context_error_prevents_invocation():
+    from contextlib import contextmanager
+
+    effects = []
+
+    @fc_register(host_file_access='NONE')
+    def tool(value: str):
+        '''Record a call.
+
+        Args:
+            value: Input value.
+        '''
+        effects.append(value)
+
+    @contextmanager
+    def denied(prepared):
+        raise ValueError('denied')
+        yield  # pragma: no cover
+
+    manager = ToolManager([tool])
+    batch = manager.prepare_tool_calls(call(value='no'))
+    result = manager.execute_prepared(batch, execution_context=denied)
+    assert not effects and not result.results[0]['ok']
+
+
+def test_builtin_paths_use_request_working_directory(tmp_path):
+    from lazyllm.tools.agent.file_tool import read_file, write_file, delete_file
+    from lazyllm.tools.agent.shell_tool import shell_tool
+    from lazyllm.tools.agent.todo_tool import todo_write
+
+    manager = ToolManager([read_file, write_file, delete_file, shell_tool, todo_write])
+    batch = manager.prepare_tool_calls(
+        call('read_file', path='notes.txt'), require_host_file_access=True, working_directory=str(tmp_path))
+    assert batch[0].validated_arguments['path'] == str(tmp_path / 'notes.txt')
+    assert batch[0].host_files == (HostFileIntent(str(tmp_path / 'notes.txt'), 'read'),)
