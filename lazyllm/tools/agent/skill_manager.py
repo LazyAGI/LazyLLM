@@ -726,6 +726,10 @@ class SkillManager(ModuleBase):
         def get_skill(name: str, allow_large: bool = False) -> dict:
             '''Get the full usage for a skill (SKILL.md).
 
+            After a successful load the runtime pins the skill as AUTHORITATIVE
+            context. The tool result is a locator (name/path/hash), not a
+            compactable body. Follow the pinned skill, not a head/tail excerpt.
+
             Args:
                 name (str): Skill name.
                 allow_large (bool, optional): Allow loading large SKILL.md. Defaults to False.
@@ -736,6 +740,10 @@ class SkillManager(ModuleBase):
     def _build_read_reference_tool(self):
         def read_reference(name: str, rel_path: str, **kwargs) -> dict:
             '''Read a reference file within a skill directory.
+
+            The tool result is a file locator (name/path/hash). Read further
+            ranges from that path; do not expect the full body to stay in
+            compacted history.
 
             Args:
                 name (str): Skill name.
