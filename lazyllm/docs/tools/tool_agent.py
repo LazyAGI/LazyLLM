@@ -413,7 +413,7 @@ add_example('ToolManager.prepare_tool_calls', '''\
 >>> def resolve_read(arguments):
 ...     arguments['path'] = str(Path(arguments['path']).expanduser().resolve())
 ...     return HostFileResolution(arguments, (HostFileIntent(arguments['path'], 'read'),))
->>> @fc_register(host_file_access='DECLARED', host_file_resolver=resolve_read)
+>>> @fc_register(host_file=resolve_read)
 >>> def read_text(path: str):
 ...     """Read text. Args: path (str): File to read."""
 ...     return Path(path).read_text()

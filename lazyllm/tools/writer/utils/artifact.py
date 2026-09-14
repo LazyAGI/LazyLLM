@@ -1,4 +1,5 @@
 from __future__ import annotations
+from lazyllm.tools.agent import host_file_io
 import json
 import os
 from datetime import datetime
@@ -124,8 +125,8 @@ def save_artifact_json(
     created_by: str = '',
     extra_meta: Optional[Dict[str, Any]] = None,
 ) -> str:
-    HostFileResolution.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with HostFileResolution.open_write(path) as fh:
+    host_file_io.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with host_file_io.open_write(path) as fh:
         fh.write(serialize_artifact_json(
             obj,
             schema_name=schema_name,
@@ -143,7 +144,7 @@ def load_artifact_json(
     expected_schema_name: Optional[str] = None,
     validate_schema: bool = True,
 ) -> Any:
-    with HostFileResolution.open_read(path) as fh:
+    with host_file_io.open_read(path) as fh:
         content = fh.read().decode('utf-8')
     try:
         return deserialize_artifact_json(

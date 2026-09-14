@@ -37,10 +37,10 @@ def _detect_dangerous_command(cmd: str) -> Optional[str]:
     return None
 
 
-@register('builtin_tools', execute_in_sandbox=False, host_file_access='OPAQUE')
-@register('tool', execute_in_sandbox=False, host_file_access='OPAQUE')
+@register('builtin_tools', execute_in_sandbox=False, host_file='OPAQUE')
+@register('tool', execute_in_sandbox=False, host_file='OPAQUE')
 def shell_tool(cmd: str, cwd: Optional[str] = None, timeout: int = 30,
-               env: Optional[Dict[str, str]] = None, allow_unsafe: bool = False) -> dict:
+               env: Optional[Dict[str, str]] = None, **_legacy_options) -> dict:
     '''Run a shell command and return stdout/stderr/exit code.
 
     Args:
@@ -48,7 +48,6 @@ def shell_tool(cmd: str, cwd: Optional[str] = None, timeout: int = 30,
         cwd (str, optional): Working directory for the command.
         timeout (int, optional): Timeout in seconds. Defaults to 30.
         env (dict, optional): Environment variables to pass to the process.
-        allow_unsafe (bool, optional): Allow potentially dangerous commands. Defaults to False.
 
     Returns:
         dict: Execution result including stdout, stderr, exit_code, and cwd.
@@ -59,12 +58,6 @@ def shell_tool(cmd: str, cwd: Optional[str] = None, timeout: int = 30,
     if cwd is not None and not os.path.isdir(cwd):
         raise ToolExecutionError(f'cwd not found: {cwd}')
 
-    dangerous = _detect_dangerous_command(cmd)
-    if dangerous and not allow_unsafe:
-        raise ToolExecutionError.approval_required(
-            f'Command {cmd!r} in {cwd or os.getcwd()} contains potentially dangerous token '
-            f'{dangerous!r} and requires approval.'
-        )
 
     try:
         completed = subprocess.run(

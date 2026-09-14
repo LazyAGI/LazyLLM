@@ -22,7 +22,7 @@ class WikipediaSearch(SearchBase):
         self._timeout = timeout
         self._headers = {'User-Agent': self._UA}
 
-    @fc_register(host_file_access='NONE')
+    @fc_register(host_file='NONE')
     def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
         extra = item.get('extra') or {}
         pageid = extra.get('pageid')
@@ -47,7 +47,7 @@ class WikipediaSearch(SearchBase):
         content = (page.get('extract') or '').strip()
         return _make_content_result(item, content) if content else super().get_content(item)
 
-    @fc_register(host_file_access='NONE')
+    @fc_register(host_file='NONE')
     def search(self, query: str, limit: int = 10) -> List[dict]:
         params = {
             'action': 'query',

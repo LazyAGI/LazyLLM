@@ -172,7 +172,7 @@ class GoogleDriveFS(LazyLLMFSBase):
         data = self._get(url, params=params)
         return self._item_to_entry(data)
 
-    @fc_register(host_file_access='NONE')
+    @fc_register(host_file='NONE')
     def search(
         self,
         keywords: Union[str, List[str]],
@@ -198,7 +198,7 @@ class GoogleDriveFS(LazyLLMFSBase):
             )
         ]
 
-    @fc_register(host_file_access='NONE')
+    @fc_register(host_file='NONE')
     def find(
         self,
         pattern: str,
@@ -232,11 +232,11 @@ class GoogleDriveFS(LazyLLMFSBase):
                     break
         return matches
 
-    @fc_register(host_file_access='NONE')
+    @fc_register(host_file='NONE')
     def read(self, path: str) -> str:
         return super().read(path)
 
-    @fc_register(host_file_access='NONE')
+    @fc_register(host_file='NONE')
     def read_file(self, path: str) -> str:
         return super().read_file(path)
 

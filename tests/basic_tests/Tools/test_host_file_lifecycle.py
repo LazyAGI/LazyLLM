@@ -8,6 +8,7 @@ import pytest
 from pydantic import BaseModel, model_validator
 
 from lazyllm.tools import (
+    AuthorizationDecision,
     HostFileAccess,
     HostFileIntent,
     HostFileResolution,
@@ -50,7 +51,7 @@ def test_prepare_resolves_once_then_executes_original_arguments(tmp_path):
         args['path'] = str((tmp_path / args['path']).resolve())
         return HostFileResolution(args, (HostFileIntent(args['path'], 'write'),))
 
-    @fc_register(host_file_access='DECLARED', host_file_resolver=resolve, execute_in_sandbox=False)
+    @fc_register(host_file=resolve, execute_in_sandbox=False)
     def tool(path: str, count: int):
         '''Write a count.
 
@@ -74,7 +75,7 @@ def test_prepare_resolves_once_then_executes_original_arguments(tmp_path):
         prepared[0].validated_arguments['path'] = 'forged.txt'
     with pytest.raises(FrozenInstanceError):
         prepared[0].tool_name = 'forged'
-    batch = manager.execute_prepared(prepared)
+    batch = manager.execute_prepared(prepared, approved_indices=(0,))
     assert events == [('resolve', 2), ('execute', str(target))]
     assert target.read_text() == '2'
     assert batch.records[0].call_id == 'provider-id'
@@ -93,7 +94,7 @@ def test_host_resolver_failures_never_execute(failure, tmp_path):
             return args
         return HostFileResolution({'other': 1}, (HostFileIntent(str(tmp_path), 'read'),))
 
-    @fc_register(host_file_access='DECLARED', host_file_resolver=resolve)
+    @fc_register(host_file=resolve)
     def tool(value: str):
         '''Return a value.
 
@@ -114,7 +115,7 @@ def test_host_resolver_failures_never_execute(failure, tmp_path):
 def test_invalid_schema_never_reaches_host_resolver():
     resolved = []
 
-    @fc_register(host_file_access='DECLARED', host_file_resolver=lambda args: resolved.append(args))
+    @fc_register(host_file=lambda args: resolved.append(args))
     def tool(count: int):
         '''Return a count.
 
@@ -139,12 +140,12 @@ def test_strict_preparation_checks_all_exposed_tools():
     manager = ToolManager([tool])
     with pytest.raises(ValueError, match='tool'):
         manager.prepare_tool_calls([], require_host_file_access=True)
-    assert manager.execute_with_records(call(value='legacy')).results[0]['ok']
+    assert not manager.execute_with_records(call(value='legacy')).results[0]['ok']
     assert len(manager.prepare_tool_calls([], allowed_tool_names=set(), require_host_file_access=True)) == 0
 
 
 def test_nested_views_are_read_only_and_results_do_not_mutate_batch():
-    @fc_register(host_file_access='NONE')
+    @fc_register(host_file='NONE')
     def tool(data: dict):
         '''Mutate a private input.
 
@@ -167,7 +168,7 @@ def test_nested_views_are_read_only_and_results_do_not_mutate_batch():
 def test_admission_barrier_and_rejected_records_keep_original_order():
     effects = []
 
-    @fc_register(host_file_access='NONE')
+    @fc_register(host_file='NONE')
     def tool(value: str):
         '''Record a value.
 
@@ -178,27 +179,30 @@ def test_admission_barrier_and_rejected_records_keep_original_order():
         return value
 
     manager = ToolManager([tool])
-    prepared = manager.prepare_tool_calls([call(value=str(i)) for i in range(3)])
+    prepared = manager.prepare_tool_calls(
+        [call(value=str(i)) for i in range(3)],
+        authorization_policy=lambda _: AuthorizationDecision.ASK,
+    )
     assert not effects
-    batch = manager.execute_prepared(prepared, selected_indices=(2, 0))
+    batch = manager.execute_prepared(prepared, approved_indices=(2, 0))
     assert sorted(effects) == ['0', '2']
     assert [record.index for record in batch.records] == [0, 1, 2]
     assert batch.records[1].disposition is ToolExecutionDisposition.SKIPPED
-    assert batch.records[1].reason == 'authorization_rejected'
+    assert batch.records[1].reason == 'approval_required'
     assert not batch.results[1]['ok']
     assert [batch.results[i]['value'] for i in (0, 2)] == ['0', '2']
     effects.clear()
-    assert len(manager.execute_prepared(prepared, selected_indices=()).records) == 3
+    assert len(manager.execute_prepared(prepared).records) == 3
     assert not effects
     with pytest.raises(ValueError):
         ToolManager([tool]).execute_prepared(prepared)
     for invalid, error in [((0, 0), ValueError), ((3,), IndexError), ((True,), IndexError)]:
         with pytest.raises(error):
-            manager.execute_prepared(prepared, selected_indices=invalid)
+            manager.execute_prepared(prepared, approved_indices=invalid)
 
 
 def test_concurrent_batches_keep_separate_inputs():
-    @fc_register(host_file_access='NONE')
+    @fc_register(host_file='NONE')
     def tool(value: str):
         '''Return a value.
 
@@ -216,8 +220,7 @@ def test_concurrent_batches_keep_separate_inputs():
 
 def test_host_intents_share_scheduler_conflicts(tmp_path):
     metadata = ToolRuntimeMetadata(
-        host_file_access='DECLARED',
-        host_file_resolver=lambda args: HostFileResolution(args, ()),
+        host_file_access='DECLARED', host_file_resolver=lambda args: HostFileResolution(args, ()),
     )
     assert metadata.host_file_access is HostFileAccess.DECLARED
     intent = HostFileIntent(str(tmp_path / 'deleted.txt'), 'delete')
@@ -231,7 +234,7 @@ def test_execution_does_not_revalidate_or_reresolve(tmp_path):
     def resolve(args):
         return HostFileResolution(args, (HostFileIntent(str(tmp_path), 'read'),))
 
-    @fc_register(host_file_access='DECLARED', host_file_resolver=resolve)
+    @fc_register(host_file=resolve)
     def tool(value: str):
         '''Return a value.
 
@@ -257,7 +260,7 @@ def test_declared_file_access_drives_actual_scheduler(tmp_path):
     def resolve(args):
         return HostFileResolution(args, (HostFileIntent(str(tmp_path / 'file'), args['operation']),))
 
-    @fc_register(host_file_access='DECLARED', host_file_resolver=resolve)
+    @fc_register(host_file=resolve)
     def tool(operation: str):
         '''Record a scheduled access.
 
@@ -270,7 +273,7 @@ def test_declared_file_access_drives_actual_scheduler(tmp_path):
     manager = ToolManager([tool])
     prepared = manager.prepare_tool_calls([call(operation='write'), call(operation='read'), call(operation='delete')])
     assert manager._build_execution_segments([item.access for item in prepared]) == [[0], [1], [2]]
-    manager.execute_prepared(prepared)
+    manager.execute_prepared(prepared, approved_indices=(0, 2))
     assert events == ['write', 'read', 'delete']
 
 
@@ -301,7 +304,7 @@ def test_validation_cannot_change_a_resolver_approved_path(tmp_path):
     def resolve(args):
         return HostFileResolution(args, (HostFileIntent(args['request'].path, 'read'),))
 
-    @fc_register(host_file_access='DECLARED', host_file_resolver=resolve)
+    @fc_register(host_file=resolve)
     def tool(request: Request):
         '''Read a request path.
 
@@ -331,7 +334,7 @@ def test_resolved_arguments_do_not_reapply_method_input_adapter(tmp_path):
         __public_apis__ = ['read']
         __tool_input_adapters__ = {'read': adapt}
 
-        @fc_register(host_file_access='DECLARED', host_file_resolver=resolve)
+        @fc_register(host_file=resolve)
         def read(self, path: str):
             '''Return a path.
 
@@ -364,7 +367,7 @@ def test_execution_context_wraps_actual_call_and_keeps_original_binding():
     current = ContextVar('test_current_call', default=None)
     seen = []
 
-    @fc_register(host_file_access='NONE')
+    @fc_register(host_file='NONE')
     def tool(value: str):
         '''Return the executing call context.
 
@@ -399,7 +402,7 @@ def test_context_error_prevents_invocation():
 
     effects = []
 
-    @fc_register(host_file_access='NONE')
+    @fc_register(host_file='NONE')
     def tool(value: str):
         '''Record a call.
 
@@ -429,3 +432,115 @@ def test_builtin_paths_use_request_working_directory(tmp_path):
         call('read_file', path='notes.txt'), require_host_file_access=True, working_directory=str(tmp_path))
     assert batch[0].validated_arguments['path'] == str(tmp_path / 'notes.txt')
     assert batch[0].host_files == (HostFileIntent(str(tmp_path / 'notes.txt'), 'read'),)
+
+
+def test_single_host_file_registration_entry_derives_internal_capability(tmp_path):
+    from lazyllm.tools import HostFile
+
+    def resolve(arguments):
+        from lazyllm.tools.agent.host_file_io import resolve_host_path
+        path = resolve_host_path(arguments['path'])
+        arguments['path'] = path
+        return HostFileResolution(arguments, (HostFileIntent(path, 'read'),))
+
+    @fc_register(host_file=HostFile.NONE)
+    def none_tool(value: str):
+        '''Return a value.
+
+        Args:
+            value: Input value.
+        '''
+        return value
+
+    @fc_register(host_file=HostFile.OPAQUE)
+    def opaque_tool(value: str):
+        '''Return a value.
+
+        Args:
+            value: Input value.
+        '''
+        return value
+
+    @fc_register(host_file=resolve)
+    def declared_tool(path: str):
+        '''Return a path.
+
+        Args:
+            path: Input path.
+        '''
+        return path
+
+    manager = ToolManager([none_tool, opaque_tool, declared_tool])
+    metadata = {tool.name: tool.runtime_metadata for tool in manager.all_tools}
+    assert metadata['none_tool'].host_file_access is HostFileAccess.NONE
+    assert metadata['opaque_tool'].host_file_access is HostFileAccess.OPAQUE
+    assert metadata['declared_tool'].host_file_access is HostFileAccess.DECLARED
+    prepared = manager.prepare_tool_calls(call('declared_tool', path='a.txt'), working_directory=str(tmp_path))
+    assert prepared[0].host_files == (HostFileIntent(str(tmp_path / 'a.txt'), 'read'),)
+
+
+def test_default_authorization_policy_is_fail_closed_without_approval(tmp_path):
+    effects = []
+
+    def resolver(operation):
+        def resolve(arguments):
+            from lazyllm.tools.agent.host_file_io import resolve_host_path
+            arguments['path'] = resolve_host_path(arguments['path'])
+            return HostFileResolution(arguments, (HostFileIntent(arguments['path'], operation),))
+        return resolve
+
+    def make_tool(name, host_file):
+        @fc_register(host_file=host_file, execute_in_sandbox=False)
+        def tool(path: str):
+            '''Record a path.
+
+            Args:
+                path: Input path.
+            '''
+            effects.append((name, path))
+            return path
+        tool.__name__ = name
+        return tool
+
+    manager = ToolManager([
+        make_tool('read_tool', resolver('read')),
+        make_tool('write_tool', resolver('write')),
+        make_tool('opaque_tool', 'OPAQUE'),
+        make_tool('none_tool', 'NONE'),
+    ])
+    prepared = manager.prepare_tool_calls([
+        call('read_tool', path='read.txt'),
+        call('write_tool', path='write.txt'),
+        call('opaque_tool', path='opaque.txt'),
+        call('none_tool', path='none.txt'),
+    ], working_directory=str(tmp_path))
+    assert [item.authorization for item in prepared] == [
+        AuthorizationDecision.ALLOW,
+        AuthorizationDecision.ASK,
+        AuthorizationDecision.ASK,
+        AuthorizationDecision.ALLOW,
+    ]
+
+    result = manager.execute_prepared(prepared)
+    assert [record.reason for record in result.records] == ['', 'approval_required', 'approval_required', '']
+    assert [name for name, _ in effects] == ['read_tool', 'none_tool']
+
+    result = manager.execute_prepared(prepared, approved_indices=(1, 2))
+    assert all(item['ok'] for item in result.results)
+    assert sorted(name for name, _ in effects[-4:]) == sorted(['read_tool', 'write_tool', 'opaque_tool', 'none_tool'])
+
+
+def test_host_file_resolution_is_prepare_data_not_filesystem_facade():
+    for name in ('execution_scope', 'check_path', 'open_read', 'open_write', 'makedirs',
+                 'delete', 'rename', 'copy', 'walk', 'listdir'):
+        assert not hasattr(HostFileResolution, name)
+
+
+def test_model_visible_unsafe_flags_are_removed():
+    from lazyllm.tools.agent.download_tool import download_file
+    from lazyllm.tools.agent.file_tool import delete_file, move_file, write_file
+    from lazyllm.tools.agent.shell_tool import shell_tool
+
+    manager = ToolManager([download_file, write_file, delete_file, move_file, shell_tool])
+    descriptions = json.dumps(manager.tools_description)
+    assert 'allow_unsafe' not in descriptions

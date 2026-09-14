@@ -20,6 +20,9 @@ from pydantic import create_model, BaseModel, ConfigDict, ValidationError
 from lazyllm import LOG, locals as lazyllm_locals
 from .toolError import ToolExecutionError, exception_failure, tool_failure
 from .tool_runtime import (
+    AuthorizationDecision,
+    DefaultAuthorizationPolicy,
+    HostFile,
     HostFileAccess,
     HostFileResolution,
     PreparedToolBatch,
@@ -353,8 +356,7 @@ _RUNTIME_METADATA_FIELDS = {
     'write_keys',
     'exclusive',
     'polling',
-    'host_file_access',
-    'host_file_resolver',
+    'host_file',
 }
 
 
@@ -362,6 +364,16 @@ def _runtime_metadata_from_options(options):
     unknown = set(options) - _RUNTIME_METADATA_FIELDS
     assert not unknown, f'Only allowed parameters: {_RUNTIME_METADATA_FIELDS}, but got {unknown}'
     normalized = dict(options)
+    if 'host_file' in normalized:
+        declaration = normalized.pop('host_file')
+        if callable(declaration):
+            normalized['host_file_access'] = HostFileAccess.DECLARED
+            normalized['host_file_resolver'] = declaration
+        else:
+            declaration = HostFileAccess(declaration)
+            if declaration is HostFileAccess.DECLARED:
+                raise ValueError('DECLARED host file access must be expressed as a resolver callable')
+            normalized['host_file_access'] = declaration
     if 'output_files' in normalized:
         output_files = normalized['output_files']
         assert isinstance(output_files, list) and all(isinstance(item, str) for item in output_files), \
@@ -589,7 +601,7 @@ class ToolGroup(ToolContainer):
         group_name = self._name
         child_names = self._leaf_names
 
-        @fc_register(host_file_access='NONE')
+        @fc_register(host_file='NONE')
         def _gateway_apply() -> str:
             workspace = lazyllm_locals['_lazyllm_agent'].get('workspace', {})
             active = workspace.setdefault('_active_groups', [])
@@ -1188,7 +1200,11 @@ class ToolManager(ModuleBase):
         return lazyllm.package(ordered_results)
 
     def prepare_tool_calls(self, tools, allowed_tool_names=None, *,
-                           require_host_file_access=False, working_directory=None):
+                           require_host_file_access=False, working_directory=None,
+                           require_host_file=None,
+                           authorization_policy=None):
+        if require_host_file is not None:
+            require_host_file_access = require_host_file
         if require_host_file_access:
             exposed = self._tool_call if allowed_tool_names is None else allowed_tool_names
             undeclared = sorted(name for name in exposed if name in self._tool_call
@@ -1200,13 +1216,41 @@ class ToolManager(ModuleBase):
             raise ValueError('working_directory must be absolute')
         token = _HOST_WORKING_DIRECTORY.set(working_directory)
         try:
-            return PreparedToolBatch(self, tuple(self._prepare_tool_invocations(tools, allowed_tool_names)))
+            invocations = self._prepare_tool_invocations(tools, allowed_tool_names)
         finally:
             _HOST_WORKING_DIRECTORY.reset(token)
+        policy = authorization_policy or DefaultAuthorizationPolicy()
+        decided = []
+        for invocation in invocations:
+            snapshot = copy.deepcopy(invocation.prepared)
+            raw = policy.decide(snapshot) if hasattr(policy, 'decide') else policy(snapshot)
+            decision = AuthorizationDecision(raw)
+            if not invocation.prepared.ready:
+                decision = AuthorizationDecision.DENY
+            decided.append(replace(invocation, prepared=replace(invocation.prepared, authorization=decision)))
+        return PreparedToolBatch(self, tuple(decided))
 
-    def execute_prepared(self, prepared, *, selected_indices=None, execution_context=None):
+    def execute_prepared(self, prepared, *, approved_indices=(), selected_indices=None, execution_context=None):
+        if not isinstance(prepared, PreparedToolBatch) or prepared._owner is not self:
+            raise ValueError('prepared batch must originate from this ToolManager')
+        if selected_indices is not None:
+            if approved_indices:
+                raise ValueError('selected_indices and approved_indices are mutually exclusive')
+            selected = tuple(selected_indices)
+        else:
+            approved = tuple(approved_indices)
+            if any(type(index) is not int or index < 0 or index >= len(prepared) for index in approved):
+                raise IndexError('approved prepared-call index is out of range')
+            if len(set(approved)) != len(approved):
+                raise ValueError('approved prepared-call indices must be unique')
+            denied = [index for index in approved
+                      if prepared[index].authorization is not AuthorizationDecision.ASK]
+            if denied:
+                raise ValueError('only ASK prepared calls may be explicitly approved')
+            selected = tuple(item.index for item in prepared
+                             if item.authorization is AuthorizationDecision.ALLOW) + approved
         return self._execute_prepared_batch(
-            prepared, selected_indices, include_skipped=True, execution_context=execution_context)
+            prepared, selected, include_skipped=True, execution_context=execution_context)
 
     def _execute_prepared_batch(self, prepared, selected_indices, *, include_skipped, execution_context=None):
         if not isinstance(prepared, PreparedToolBatch) or prepared._owner is not self:
@@ -1232,11 +1276,13 @@ class ToolManager(ModuleBase):
                 if item.prepared.index in selected_set:
                     continue
                 failed = not item.prepared.ready
+                approval_required = (not failed and item.prepared.authorization is AuthorizationDecision.ASK)
                 records.append(ToolExecutionRecord(
                     copy.deepcopy(item.prepared),
-                    copy.deepcopy(item.failure) if failed else tool_failure('Tool authorization rejected.'),
+                    (copy.deepcopy(item.failure) if failed else tool_failure(
+                        'Tool approval required.' if approval_required else 'Tool authorization rejected.')),
                     ToolExecutionDisposition.PREPARATION_FAILED if failed else ToolExecutionDisposition.SKIPPED,
-                    '' if failed else 'authorization_rejected',
+                    '' if failed else ('approval_required' if approval_required else 'authorization_rejected'),
                 ))
             records.sort(key=lambda record: record.index)
         return ToolExecutionBatch(
@@ -1253,10 +1299,9 @@ class ToolManager(ModuleBase):
         started = time.monotonic()
         tools = self.normalize_tool_calls([tools] if isinstance(tools, dict) or tools is None else list(tools))
         prepared = self.prepare_tool_calls(tools, allowed_tool_names)
-        # Keep the legacy selector's mutable inspection copies and selected-only results.
         snapshots = tuple(copy.deepcopy(item.prepared) for item in prepared._invocations)
-        indices = dispatch_selector(snapshots) if dispatch_selector is not None and len(prepared) else None
-        batch = self._execute_prepared_batch(prepared, indices, include_skipped=False)
+        approved = dispatch_selector(snapshots) if dispatch_selector is not None and len(prepared) else ()
+        batch = self.execute_prepared(prepared, approved_indices=approved)
         return replace(batch, duration_ms=round(max(0.0, (time.monotonic() - started) * 1000.0)))
 
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False,

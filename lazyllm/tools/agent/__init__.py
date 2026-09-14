@@ -1,6 +1,10 @@
 from .functionCall import FunctionCall, FunctionCallAgent
 from .toolsManager import fc_register, register, ToolManager
 from .tool_runtime import (
+    AuthorizationDecision,
+    AuthorizationPolicy,
+    DefaultAuthorizationPolicy,
+    HostFile,
     HostFileAccess,
     HostFileIntent,
     HostFileResolution,
@@ -45,6 +49,10 @@ __all__ = [
     'register',
     'fc_register',
     'ResolvedToolAccess',
+    'AuthorizationDecision',
+    'AuthorizationPolicy',
+    'DefaultAuthorizationPolicy',
+    'HostFile',
     'HostFileAccess',
     'HostFileIntent',
     'HostFileResolution',

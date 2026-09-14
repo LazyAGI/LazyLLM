@@ -19,7 +19,7 @@ class BingSearch(SearchBase):
         self._url = endpoint
         self._timeout = timeout
 
-    @fc_register(host_file_access='NONE')
+    @fc_register(host_file='NONE')
     def search(self, query: str, count: int = 10) -> List[dict]:
         params = {'q': query, 'count': min(count, 50)}
         resp = self._request('GET', self._url, params=params, timeout=self._timeout)

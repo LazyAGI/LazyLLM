@@ -16,6 +16,10 @@ if TYPE_CHECKING:
                      YuqueFS, OnesFS, S3FS, ObsidianFS)
     from .agent import (
         ToolManager,
+        AuthorizationDecision,
+        AuthorizationPolicy,
+        DefaultAuthorizationPolicy,
+        HostFile,
         HostFileAccess,
         HostFileIntent,
         HostFileResolution,
@@ -105,6 +109,10 @@ _SUBMOD_MAP = {
     'agent': [
         'ToolManager',
         'ResolvedToolAccess',
+        'AuthorizationDecision',
+        'AuthorizationPolicy',
+        'DefaultAuthorizationPolicy',
+        'HostFile',
         'HostFileAccess',
         'HostFileIntent',
         'HostFileResolution',

@@ -18,7 +18,7 @@ class TavilySearch(SearchBase):
         self._base_url = base_url.rstrip('/')
         self._timeout = timeout
 
-    @fc_register(host_file_access='NONE')
+    @fc_register(host_file='NONE')
     def search(self, query: str,
                search_depth: str = 'basic',
                topic: str = 'general',

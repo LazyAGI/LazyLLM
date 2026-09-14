@@ -1,10 +1,8 @@
 import copy
 import inspect
 import os
-import shutil
 from dataclasses import dataclass, field
 from contextvars import ContextVar
-from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
@@ -15,7 +13,6 @@ _TOOL_RUNTIME_METADATA_ATTR = '__lazyllm_tool_runtime_metadata__'
 _TOOL_RUNTIME_METADATA_PATCH_ATTR = '__lazyllm_tool_runtime_metadata_patch__'
 _FILE_RESOURCE_NAMESPACE = 'file'
 _HOST_WORKING_DIRECTORY = ContextVar('host_file_working_directory', default=None)
-_HOST_ACCESS_GUARD = ContextVar('host_file_access_guard', default=None)
 
 
 class HostFileAccess(str, Enum):
@@ -23,6 +20,45 @@ class HostFileAccess(str, Enum):
     NONE = 'NONE'
     DECLARED = 'DECLARED'
     OPAQUE = 'OPAQUE'
+
+
+class HostFile(str, Enum):
+    """Public host-file declaration markers used by fc_register(host_file=...)."""
+
+    NONE = 'NONE'
+    OPAQUE = 'OPAQUE'
+    UNDECLARED = 'UNDECLARED'
+
+
+class AuthorizationDecision(str, Enum):
+    ALLOW = 'ALLOW'
+    ASK = 'ASK'
+    DENY = 'DENY'
+
+
+class AuthorizationPolicy:
+    """Replaceable admission policy for prepared tool calls."""
+
+    def decide(self, prepared):
+        raise NotImplementedError
+
+
+class DefaultAuthorizationPolicy(AuthorizationPolicy):
+    """Safe standalone defaults; products may supply a request-local policy."""
+
+    def decide(self, prepared):
+        if not prepared.ready:
+            return AuthorizationDecision.DENY
+        capability = prepared.host_file_access
+        if capability is HostFileAccess.NONE:
+            return AuthorizationDecision.ALLOW
+        if capability is HostFileAccess.DECLARED:
+            return (AuthorizationDecision.ALLOW
+                    if all(item.operation == 'read' for item in prepared.host_files)
+                    else AuthorizationDecision.ASK)
+        if capability is HostFileAccess.OPAQUE:
+            return AuthorizationDecision.ASK
+        return AuthorizationDecision.DENY
 
 
 @dataclass(frozen=True)
@@ -39,6 +75,8 @@ class HostFileIntent:
 
 @dataclass(frozen=True)
 class HostFileResolution:
+    """Immutable prepare result: final arguments plus canonical host-file intents."""
+
     arguments: Dict[str, Any]
     files: Tuple[HostFileIntent, ...] = ()
 
@@ -47,95 +85,6 @@ class HostFileResolution:
             raise TypeError('resolved arguments must be a dict')
         if not isinstance(self.files, tuple) or not all(isinstance(item, HostFileIntent) for item in self.files):
             raise TypeError('resolved files must be a tuple of HostFileIntent values')
-
-    @staticmethod
-    def resolve_path(path):
-        path = os.path.expanduser(os.fspath(path))
-        if not os.path.isabs(path):
-            path = os.path.join(_HOST_WORKING_DIRECTORY.get() or os.getcwd(), path)
-        return os.path.realpath(path)
-
-    @staticmethod
-    @contextmanager
-    def execution_scope(guard):
-        token = _HOST_ACCESS_GUARD.set(guard)
-        try:
-            yield
-        finally:
-            _HOST_ACCESS_GUARD.reset(token)
-
-    @staticmethod
-    def check_path(path, operation='read'):
-        guard = _HOST_ACCESS_GUARD.get()
-        return guard.check_path(path, operation) if guard is not None else path
-
-    @staticmethod
-    def open_read(path):
-        guard = _HOST_ACCESS_GUARD.get()
-        if guard is not None:
-            return guard.open_read(path)
-        # Standalone tools also reject leaf links discovered below declared directories.
-        return os.fdopen(os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)), 'rb')
-
-    @staticmethod
-    def open_write(path, mode='w'):
-        guard = _HOST_ACCESS_GUARD.get()
-        if guard is not None:
-            return guard.open_write(path, mode)
-        flags = os.O_WRONLY | os.O_CREAT | getattr(os, 'O_NOFOLLOW', 0)
-        flags |= os.O_APPEND if mode == 'a' else os.O_EXCL if mode == 'x' else os.O_TRUNC
-        return os.fdopen(os.open(path, flags, 0o600), mode + 'b')
-
-    @staticmethod
-    def makedirs(path, exist_ok=True, parents=True):
-        guard = _HOST_ACCESS_GUARD.get()
-        if guard is not None:
-            return guard.makedirs(path, exist_ok=exist_ok, parents=parents)
-        if parents:
-            return os.makedirs(path, exist_ok=exist_ok)
-        try:
-            return os.mkdir(path)
-        except FileExistsError:
-            if not exist_ok or not os.path.isdir(path):
-                raise
-
-    @staticmethod
-    def delete(path, recursive=False):
-        guard = _HOST_ACCESS_GUARD.get()
-        if guard is not None:
-            return guard.delete(path, recursive=recursive)
-        if recursive and os.path.isdir(path) and not os.path.islink(path):
-            return shutil.rmtree(path)
-        return os.rmdir(path) if os.path.isdir(path) and not os.path.islink(path) else os.unlink(path)
-
-    @staticmethod
-    def rename(src, dst, overwrite=False):
-        guard = _HOST_ACCESS_GUARD.get()
-        if guard is not None:
-            return guard.rename(src, dst, overwrite=overwrite)
-        if not overwrite and os.path.lexists(dst):
-            raise FileExistsError(dst)
-        return shutil.move(src, dst)
-
-    @staticmethod
-    def copy(src, dst, overwrite=False):
-        guard = _HOST_ACCESS_GUARD.get()
-        if guard is not None:
-            return guard.copy(src, dst, overwrite=overwrite)
-        with HostFileResolution.open_read(src) as source:
-            with HostFileResolution.open_write(dst, 'w' if overwrite else 'x') as target:
-                shutil.copyfileobj(source, target)
-        return dst
-
-    @staticmethod
-    def walk(path):
-        guard = _HOST_ACCESS_GUARD.get()
-        return guard.walk(path) if guard is not None else os.walk(path, followlinks=False)
-
-    @staticmethod
-    def listdir(path):
-        guard = _HOST_ACCESS_GUARD.get()
-        return guard.listdir(path) if guard is not None else os.listdir(path)
 
     @property
     def access(self):
@@ -205,6 +154,7 @@ class PreparedToolCall:
     polling: bool = False
     host_file_access: HostFileAccess = HostFileAccess.UNDECLARED
     host_files: Tuple[HostFileIntent, ...] = ()
+    authorization: AuthorizationDecision = AuthorizationDecision.DENY
 
     @property
     def ready(self) -> bool:
@@ -237,6 +187,7 @@ class PreparedToolBatch:
             polling=prepared.polling,
             host_file_access=prepared.host_file_access,
             host_files=prepared.host_files,
+            authorization=prepared.authorization,
         )
 
 
@@ -312,11 +263,20 @@ class ToolRuntimeMetadata:
     write_keys: Any = None
     exclusive: bool = False
     polling: bool = False
+    host_file: Any = None
     host_file_access: HostFileAccess = HostFileAccess.UNDECLARED
     host_file_resolver: Optional[Callable] = None
 
     def _validate_host_file_metadata(self):
-        object.__setattr__(self, 'host_file_access', HostFileAccess(self.host_file_access))
+        declaration = self.host_file
+        if declaration is not None:
+            if callable(declaration):
+                object.__setattr__(self, 'host_file_access', HostFileAccess.DECLARED)
+                object.__setattr__(self, 'host_file_resolver', declaration)
+            else:
+                object.__setattr__(self, 'host_file_access', HostFileAccess(declaration))
+        else:
+            object.__setattr__(self, 'host_file_access', HostFileAccess(self.host_file_access))
         if self.host_file_access is HostFileAccess.DECLARED:
             if self.host_file_resolver is None:
                 raise ValueError('DECLARED host file access requires a resolver')
