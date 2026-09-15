@@ -1,22 +1,23 @@
+from . import host_file_io
 import fnmatch
+import io
 import os
 import re
-import shutil
 from typing import Dict, List, Optional
 
 from .toolsManager import fc_register
 from .toolError import ToolExecutionError
-from .tool_runtime import HostFileIntent, HostFileResolution, resolve_host_path
+from .tool_runtime import HostFileIntent, HostFileResolution
 
 
 def _host_files(*fields):
     def resolve(arguments):
         intents = []
         for name, operation in fields:
-            arguments[name] = resolve_host_path(arguments.get(name, '.'))
+            arguments[name] = host_file_io.resolve_host_path(arguments.get(name, '.'))
             intents.append(HostFileIntent(arguments[name], operation))
         if arguments.get('root'):
-            arguments['root'] = resolve_host_path(arguments['root'])
+            arguments['root'] = host_file_io.resolve_host_path(arguments['root'])
         return HostFileResolution(arguments, tuple(intents))
     return resolve
 
@@ -34,14 +35,6 @@ def _check_root(path: str, root: Optional[str]) -> None:
         raise ToolExecutionError(
             f'Path {path_abs} is outside the allowed root {root_abs}.',
         )
-
-
-def _mkdir(path: str, exist_ok: bool) -> None:
-    try:
-        os.mkdir(path)
-    except FileExistsError:
-        if not exist_ok or not os.path.isdir(path):
-            raise
 
 
 def _compile_search_pattern(pattern: str):
@@ -75,7 +68,7 @@ def read_file(path: str, start_line: Optional[int] = None, end_line: Optional[in
     path_abs = _resolve_path(path)
     if not os.path.isfile(path_abs):
         raise ToolExecutionError(f'File not found: {path_abs}')
-    with open(path_abs, 'r', encoding=encoding, errors=errors) as f:
+    with io.TextIOWrapper(host_file_io.open_read(path_abs), encoding=encoding, errors=errors) as f:
         lines = f.readlines()
     total_lines = len(lines)
     s = 1 if start_line is None else max(1, start_line)
@@ -118,10 +111,10 @@ def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
         raise ToolExecutionError(f'Directory not found: {path_abs}')
     entries: List[str] = []
     if not recursive:
-        entries = sorted(os.listdir(path_abs))
+        entries = sorted(host_file_io.listdir(path_abs))
     else:
         base_depth = path_abs.rstrip(os.sep).count(os.sep)
-        for dirpath, dirnames, filenames in os.walk(path_abs, followlinks=False):
+        for dirpath, dirnames, filenames in host_file_io.walk(path_abs):
             depth = dirpath.count(os.sep) - base_depth
             if depth > max_depth:
                 dirnames[:] = []
@@ -164,7 +157,7 @@ def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
         raise ToolExecutionError(f'Directory not found: {path_abs}')
     regex = _compile_search_pattern(pattern)
     results: List[Dict[str, str]] = []
-    for dirpath, dirnames, filenames in os.walk(path_abs, followlinks=False):
+    for dirpath, dirnames, filenames in host_file_io.walk(path_abs):
         dirnames[:] = [name for name in dirnames if not os.path.islink(os.path.join(dirpath, name))]
         for name in filenames:
             if glob and not fnmatch.fnmatch(name, glob):
@@ -175,7 +168,7 @@ def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
             try:
                 if os.path.getsize(file_path) > max_file_size:
                     continue
-                with open(file_path, 'r', encoding=encoding, errors=errors) as f:
+                with io.TextIOWrapper(host_file_io.open_read(file_path), encoding=encoding, errors=errors) as f:
                     for idx, line in enumerate(f, start=1):
                         if regex.search(line):
                             results.append({
@@ -208,7 +201,7 @@ def make_dir(path: str, parents: bool = True, exist_ok: bool = True,
     '''
     _check_root(path, root)
     path_abs = _resolve_path(path)
-    os.makedirs(path_abs, exist_ok=exist_ok) if parents else _mkdir(path_abs, exist_ok)
+    host_file_io.makedirs(path_abs, exist_ok=exist_ok, parents=parents)
     return {'status': 'ok', 'path': path_abs}
 
 
@@ -237,9 +230,9 @@ def write_file(path: str, content: str, mode: str = 'overwrite', encoding: str =
     parent = os.path.dirname(path_abs)
 
     if parent and create_parents:
-        os.makedirs(parent, exist_ok=True)
+        host_file_io.makedirs(parent, exist_ok=True)
     fmode = 'a' if mode == 'append' else 'w'
-    with open(path_abs, fmode, encoding=encoding) as f:
+    with io.TextIOWrapper(host_file_io.open_write(path_abs, fmode), encoding=encoding) as f:
         f.write(content)
     return {'status': 'ok', 'path': path_abs, 'mode': mode, 'bytes': len(content)}
 
@@ -260,7 +253,7 @@ def delete_file(path: str, root: Optional[str] = None) -> dict:
     path_abs = _resolve_path(path)
     if not os.path.exists(path_abs):
         raise ToolExecutionError(f'File not found: {path_abs}')
-    os.rmdir(path_abs) if os.path.isdir(path_abs) and not os.path.islink(path_abs) else os.unlink(path_abs)
+    host_file_io.delete(path_abs)
     return {'status': 'ok', 'path': path_abs}
 
 
@@ -291,6 +284,6 @@ def move_file(src: str, dst: str, root: Optional[str] = None, overwrite: bool = 
         raise ToolExecutionError(f'Destination already exists: {dst_abs}')
     parent = os.path.dirname(dst_abs)
     if parent and create_parents:
-        os.makedirs(parent, exist_ok=True)
-    shutil.move(src_abs, dst_abs)
+        host_file_io.makedirs(parent, exist_ok=True)
+    host_file_io.rename(src_abs, dst_abs, overwrite=overwrite)
     return {'status': 'ok', 'src': src_abs, 'dst': dst_abs}

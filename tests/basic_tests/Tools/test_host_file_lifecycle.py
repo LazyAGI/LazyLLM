@@ -570,3 +570,40 @@ def test_builtin_file_tools_do_not_duplicate_host_file_scheduler_keys():
     for tool in manager.all_tools:
         assert tool.runtime_metadata.read_keys is None
         assert tool.runtime_metadata.write_keys is None
+
+
+def test_trusted_host_selected_indices_replace_default_admission_policy():
+    effects = []
+
+    @fc_register(host_file='OPAQUE')
+    def opaque(value: str):
+        '''Record an opaque call.
+
+        Args:
+            value: Input value.
+        '''
+        effects.append(value)
+        return value
+
+    @fc_register(host_file='NONE')
+    def denied(value: str):
+        '''Record a denied call.
+
+        Args:
+            value: Input value.
+        '''
+        effects.append(value)
+        return value
+
+    manager = ToolManager([opaque, denied])
+    ask_batch = manager.prepare_tool_calls(call('opaque', value='approved-by-host'))
+    result = manager.execute_prepared(ask_batch, selected_indices=(0,))
+    assert result.results[0] == {'ok': True, 'value': 'approved-by-host'}
+
+    deny_batch = manager.prepare_tool_calls(
+        call('denied', value='blocked'),
+        authorization_policy=lambda _: AuthorizationDecision.DENY,
+    )
+    result = manager.execute_prepared(deny_batch, selected_indices=(0,))
+    assert result.results[0] == {'ok': True, 'value': 'blocked'}
+    assert effects == ['approved-by-host', 'blocked']

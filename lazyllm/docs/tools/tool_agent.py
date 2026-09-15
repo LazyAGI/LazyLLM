@@ -257,7 +257,7 @@ errors produce PREPARATION_FAILED calls; they never fall back to executable excl
 ''')
 
 add_chinese_doc('ToolManager.execute_prepared', '''\
-执行当前 manager 准备的原批次，不重新解析、校验或调用 resolver。默认执行 ALLOW 调用；ASK 调用只有其索引出现在 approved_indices 时才执行，DENY 永不执行。未获准的 ASK 返回 SKIPPED / approval_required，DENY 返回 SKIPPED / authorization_rejected，准备失败仍返回 PREPARATION_FAILED。结果和记录保持原顺序，并沿用 ToolManager 的调度、沙箱及异常处理。
+执行当前 manager 准备的原批次，不重新解析、校验或调用 resolver。默认执行 ALLOW 调用；ASK 调用只有其索引出现在 approved_indices 时才执行，DENY 永不执行。可信宿主可用 selected_indices 执行自身统一授权层已准入的子集，并以宿主决策替代默认 policy；该参数不能与 approved_indices 同时使用。未获准的 ASK 返回 SKIPPED / approval_required，DENY 返回 SKIPPED / authorization_rejected，准备失败仍返回 PREPARATION_FAILED。结果和记录保持原顺序，并沿用 ToolManager 的调度、沙箱及异常处理。
 可选 execution_context(prepared_call) 返回上下文管理器，在实际执行线程内包围注册工具调用；适合授权 claim/complete 和请求上下文传递，无需替换工具实现。
 本接口不保存审批结果，也不保证批次只能执行一次；重试、幂等和一次性授权由调用方负责。
 ''')
@@ -265,7 +265,9 @@ add_chinese_doc('ToolManager.execute_prepared', '''\
 add_english_doc('ToolManager.execute_prepared', '''\
 Execute the original batch prepared by this manager without parsing, validation, or resolution again.
 ALLOW calls execute by default. ASK calls execute only when their indices are supplied in approved_indices;
-DENY calls never execute. Unapproved ASK calls return SKIPPED / approval_required, DENY calls return
+DENY calls never execute. A trusted host with its own centralized authorization layer may use selected_indices
+for the admitted subset, replacing the default policy decision; it cannot be combined with approved_indices. Unapproved ASK calls
+return SKIPPED / approval_required, DENY calls return
 SKIPPED / authorization_rejected, and invalid calls retain PREPARATION_FAILED. Results retain original order.
 An optional execution_context(prepared_call) returns a context manager entered on the actual execution worker
 before tool invocation and exited afterward, including failures. Use it for claim/completion and context propagation

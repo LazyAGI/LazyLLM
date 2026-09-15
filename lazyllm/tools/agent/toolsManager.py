@@ -1224,7 +1224,8 @@ class ToolManager(ModuleBase):
             decided.append(replace(invocation, prepared=replace(invocation.prepared, authorization=decision)))
         return PreparedToolBatch(self, tuple(decided))
 
-    def execute_prepared(self, prepared, *, approved_indices=(), execution_context=None):
+    def execute_prepared(self, prepared, *, approved_indices=(), selected_indices=None,
+                         execution_context=None):
         if not isinstance(prepared, PreparedToolBatch) or prepared._owner is not self:
             raise ValueError('prepared batch must originate from this ToolManager')
         approved = tuple(approved_indices)
@@ -1232,12 +1233,21 @@ class ToolManager(ModuleBase):
             raise IndexError('approved prepared-call index is out of range')
         if len(set(approved)) != len(approved):
             raise ValueError('approved prepared-call indices must be unique')
-        denied = [index for index in approved
-                  if prepared[index].authorization is not AuthorizationDecision.ASK]
-        if denied:
+        invalid_approvals = [index for index in approved
+                             if prepared[index].authorization is not AuthorizationDecision.ASK]
+        if invalid_approvals:
             raise ValueError('only ASK prepared calls may be explicitly approved')
-        selected = tuple(item.index for item in prepared
-                         if item.authorization is AuthorizationDecision.ALLOW) + approved
+        if selected_indices is None:
+            selected = tuple(item.index for item in prepared
+                             if item.authorization is AuthorizationDecision.ALLOW) + approved
+        else:
+            if approved:
+                raise ValueError('selected_indices and approved_indices are mutually exclusive')
+            selected = tuple(selected_indices)
+            if any(type(index) is not int or index < 0 or index >= len(prepared) for index in selected):
+                raise IndexError('selected prepared-call index is out of range')
+            if len(set(selected)) != len(selected):
+                raise ValueError('selected prepared-call indices must be unique')
         return self._execute_prepared_batch(
             prepared, selected, include_skipped=True, execution_context=execution_context)
 

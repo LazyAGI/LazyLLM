@@ -1,3 +1,4 @@
+from . import host_file_io
 import os
 import urllib.error
 import urllib.request
@@ -32,9 +33,9 @@ def download_file(url: str, dst: str, timeout: int = 30, root: Optional[str] = N
 
     parent = os.path.dirname(dst_abs)
     if parent:
-        os.makedirs(parent, exist_ok=True)
+        host_file_io.makedirs(parent, exist_ok=True)
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp, open(dst_abs, 'wb') as f:
+        with urllib.request.urlopen(url, timeout=timeout) as resp, host_file_io.open_write(dst_abs) as f:
             data = resp.read()
             f.write(data)
         return {'status': 'ok', 'path': dst_abs, 'bytes': len(data)}

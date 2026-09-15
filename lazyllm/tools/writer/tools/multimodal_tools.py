@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from lazyllm.tools.agent import host_file_io
 import hashlib
 import ipaddress
 import json
@@ -271,7 +272,7 @@ class WriterMultimodalTools(WriterToolBase):
             raise FileNotFoundError(f'image file does not exist: {source}')
         if not 0 < source.stat().st_size <= _MAX_IMAGE_BYTES:
             raise ValueError('image file must be between 1 byte and 20 MB.')
-        with open(source, 'rb') as stream:
+        with host_file_io.open_read(str(source)) as stream:
             data = stream.read(_MAX_IMAGE_BYTES + 1)
         return self._materialize_image_bytes(data, resource, suffix_hint=source.suffix)
 
@@ -290,10 +291,10 @@ class WriterMultimodalTools(WriterToolBase):
         suffix = self._image_suffix(suffix_hint, image_format)
         destination = self._assets_dir() / f'{digest}{suffix}'
         try:
-            with open(destination, 'xb') as stream:
+            with host_file_io.open_write(str(destination), 'x') as stream:
                 stream.write(data)
         except FileExistsError:
-            with open(destination, 'rb') as stream:
+            with host_file_io.open_read(str(destination)) as stream:
                 if stream.read(_MAX_IMAGE_BYTES + 1) != data:
                     raise ValueError('Existing media asset does not match its content digest.')
 
@@ -559,7 +560,7 @@ class WriterMultimodalTools(WriterToolBase):
         if not self.artifact_store:
             raise ValueError('artifact_store is not set')
         path = Path(self.artifact_store).expanduser().absolute() / 'assets'
-        path.mkdir(parents=True, exist_ok=True)
+        host_file_io.makedirs(str(path), exist_ok=True)
         return path
 
     @staticmethod
@@ -577,7 +578,7 @@ class WriterMultimodalTools(WriterToolBase):
 
     @staticmethod
     def _inspect_image(path: Path) -> tuple[str, int, int]:
-        with open(path, 'rb') as stream:
+        with host_file_io.open_read(str(path)) as stream:
             return WriterMultimodalTools._inspect_image_bytes(stream.read(_MAX_IMAGE_BYTES + 1))
 
     @staticmethod
