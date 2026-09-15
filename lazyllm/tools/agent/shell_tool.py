@@ -40,7 +40,7 @@ def _detect_dangerous_command(cmd: str) -> Optional[str]:
 @register('builtin_tools', execute_in_sandbox=False, host_file='OPAQUE')
 @register('tool', execute_in_sandbox=False, host_file='OPAQUE')
 def shell_tool(cmd: str, cwd: Optional[str] = None, timeout: int = 30,
-               env: Optional[Dict[str, str]] = None, **_legacy_options) -> dict:
+               env: Optional[Dict[str, str]] = None) -> dict:
     '''Run a shell command and return stdout/stderr/exit code.
 
     Args:
@@ -57,7 +57,6 @@ def shell_tool(cmd: str, cwd: Optional[str] = None, timeout: int = 30,
         raise ToolExecutionError('cmd cannot be empty.')
     if cwd is not None and not os.path.isdir(cwd):
         raise ToolExecutionError(f'cwd not found: {cwd}')
-
 
     try:
         completed = subprocess.run(

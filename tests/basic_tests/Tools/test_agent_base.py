@@ -72,7 +72,7 @@ class TestLazyLLMAgentBase(object):
             enable_builtin_tools=False,
         )
 
-        result = agent._tools_manager({
+        call = {
             'function': {
                 'name': 'run_script',
                 'arguments': json.dumps({
@@ -80,8 +80,9 @@ class TestLazyLLMAgentBase(object):
                     'rel_path': 'scripts/check.py',
                 }),
             },
-        })
-        result = result[0]
+        }
+        prepared = agent._tools_manager.prepare_tool_calls(call)
+        result = agent._tools_manager.execute_prepared(prepared, approved_indices=(0,)).results[0]
 
         assert result['ok'] is True
         assert result['value']['status'] == 'ok'

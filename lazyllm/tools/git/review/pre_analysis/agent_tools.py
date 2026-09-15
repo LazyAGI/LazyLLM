@@ -114,7 +114,7 @@ def _build_scoped_agent_tools(  # noqa: C901
             timeout (int, optional): Timeout in seconds. Defaults to 30.
         '''
         lazyllm.LOG.info(f'  [Agent] Shell {cmd!r}')
-        return shell_tool(cmd, cwd=clone_dir, timeout=timeout, allow_unsafe=False)
+        return shell_tool(cmd, cwd=clone_dir, timeout=timeout)
 
     def read_files_batch(paths: str) -> dict:
         '''Read multiple source files at once.

@@ -9,6 +9,7 @@ from pydantic import BaseModel, model_validator
 
 from lazyllm.tools import (
     AuthorizationDecision,
+    HostFile,
     HostFileAccess,
     HostFileIntent,
     HostFileResolution,
@@ -25,16 +26,22 @@ def call(name='tool', **arguments):
 
 def test_declaration_contract_and_legacy_default():
     assert ToolRuntimeMetadata().host_file_access is HostFileAccess.UNDECLARED
-    for capability in ('NONE', 'OPAQUE'):
-        assert ToolRuntimeMetadata(host_file_access=capability).host_file_access.value == capability
-        with pytest.raises(ValueError):
-            ToolRuntimeMetadata(host_file_access=capability, host_file_resolver=lambda args: args)
-    with pytest.raises(ValueError):
-        ToolRuntimeMetadata(host_file_access='DECLARED')
-    with pytest.raises(ValueError):
-        ToolRuntimeMetadata(host_file_access='typo')
+    assert ToolRuntimeMetadata(host_file=HostFile.NONE).host_file_access is HostFileAccess.NONE
+    assert ToolRuntimeMetadata(host_file=HostFile.OPAQUE).host_file_access is HostFileAccess.OPAQUE
+
+    def resolver(args):
+        return HostFileResolution(args, ())
+    metadata = ToolRuntimeMetadata(host_file=resolver)
+    assert metadata.host_file_access is HostFileAccess.DECLARED
+    assert metadata.host_file_resolver is resolver
     with pytest.raises(TypeError):
-        ToolRuntimeMetadata(host_file_access='DECLARED', host_file_resolver='not-callable')
+        ToolRuntimeMetadata(host_file_access='NONE')
+    with pytest.raises(TypeError):
+        ToolRuntimeMetadata(host_file_resolver=resolver)
+    with pytest.raises(ValueError):
+        ToolRuntimeMetadata(host_file='DECLARED')
+    with pytest.raises(ValueError):
+        ToolRuntimeMetadata(host_file='typo')
     with pytest.raises(ValueError):
         HostFileIntent('relative.txt', 'read')
     with pytest.raises(ValueError):
@@ -219,9 +226,7 @@ def test_concurrent_batches_keep_separate_inputs():
 
 
 def test_host_intents_share_scheduler_conflicts(tmp_path):
-    metadata = ToolRuntimeMetadata(
-        host_file_access='DECLARED', host_file_resolver=lambda args: HostFileResolution(args, ()),
-    )
+    metadata = ToolRuntimeMetadata(host_file=lambda args: HostFileResolution(args, ()))
     assert metadata.host_file_access is HostFileAccess.DECLARED
     intent = HostFileIntent(str(tmp_path / 'deleted.txt'), 'delete')
     resolution = HostFileResolution({}, (intent,))
@@ -438,7 +443,7 @@ def test_single_host_file_registration_entry_derives_internal_capability(tmp_pat
     from lazyllm.tools import HostFile
 
     def resolve(arguments):
-        from lazyllm.tools.agent.host_file_io import resolve_host_path
+        from lazyllm.tools import resolve_host_path
         path = resolve_host_path(arguments['path'])
         arguments['path'] = path
         return HostFileResolution(arguments, (HostFileIntent(path, 'read'),))
@@ -484,7 +489,7 @@ def test_default_authorization_policy_is_fail_closed_without_approval(tmp_path):
 
     def resolver(operation):
         def resolve(arguments):
-            from lazyllm.tools.agent.host_file_io import resolve_host_path
+            from lazyllm.tools import resolve_host_path
             arguments['path'] = resolve_host_path(arguments['path'])
             return HostFileResolution(arguments, (HostFileIntent(arguments['path'], operation),))
         return resolve
@@ -523,7 +528,7 @@ def test_default_authorization_policy_is_fail_closed_without_approval(tmp_path):
 
     result = manager.execute_prepared(prepared)
     assert [record.reason for record in result.records] == ['', 'approval_required', 'approval_required', '']
-    assert [name for name, _ in effects] == ['read_tool', 'none_tool']
+    assert sorted(name for name, _ in effects) == ['none_tool', 'read_tool']
 
     result = manager.execute_prepared(prepared, approved_indices=(1, 2))
     assert all(item['ok'] for item in result.results)
@@ -544,3 +549,24 @@ def test_model_visible_unsafe_flags_are_removed():
     manager = ToolManager([download_file, write_file, delete_file, move_file, shell_tool])
     descriptions = json.dumps(manager.tools_description)
     assert 'allow_unsafe' not in descriptions
+
+
+def test_registration_rejects_split_host_file_options():
+    def tool(value):
+        return value
+
+    tool.__name__ = 'split_host_file_tool'
+    with pytest.raises(AssertionError):
+        fc_register(host_file_access='NONE')(tool)
+    with pytest.raises(AssertionError):
+        fc_register(host_file_resolver=lambda args: HostFileResolution(args, ()))(tool)
+
+
+def test_builtin_file_tools_do_not_duplicate_host_file_scheduler_keys():
+    from lazyllm.tools.agent.file_tool import (
+        delete_file, list_dir, make_dir, move_file, read_file, search_in_files, write_file,
+    )
+    manager = ToolManager([read_file, list_dir, search_in_files, make_dir, write_file, delete_file, move_file])
+    for tool in manager.all_tools:
+        assert tool.runtime_metadata.read_keys is None
+        assert tool.runtime_metadata.write_keys is None

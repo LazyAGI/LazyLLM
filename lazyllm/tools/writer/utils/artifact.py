@@ -1,11 +1,9 @@
 from __future__ import annotations
-from lazyllm.tools.agent import host_file_io
 import json
 import os
 from datetime import datetime
 from typing import Any, Dict, Optional, Type, TypeVar
 from pydantic import BaseModel, Field
-from lazyllm.tools.agent.tool_runtime import HostFileResolution
 
 T = TypeVar('T', bound=BaseModel)
 
@@ -125,14 +123,14 @@ def save_artifact_json(
     created_by: str = '',
     extra_meta: Optional[Dict[str, Any]] = None,
 ) -> str:
-    host_file_io.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with host_file_io.open_write(path) as fh:
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as fh:
         fh.write(serialize_artifact_json(
             obj,
             schema_name=schema_name,
             created_by=created_by,
             extra_meta=extra_meta,
-        ).encode('utf-8'))
+        ))
 
     return os.path.abspath(path)
 
@@ -144,8 +142,8 @@ def load_artifact_json(
     expected_schema_name: Optional[str] = None,
     validate_schema: bool = True,
 ) -> Any:
-    with host_file_io.open_read(path) as fh:
-        content = fh.read().decode('utf-8')
+    with open(path, 'r', encoding='utf-8') as fh:
+        content = fh.read()
     try:
         return deserialize_artifact_json(
             content,

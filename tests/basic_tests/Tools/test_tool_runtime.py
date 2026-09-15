@@ -18,6 +18,7 @@ def _documented_tool(name='runtime_contract_tool'):
         return value
 
     tool.__name__ = name
+    fc_register(host_file='NONE')(tool)
     return tool
 
 
@@ -26,6 +27,7 @@ def test_runtime_metadata_registration_contract():
     from lazyllm.tools.agent import register
 
     assert register is fc_register
+    fc_register(host_file='NONE')(tool)
     fc_register(read_keys=['shared', 'read-only'])(tool)
     fc_register(write_keys='shared')(tool)
     fc_register(polling=True)(tool)
@@ -51,7 +53,7 @@ def test_execute_with_records_prepares_once_and_records_failure():
         calls['resolve'] += 1
         return f'resource:{arguments["value"]}'
 
-    @fc_register(read_keys=resolve, polling=True)
+    @fc_register(read_keys=resolve, polling=True, host_file='NONE')
     def tool(value: str) -> str:
         '''Return a value.
 
@@ -102,7 +104,7 @@ def test_execute_with_records_prepares_once_and_records_failure():
 def test_dispatch_selector_snapshot_is_not_an_execution_input():
     seen = []
 
-    @fc_register(write_keys=lambda args: ('file', args['value']))
+    @fc_register(write_keys=lambda args: ('file', args['value']), host_file='NONE')
     def tool(value: str) -> str:
         '''Return a value.
 
@@ -172,6 +174,7 @@ def test_dispatch_selector_rejects_invalid_indices(indices, error):
 def test_empty_dispatch_selection_does_not_invoke_tool():
     calls = []
 
+    @fc_register(host_file='NONE')
     def tool(value: str) -> str:
         '''Return a value.
 

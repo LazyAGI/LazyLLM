@@ -1,10 +1,8 @@
 import os
 import tempfile
 
-import pytest
 
 from lazyllm.tools import ToolManager
-from lazyllm.tools.agent import ToolExecutionError
 from lazyllm.tools.agent.file_tool import (read_file, write_file, list_dir, search_in_files,
                                            move_file, delete_file)
 from lazyllm.tools.agent.shell_tool import shell_tool
@@ -31,10 +29,10 @@ class TestFileTool(object):
             assert any(item['path'].endswith('a.txt') for item in res['results'])
 
             dst = os.path.join(tmp, 'b.txt')
-            res = move_file(path, dst, root=tmp, allow_unsafe=True)
+            res = move_file(path, dst, root=tmp)
             assert res['status'] == 'ok'
 
-            res = delete_file(dst, root=tmp, allow_unsafe=True)
+            res = delete_file(dst, root=tmp)
             assert res['status'] == 'ok'
 
 
@@ -45,31 +43,39 @@ class TestShellTool(object):
         assert 'hello' in res['stdout']
 
     def test_shell_tool_needs_approval(self):
-        with pytest.raises(ToolExecutionError, match='dangerous token'):
-            shell_tool('rm -rf /tmp/does_not_exist')
-
-    def test_shell_tool_permission_failure_is_structured(self):
         manager = ToolManager(['shell_tool'])
-        call = {
-            'function': {
-                'name': 'shell_tool',
-                'arguments': {'cmd': 'rm -rf /tmp/does_not_exist'},
-            },
-        }
+        prepared = manager.prepare_tool_calls({
+            'function': {'name': 'shell_tool', 'arguments': {'cmd': 'echo approved'}},
+        })
+        result = manager.execute_prepared(prepared)
+        assert result.results[0]['needs_approval'] is True
+        assert result.records[0].reason == 'approval_required'
 
-        result = manager(call)[0]
-
-        assert 'requires approval' in result['value']
-        assert result['needs_approval'] is True
-        assert set(result) == {'ok', 'value', 'needs_approval'}
+    def test_shell_tool_executes_after_host_approval(self):
+        manager = ToolManager(['shell_tool'])
+        prepared = manager.prepare_tool_calls({
+            'function': {'name': 'shell_tool', 'arguments': {'cmd': 'echo approved'}},
+        })
+        result = manager.execute_prepared(prepared, approved_indices=(0,))
+        assert result.results[0]['ok'] is True
+        assert 'approved' in result.results[0]['value']['stdout']
 
 
 class TestDownloadTool(object):
-    def test_download_tool_needs_approval(self):
+    def test_download_tool_needs_approval(self, monkeypatch):
+        requested = []
+        monkeypatch.setattr('urllib.request.urlopen', lambda *args, **kwargs: requested.append(args))
         with tempfile.TemporaryDirectory() as tmp:
             dst = os.path.join(tmp, 'a.txt')
-            with pytest.raises(ToolExecutionError, match='requires approval'):
-                download_file('http://example.com/a.txt', dst, root=tmp)
+            manager = ToolManager([download_file])
+            prepared = manager.prepare_tool_calls({
+                'function': {'name': 'download_file', 'arguments': {
+                    'url': 'http://example.com/a.txt', 'dst': dst, 'root': tmp,
+                }},
+            })
+            result = manager.execute_prepared(prepared)
+            assert result.results[0]['needs_approval'] is True
+            assert requested == []
 
     def test_download_tool(self, monkeypatch):
         class FakeResponse:
@@ -87,6 +93,6 @@ class TestDownloadTool(object):
         with tempfile.TemporaryDirectory() as tmp:
             url = 'http://example.com/payload.txt'
             dst = os.path.join(tmp, 'out.txt')
-            res = download_file(url, dst, root=tmp, allow_unsafe=True)
+            res = download_file(url, dst, root=tmp)
             assert res['status'] == 'ok'
             assert res['bytes'] > 0

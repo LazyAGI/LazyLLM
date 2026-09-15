@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         PreparedToolBatch,
         PreparedToolCall,
         ResolvedToolAccess,
+        resolve_host_path,
         ToolExecutionBatch,
         ToolExecutionDisposition,
         ToolExecutionRecord,
@@ -109,6 +110,7 @@ _SUBMOD_MAP = {
     'agent': [
         'ToolManager',
         'ResolvedToolAccess',
+        'resolve_host_path',
         'AuthorizationDecision',
         'AuthorizationPolicy',
         'DefaultAuthorizationPolicy',

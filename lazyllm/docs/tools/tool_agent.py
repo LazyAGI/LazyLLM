@@ -241,7 +241,7 @@ add_chinese_doc('ToolManager.prepare_tool_calls', '''\
 准备工具批次但不执行任何工具。先解析名称并校验参数，再调用可信 host_file_resolver，校验解析后的参数，
 最后计算文件和其他资源的调度冲突。返回绑定当前 ToolManager 的 PreparedToolBatch；审批等待期间应保存并
 复用此批次。调用方完成整个批次的权限判断后，调用 execute_prepared 执行获准项。
-working_directory 可为 HostFileResolution.resolve_path 提供请求级绝对工作目录，不改变进程 cwd。
+working_directory 可为 host_file resolver 提供请求级绝对工作目录，不改变进程 cwd。
 require_host_file_access=True 会检查本轮 exposed tools，存在 UNDECLARED 则拒绝准备，适合注册契约测试。
 传入 allowed_tool_names 可限制本轮可见工具。文件 resolver 失败产生 PREPARATION_FAILED，不会降级为可执行调用。
 ''')
@@ -250,24 +250,23 @@ add_english_doc('ToolManager.prepare_tool_calls', '''\
 Prepare a batch without executing tools. Resolve names, validate inputs, invoke trusted host-file resolvers,
 validate their normalized arguments, then resolve scheduling resources. Retain the returned manager-bound
 PreparedToolBatch while application authorization is pending and pass that same batch to execute_prepared.
-working_directory optionally supplies an absolute request-local base to HostFileResolution.resolve_path; it never changes process cwd.
+working_directory optionally supplies an absolute request-local base to host_file resolvers; it never changes process cwd.
 Set require_host_file_access=True to reject UNDECLARED tools in the exposed set (optionally limited by
 allowed_tool_names). This also supports registration contract tests with an empty call list. File-resolution
 errors produce PREPARATION_FAILED calls; they never fall back to executable exclusive calls.
 ''')
 
 add_chinese_doc('ToolManager.execute_prepared', '''\
-执行当前 manager 准备的原批次，不重新解析、校验或调用 resolver。selected_indices 默认选择全部调用；
-显式传入空集合则不执行任何工具。结果和记录保持原顺序，未获准的有效调用返回 SKIPPED / authorization_rejected，
-准备失败仍返回 PREPARATION_FAILED。沿用 ToolManager 的调度、沙箱及异常处理。
+执行当前 manager 准备的原批次，不重新解析、校验或调用 resolver。默认执行 ALLOW 调用；ASK 调用只有其索引出现在 approved_indices 时才执行，DENY 永不执行。未获准的 ASK 返回 SKIPPED / approval_required，DENY 返回 SKIPPED / authorization_rejected，准备失败仍返回 PREPARATION_FAILED。结果和记录保持原顺序，并沿用 ToolManager 的调度、沙箱及异常处理。
 可选 execution_context(prepared_call) 返回上下文管理器，在实际执行线程内包围注册工具调用；适合授权 claim/complete 和请求上下文传递，无需替换工具实现。
 本接口不保存审批结果，也不保证批次只能执行一次；重试、幂等和一次性授权由调用方负责。
 ''')
 
 add_english_doc('ToolManager.execute_prepared', '''\
-Execute the original batch prepared by this manager, without parsing, validation, or resolution again.
-selected_indices defaults to all calls; an empty collection executes none. Results and records retain original
-order. Unselected valid calls receive SKIPPED / authorization_rejected; invalid calls retain PREPARATION_FAILED.
+Execute the original batch prepared by this manager without parsing, validation, or resolution again.
+ALLOW calls execute by default. ASK calls execute only when their indices are supplied in approved_indices;
+DENY calls never execute. Unapproved ASK calls return SKIPPED / approval_required, DENY calls return
+SKIPPED / authorization_rejected, and invalid calls retain PREPARATION_FAILED. Results retain original order.
 An optional execution_context(prepared_call) returns a context manager entered on the actual execution worker
 before tool invocation and exited afterward, including failures. Use it for claim/completion and context propagation
 without modifying tool bindings. It never replaces the registered tool.
@@ -291,7 +290,7 @@ ToolManager may execute it. Do not access private fields or change tool implemen
 add_chinese_doc('HostFileAccess', '''\
 可信注册的宿主文件能力：NONE 表示没有调用方管理资源范围之外的宿主文件访问，DECLARED 表示 resolver 完整声明
 模型输入决定的宿主文件路径及意图，OPAQUE 表示无法静态枚举（如脚本），UNDECLARED 为旧工具的兼容默认值。
-OPAQUE 不代表自动允许；由调用方策略明确决定允许或拒绝。声明通过 fc_register 的 host_file_access 参数设置。
+OPAQUE 不代表自动允许；由调用方策略明确决定允许或拒绝。对外统一通过 fc_register(host_file=...) 声明：NONE/OPAQUE marker 或 resolver callable。
 ''')
 
 add_english_doc('HostFileAccess', '''\
@@ -299,7 +298,7 @@ Trusted registration capability: NONE has no host-file access outside applicatio
 DECLARED requires a resolver enumerating all model-directed host-file accesses; OPAQUE cannot enumerate them
 statically (for example scripts); UNDECLARED is the backward-compatible default for existing tools.
 OPAQUE does not imply authorization. The application must explicitly allow or deny it.
-Declare the capability with fc_register(host_file_access=...).
+Declare it only through fc_register(host_file=...): a NONE/OPAQUE marker or a resolver callable.
 ''')
 
 add_chinese_doc('HostFileIntent', '''\
@@ -314,7 +313,7 @@ contribute read keys. Authorization can still distinguish all three operations.
 ''')
 
 add_chinese_doc('HostFileResolution', '''\
-host_file_resolver 接收独立的已校验参数字典，返回 HostFileResolution(arguments, files)。arguments 是最终执行参数；
+host_file resolver 接收独立的已校验参数字典，返回 HostFileResolution(arguments, files)。arguments 是最终执行参数；
 files 是 HostFileIntent tuple，允许为空（本次调用不访问宿主文件）。resolver 必须属于可信工具模块，完整解析嵌套参数、
 默认路径、相对路径和软链接，声明全部读写删除范围，并让最终执行参数使用相同路径。调度复用 files 的规范化路径。
 解析后的参数会进行严格 schema 校验，不重新调用输入适配器；如果校验器改变参数则拒绝该调用，防止审批路径漂移。
@@ -322,7 +321,7 @@ files 是 HostFileIntent tuple，允许为空（本次调用不访问宿主文�
 ''')
 
 add_english_doc('HostFileResolution', '''\
-host_file_resolver receives a private validated argument dictionary and returns HostFileResolution(arguments, files).
+The host_file resolver receives a private validated argument dictionary and returns HostFileResolution(arguments, files).
 arguments are the final execution inputs; files is a tuple of HostFileIntent values, possibly empty for a call
 without host-file accesses. Resolvers belong to trusted tool modules. They must cover nested/default/relative paths,
 symlinks, and all read/write/delete scopes, and put the matching final paths into execution arguments.
@@ -332,86 +331,17 @@ Resolved arguments undergo strict schema validation without reapplying input ada
 them, preparation fails rather than executing arguments that differ from the resolver's approved snapshot.
 ''')
 
-add_chinese_doc('HostFileResolution.resolve_path', '''\
-将路径展开并解析为绝对规范路径；相对路径使用 prepare_tool_calls 的 working_directory，缺省使用进程 cwd。
+add_chinese_doc('resolve_host_path', '''\
+供 host_file resolver 使用的路径辅助函数：展开并解析为绝对规范路径；相对路径使用 prepare_tool_calls 的 working_directory，缺省使用进程 cwd。
 ''')
-add_english_doc('HostFileResolution.resolve_path', '''\
-Expand and canonicalize a path using the preparation working_directory, or process cwd when none is supplied.
+add_english_doc('resolve_host_path', '''\
+Path helper for host_file resolvers. It expands and canonicalizes a path using the preparation working_directory, or process cwd when none is supplied.
 ''')
-add_chinese_doc('HostFileResolution.execution_scope', '''\
-安装本次工具调用的宿主文件 guard，上下文退出时恢复。guard 由宿主提供，负责校验 prepare 到 execute 之间的
-路径身份变化，并提供实际 IO 的安全打开与变更方法。该上下文不替代注册工具的调用。
-''')
-add_english_doc('HostFileResolution.execution_scope', '''\
-Install a host-provided file guard for the current tool invocation and restore it on exit. The guard checks filesystem
-identity changes across the approval wait and supplies safe actual IO operations. It does not replace tool execution.
-''')
-add_chinese_doc('HostFileResolution.check_path', '''\
-若存在当前执行 guard，验证实际使用路径及 read/write/delete 意图；否则保留原路径。
-''')
-add_english_doc('HostFileResolution.check_path', '''\
-Validate an actual path and read/write/delete operation through the active guard, or retain the path without a guard.
-''')
-add_chinese_doc('HostFileResolution.open_read', '''\
-通过当前执行 guard 以二进制只读方式打开文件；无 guard 时拒绝末级软链接（平台支持 O_NOFOLLOW 时）。
-''')
-add_english_doc('HostFileResolution.open_read', '''\
-Open a binary input through the active guard. Without a guard, reject leaf symlinks where O_NOFOLLOW is available.
-''')
-add_chinese_doc('HostFileResolution.open_write', '''\
-通过当前执行 guard 以二进制写入方式打开文件，mode 为 w、a 或 x；无 guard 时使用不跟随末级软链接的打开方式。
-''')
-add_english_doc('HostFileResolution.open_write', '''\
-Open a binary output through the active guard with mode w, a, or x. Without a guard, use a no-follow leaf open.
-''')
-
-add_chinese_doc('HostFileResolution.makedirs', '''\
-通过当前执行 guard 创建目录。parents=True 时创建缺失的父目录；exist_ok 控制目标目录已存在时是否允许。无 guard 时使用本地文件系统。
-''')
-add_english_doc('HostFileResolution.makedirs', '''\
-Create directories through the active guard. parents=True creates missing parents; exist_ok permits an existing directory. Without a guard, use the local filesystem.
-''')
-
-add_chinese_doc('HostFileResolution.delete', '''\
-通过当前执行 guard 删除文件或目录。recursive=True 允许递归删除目录。无 guard 时删除链接本身，不递归进入其目标。
-''')
-add_english_doc('HostFileResolution.delete', '''\
-Delete a file or directory through the active guard. recursive=True permits recursive directory removal. Without a guard, remove a symlink itself rather than recursively entering its target.
-''')
-
-add_chinese_doc('HostFileResolution.rename', '''\
-通过当前执行 guard 移动或重命名 src 到 dst；overwrite 控制是否允许覆盖已存在目标。无 guard 时使用本地移动操作。
-''')
-add_english_doc('HostFileResolution.rename', '''\
-Move or rename src to dst through the active guard; overwrite controls replacement of an existing destination. Without a guard, use the local move operation.
-''')
-
-add_chinese_doc('HostFileResolution.copy', '''\
-通过当前执行 guard 复制文件 src 到 dst；overwrite=False 时拒绝已有目标。无 guard 时通过 open_read 和 open_write 复制二进制内容，返回目标路径。
-''')
-add_english_doc('HostFileResolution.copy', '''\
-Copy file src to dst through the active guard; overwrite=False rejects an existing destination. Without a guard, copy binary contents through open_read and open_write and return the destination path.
-''')
-
-add_chinese_doc('HostFileResolution.walk', '''\
-通过当前执行 guard 遍历目录并返回遍历结果；无 guard 时使用不跟随目录软链接的 os.walk。
-''')
-add_english_doc('HostFileResolution.walk', '''\
-Traverse a directory through the active guard and return its traversal results. Without a guard, use os.walk without following directory symlinks.
-''')
-
-add_chinese_doc('HostFileResolution.listdir', '''\
-通过当前执行 guard 列出目录条目；无 guard 时使用 os.listdir。
-''')
-add_english_doc('HostFileResolution.listdir', '''\
-List directory entries through the active guard, or use os.listdir when no guard is installed.
-''')
-
 add_example('ToolManager.prepare_tool_calls', '''\
 >>> from pathlib import Path
->>> from lazyllm.tools import ToolManager, HostFileIntent, HostFileResolution, fc_register
+>>> from lazyllm.tools import ToolManager, HostFileIntent, HostFileResolution, fc_register, resolve_host_path
 >>> def resolve_read(arguments):
-...     arguments['path'] = str(Path(arguments['path']).expanduser().resolve())
+...     arguments['path'] = resolve_host_path(arguments['path'])
 ...     return HostFileResolution(arguments, (HostFileIntent(arguments['path'], 'read'),))
 >>> @fc_register(host_file=resolve_read)
 >>> def read_text(path: str):
@@ -422,8 +352,8 @@ add_example('ToolManager.prepare_tool_calls', '''\
 ...     {'function': {'name': 'read_text', 'arguments': {'path': 'notes.txt'}}},
 ...     require_host_file_access=True)
 >>> # Inspect all calls, wait for application approvals, and then execute the same batch.
->>> approved_indices = ()  # This example denies every call; no file is read.
->>> result = manager.execute_prepared(prepared, selected_indices=approved_indices)
+>>> # This read-only call is ALLOW under the default policy.
+>>> result = manager.execute_prepared(prepared)
 ''')
 
 add_example('ToolManager', """\
@@ -522,8 +452,7 @@ Args:
     write_keys: 静态写资源 key，或根据已校验工具参数返回写资源 key 的函数。
     exclusive (bool): 是否独占执行，不能与 ``read_keys`` 或 ``write_keys`` 同时使用。
     polling (bool): 是否为允许连续返回相同结果的轮询工具。
-    host_file_access: 宿主文件能力 UNDECLARED（默认）、NONE、DECLARED 或 OPAQUE。
-    host_file_resolver: DECLARED 必填，接收已校验参数并返回 HostFileResolution；其他能力不允许设置。
+    host_file: 宿主文件声明。未设置为 UNDECLARED；NONE/OPAQUE marker 分别声明无访问或不透明访问；callable 声明可解析访问并返回 HostFileResolution。
 
 ``fc_register`` 采用显式字段合并：不同字段可由多层装饰组合，相同字段相同值为幂等声明，相同字段不同值会报错。
 ``tool_concurrency`` 已直接删除，属于 breaking change；请迁移为
@@ -547,8 +476,7 @@ Args:
     write_keys: Static write resource keys or a callable receiving validated tool arguments.
     exclusive (bool): Whether the tool runs exclusively. Cannot be combined with resource keys.
     polling (bool): Whether unchanged repeated results are expected while polling.
-    host_file_access: UNDECLARED (default), NONE, DECLARED, or OPAQUE host-file capability.
-    host_file_resolver: Required only for DECLARED; receives validated arguments and returns HostFileResolution.
+    host_file: Host-file declaration. Omission means UNDECLARED; NONE/OPAQUE markers declare no or opaque access; a callable declares resolvable access and returns HostFileResolution.
 
 ``fc_register`` merges explicitly supplied fields across decorator layers. Repeating the same field and value is
 idempotent; declaring a different value for the same field raises an error. ``tool_concurrency`` has been removed as

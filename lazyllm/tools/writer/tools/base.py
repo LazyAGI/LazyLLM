@@ -1,5 +1,4 @@
 from __future__ import annotations
-from lazyllm.tools.agent import host_file_io
 import json
 import os
 import re
@@ -8,7 +7,6 @@ from typing import Any, Dict, Iterable, List, Optional, Type, TypeVar
 from pydantic import BaseModel
 from lazyllm.components.formatter import JsonFormatter
 from lazyllm.module import ModuleBase
-from lazyllm.tools.agent.tool_runtime import HostFileResolution
 from lazyllm.thirdparty import json_repair
 from lazyllm.tracing import finish_span, set_span_attributes, set_span_error, set_span_output, start_span
 from ..data_models.planning import SectionInstructionList
@@ -100,8 +98,8 @@ class WriterToolBase(ModuleBase):
         if isinstance(value, str):
             if os.path.isfile(value):
                 if value.lower().endswith(('.md', '.markdown')):
-                    with host_file_io.open_read(value) as stream:
-                        return stream.read().decode('utf-8')
+                    with open(value, 'r', encoding='utf-8') as stream:
+                        return stream.read()
                 return self._unified_model(value, WriterBlock)
             return value
         raise TypeError('value must be WriterBlock, Markdown text, or an artifact path.')
@@ -114,8 +112,8 @@ class WriterToolBase(ModuleBase):
         if isinstance(value, str):
             if os.path.isfile(value):
                 if value.lower().endswith(('.md', '.markdown')):
-                    with host_file_io.open_read(value) as stream:
-                        return stream.read().decode('utf-8')
+                    with open(value, 'r', encoding='utf-8') as stream:
+                        return stream.read()
                 return self._unified_model(value, WriterDocument)
             return value
         raise TypeError('value must be WriterDocument, Markdown text, or an artifact path.')
@@ -162,9 +160,9 @@ class WriterToolBase(ModuleBase):
         if not self.artifact_store:
             raise ValueError('artifact_store is not set')
         path = os.path.join(self.artifact_store, filename)
-        host_file_io.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with host_file_io.open_write(path) as stream:
-            stream.write(content.encode('utf-8'))
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as stream:
+            stream.write(content)
         return os.path.abspath(path)
 
     def _save_artifacts(

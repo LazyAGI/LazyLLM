@@ -365,15 +365,9 @@ def _runtime_metadata_from_options(options):
     assert not unknown, f'Only allowed parameters: {_RUNTIME_METADATA_FIELDS}, but got {unknown}'
     normalized = dict(options)
     if 'host_file' in normalized:
-        declaration = normalized.pop('host_file')
-        if callable(declaration):
-            normalized['host_file_access'] = HostFileAccess.DECLARED
-            normalized['host_file_resolver'] = declaration
-        else:
-            declaration = HostFileAccess(declaration)
-            if declaration is HostFileAccess.DECLARED:
-                raise ValueError('DECLARED host file access must be expressed as a resolver callable')
-            normalized['host_file_access'] = declaration
+        declaration = normalized['host_file']
+        if not callable(declaration):
+            normalized['host_file'] = HostFile(declaration)
     if 'output_files' in normalized:
         output_files = normalized['output_files']
         assert isinstance(output_files, list) and all(isinstance(item, str) for item in output_files), \
@@ -1230,25 +1224,20 @@ class ToolManager(ModuleBase):
             decided.append(replace(invocation, prepared=replace(invocation.prepared, authorization=decision)))
         return PreparedToolBatch(self, tuple(decided))
 
-    def execute_prepared(self, prepared, *, approved_indices=(), selected_indices=None, execution_context=None):
+    def execute_prepared(self, prepared, *, approved_indices=(), execution_context=None):
         if not isinstance(prepared, PreparedToolBatch) or prepared._owner is not self:
             raise ValueError('prepared batch must originate from this ToolManager')
-        if selected_indices is not None:
-            if approved_indices:
-                raise ValueError('selected_indices and approved_indices are mutually exclusive')
-            selected = tuple(selected_indices)
-        else:
-            approved = tuple(approved_indices)
-            if any(type(index) is not int or index < 0 or index >= len(prepared) for index in approved):
-                raise IndexError('approved prepared-call index is out of range')
-            if len(set(approved)) != len(approved):
-                raise ValueError('approved prepared-call indices must be unique')
-            denied = [index for index in approved
-                      if prepared[index].authorization is not AuthorizationDecision.ASK]
-            if denied:
-                raise ValueError('only ASK prepared calls may be explicitly approved')
-            selected = tuple(item.index for item in prepared
-                             if item.authorization is AuthorizationDecision.ALLOW) + approved
+        approved = tuple(approved_indices)
+        if any(type(index) is not int or index < 0 or index >= len(prepared) for index in approved):
+            raise IndexError('approved prepared-call index is out of range')
+        if len(set(approved)) != len(approved):
+            raise ValueError('approved prepared-call indices must be unique')
+        denied = [index for index in approved
+                  if prepared[index].authorization is not AuthorizationDecision.ASK]
+        if denied:
+            raise ValueError('only ASK prepared calls may be explicitly approved')
+        selected = tuple(item.index for item in prepared
+                         if item.authorization is AuthorizationDecision.ALLOW) + approved
         return self._execute_prepared_batch(
             prepared, selected, include_skipped=True, execution_context=execution_context)
 
@@ -1280,7 +1269,8 @@ class ToolManager(ModuleBase):
                 records.append(ToolExecutionRecord(
                     copy.deepcopy(item.prepared),
                     (copy.deepcopy(item.failure) if failed else tool_failure(
-                        'Tool approval required.' if approval_required else 'Tool authorization rejected.')),
+                        'Tool approval required.' if approval_required else 'Tool authorization rejected.',
+                        needs_approval=approval_required)),
                     ToolExecutionDisposition.PREPARATION_FAILED if failed else ToolExecutionDisposition.SKIPPED,
                     '' if failed else ('approval_required' if approval_required else 'authorization_rejected'),
                 ))
@@ -1299,9 +1289,20 @@ class ToolManager(ModuleBase):
         started = time.monotonic()
         tools = self.normalize_tool_calls([tools] if isinstance(tools, dict) or tools is None else list(tools))
         prepared = self.prepare_tool_calls(tools, allowed_tool_names)
-        snapshots = tuple(copy.deepcopy(item.prepared) for item in prepared._invocations)
-        approved = dispatch_selector(snapshots) if dispatch_selector is not None and len(prepared) else ()
-        batch = self.execute_prepared(prepared, approved_indices=approved)
+        if dispatch_selector is None:
+            batch = self.execute_prepared(prepared)
+        else:
+            snapshots = tuple(copy.deepcopy(item.prepared) for item in prepared._invocations)
+            selected = tuple(dispatch_selector(snapshots)) if len(prepared) else ()
+            if any(type(index) is not int or index < 0 or index >= len(prepared) for index in selected):
+                raise IndexError('selected prepared-call index is out of range')
+            if len(set(selected)) != len(selected):
+                raise ValueError('selected prepared-call indices must be unique')
+            denied = [index for index in selected
+                      if prepared[index].ready and prepared[index].authorization is AuthorizationDecision.DENY]
+            if denied:
+                raise ValueError('DENY prepared calls cannot be selected for execution')
+            batch = self._execute_prepared_batch(prepared, selected, include_skipped=False)
         return replace(batch, duration_ms=round(max(0.0, (time.monotonic() - started) * 1000.0)))
 
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False,

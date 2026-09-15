@@ -1,23 +1,22 @@
-from . import host_file_io
 import fnmatch
-import io
 import os
 import re
+import shutil
 from typing import Dict, List, Optional
 
 from .toolsManager import fc_register
 from .toolError import ToolExecutionError
-from .tool_runtime import HostFileIntent, HostFileResolution
+from .tool_runtime import HostFileIntent, HostFileResolution, resolve_host_path
 
 
 def _host_files(*fields):
     def resolve(arguments):
         intents = []
         for name, operation in fields:
-            arguments[name] = host_file_io.resolve_host_path(arguments.get(name, '.'))
+            arguments[name] = resolve_host_path(arguments.get(name, '.'))
             intents.append(HostFileIntent(arguments[name], operation))
         if arguments.get('root'):
-            arguments['root'] = host_file_io.resolve_host_path(arguments['root'])
+            arguments['root'] = resolve_host_path(arguments['root'])
         return HostFileResolution(arguments, tuple(intents))
     return resolve
 
@@ -37,6 +36,14 @@ def _check_root(path: str, root: Optional[str]) -> None:
         )
 
 
+def _mkdir(path: str, exist_ok: bool) -> None:
+    try:
+        os.mkdir(path)
+    except FileExistsError:
+        if not exist_ok or not os.path.isdir(path):
+            raise
+
+
 def _compile_search_pattern(pattern: str):
     try:
         return re.compile(pattern)
@@ -45,7 +52,7 @@ def _compile_search_pattern(pattern: str):
 
 
 @fc_register('builtin_tools')
-@fc_register('tool', execute_in_sandbox=False, read_keys=lambda args: ('file', args['path']))
+@fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'read')))
 def read_file(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None,
               encoding: str = 'utf-8', errors: str = 'replace', root: Optional[str] = None,
@@ -68,7 +75,7 @@ def read_file(path: str, start_line: Optional[int] = None, end_line: Optional[in
     path_abs = _resolve_path(path)
     if not os.path.isfile(path_abs):
         raise ToolExecutionError(f'File not found: {path_abs}')
-    with io.TextIOWrapper(host_file_io.open_read(path_abs), encoding=encoding, errors=errors) as f:
+    with open(path_abs, 'r', encoding=encoding, errors=errors) as f:
         lines = f.readlines()
     total_lines = len(lines)
     s = 1 if start_line is None else max(1, start_line)
@@ -90,7 +97,7 @@ def read_file(path: str, start_line: Optional[int] = None, end_line: Optional[in
 
 
 @fc_register('builtin_tools')
-@fc_register('tool', execute_in_sandbox=False, read_keys=lambda args: ('file', args.get('path', '.')))
+@fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'read')))
 def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
              root: Optional[str] = None) -> dict:
@@ -111,10 +118,10 @@ def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
         raise ToolExecutionError(f'Directory not found: {path_abs}')
     entries: List[str] = []
     if not recursive:
-        entries = sorted(host_file_io.listdir(path_abs))
+        entries = sorted(os.listdir(path_abs))
     else:
         base_depth = path_abs.rstrip(os.sep).count(os.sep)
-        for dirpath, dirnames, filenames in host_file_io.walk(path_abs):
+        for dirpath, dirnames, filenames in os.walk(path_abs, followlinks=False):
             depth = dirpath.count(os.sep) - base_depth
             if depth > max_depth:
                 dirnames[:] = []
@@ -130,7 +137,7 @@ def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
 
 
 @fc_register('builtin_tools')
-@fc_register('tool', execute_in_sandbox=False, read_keys=lambda args: ('file', args.get('path', '.')))
+@fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'read')))
 def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
                     max_results: int = 50, root: Optional[str] = None,
@@ -157,7 +164,7 @@ def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
         raise ToolExecutionError(f'Directory not found: {path_abs}')
     regex = _compile_search_pattern(pattern)
     results: List[Dict[str, str]] = []
-    for dirpath, dirnames, filenames in host_file_io.walk(path_abs):
+    for dirpath, dirnames, filenames in os.walk(path_abs, followlinks=False):
         dirnames[:] = [name for name in dirnames if not os.path.islink(os.path.join(dirpath, name))]
         for name in filenames:
             if glob and not fnmatch.fnmatch(name, glob):
@@ -168,7 +175,7 @@ def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
             try:
                 if os.path.getsize(file_path) > max_file_size:
                     continue
-                with io.TextIOWrapper(host_file_io.open_read(file_path), encoding=encoding, errors=errors) as f:
+                with open(file_path, 'r', encoding=encoding, errors=errors) as f:
                     for idx, line in enumerate(f, start=1):
                         if regex.search(line):
                             results.append({
@@ -184,7 +191,7 @@ def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
 
 
 @fc_register('builtin_tools')
-@fc_register('tool', execute_in_sandbox=False, write_keys=lambda args: ('file', args['path']))
+@fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'write')))
 def make_dir(path: str, parents: bool = True, exist_ok: bool = True,
              root: Optional[str] = None) -> dict:
@@ -201,15 +208,15 @@ def make_dir(path: str, parents: bool = True, exist_ok: bool = True,
     '''
     _check_root(path, root)
     path_abs = _resolve_path(path)
-    host_file_io.makedirs(path_abs, exist_ok=exist_ok, parents=parents)
+    os.makedirs(path_abs, exist_ok=exist_ok) if parents else _mkdir(path_abs, exist_ok)
     return {'status': 'ok', 'path': path_abs}
 
 
 @fc_register('builtin_tools')
-@fc_register('tool', execute_in_sandbox=False, write_keys=lambda args: ('file', args['path']))
+@fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'write')))
 def write_file(path: str, content: str, mode: str = 'overwrite', encoding: str = 'utf-8',
-               root: Optional[str] = None, create_parents: bool = True, **_legacy_options) -> dict:
+               root: Optional[str] = None, create_parents: bool = True) -> dict:
     '''Write content to a file.
 
     Args:
@@ -230,17 +237,17 @@ def write_file(path: str, content: str, mode: str = 'overwrite', encoding: str =
     parent = os.path.dirname(path_abs)
 
     if parent and create_parents:
-        host_file_io.makedirs(parent, exist_ok=True)
+        os.makedirs(parent, exist_ok=True)
     fmode = 'a' if mode == 'append' else 'w'
-    with io.TextIOWrapper(host_file_io.open_write(path_abs, fmode), encoding=encoding) as f:
+    with open(path_abs, fmode, encoding=encoding) as f:
         f.write(content)
     return {'status': 'ok', 'path': path_abs, 'mode': mode, 'bytes': len(content)}
 
 
 @fc_register('builtin_tools')
-@fc_register('tool', execute_in_sandbox=False, write_keys=lambda args: ('file', args['path']))
+@fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'delete')))
-def delete_file(path: str, root: Optional[str] = None, **_legacy_options) -> dict:
+def delete_file(path: str, root: Optional[str] = None) -> dict:
     '''Delete a file.
 
     Args:
@@ -253,18 +260,15 @@ def delete_file(path: str, root: Optional[str] = None, **_legacy_options) -> dic
     path_abs = _resolve_path(path)
     if not os.path.exists(path_abs):
         raise ToolExecutionError(f'File not found: {path_abs}')
-    host_file_io.delete(path_abs)
+    os.rmdir(path_abs) if os.path.isdir(path_abs) and not os.path.islink(path_abs) else os.unlink(path_abs)
     return {'status': 'ok', 'path': path_abs}
 
 
 @fc_register('builtin_tools')
-@fc_register(
-    'tool', execute_in_sandbox=False,
-    write_keys=lambda args: [('file', args['src']), ('file', args['dst'])],
-)
+@fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('src', 'delete'), ('dst', 'write')))
 def move_file(src: str, dst: str, root: Optional[str] = None, overwrite: bool = False,
-              create_parents: bool = True, **_legacy_options) -> dict:
+              create_parents: bool = True) -> dict:
     '''Move or rename a file.
 
     Args:
@@ -287,6 +291,6 @@ def move_file(src: str, dst: str, root: Optional[str] = None, overwrite: bool = 
         raise ToolExecutionError(f'Destination already exists: {dst_abs}')
     parent = os.path.dirname(dst_abs)
     if parent and create_parents:
-        host_file_io.makedirs(parent, exist_ok=True)
-    host_file_io.rename(src_abs, dst_abs, overwrite=overwrite)
+        os.makedirs(parent, exist_ok=True)
+    shutil.move(src_abs, dst_abs)
     return {'status': 'ok', 'src': src_abs, 'dst': dst_abs}

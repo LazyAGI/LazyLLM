@@ -15,6 +15,13 @@ _FILE_RESOURCE_NAMESPACE = 'file'
 _HOST_WORKING_DIRECTORY = ContextVar('host_file_working_directory', default=None)
 
 
+def resolve_host_path(path):
+    path = os.path.expanduser(os.fspath(path))
+    if not os.path.isabs(path):
+        path = os.path.join(_HOST_WORKING_DIRECTORY.get() or os.getcwd(), path)
+    return os.path.realpath(path)
+
+
 class HostFileAccess(str, Enum):
     UNDECLARED = 'UNDECLARED'
     NONE = 'NONE'
@@ -27,7 +34,6 @@ class HostFile(str, Enum):
 
     NONE = 'NONE'
     OPAQUE = 'OPAQUE'
-    UNDECLARED = 'UNDECLARED'
 
 
 class AuthorizationDecision(str, Enum):
@@ -264,26 +270,20 @@ class ToolRuntimeMetadata:
     exclusive: bool = False
     polling: bool = False
     host_file: Any = None
-    host_file_access: HostFileAccess = HostFileAccess.UNDECLARED
-    host_file_resolver: Optional[Callable] = None
+    host_file_access: HostFileAccess = field(init=False, default=HostFileAccess.UNDECLARED)
+    host_file_resolver: Optional[Callable] = field(init=False, default=None)
 
     def _validate_host_file_metadata(self):
         declaration = self.host_file
-        if declaration is not None:
-            if callable(declaration):
-                object.__setattr__(self, 'host_file_access', HostFileAccess.DECLARED)
-                object.__setattr__(self, 'host_file_resolver', declaration)
-            else:
-                object.__setattr__(self, 'host_file_access', HostFileAccess(declaration))
-        else:
-            object.__setattr__(self, 'host_file_access', HostFileAccess(self.host_file_access))
-        if self.host_file_access is HostFileAccess.DECLARED:
-            if self.host_file_resolver is None:
-                raise ValueError('DECLARED host file access requires a resolver')
-            if not callable(self.host_file_resolver):
-                raise TypeError('host_file_resolver must be callable')
-        elif self.host_file_resolver is not None:
-            raise ValueError('only DECLARED host file access accepts a resolver')
+        if declaration is None:
+            return
+        if callable(declaration):
+            object.__setattr__(self, 'host_file_access', HostFileAccess.DECLARED)
+            object.__setattr__(self, 'host_file_resolver', declaration)
+            return
+        marker = HostFile(declaration)
+        object.__setattr__(self, 'host_file', marker)
+        object.__setattr__(self, 'host_file_access', HostFileAccess(marker.value))
 
     def __post_init__(self):
         self._validate_host_file_metadata()

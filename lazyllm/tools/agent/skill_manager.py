@@ -665,7 +665,7 @@ class SkillManager(ModuleBase):
         )
 
     def run_script(self, name: str, rel_path: str, args: Optional[List[str]] = None,
-                   cwd: Optional[str] = None, **_legacy_options) -> Dict[str, str]:
+                   cwd: Optional[str] = None) -> Dict[str, str]:
         info, error = self._get_visible_skill_info(name)
         if error:
             self._raise_skill_lookup_error(name, error)
