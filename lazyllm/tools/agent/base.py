@@ -9,8 +9,7 @@ from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbo
 from .toolsManager import ToolManager
 from .skill_manager import SkillManager
 from .file_tool import FileSystemToolkit  # noqa: F401
-from .shell_tool import shell_tool  # noqa: F401
-from .download_tool import download_file  # noqa: F401
+from .shell_tool import shell  # noqa: F401
 
 
 TOOL_OBSERVATION_KEY = '_lazyllm_tool_observation'

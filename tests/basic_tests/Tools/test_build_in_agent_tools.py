@@ -5,8 +5,7 @@ import tempfile
 from lazyllm.tools import ToolManager
 from lazyllm.tools.agent.file_tool import (read, write, ls, grep,
                                            move, remove)
-from lazyllm.tools.agent.shell_tool import shell_tool
-from lazyllm.tools.agent.download_tool import download_file
+from lazyllm.tools.agent.shell_tool import shell
 
 
 class TestFileTool(object):
@@ -37,62 +36,25 @@ class TestFileTool(object):
 
 
 class TestShellTool(object):
-    def test_shell_tool(self):
-        res = shell_tool('echo hello')
+    def test_shell(self):
+        res = shell('echo hello')
         assert res['status'] == 'ok'
         assert 'hello' in res['stdout']
 
-    def test_shell_tool_needs_approval(self):
-        manager = ToolManager(['shell_tool'])
+    def test_shell_needs_approval(self):
+        manager = ToolManager(['shell'])
         prepared = manager.prepare_tool_calls({
-            'function': {'name': 'shell_tool', 'arguments': {'cmd': 'echo approved'}},
+            'function': {'name': 'shell', 'arguments': {'cmd': 'echo approved'}},
         })
         result = manager.execute_prepared(prepared)
         assert result.results[0]['needs_approval'] is True
         assert result.records[0].reason == 'approval_required'
 
-    def test_shell_tool_executes_after_host_approval(self):
-        manager = ToolManager(['shell_tool'])
+    def test_shell_executes_after_host_approval(self):
+        manager = ToolManager(['shell'])
         prepared = manager.prepare_tool_calls({
-            'function': {'name': 'shell_tool', 'arguments': {'cmd': 'echo approved'}},
+            'function': {'name': 'shell', 'arguments': {'cmd': 'echo approved'}},
         })
         result = manager.execute_prepared(prepared, approved_indices=(0,))
         assert result.results[0]['ok'] is True
         assert 'approved' in result.results[0]['value']['stdout']
-
-
-class TestDownloadTool(object):
-    def test_download_tool_needs_approval(self, monkeypatch):
-        requested = []
-        monkeypatch.setattr('urllib.request.urlopen', lambda *args, **kwargs: requested.append(args))
-        with tempfile.TemporaryDirectory() as tmp:
-            dst = os.path.join(tmp, 'a.txt')
-            manager = ToolManager([download_file])
-            prepared = manager.prepare_tool_calls({
-                'function': {'name': 'download_file', 'arguments': {
-                    'url': 'http://example.com/a.txt', 'dst': dst, 'root': tmp,
-                }},
-            })
-            result = manager.execute_prepared(prepared)
-            assert result.results[0]['needs_approval'] is True
-            assert requested == []
-
-    def test_download_tool(self, monkeypatch):
-        class FakeResponse:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, exc_type, exc_value, traceback):
-                return False
-
-            @staticmethod
-            def read():
-                return b'hello download'
-
-        monkeypatch.setattr('urllib.request.urlopen', lambda *args, **kwargs: FakeResponse())
-        with tempfile.TemporaryDirectory() as tmp:
-            url = 'http://example.com/payload.txt'
-            dst = os.path.join(tmp, 'out.txt')
-            res = download_file(url, dst, root=tmp)
-            assert res['status'] == 'ok'
-            assert res['bytes'] > 0

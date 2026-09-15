@@ -58,7 +58,7 @@ def _build_scoped_agent_tools(  # noqa: C901
     clone_dir: str, owner_repo: str = '', cache_path: Optional[str] = None,
 ) -> list:
     from lazyllm.tools.agent.file_tool import read, ls, grep
-    from lazyllm.tools.agent.shell_tool import shell_tool
+    from lazyllm.tools.agent.shell_tool import shell
 
     def read_file_scoped(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None) -> dict:
         '''Read a source file from the repository, with optional line range.
@@ -114,7 +114,7 @@ def _build_scoped_agent_tools(  # noqa: C901
             timeout (int, optional): Timeout in seconds. Defaults to 30.
         '''
         lazyllm.LOG.info(f'  [Agent] Shell {cmd!r}')
-        return shell_tool(cmd, cwd=clone_dir, timeout=timeout)
+        return shell(cmd, cwd=clone_dir, timeout=timeout)
 
     def read_files_batch(paths: str) -> dict:
         '''Read multiple source files at once.

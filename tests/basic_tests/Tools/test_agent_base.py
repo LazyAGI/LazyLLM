@@ -42,7 +42,9 @@ class TestLazyLLMAgentBase(object):
         agent = _DummyAgent(skills=False, enable_builtin_tools=True)
         assert agent._skill_manager is None
         assert any(isinstance(tool, str) and tool.startswith('builtin_tools.read') for tool in agent._tools)
-        assert {'read', 'shell_tool'}.issubset({tool.name for tool in agent._tools_manager.all_tools})
+        names = {item['function']['name'] for item in agent._tools_manager.tools_description}
+        assert {'read', 'shell'} <= names
+        assert names.isdisjoint({'shell_tool', 'download_file'})
 
     def test_skills_only_add_skill_tools_when_builtin_tools_disabled(self, monkeypatch):
         monkeypatch.setattr(SkillManager, 'get_skill_tools', lambda self: [

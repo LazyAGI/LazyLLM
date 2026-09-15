@@ -430,10 +430,10 @@ def test_context_error_prevents_invocation():
 
 def test_builtin_paths_use_request_working_directory(tmp_path):
     from lazyllm.tools.agent.file_tool import read, write, remove
-    from lazyllm.tools.agent.shell_tool import shell_tool
+    from lazyllm.tools.agent.shell_tool import shell
     from lazyllm.tools.agent.todo_tool import todo_write
 
-    manager = ToolManager([read, write, remove, shell_tool, todo_write])
+    manager = ToolManager([read, write, remove, shell, todo_write])
     batch = manager.prepare_tool_calls(
         call('read', path='notes.txt'), require_host_file_access=True, working_directory=str(tmp_path))
     assert batch[0].validated_arguments['path'] == str(tmp_path / 'notes.txt')
@@ -543,11 +543,10 @@ def test_host_file_resolution_is_prepare_data_not_filesystem_facade():
 
 
 def test_model_visible_unsafe_flags_are_removed():
-    from lazyllm.tools.agent.download_tool import download_file
     from lazyllm.tools.agent.file_tool import remove, move, write
-    from lazyllm.tools.agent.shell_tool import shell_tool
+    from lazyllm.tools.agent.shell_tool import shell
 
-    manager = ToolManager([download_file, write, remove, move, shell_tool])
+    manager = ToolManager([write, remove, move, shell])
     descriptions = json.dumps(manager.tools_description)
     assert 'allow_unsafe' not in descriptions
 

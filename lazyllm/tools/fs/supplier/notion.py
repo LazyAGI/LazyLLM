@@ -2385,7 +2385,11 @@ class NotionFS(LinkDocumentFSBase):
 
     @fc_register(host_file='NONE')
     def exists(self, path: str, **kwargs) -> bool:
-        '''Return whether a remote file or folder exists.'''
+        '''Return whether a remote file or folder exists.
+
+        Args:
+            path (str): Remote file or folder path.
+        '''
         return super().exists(path, **kwargs)
 
     @fc_register(host_file='NONE')
