@@ -57,12 +57,14 @@ class SciverseSearch(SearchBase):
         offset: Optional[int] = None,
         limit: int = 700,
     ) -> Dict[str, Any]:
+        offset = max(0, int(offset)) if offset is not None else 0
+        limit = max(1, int(limit))
         extra = item.get('extra') or {}
         doc_id = item.get('doc_id') or extra.get('doc_id')
+        content = None
+        data = {}
         if doc_id:
-            params: Dict[str, Any] = {'doc_id': doc_id}
-            if offset is not None:
-                params.update({'offset': max(0, int(offset)), 'limit': max(1, int(limit))})
+            params: Dict[str, Any] = {'doc_id': doc_id, 'offset': offset, 'limit': limit}
             try:
                 resp = httpx.get(
                     f'{self._base_url}/content',
@@ -72,14 +74,31 @@ class SciverseSearch(SearchBase):
                 )
                 resp.raise_for_status()
                 data = resp.json()
-                if isinstance(data, dict) and data.get('text'):
-                    return _make_content_result(item, data['text'])
+                if isinstance(data, dict) and isinstance(data.get('text'), str):
+                    content = data['text']
             except Exception:
                 pass
-        fallback = extra.get('content') or item.get('snippet')
-        return _make_content_result(item, fallback) if fallback else super().get_content(item)
+        fallback = content is None
+        if fallback:
+            content = str(extra.get('content') or item.get('snippet') or self._fetch_content_text(item))
+        result = _make_content_result(item, content[:limit])
+        result['snippet'] = result['snippet'][:700]
+        result['extra'].pop('content', None)
+        # Keep read metadata separate from search-hit offsets and snippet truncation.
+        result['extra']['content_read'] = {
+            'offset': None if fallback else offset,
+            'limit': limit,
+            'truncated': len(content) > limit,
+            'fallback': fallback,
+        }
+        if not fallback and len(content) <= limit:
+            more, next_offset = data.get('more'), data.get('next_offset')
+            if (isinstance(more, bool) and type(next_offset) is int
+                    and (next_offset > offset if more else next_offset >= offset)):
+                result['extra']['content_read'].update(more=more, next_offset=next_offset)
+        return result
 
-    def search(self, query: str, topk: int = 5, include_content: bool = True,
+    def search(self, query: str, topk: int = 5, include_content: bool = False,
                search_type: Literal['agentic', 'meta'] = 'agentic',
                year_from: Optional[int] = None,
                year_to: Optional[int] = None) -> List[dict]:
@@ -117,7 +136,7 @@ class SciverseSearch(SearchBase):
         page_size: int = 25,
         cursor: Optional[str] = None,
         freshness_boost: Literal['NONE', 'MILD', 'STRONG'] = 'NONE',
-        include_content: bool = True,
+        include_content: bool = False,
         year_from: Optional[int] = None,
         year_to: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -231,7 +250,7 @@ class SciverseSearch(SearchBase):
             out.append(_make_result(
                 title=title,
                 url=url,
-                snippet='\n'.join(part for part in (abstract, chunk) if part),
+                snippet=content,
                 source=self.source_name,
                 **{key: value for key, value in extra.items() if value not in (None, '', [])},
             ))

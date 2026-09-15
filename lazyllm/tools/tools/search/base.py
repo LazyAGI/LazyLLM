@@ -26,7 +26,12 @@ def _html_to_text(html: str) -> str:
     return unescape(re.sub(r'\s+', ' ', html).strip())
 
 
-def _make_result(title: str, url: str, snippet: str = '', source: str = '', **extra: Any) -> Dict[str, Any]:
+def _make_result(title: str, url: str, snippet: str = '', source: str = '',
+                 *, snippet_limit: Optional[int] = 700, **extra: Any) -> Dict[str, Any]:
+    snippet = str(snippet or '')
+    if snippet_limit is not None and len(snippet) > snippet_limit:
+        snippet = snippet[:snippet_limit]
+        extra['truncated'] = True
     item = {
         _TITLE_KEY: title,
         _URL_KEY: url,
@@ -38,14 +43,18 @@ def _make_result(title: str, url: str, snippet: str = '', source: str = '', **ex
     return item
 
 
-def _make_content_result(item: Dict[str, Any], content: str) -> Dict[str, Any]:
+def _make_content_result(item: Dict[str, Any], content: str, *,
+                         content_type: Optional[str] = None, fallback: bool = False) -> Dict[str, Any]:
     extra = item.get(_EXTRA_KEY)
+    extra = dict(extra) if isinstance(extra, dict) else {}
+    if content_type is not None:
+        extra['content_read'] = {'content_type': content_type, 'fallback': fallback}
     return {
         _TITLE_KEY: str(item.get(_TITLE_KEY) or ''),
         _URL_KEY: str(item.get(_URL_KEY) or item.get('link') or ''),
         _SNIPPET_KEY: str(item.get(_SNIPPET_KEY) or ''),
         _SOURCE_KEY: str(item.get(_SOURCE_KEY) or ''),
-        _EXTRA_KEY: dict(extra) if isinstance(extra, dict) else {},
+        _EXTRA_KEY: extra,
         'content': str(content or ''),
     }
 
@@ -124,8 +133,28 @@ class SearchBase(ModuleBase, CredentialMixin):
         except Exception:
             return ''
 
-    def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        return _make_content_result(item, self._fetch_content_text(item))
+    def _fetch_content_result(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        content = self._fetch_content_text(item)
+        return _make_content_result(item, content, content_type='webpage', fallback=not bool(content))
 
-    def get_contents(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        return [self.get_content(it) for it in items]
+    def get_content(self, item: Dict[str, Any], offset: int = 0, limit: int = 700) -> Dict[str, Any]:
+        offset, limit = max(0, int(offset)), max(1, int(limit))
+        result = self._fetch_content_result(item)
+        content = result['content']
+        extra = result['extra']
+        read = dict(extra.get('content_read') or {})
+        fallback = read.get('fallback', False)
+        start = 0 if fallback else offset
+        result['content'] = content[start:start + limit]
+        result['snippet'] = result['snippet'][:700]
+        extra.pop('content', None)
+        extra.pop('raw_content', None)
+        read.update(offset=None if fallback else offset, limit=limit, truncated=len(content) > start + limit)
+        if not fallback:
+            next_offset = offset + len(result['content'])
+            read.update(more=next_offset < len(content), next_offset=next_offset)
+        extra['content_read'] = read
+        return result
+
+    def get_contents(self, items: List[Dict[str, Any]], offset: int = 0, limit: int = 700) -> List[Dict[str, Any]]:
+        return [self.get_content(it, offset=offset, limit=limit) for it in items]
