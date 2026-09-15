@@ -50,9 +50,8 @@ class DummySandbox(LazyLLMSandboxBase):
         return {'returncode': proc.returncode, 'stdout': stdout, 'stderr': stderr}
 
     def execute_script(self, source_dir: str, rel_path: str, args: Optional[List[str]] = None,
-                       cwd: str = '.', allow_unsafe: bool = False,
+                       cwd: str = '.',
                        env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
-        del allow_unsafe  # DummySandbox currently has no approval boundary.
         context = self._create_context()
         try:
             sandbox_root = context['temp_dir']

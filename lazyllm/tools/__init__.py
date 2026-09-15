@@ -16,6 +16,7 @@ if TYPE_CHECKING:
                      YuqueFS, OnesFS, S3FS, ObsidianFS)
     from .agent import (
         ToolManager,
+        FileSystemToolkit,
         AuthorizationDecision,
         AuthorizationPolicy,
         DefaultAuthorizationPolicy,
@@ -109,6 +110,7 @@ _SUBMOD_MAP = {
     'webpages': ['WebModule'],
     'agent': [
         'ToolManager',
+        'FileSystemToolkit',
         'ResolvedToolAccess',
         'resolve_host_path',
         'AuthorizationDecision',

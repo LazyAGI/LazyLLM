@@ -705,7 +705,6 @@ class SkillManager(ModuleBase):
                 rel_path=normalized_rel_path,
                 args=args,
                 cwd=os.path.relpath(run_cwd, os.path.realpath(os.path.abspath(base))),
-                allow_unsafe=True,
                 env=script_env,
             )
             return self._normalize_script_result(result, info)

@@ -1,3 +1,4 @@
+from lazyllm.tools.agent.tool_runtime import host_file_access
 import json
 from pathlib import Path
 import threading
@@ -7,15 +8,15 @@ import lazyllm
 import pytest
 
 from lazyllm.flow.flow import FlowException
-from lazyllm.tools import HostFileIntent, HostFileResolution, ToolManager, fc_register
+from lazyllm.tools import HostFileIntent, ToolManager, fc_register
 from lazyllm.tools.agent.file_tool import (
-    delete_file,
-    list_dir,
-    make_dir,
-    move_file,
-    read_file,
-    search_in_files,
-    write_file,
+    remove,
+    ls,
+    mkdir,
+    move,
+    read,
+    grep,
+    write,
 )
 
 
@@ -72,20 +73,20 @@ def test_runtime_metadata_is_preserved_and_hidden_from_schema():
         assert 'runtime_metadata' not in schema
 
         builtin_manager = ToolManager([
-            read_file, list_dir, search_in_files, make_dir, write_file, delete_file, move_file,
+            read, ls, grep, mkdir, write, remove, move,
         ])
         assert all(
             tool.runtime_metadata.read_keys is None and tool.runtime_metadata.write_keys is None
             for tool in builtin_manager.all_tools
         )
         prepared = builtin_manager.prepare_tool_calls([
-            _tool_call('read_file', {'path': '/tmp/tool-runtime/read'}),
-            _tool_call('write_file', {'path': '/tmp/tool-runtime/write', 'content': 'x'}),
+            _tool_call('read', {'path': '/tmp/tool-runtime/read'}),
+            _tool_call('write', {'path': '/tmp/tool-runtime/write', 'content': 'x'}),
         ])
         assert prepared[0].host_files == (HostFileIntent(str(Path('/tmp/tool-runtime/read').resolve()), 'read'),)
-        assert prepared[0].access == HostFileResolution({}, prepared[0].host_files).access
+        assert prepared[0].access == host_file_access(prepared[0].host_files)
         assert prepared[1].host_files == (HostFileIntent(str(Path('/tmp/tool-runtime/write').resolve()), 'write'),)
-        assert prepared[1].access == HostFileResolution({}, prepared[1].host_files).access
+        assert prepared[1].access == host_file_access(prepared[1].host_files)
     finally:
         lazyllm.tool.remove(registered_name)
 

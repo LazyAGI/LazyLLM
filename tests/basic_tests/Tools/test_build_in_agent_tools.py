@@ -3,8 +3,8 @@ import tempfile
 
 
 from lazyllm.tools import ToolManager
-from lazyllm.tools.agent.file_tool import (read_file, write_file, list_dir, search_in_files,
-                                           move_file, delete_file)
+from lazyllm.tools.agent.file_tool import (read, write, ls, grep,
+                                           move, remove)
 from lazyllm.tools.agent.shell_tool import shell_tool
 from lazyllm.tools.agent.download_tool import download_file
 
@@ -13,26 +13,26 @@ class TestFileTool(object):
     def test_file_ops(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, 'a.txt')
-            res = write_file(path, 'hello\nworld', root=tmp)
+            res = write(path, 'hello\nworld', root=tmp)
             assert res['status'] == 'ok'
 
-            res = read_file(path, root=tmp)
+            res = read(path, root=tmp)
             assert res['status'] == 'ok'
             assert 'hello' in res['content']
 
-            res = list_dir(tmp, root=tmp)
+            res = ls(tmp, root=tmp)
             assert res['status'] == 'ok'
             assert 'a.txt' in res['entries']
 
-            res = search_in_files('world', path=tmp, root=tmp)
+            res = grep('world', path=tmp, root=tmp)
             assert res['status'] == 'ok'
             assert any(item['path'].endswith('a.txt') for item in res['results'])
 
             dst = os.path.join(tmp, 'b.txt')
-            res = move_file(path, dst, root=tmp)
+            res = move(path, dst, root=tmp)
             assert res['status'] == 'ok'
 
-            res = delete_file(dst, root=tmp)
+            res = remove(dst, root=tmp)
             assert res['status'] == 'ok'
 
 

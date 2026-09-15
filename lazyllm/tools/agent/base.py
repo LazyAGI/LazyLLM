@@ -8,15 +8,7 @@ from lazyllm import locals, once_wrapper
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
 from .toolsManager import ToolManager
 from .skill_manager import SkillManager
-from .file_tool import (  # noqa: F401
-    read_file,
-    list_dir,
-    search_in_files,
-    make_dir,
-    write_file,
-    delete_file,
-    move_file,
-)
+from .file_tool import FileSystemToolkit  # noqa: F401
 from .shell_tool import shell_tool  # noqa: F401
 from .download_tool import download_file  # noqa: F401
 
@@ -212,6 +204,8 @@ class LazyLLMAgentBase(ModuleBase):
         for tool in self._tools:
             if isinstance(tool, str):
                 existing.add(tool.split('.')[-1])
+            elif hasattr(tool, 'get_flat_tools'):
+                existing.update(tool.get_flat_tools())
             elif hasattr(tool, '__name__'):
                 existing.add(tool.__name__)
         for key in builtin_keys:

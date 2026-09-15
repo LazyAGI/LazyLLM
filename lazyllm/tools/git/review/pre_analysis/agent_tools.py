@@ -57,7 +57,7 @@ for _ext in ('.js', '.ts', '.jsx', '.tsx'):
 def _build_scoped_agent_tools(  # noqa: C901
     clone_dir: str, owner_repo: str = '', cache_path: Optional[str] = None,
 ) -> list:
-    from lazyllm.tools.agent.file_tool import read_file, list_dir, search_in_files
+    from lazyllm.tools.agent.file_tool import read, ls, grep
     from lazyllm.tools.agent.shell_tool import shell_tool
 
     def read_file_scoped(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None) -> dict:
@@ -71,7 +71,7 @@ def _build_scoped_agent_tools(  # noqa: C901
         abs_path = path if os.path.isabs(path) else os.path.join(clone_dir, path)
         line_info = f':{start_line}-{end_line}' if (start_line or end_line) else ''
         lazyllm.LOG.info(f'  [Agent] Read {path}{line_info}')
-        return read_file(abs_path, start_line=start_line, end_line=end_line, root=clone_dir)
+        return read(abs_path, start_line=start_line, end_line=end_line, root=clone_dir)
 
     def read_file_skeleton_scoped(path: str) -> dict:
         '''Get the structural skeleton of a file: imports, class definitions, function signatures.
@@ -93,7 +93,7 @@ def _build_scoped_agent_tools(  # noqa: C901
             max_results (int, optional): Max number of matches to return.
         '''
         lazyllm.LOG.info(f'  [Agent] Search {pattern!r}' + (f' in {glob}' if glob else ''))
-        return search_in_files(pattern, path=clone_dir, glob=glob, max_results=max_results, root=clone_dir)
+        return grep(pattern, path=clone_dir, glob=glob, max_results=max_results, root=clone_dir)
 
     def list_dir_scoped(path: str = '.', recursive: bool = False) -> dict:
         '''List directory entries in the repository.
@@ -104,7 +104,7 @@ def _build_scoped_agent_tools(  # noqa: C901
         '''
         lazyllm.LOG.info(f'  [Agent] ListDir {path}' + (' (recursive)' if recursive else ''))
         abs_path = path if os.path.isabs(path) else os.path.join(clone_dir, path)
-        return list_dir(abs_path, recursive=recursive, root=clone_dir)
+        return ls(abs_path, recursive=recursive, root=clone_dir)
 
     def shell_scoped(cmd: str, timeout: int = 30) -> dict:
         '''Run a read-only shell command inside the repository directory.
@@ -143,7 +143,7 @@ def _build_scoped_agent_tools(  # noqa: C901
         '''
         lazyllm.LOG.info(f'  [Agent] GrepCallers {symbol!r}')
         pattern = rf'\b{re.escape(symbol)}\s*[\(\.]'
-        return search_in_files(pattern, path=clone_dir, max_results=max_results, root=clone_dir)
+        return grep(pattern, path=clone_dir, max_results=max_results, root=clone_dir)
 
     def ask_deepwiki(question: str) -> str:
         '''Ask DeepWiki a background question about this repository's architecture or design.
@@ -192,7 +192,7 @@ def _build_analyze_symbol_tool(  # noqa: C901
     llm: Any, clone_dir: str, symbol_cache: Dict[str, Any],
     cache_lock: Optional[Any] = None,
 ) -> Any:
-    from lazyllm.tools.agent.file_tool import search_in_files
+    from lazyllm.tools.agent.file_tool import grep
 
     def _cache_get(key: str) -> Optional[Any]:
         if cache_lock:
@@ -228,7 +228,7 @@ def _build_analyze_symbol_tool(  # noqa: C901
         if not abs_file or not os.path.isfile(abs_file):
             try:
                 for glob_pat, def_pat, _ in _LANG_SYMBOL_PATTERNS:
-                    res = search_in_files(
+                    res = grep(
                         def_pat.replace('(?P<name>', f'(?P<name>{re.escape(symbol_name)}')
                         if '(?P<name>' in def_pat else
                         def_pat.replace('(?P<name2>', f'(?P<name2>{re.escape(symbol_name)}'),
