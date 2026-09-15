@@ -2,7 +2,7 @@ import os
 import tempfile
 import time
 from contextlib import contextmanager
-from copy import copy
+from copy import copy, deepcopy
 from pathlib import Path
 from threading import Event, Lock
 from unittest.mock import MagicMock, patch
@@ -347,6 +347,13 @@ def _make_doc_adapter():
     }
     adapter.read_bytes.return_value = '第一段\n第二段'.encode('utf-8')
     adapter.get_document_id.return_value = 'doc-1'
+    adapter.get_document_metadata.side_effect = lambda _path: {
+        'document_id': 'doc-1',
+        'title': '飞书文档',
+        'revision_id': (
+            12 + adapter.update_block.call_count + adapter.move_block.call_count
+        ),
+    }
     adapter.get_doc_blocks.return_value = [
         {
             'block_id': 'b1',
@@ -1721,7 +1728,7 @@ def test_document_write_modes(public_method, provider_method):
         assert blocks[0]['text']['elements'][0]['text_run']['content'] == 'world'
 
 
-def test_apply_patch_to_document_dispatches_update_and_rereads():
+def test_apply_patch_to_document_dispatches_updates_and_refreshes_once():
     pytest.importorskip('fsspec')
     fs = _make_doc_adapter()
 
@@ -1745,10 +1752,12 @@ def test_apply_patch_to_document_dispatches_update_and_rereads():
             ],
         )
         first, second = fs.get_doc_blocks.return_value
-        fs.get_doc_blocks.side_effect = [
-            [first, {**second, 'text': {'elements': [{'text_run': {'content': content}}]}}]
-            for content in ('第一次修改', '第二次修改', '第二次修改')
-        ]
+        fs.get_doc_blocks.side_effect = [[
+            first,
+            {**second, 'text': {'elements': [{
+                'text_run': {'content': '第二次修改'},
+            }]}},
+        ]]
         fs.update_block.side_effect = [
             {'document_revision_id': 13}, {'document_revision_id': 14},
             {'document_revision_id': 15},
@@ -1767,6 +1776,7 @@ def test_apply_patch_to_document_dispatches_update_and_rereads():
         assert patch_result.applied_hunks[2].startswith('heading-sync-')
         assert [call.kwargs['document_revision_id']
                 for call in fs.update_block.call_args_list] == [12, 13, 14]
+        assert fs.get_doc_blocks.call_count == 2  # Initial load plus one final refresh.
         assert (persisted.blocks[1].content, persisted.revision) == ('第二次修改', '15')
 
 
@@ -1778,28 +1788,48 @@ def test_apply_patch_to_document_moves_and_restores_writer_identity():
         source = load_artifact_json(
             _call_document_to_docir(fs, directory)['artifact_path'], WriterDocument)
         moved_node_id = source.blocks[0].node_id
-        patch_set = PatchSet(target_doc_id=source.document_id, hunks=[PatchHunk(
-            hunk_id='move-b1',
-            target_node_id=moved_node_id,
-            modify_type='move',
-            parent_node_id=None,
-            index=1,
-        )])
+        updated_heading = source.blocks[0].model_copy(update={
+            'content': '新标题',
+            'spans': [WriterSpan(text='新标题')],
+        })
+        patch_set = PatchSet(target_doc_id=source.document_id, hunks=[
+            PatchHunk(
+                hunk_id='move-b1',
+                target_node_id=moved_node_id,
+                modify_type='move',
+                parent_node_id=None,
+                index=1,
+            ),
+            PatchHunk(
+                hunk_id='update-moved-b1',
+                target_node_id=moved_node_id,
+                modify_type='update',
+                block=updated_heading,
+            ),
+        ])
         first, second = fs.get_doc_blocks.return_value
-        fs.get_doc_blocks.return_value = [second, {**first, 'block_id': 'moved-b1'}]
+        moved = deepcopy(first)
+        moved['block_id'] = 'moved-b1'
+        moved['heading1']['elements'][0]['text_run']['content'] = '1 新标题'
+        fs.get_doc_blocks.return_value = [second, moved]
         fs.move_block.return_value = {
-            'block_id_relations': {'b1': 'moved-b1'},
+            'provider_id_remap': {'b1': 'moved-b1'},
+            'document_revision_id': 13,
         }
+        fs.update_block.return_value = {'document_revision_id': 14}
 
         with _route_doc_fs(fs):
             result = WriterResourceTools(
                 artifact_store=directory).apply_patch_to_document(patch_set, source)
 
         assert fs.move_block.call_args.kwargs['source_block_id'] == 'b1'
+        assert fs.update_block.call_args.kwargs['document_revision_id'] == 13
+        assert fs.update_block.call_args.kwargs['requests'][0]['block_id'] == 'moved-b1'
         persisted = load_artifact_json(
             result['metadata']['artifact_paths']['persisted_document'], WriterDocument)
         assert persisted.blocks[1].node_id == moved_node_id
         assert persisted.blocks[1].provider_binding['block_id'] == 'moved-b1'
+        assert persisted.blocks[1].content == '新标题'
 
 
 @pytest.mark.parametrize(

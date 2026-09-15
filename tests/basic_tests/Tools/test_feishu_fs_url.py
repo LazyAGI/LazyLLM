@@ -224,14 +224,13 @@ class TestCreateBlockImageBinding(unittest.TestCase):
 
     def test_create_binds_image_after_descendant_creation(self):
         fs = self._make_fs()
-        descendants = self._image_descendant()
+        blocks = self._image_descendant()
 
         result = fs.create_block(
             document_id='doc-1',
             parent_block_id='doc-1',
             index=0,
-            children_id=['temporary-image'],
-            descendants=descendants,
+            blocks=blocks,
             document_revision_id=10,
         )
 
@@ -255,8 +254,7 @@ class TestCreateBlockImageBinding(unittest.TestCase):
                 document_id='doc-1',
                 parent_block_id='doc-1',
                 index=0,
-                children_id=['temporary-image'],
-                descendants=self._image_descendant(),
+                blocks=self._image_descendant(),
                 document_revision_id=10,
             )
 
@@ -641,6 +639,19 @@ class TestFeishuGetDocBlocks(unittest.TestCase):
         self.assertEqual(result, expected)
         self.assertEqual(raw_blocks[0]['plain_text'], '项目标题')
         self.assertEqual(raw_blocks[1]['plain_text'], 'provider-owned-value')
+
+    def test_get_document_metadata_returns_revision(self):
+        fs = self._make_fs([])
+        fs._base_url = 'https://open.feishu.cn/open-apis'
+        fs._get = MagicMock(return_value={'data': {'document': {
+            'document_id': 'doc-1', 'revision_id': 12, 'title': 'Project',
+        }}})
+
+        result = fs.get_document_metadata('/project')
+
+        self.assertEqual(result['revision_id'], 12)
+        fs._get.assert_called_once_with(
+            'https://open.feishu.cn/open-apis/docx/v1/documents/doc-1')
 
 
 if __name__ == '__main__':

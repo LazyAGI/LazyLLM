@@ -89,6 +89,23 @@ def apply_patch_to_ir(
     return revised_doc, result
 
 
+def apply_persisted_patch_hunk(
+    document: WriterDocument,
+    hunk: PatchHunk,
+) -> WriterDocument:
+    hunk = PatchSet(target_doc_id=document.document_id, hunks=[hunk]).hunks[0]
+    validate_writer_tables(document)
+    updated = document.model_copy(deep=True)
+    updated.ui_editable = False
+    WriterRevisionTools()._apply_patch_hunk(
+        updated, hunk, enforce_edit_policy=False)
+    node_ids = [block.node_id for block in updated.iter_blocks()]
+    if len(node_ids) != len(set(node_ids)):
+        raise ValueError('operation produced duplicate node_ids.')
+    validate_writer_tables(updated)
+    return WriterDocument.model_validate(updated.model_dump())
+
+
 class WriterRevisionTools(WriterToolBase):
     __public_apis__ = [
         'locate_revision_target',
@@ -146,13 +163,21 @@ class WriterRevisionTools(WriterToolBase):
         self,
         document: WriterDocument,
         hunk: PatchHunk,
+        *,
+        enforce_edit_policy: bool = True,
     ) -> None:
         target = document.block_by_id(hunk.target_node_id)
         if hunk.modify_type == 'update':
             if target is None or hunk.block is None:
                 raise ValueError(
                     f'update target {hunk.target_node_id!r} is absent from document.')
-            self._apply_block_update(target, hunk.block)
+            if enforce_edit_policy:
+                self._apply_block_update(target, hunk.block)
+            else:
+                if target.node_id != hunk.block.node_id:
+                    raise ValueError('update cannot change block node_id.')
+                for field in WRITER_BLOCK_MUTABLE_FIELDS:
+                    setattr(target, field, deepcopy(getattr(hunk.block, field)))
             return
         if hunk.modify_type == 'create':
             self._apply_create_hunk(document, hunk)

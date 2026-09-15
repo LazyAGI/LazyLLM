@@ -19,6 +19,7 @@ from .serialization import (
     parse_markdown_outline_instructions,
     strip_caption_numbering,
     strip_heading_numbering,
+    strip_math_delimiters,
     to_prompt_json,
     validate_markdown_paragraph,
 )
@@ -69,6 +70,7 @@ __all__ = [
     'strip_caption_numbering',
     'parse_writer_request_constraints',
     'set_document_editable',
+    'strip_math_delimiters',
     'table_grid',
     'validate_table',
     'validate_writer_tables',

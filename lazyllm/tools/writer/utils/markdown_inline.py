@@ -42,6 +42,9 @@ def parse_markdown_inline(  # noqa: C901
             }[token_type]] = True
             parse_markdown_inline(children, child_style, output)
             continue
+        if token_type == 'inline_math':
+            _append_span(output, '$' + str(token.get('raw') or '') + '$', {**inherited, 'math_source': True})
+            continue
         if token_type == 'codespan':
             _append_span(output, str(token.get('raw') or ''), {**inherited, 'inline_code': True})
             continue

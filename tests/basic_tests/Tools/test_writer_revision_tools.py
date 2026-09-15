@@ -24,7 +24,11 @@ from lazyllm.tools.writer.data_models import (
 from lazyllm.tools.writer.data_models.multimodal import VisualInstruction
 from lazyllm.tools.writer.data_models.revision import GeneratedRevision, RevisionBlockContent
 from lazyllm.tools.writer.utils import load_artifact_json
-from lazyllm.tools.writer.tools.revision_tools import WriterRevisionTools, apply_patch_to_ir
+from lazyllm.tools.writer.tools.revision_tools import (
+    WriterRevisionTools,
+    apply_patch_to_ir,
+    apply_persisted_patch_hunk,
+)
 
 
 def _block(node_id, content, *, children=None, style=None):
@@ -257,13 +261,16 @@ def test_apply_patch_supports_image_create_and_delete(tmp_path):
     assert deleted.block_by_id('image-existing') is None
 
 
-def test_apply_patch_rejects_image_update_and_move():
+def test_image_update_policy_distinguishes_user_patch_from_persisted_sync():
+    image = _image_block('image-existing', content='图 1 原说明')
+    image.provider_binding = {'provider': 'notion', 'block_id': 'image-block'}
+    image.provider_payload = {'raw_block': {'type': 'image'}}
     source = WriterDocument(
         document_id='doc-1',
         stage='final',
-        blocks=[_block('anchor', '锚点'), _image_block('image-existing')],
+        blocks=[_block('anchor', '锚点'), image],
     )
-    updated_image = _image_block('image-existing', content='新说明')
+    updated_image = _image_block('image-existing', content='图 2 原说明')
     update_patch = PatchSet(
         target_doc_id='doc-1',
         hunks=[PatchHunk(
@@ -274,6 +281,15 @@ def test_apply_patch_rejects_image_update_and_move():
     )
     with pytest.raises(ValueError, match='cannot be updated or moved'):
         apply_patch_to_ir(source, update_patch)
+
+    persisted = apply_persisted_patch_hunk(source, update_patch.hunks[0])
+    persisted_image = persisted.block_by_id(image.node_id)
+    assert persisted_image.content == '图 2 原说明'
+    assert (
+        persisted_image.provider_binding,
+        persisted_image.provider_payload,
+        persisted_image.editable,
+    ) == (image.provider_binding, image.provider_payload, False)
 
     move_patch = PatchSet(
         target_doc_id='doc-1',

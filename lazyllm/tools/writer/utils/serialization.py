@@ -59,6 +59,20 @@ def strip_caption_numbering(value: str) -> str:
     return text[match.end():].strip() if match else text
 
 
+def strip_math_delimiters(content: str) -> str:
+    '''Return a math expression without common Markdown/LaTeX delimiters.'''
+    value = content.strip()
+    for left, right in (
+        ('$$', '$$'),
+        ('\\[', '\\]'),
+        ('\\(', '\\)'),
+        ('$', '$'),
+    ):
+        if value.startswith(left) and value.endswith(right):
+            return value[len(left):-len(right)].strip()
+    return value
+
+
 def to_prompt_json(value: Any) -> str:
     def default(obj: Any) -> Any:
         if hasattr(obj, 'model_dump'):
@@ -317,6 +331,42 @@ def get_markdown_outline_targets(
     return title, targets
 
 
+def _split_markdown_image_paragraph(token: Dict[str, Any]) -> List[Dict[str, Any]]:
+    children = token.get('children') or []
+    if token.get('type') != 'paragraph' or not any(child.get('type') == 'image' for child in children):
+        return [token]
+
+    parts: List[Dict[str, Any]] = []
+    pending: List[Dict[str, Any]] = []
+
+    def emit(items: List[Dict[str, Any]]) -> None:
+        part = {**token, 'children': items}
+        if _markdown_token_text(part).strip():
+            parts.append(part)
+
+    for child in children:
+        if child.get('type') != 'image':
+            pending.append(child)
+            continue
+        # An inline anchor immediately before an image belongs to that image,
+        # even when earlier text shares the same Markdown paragraph.
+        anchor_start = len(pending)
+        while anchor_start and (
+            pending[anchor_start - 1].get('type') in {'inline_html', 'softbreak', 'linebreak'}
+            or (pending[anchor_start - 1].get('type') == 'text'
+                and not str(pending[anchor_start - 1].get('raw') or '').strip())
+        ):
+            anchor_start -= 1
+        suffix = pending[anchor_start:]
+        if not MARKDOWN_ANCHOR_RE.search(''.join(_markdown_token_text(item) for item in suffix)):
+            anchor_start = len(pending)
+        emit(pending[:anchor_start])
+        emit([*pending[anchor_start:], child])
+        pending = []
+    emit(pending)
+    return parts
+
+
 def parse_document_markdown(  # noqa: C901
     markdown: str,
     document_id: str,
@@ -328,7 +378,7 @@ def parse_document_markdown(  # noqa: C901
     outline_instructions = parse_markdown_outline_instructions(markdown or '')
     visible_markdown = _strip_markdown_outline_instructions(markdown or '')
     heading_numbering = parse_markdown_heading_numbering_config(visible_markdown)
-    tokens = mistune.create_markdown(renderer='ast', plugins=['table'])(
+    tokens = mistune.create_markdown(renderer='ast', plugins=['table', 'math'])(
         strip_markdown_heading_numbering_config(visible_markdown),
     )
     outline_ids: Dict[str, List[str]] = defaultdict(list)
@@ -387,9 +437,15 @@ def parse_document_markdown(  # noqa: C901
         else:
             blocks.append(block)
 
-    for token in tokens:
+    for token in (part for item in tokens for part in _split_markdown_image_paragraph(item)):
         token_type = token.get('type')
         if token_type == 'blank_line':
+            continue
+        if token_type == 'block_math':
+            append_block(WriterBlock(
+                node_id=take_pending_node_id('math'), type='math',
+                content='$$\n' + token['raw'] + '\n$$', stage=stage, editable=False,
+            ))
             continue
         if token_type == 'heading':
             level = int((token.get('attrs') or {}).get('level') or 1)
@@ -398,9 +454,11 @@ def parse_document_markdown(  # noqa: C901
                 title = content or title
                 continue
             node_id, anchor_numbering = take_pending_anchor('heading', content)
+            spans = _markdown_spans_from_token(token)
             block = WriterBlock(
                 node_id=node_id, type='heading',
                 content=content, stage=stage,
+                spans=spans if any(span.style.get('math_source') for span in spans) else [],
                 numbering={
                     'level': max(level - 1, 1),
                     **anchor_numbering,
@@ -419,9 +477,11 @@ def parse_document_markdown(  # noqa: C901
             for item in token.get('children') or []:
                 content = _markdown_token_text(item).strip()
                 if content:
+                    spans = _markdown_spans_from_token(item)
                     append_block(WriterBlock(
                         node_id=next_id('list-item'), type='list_item',
                         content=content, stage=stage,
+                        spans=spans if any(span.style.get('math_source') for span in spans) else [],
                         numbering={'ordered': ordered},
                     ))
             continue
@@ -574,7 +634,9 @@ def parse_document_markdown(  # noqa: C901
             type=block_type,
             content=content.strip(),
             stage=stage,
-            spans=_markdown_spans_from_token(token) if block_type == 'code' else [],
+            spans=_markdown_spans_from_token(token) if block_type in {'code', 'quote'} else [],
+            provider_payload={'code_language': str((token.get('attrs') or {}).get('info') or '').split(' ')[0]}
+            if block_type == 'code' else {},
         )
         append_block(block)
 
@@ -617,6 +679,8 @@ def parse_document_markdown(  # noqa: C901
 
 def _markdown_token_text(token: Dict[str, Any]) -> str:
     token_type = token.get('type')
+    if token_type == 'inline_math':
+        return '$' + str(token.get('raw') or '') + '$'
     if token_type in {'text', 'codespan'}:
         return str(token.get('raw') or '')
     if token_type == 'image':
@@ -639,6 +703,10 @@ def _markdown_spans_from_token(token: Dict[str, Any]) -> List[WriterSpan]:
 
     def walk(node: Dict[str, Any]) -> None:
         node_type = node.get('type')
+        if node_type == 'inline_math':
+            spans.append(WriterSpan(text='$' + str(node.get('raw') or '') + '$',
+                                    style={'math_source': True}))
+            return
         if node_type in {'text', 'codespan'}:
             text = str(node.get('raw') or '')
             if text:

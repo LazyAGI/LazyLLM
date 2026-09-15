@@ -108,7 +108,7 @@ class _MarkdownParser:
         self.title = ''
         self.emitted = False
         self.parser = mistune.create_markdown(
-            renderer='ast', plugins=['table', 'strikethrough'],
+            renderer='ast', plugins=['table', 'strikethrough', 'math'],
         )
 
     def next_id(self, block_type: str) -> str:
@@ -206,6 +206,10 @@ class _MarkdownParser:
         for token in tokens:
             token_type = str(token.get('type') or '')
             if token_type == 'blank_line':
+                continue
+            if token_type == 'block_math':
+                blocks.append(self.block('math', '$$\n' + token['raw'] + '\n$$', editable=False))
+                self.emitted = True
                 continue
             if token_type == 'heading':
                 rich = _inline_content(token.get('children') or [])
@@ -646,6 +650,9 @@ def _render_block(block: WriterBlock, depth: int, allow_raw: bool) -> str:
         lines = [f'| {" | ".join(cells[0])} |', f'| {" | ".join(dividers)} |']
         lines.extend(f'| {" | ".join(row)} |' for row in cells[1:])
         current = '\n\n'.join(filter(None, [block.content.strip(), '\n'.join(lines)]))
+    elif block.type == 'math':
+        source = block.content.strip()
+        current = source if source.startswith(('$$', r'\[')) else '$$\n' + source + '\n$$'
     elif block.type == 'divider':
         current = block.content.strip() if re.fullmatch(r'(?:[-*_]\s*){3,}', block.content.strip()) else '---'
     elif block.type == 'image':

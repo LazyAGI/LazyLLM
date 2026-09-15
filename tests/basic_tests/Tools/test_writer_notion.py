@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from copy import deepcopy
 from unittest.mock import MagicMock, patch
+from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 
@@ -14,6 +15,7 @@ from lazyllm.tools.writer.provider import (
     get_writer_provider,
     match_writer_provider,
 )
+from lazyllm.tools.writer.provider.base import WriterProviderRevisionError
 from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
 from lazyllm.tools.writer.utils import load_artifact_json
 
@@ -178,6 +180,77 @@ class TestNotionAdapter:
         ]
         assert all('children' not in block[block['type']] for block in native)
 
+    def test_ir_to_blocks_materializes_structured_table_and_caption(self):
+        table = WriterBlock(
+            node_id='table-1', type='table', content='表1 指标表',
+            spans=[WriterSpan(text='表1 指标表')], editable=False,
+            children=[
+                WriterBlock(node_id='row-1', type='table_row', children=[
+                    WriterBlock(node_id='cell-1', type='table_cell', content='名称',
+                                numbering={'header': True}),
+                    WriterBlock(node_id='cell-2', type='table_cell', content='数量',
+                                numbering={'header': True, 'align': 'right'}),
+                ]),
+                WriterBlock(node_id='row-2', type='table_row', children=[
+                    WriterBlock(node_id='cell-3', type='table_cell', content='苹果'),
+                    WriterBlock(node_id='cell-4', type='table_cell', content='10'),
+                ]),
+            ],
+        )
+        document = WriterDocument(
+            document_id='writer-document',
+            provider_binding={'provider': 'notion', 'document_id': DOC_ID},
+            blocks=[table],
+        )
+
+        native = NotionWriterAdapter().ir_to_blocks(document)
+        table_payload = native[1]['table']
+
+        assert [block['type'] for block in native] == ['paragraph', 'table']
+        assert native[0]['paragraph']['rich_text'][0]['text']['content'] == '表1 指标表'
+        assert table_payload['table_width'] == 2
+        assert [
+            cell[0]['text']['content']
+            for cell in table_payload['children'][1]['table_row']['cells']
+        ] == ['苹果', '10']
+
+    def test_merge_restores_only_a_previously_recorded_table_caption(self):
+        caption_id = '77777777-7777-7777-7777-777777777777'
+        table_id = '55555555-5555-5555-5555-555555555555'
+        row_id = '66666666-6666-6666-6666-666666666666'
+        native = [
+            _block(caption_id, 'paragraph', {'rich_text': [_rich('表1 指标表')]}),
+            _block(table_id, 'table', {
+                'table_width': 2, 'has_column_header': True, 'has_row_header': False,
+            }, has_children=True),
+            _block(row_id, 'table_row', {
+                'cells': [[_rich('名称')], [_rich('数量')]],
+            }, parent=table_id),
+        ]
+        adapter = NotionWriterAdapter()
+        refreshed = adapter.blocks_to_ir(native, external_document_id=DOC_ID)
+        assert [block.type for block in refreshed.blocks] == ['paragraph', 'table']
+        assert refreshed.blocks[1].content == ''
+        previous_table = refreshed.blocks[1].model_copy(deep=True)
+        previous_table.content = '指标表'
+        previous_table.spans = [WriterSpan(text='指标表')]
+        previous_table.provider_payload['table_caption'] = {
+            'provider_binding': {'provider': 'notion', 'block_id': caption_id},
+        }
+        previous = WriterDocument(
+            document_id=refreshed.document_id,
+            provider_binding=deepcopy(refreshed.provider_binding),
+            blocks=[previous_table],
+        )
+
+        merged = adapter.merge_refreshed_document(previous, refreshed)
+
+        assert len(merged.blocks) == 1
+        assert merged.blocks[0].type == 'table'
+        assert merged.blocks[0].content == '指标表'
+        assert merged.blocks[0].provider_payload['table_caption'][
+            'provider_binding']['block_id'] == caption_id
+
     @pytest.mark.parametrize(('block_type', 'expected_type', 'numbering', 'editable'), [
         ('heading_1', 'heading', {'level': 1}, True),
         ('heading_2', 'heading', {'level': 2}, True),
@@ -196,6 +269,31 @@ class TestNotionAdapter:
         assert block.type == expected_type
         assert block.numbering == numbering
         assert block.editable is editable
+
+    @pytest.mark.parametrize('internal', [False, True])
+    def test_long_text_spans_preserve_styles_and_links(self, internal):
+        length = 2001
+        text = '中' * length
+        link = ({'type': 'internal_ref', 'target_node_id': 'target'} if internal
+                else {'url': 'https://example.com'})
+        block = WriterBlock(node_id='text', type='paragraph', spans=[
+            WriterSpan(text=text, style={'bold': True, 'text_color': 'red', 'link': link}),
+            WriterSpan(text='尾部', style={'italic': True}),
+        ])
+        before = block.model_dump()
+        rich = NotionWriterAdapter._spans_to_rich_text(
+            block, lambda span: 'https://example.com/ref' if internal and span.style.get('link') else None)
+        assert ''.join(item['text']['content'] for item in rich) == text + '尾部'
+        assert all(len(item['text']['content']) <= 2000 for item in rich)
+        assert len(rich) == (length + 1999) // 2000 + 1
+        for item in rich[:-1]:
+            assert item['annotations']['bold'] is True
+            assert item['annotations']['color'] == 'red'
+            assert item['text']['link'] == (
+                {'url': 'https://example.com/ref', '_target_node_id': 'target'} if internal
+                else {'url': 'https://example.com'})
+        assert rich[-1]['annotations']['italic'] is True
+        assert block.model_dump() == before
 
     def test_maps_rich_text_styles_links_mentions_and_equations(self):
         rich_text = [
@@ -587,6 +685,27 @@ class TestNotionProvider:
         assert fs.replace_doc_blocks.call_args.args[0] == PAGE_ID
         assert fs.replace_doc_blocks.call_args.args[1][0]['type'] == 'paragraph'
 
+    def test_notion_provider_rejects_replace_after_remote_revision_changes(self):
+        fs = _make_fs()
+        provider = NotionWriterProvider()
+        with _route_notion(fs):
+            loaded = provider.load_document(
+                TargetDocument(uri=PAGE_URL, adapter='notion'),
+            )
+            document = loaded['source_document']
+            fs.get_document_metadata.return_value = {
+                **_metadata(),
+                'last_edited_time': '2026-08-28T08:01:00.000Z',
+            }
+            with pytest.raises(
+                WriterProviderRevisionError,
+                match='document changed since it was loaded',
+            ):
+                provider.replace_document(document, loaded['target_document'])
+
+        fs.update_page_title.assert_not_called()
+        fs.replace_doc_blocks.assert_not_called()
+
     def test_notion_provider_converts_markdown_to_ir_before_writing(self):
         pytest.importorskip('mistune')
         fs = _make_fs()
@@ -747,6 +866,29 @@ class TestNotionProvider:
             'source': 'system_numbering', 'update_scope': 'caption',
         }
 
+    def test_notion_provider_applies_image_numbering(self):
+        provider = NotionWriterProvider()
+        image = NotionWriterAdapter().blocks_to_ir([
+            _block(BLOCK_ID, 'image', {
+                'type': 'external', 'external': {'url': 'https://example.com/image.png'},
+                'caption': [_rich('Safety')],
+            }, parent=PAGE_ID),
+        ], external_document_id=PAGE_ID, stage='final', title='Before', uri=PAGE_URL)
+        target = TargetDocument(uri=PAGE_URL, adapter='notion')
+        fs = _make_fs()
+        fs.update_block.return_value = {'block_id': BLOCK_ID, 'block_type': 'image'}
+        provider._resolve_document_target = MagicMock(return_value=(
+            'notion', f'/~page/{PAGE_ID}', fs, NotionWriterAdapter(), PAGE_URL, PAGE_ID,
+        ))
+        provider._read_persisted_document = MagicMock(
+            side_effect=lambda **kwargs: kwargs['source_document'].model_copy(deep=True))
+        result = provider.apply_patch_to_document(
+            PatchSet(target_doc_id=image.document_id, new_title='After'), image, target)
+        fs.update_block.assert_called_once()
+        assert result['persisted_document'].blocks[0].content == '图1 Safety'
+        caption = fs.update_block.call_args.kwargs['block']['image']['caption']
+        assert caption[0]['text']['content'] == '图1 Safety'
+
     def test_notion_provider_creates_private_workspace_page_without_parent(self):
         fs = _make_fs()
         fs.create_document.return_value = {
@@ -800,35 +942,13 @@ class TestNotionProvider:
         assert result['persisted_document'].revision == (
             '2026-08-28T08:01:00.000Z')
 
-    def test_notion_provider_creates_block_and_rebinds_writer_node_id(self):
+    def test_notion_provider_creates_then_updates_without_intermediate_refresh(self):
         fs = _make_fs()
         created_id = '22222222-2222-2222-2222-222222222222'
-        created_raw = {
-            'object': 'block',
-            'id': created_id,
-            'block_id': created_id,
-            'type': 'paragraph',
-            'block_type': 'paragraph',
-            'parent': {'type': 'page_id', 'page_id': PAGE_ID},
-            'parent_id': PAGE_ID,
-            'paragraph': {
-                'rich_text': [{
-                    'type': 'text',
-                    'plain_text': 'Created',
-                    'text': {'content': 'Created', 'link': None},
-                    'annotations': {
-                        'bold': False, 'italic': False,
-                        'strikethrough': False, 'underline': False,
-                        'code': False, 'color': 'default',
-                    },
-                }],
-            },
-        }
+        created_raw = _block(created_id, 'paragraph', {
+            'rich_text': [_rich('Updated after create')],
+        }, parent=PAGE_ID)
         fs.get_doc_blocks.side_effect = [_raw_blocks(), [*_raw_blocks(), created_raw]]
-        fs.get_document_metadata.side_effect = [
-            _metadata(), _metadata(), _metadata(), _metadata(),
-            {**_metadata(), 'last_edited_time': '2026-08-28T08:01:00.000Z'},
-        ]
         fs.create_block.return_value = {
             'block_id': created_id,
             'block_id_relations': [{
@@ -837,29 +957,31 @@ class TestNotionProvider:
         }
         provider = NotionWriterProvider()
         with _route_notion(fs):
-            loaded = provider.load_document(
-                TargetDocument(uri=PAGE_URL, adapter='notion'))
+            loaded = provider.load_document(TargetDocument(uri=PAGE_URL, adapter='notion'))
             source = loaded['source_document']
-            created = WriterBlock(
-                node_id='new-paragraph', type='paragraph', content='Created')
+            created = WriterBlock(node_id='new-paragraph', type='paragraph', content='Created')
+            updated = created.model_copy(update={'content': 'Updated after create'})
             result = provider.apply_patch_to_document(PatchSet(
                 target_doc_id=source.document_id,
-                hunks=[PatchHunk(
-                    hunk_id='create-paragraph', target_node_id=created.node_id,
-                    modify_type='create', block=created, index=1,
-                )],
+                hunks=[
+                    PatchHunk(hunk_id='create', target_node_id=created.node_id,
+                              modify_type='create', block=created, index=1),
+                    PatchHunk(hunk_id='update', target_node_id=created.node_id,
+                              modify_type='update', block=updated),
+                ],
             ), source, loaded['target_document'])
 
         fs.create_block.assert_called_once()
         call = fs.create_block.call_args.kwargs
-        assert call['document_id'] == PAGE_ID
-        assert call['parent_block_id'] == PAGE_ID
-        assert call['index'] == 1
+        assert (call['document_id'], call['parent_block_id'], call['index']) == (PAGE_ID, PAGE_ID, 1)
         assert len(call['blocks']) == 1
-        assert call['blocks'][0]['_temporary_node_id'] == 'new-paragraph'
-        assert result['patch_result'].applied_hunks == ['create-paragraph']
-        assert result['persisted_document'].blocks[1].node_id == 'new-paragraph'
-        assert result['persisted_document'].blocks[1].content == 'Created'
+        assert call['blocks'][0]['_temporary_node_id'] == created.node_id
+        fs.update_block.assert_called_once()
+        assert fs.update_block.call_args.kwargs['block_id'] == created_id
+        assert fs.get_doc_blocks.call_count == 2  # Initial load and final confirmation.
+        assert result['patch_result'].applied_hunks == ['create', 'update']
+        persisted = result['persisted_document'].blocks[1]
+        assert (persisted.node_id, persisted.content) == (created.node_id, updated.content)
 
     def test_notion_provider_moves_block_and_preserves_writer_node_id(self):
         fs = _make_fs()
@@ -905,3 +1027,97 @@ class TestNotionProvider:
         assert [block.content for block in result[
             'persisted_document'].blocks] == ['Second', 'Notion content']
         assert result['persisted_document'].blocks[1].node_id == moved_node_id
+
+
+def _table_native_id(value):
+    return str(uuid5(NAMESPACE_URL, value))
+
+
+def _cell_batch_setup():
+    rows = []
+    for r in range(2):
+        cells = []
+        for c in range(2):
+            node_id = f'cell-{r}-{c}'
+            cells.append(WriterBlock(node_id=node_id, type='table_cell', content=node_id, provider_binding={},
+                provider_payload={}))
+        rows.append(WriterBlock(node_id=f'row-{r}', type='table_row', children=cells,
+            provider_binding={'provider': 'notion', 'block_id': _table_native_id(f'row-{r}')},
+            provider_payload={'raw_block': {'type': 'table_row', 'table_row': {}}}))
+    document = WriterDocument(document_id='writer-doc', revision='10', provider_binding={'provider': 'notion',
+        'document_id': 'doc'}, blocks=[WriterBlock(node_id='table', type='table', children=rows,
+        provider_binding={'provider': 'notion', 'block_id': _table_native_id('table'), 'parent_block_id': 'doc'}),
+        WriterBlock(node_id='paragraph', type='paragraph', content='end', provider_binding={'provider': 'notion',
+        'block_id': _table_native_id('paragraph'), 'parent_block_id': 'doc'},
+        provider_payload={'raw_block': {'type': 'paragraph', 'paragraph': {}}})])
+    instance = NotionWriterProvider()
+    adapter = NotionWriterAdapter()
+    fs = MagicMock()
+    fs.update_block.side_effect = [{'document_revision_id': value} for value in range(11, 30)]
+    instance._resolve_document_target = MagicMock(return_value=('notion', '/doc', fs, adapter, '/doc', 'doc'))
+    instance._document_metadata = MagicMock(return_value={'last_edited_time': '10'})
+    instance._read_persisted_document = MagicMock(side_effect=lambda **kw: kw['source_document'].model_copy(deep=True))
+    return (instance, fs, document)
+
+
+def _cell_edit(document, node_id, value, hunk_id=None):
+    return PatchHunk(hunk_id=hunk_id or f'edit-{node_id}', target_node_id=node_id, modify_type='update',
+        block=document.block_by_id(node_id).model_copy(update={'content': value, 'spans': [WriterSpan(text=value,
+        style={'bold': True})]}))
+
+
+def _apply_cell_hunks(instance, document, hunks):
+    return instance.apply_patch_to_document(PatchSet(target_doc_id=document.document_id, hunks=hunks), document,
+        TargetDocument(doc_id='doc', adapter=instance.provider, uri='/doc'))
+
+
+def test_notion_cells_merge_by_provider_granularity_and_repeated_edit_keeps_last():
+    instance, fs, document = _cell_batch_setup()
+    before = document.model_dump()
+    hunks = [_cell_edit(document, 'cell-0-0', 'first', 'h1'), _cell_edit(document, 'cell-1-0', 'other row', 'h2'),
+        _cell_edit(document, 'cell-0-1', 'same row', 'h3'), _cell_edit(document, 'cell-0-0', 'last', 'h4')]
+    result = _apply_cell_hunks(instance, document, hunks)
+    assert fs.update_block.call_count == 2
+    assert result['patch_result'].applied_hunks == ['h1', 'h2', 'h3', 'h4']
+    assert document.model_dump() == before
+    assert result['persisted_document'].block_by_id('cell-0-0').content == 'last'
+    instance._read_persisted_document.assert_called_once()
+    calls = {call.kwargs['block_id']: call.kwargs['block']['table_row']['cells'] for call in fs.update_block.call_args_list}
+    assert [[cell[0]['text']['content'] for cell in calls[_table_native_id(row)]] for row in ['row-0',
+        'row-1']] == [['last', 'same row'], ['other row', 'cell-1-1']]
+    assert calls[_table_native_id('row-0')][0][0]['annotations']['bold'] is True
+
+
+def test_notion_move_flushes_cells_and_following_batch_uses_new_ids():
+    instance, fs, document = _cell_batch_setup()
+    relations = [{'temporary_block_id': key, 'block_id': _table_native_id(key + '-moved')} for key in ['table',
+        'row-0', 'row-1']]
+    fs.move_block.return_value = {'block_id_relations': relations, 'document_revision_id': 20}
+    _apply_cell_hunks(instance, document, [_cell_edit(document, 'cell-0-0', 'before'), PatchHunk(hunk_id='move',
+        target_node_id='table', modify_type='move', index=1), _cell_edit(document, 'cell-0-1', 'after')])
+    assert [call[0] for call in fs.method_calls] == ['update_block', 'move_block', 'update_block']
+    assert fs.update_block.call_args.kwargs['block_id'] == _table_native_id('row-0-moved')
+    cells = fs.update_block.call_args.kwargs['block']['table_row']['cells']
+    assert [cell[0]['text']['content'] for cell in cells] == ['before', 'after']
+
+
+def test_notion_math_is_read_only_and_inline_equations_roundtrip():
+    adapter = NotionWriterAdapter()
+    raw = [
+        _block(HEADING_ID, 'equation', {'expression': 'x^2'}),
+        _block(PARAGRAPH_ID, 'paragraph', {'rich_text': [
+            _rich('before '), {'type': 'equation', 'equation': {'expression': 'y^2'}}, _rich(' after'),
+        ]}),
+    ]
+    document = adapter.blocks_to_ir(raw, external_document_id=DOC_ID)
+    assert document.blocks[0].type == 'math'
+    assert not document.blocks[0].editable
+    assert adapter.ir_to_blocks(document)[0]['equation']['expression'] == 'x^2'
+    with pytest.raises(ValueError, match='does not support updates'):
+        adapter.patch_to_operation(PatchHunk(
+            target_node_id=document.blocks[0].node_id, modify_type='update',
+            block=document.blocks[0].model_copy(update={'content': '$$x^3$$'})), document)
+    rich = adapter.ir_to_blocks(document)[1]['paragraph']['rich_text']
+    assert rich[1]['equation']['expression'] == 'y^2'
+    assert rich[0]['text']['content'] == 'before '
+    assert rich[-1]['text']['content'] == ' after'

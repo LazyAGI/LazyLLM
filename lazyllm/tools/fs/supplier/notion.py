@@ -952,7 +952,7 @@ class NotionFS(LinkDocumentFSBase):
                 cleaned['caption'] = self._sanitize_rich_text_array(
                     payload['caption'], f'{block_type}.caption')
         else:
-            cleaned = self._sanitize_create_payload(block_type, payload)
+            cleaned = self._sanitize_block_payload(block_type, payload)
         updated = self._patch(
             f'{self._base_url}/blocks/{block_id}',
             json={block_type: cleaned},
@@ -1055,18 +1055,21 @@ class NotionFS(LinkDocumentFSBase):
             'block_id_relations': relations,
         }
 
-    def write_doc_blocks(self, document_id: str, blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def write_doc_blocks(self, document_id: str, blocks: List[Dict[str, Any]], *,
+                           block_id_relations: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, Any]]:
         '''Append native Writer blocks to an existing Notion page.'''
         document_id = _normalize_notion_id(document_id)
         self._validate_write_blocks(blocks)
         relations: List[Dict[str, str]] = []
-        for block in blocks:
-            self._append_block_tree(document_id, block, relations=relations)
+        self._append_block_tree_batches(document_id, blocks, relations=relations)
         self._rebind_internal_links(blocks, relations, require_all=False)
+        if block_id_relations is not None:
+            block_id_relations.extend(relations)
         return self._get_doc_blocks_raw(document_id, with_descendants=True)
 
-    def replace_doc_blocks(self, document_id: str, blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        '''Replace all root blocks, creating and verifying new content before deletion.'''
+    def replace_doc_blocks(self, document_id: str, blocks: List[Dict[str, Any]], *,
+                           block_id_relations: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, Any]]:
+        '''Replace all root blocks, creating new content before deleting the old roots.'''
         document_id = _normalize_notion_id(document_id)
         self._validate_write_blocks(blocks)
         existing = self._list_children_raw(document_id)
@@ -1075,17 +1078,9 @@ class NotionFS(LinkDocumentFSBase):
         created_root_ids: List[str] = []
         relations: List[Dict[str, str]] = []
         try:
-            for block in blocks:
-                created = self._append_block_tree(document_id, block, relations=relations)
-                created_root_ids.append(_normalize_notion_id(created['id']))
-            visible_ids = {
-                _normalize_notion_id(block['id'])
-                for block in self._list_children_raw(document_id)
-                if isinstance(block, dict) and block.get('id')
-            }
-            missing = [block_id for block_id in created_root_ids if block_id not in visible_ids]
-            if missing:
-                raise RuntimeError(f'Notion did not persist created root blocks: {missing!r}.')
+            self._append_block_tree_batches(
+                document_id, blocks, relations=relations,
+                created_root_ids=created_root_ids)
             self._rebind_internal_links(blocks, relations, require_all=True)
         except Exception:
             # The original page remains intact. Remove only roots created by this attempt.
@@ -1101,6 +1096,8 @@ class NotionFS(LinkDocumentFSBase):
             returned_id = deleted.get('id') if isinstance(deleted, dict) else None
             if returned_id and _normalize_notion_id(returned_id) != block_id:
                 raise RuntimeError(f'Notion deleted unexpected block {returned_id!r}; expected {block_id!r}.')
+        if block_id_relations is not None:
+            block_id_relations.extend(relations)
         return self._get_doc_blocks_raw(document_id, with_descendants=True)
 
     def _rebind_internal_links(  # noqa: C901
@@ -1206,10 +1203,28 @@ class NotionFS(LinkDocumentFSBase):
         return self._append_block_trees(
             parent_block_id, [block], position=position, relations=relations)[0]
 
+    def _append_block_tree_batches(
+            self, parent_block_id: str, blocks: List[Dict[str, Any]], *,
+            position: Optional[Dict[str, Any]] = None,
+            relations: Optional[List[Dict[str, str]]] = None,
+            created_root_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        '''Append sibling block trees in Notion-sized batches while preserving order.'''
+        created: List[Dict[str, Any]] = []
+        for offset in range(0, len(blocks), _PAGE_SIZE):
+            created.extend(self._append_block_trees(
+                parent_block_id,
+                blocks[offset:offset + _PAGE_SIZE],
+                position=position if offset == 0 else None,
+                relations=relations,
+                created_root_ids=created_root_ids,
+            ))
+        return created
+
     def _append_block_trees(  # noqa: C901
             self, parent_block_id: str, blocks: List[Dict[str, Any]], *,
             position: Optional[Dict[str, Any]] = None,
-            relations: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, Any]]:
+            relations: Optional[List[Dict[str, str]]] = None,
+            created_root_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         parent_block_id = _normalize_notion_id(parent_block_id)
         if not isinstance(blocks, list) or not blocks:
             raise ValueError('blocks must be a non-empty list.')
@@ -1280,6 +1295,9 @@ class NotionFS(LinkDocumentFSBase):
             raise RuntimeError(
                 'Notion append block children returned an invalid response; '
                 f'response={response_summary!r}.')
+        if created_root_ids is not None:
+            created_root_ids.extend(
+                _normalize_notion_id(created['id']) for created in created_results)
         created_blocks: List[Dict[str, Any]] = []
         for block, created, children, inline_children in zip(
                 blocks, created_results, nested_children, inline_children_by_root):
@@ -1297,8 +1315,8 @@ class NotionFS(LinkDocumentFSBase):
                         raise RuntimeError('Created Notion table row is missing its block ID.')
                     self._record_block_relation(
                         source_child, _normalize_notion_id(child_id), relations)
-            for child in children:
-                self._append_block_tree(created_id, child, relations=relations)
+            if children:
+                self._append_block_tree_batches(created_id, children, relations=relations)
         return created_blocks
 
     def _prepare_block_media(self, block: Dict[str, Any]) -> Dict[str, Any]:
@@ -1416,7 +1434,7 @@ class NotionFS(LinkDocumentFSBase):
         children = payload.pop('children', [])
         if not isinstance(children, list) or any(not isinstance(child, dict) for child in children):
             raise TypeError(f'native Notion block {block_type!r} children must be a list of dicts.')
-        raw[block_type] = cls._sanitize_create_payload(block_type, payload)
+        raw[block_type] = cls._sanitize_block_payload(block_type, payload)
         for field in (
             'id', 'block_id', 'parent', 'parent_id', 'created_time', 'last_edited_time',
             'created_by', 'last_edited_by', 'archived', 'in_trash', 'has_children',
@@ -1427,16 +1445,21 @@ class NotionFS(LinkDocumentFSBase):
         return raw, children
 
     @classmethod
-    def _sanitize_create_payload(cls, block_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _sanitize_block_payload(
+        cls, block_type: str, payload: Dict[str, Any], *,
+        allowed_fields: Optional[Set[str]] = None,
+    ) -> Dict[str, Any]:
         allowed = _BLOCK_CREATE_PAYLOAD_FIELDS.get(block_type)
         if allowed is None:
-            raise ValueError(f'Notion block type {block_type!r} cannot be created through the API.')
+            raise ValueError(f'Notion block type {block_type!r} has no supported write payload.')
+        if allowed_fields is not None:
+            allowed = allowed & allowed_fields
         cleaned = {
             key: deepcopy(value)
             for key, value in payload.items()
             if key in allowed and value is not None
         }
-        if block_type == 'synced_block' and 'synced_from' in payload:
+        if block_type == 'synced_block' and 'synced_from' in allowed and 'synced_from' in payload:
             synced_from = payload['synced_from']
             if synced_from is None:
                 cleaned['synced_from'] = None
@@ -1657,18 +1680,17 @@ class NotionFS(LinkDocumentFSBase):
         self._ensure_block_belongs_to_document(path, block_id)
         block = self._retrieve_block(block_id)
         btype = block.get('type', '')
-        content = dict(block.get(btype) or {})
         if btype not in {
             'paragraph', 'heading_1', 'heading_2', 'heading_3', 'heading_4',
             'bulleted_list_item', 'numbered_list_item', 'to_do',
             'toggle', 'quote', 'callout', 'code',
         }:
             raise NotImplementedError(f'NotionFS.update_doc_block_text does not support block type {btype!r}')
-        content['rich_text'] = self._text_to_rich_text(new_text)
-        if btype == 'to_do':
-            content['checked'] = bool((block.get('to_do') or {}).get('checked'))
-        if btype == 'code':
-            content['language'] = (block.get('code') or {}).get('language') or 'plain text'
+        # A text-only update must not round-trip unrelated fields from a read response.
+        content = self._sanitize_block_payload(
+            btype, {'rich_text': self._text_to_rich_text(new_text)},
+            allowed_fields={'rich_text'},
+        )
         self._patch(f'{self._base_url}/blocks/{block_id}', json={btype: content})
 
     def _ensure_block_belongs_to_document(self, path: str, block_id: str) -> None:
