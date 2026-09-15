@@ -170,6 +170,7 @@ class PreparedToolCall:
 class PreparedToolBatch:
     _owner: Any = field(repr=False, compare=False)
     _invocations: tuple = field(repr=False)
+    working_directory: Optional[str] = None
 
     def __len__(self):
         return len(self._invocations)

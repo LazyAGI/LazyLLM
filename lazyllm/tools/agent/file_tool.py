@@ -1,4 +1,4 @@
-import fnmatch
+import json
 import shutil
 import subprocess
 import tempfile
@@ -6,8 +6,7 @@ import threading
 import stat as stat_module
 from pathlib import PurePath
 import os
-import re
-from typing import Dict, List, Optional
+from typing import Optional
 
 from .toolsManager import fc_register, ToolGroup
 from .toolError import ToolExecutionError
@@ -67,150 +66,192 @@ def _check_root(path: str, root: Optional[str]) -> None:
         )
 
 
-def _compile_search_pattern(pattern: str):
+def _atomic_write(path, content, encoding, mode='overwrite'):
+    added_bytes = len(content.encode(encoding))
+    original = None
     try:
-        return re.compile(pattern)
-    except re.error as exc:
-        raise ToolExecutionError(f'Invalid regular expression {pattern!r}: {exc}') from exc
+        original = os.stat(path, follow_symlinks=False)
+        if not stat_module.S_ISREG(original.st_mode):
+            raise ToolExecutionError('Expected a regular file')
+    except FileNotFoundError:
+        pass
+    if mode == 'append' and original is not None:
+        with _open_text(path, encoding=encoding, newline='') as source:
+            content = source.read() + content
+    data = content.encode(encoding)
+    if mode == 'create' and original is not None:
+        raise FileExistsError(path)
+    fd, temporary = tempfile.mkstemp(prefix='.lazyllm-', dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            if original is not None:
+                os.chmod(temporary, stat_module.S_IMODE(original.st_mode))
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if mode == 'create':
+            os.link(temporary, path)
+        else:
+            os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return added_bytes
 
 
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'read')))
-def read(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None,
-         encoding: str = 'utf-8', errors: str = 'replace', root: Optional[str] = None,
-         max_chars: int = 200000) -> dict:
-    '''Read a text file with optional line range.
+def read(path: str, offset: int = 1, limit: int = 500, max_bytes: int = 65536,
+         encoding: str = 'utf-8', errors: str = 'replace', root: Optional[str] = None) -> dict:
+    """Read a bounded text window without loading the whole file.
 
     Args:
         path (str): File path.
-        start_line (int, optional): 1-based start line (inclusive).
-        end_line (int, optional): 1-based end line (inclusive).
-        encoding (str, optional): File encoding. Defaults to utf-8.
-        errors (str, optional): Error handling for decoding. Defaults to replace.
+        offset (int): First logical line, starting at one. Long lines split every 1024 characters.
+        limit (int): Maximum logical lines, default 500, hard cap 2000.
+        max_bytes (int): UTF-8 content budget, default 65536, hard cap 262144, minimum 4096.
+        encoding (str): Source encoding, default utf-8.
+        errors (str): Decoding error policy, default replace.
         root (str, optional): Restrict reads to this root directory.
-        max_chars (int, optional): Max chars to return. Defaults to 200000.
 
     Returns:
-        dict: Content and metadata.
-    '''
+        dict: Content, next_offset, eof and truncation status.
+    """
+    if offset < 1 or limit < 1 or max_bytes < 4096:
+        raise ToolExecutionError('offset/limit must be positive and max_bytes at least 4096')
+    limit, max_bytes = min(limit, 2000), min(max_bytes, 262144)
     _check_root(path, root)
-    path_abs = _resolve_path(path)
-    if not os.path.isfile(path_abs):
-        raise ToolExecutionError(f'File not found: {path_abs}')
-    with _open_text(path_abs, encoding=encoding, errors=errors) as f:
-        lines = f.readlines()
-    total_lines = len(lines)
-    s = 1 if start_line is None else max(1, start_line)
-    e = total_lines if end_line is None else min(end_line, total_lines)
-    content = ''.join(lines[s - 1:e])
-    truncated = False
-    if max_chars is not None and len(content) > max_chars:
-        content = content[:max_chars]
-        truncated = True
-    return {
-        'status': 'ok',
-        'path': path_abs,
-        'start_line': s,
-        'end_line': e,
-        'total_lines': total_lines,
-        'truncated': truncated,
-        'content': content,
-    }
+    path = _resolve_path(path)
+    content, size, count = [], 0, 0
+    with _open_text(path, encoding=encoding, errors=errors) as stream:
+        for _ in range(offset - 1):
+            if not stream.readline(1024):
+                break
+        line = stream.readline(1024)
+        while line and count < limit:
+            encoded = len(line.encode('utf-8', errors='replace'))
+            if size + encoded > max_bytes:
+                break
+            content.append(line)
+            size += encoded
+            count += 1
+            line = stream.readline(1024)
+    eof = not line
+    return {'status': 'ok', 'path': path, 'offset': offset, 'end_line': offset + count - 1,
+            'content': ''.join(content), 'eof': eof, 'truncated': not eof,
+            'next_offset': None if eof else offset + count}
 
 
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'read')))
-def ls(path: str = '.', recursive: bool = False, max_depth: int = 5,
-       root: Optional[str] = None) -> dict:
-    '''List directory entries.
+def ls(path: str = '.', limit: int = 200, root: Optional[str] = None) -> dict:
+    """List one directory level. Use glob for recursive discovery.
 
     Args:
-        path (str, optional): Directory path. Defaults to current directory.
-        recursive (bool, optional): Whether to walk recursively.
-        max_depth (int, optional): Max recursion depth. Defaults to 5.
+        path (str): Directory path, defaults to current directory.
+        limit (int): Maximum entries, default 200, hard cap 1000.
         root (str, optional): Restrict listing to this root directory.
 
     Returns:
-        dict: List of entries.
-    '''
+        dict: Entries and truncation status.
+    """
+    if limit < 1:
+        raise ToolExecutionError('limit must be positive')
+    limit = min(limit, 1000)
     _check_root(path, root)
-    path_abs = _resolve_path(path)
-    if not os.path.isdir(path_abs):
-        raise ToolExecutionError(f'Directory not found: {path_abs}')
-    entries: List[str] = []
-    if not recursive:
-        entries = sorted(os.listdir(path_abs))
-    else:
-        base_depth = path_abs.rstrip(os.sep).count(os.sep)
-        for dirpath, dirnames, filenames in os.walk(path_abs):
-            depth = dirpath.count(os.sep) - base_depth
-            if depth > max_depth:
-                dirnames[:] = []
-                continue
-            rel = os.path.relpath(dirpath, path_abs)
-            if rel == '.':
-                rel = ''
-            for d in dirnames:
-                entries.append(os.path.join(rel, d) if rel else d)
-            for f in filenames:
-                entries.append(os.path.join(rel, f) if rel else f)
-    return {'status': 'ok', 'path': path_abs, 'entries': entries}
+    path = _resolve_path(path)
+    entries = []
+    with os.scandir(path) as directory:
+        for entry in directory:
+            entries.append(entry.name)
+            if len(entries) > limit:
+                break
+    return {'status': 'ok', 'path': path, 'entries': sorted(entries[:limit]),
+            'truncated': len(entries) > limit}
 
 
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'read')))
 def grep(pattern: str, path: str = '.', glob: Optional[str] = None,
-         max_results: int = 50, root: Optional[str] = None,
-         encoding: str = 'utf-8', errors: str = 'replace',
-         max_file_size: int = 2_000_000) -> dict:
-    '''Search files for a regex pattern.
+         max_results: int = 100, root: Optional[str] = None) -> dict:
+    """Search file contents with ripgrep without following symbolic links.
 
     Args:
-        pattern (str): Regex pattern to search for.
-        path (str, optional): Root path to search. Defaults to current directory.
-        glob (str, optional): Filename glob filter (e.g., "*.py").
-        max_results (int, optional): Max number of matches to return.
+        pattern (str): Ripgrep regular expression.
+        path (str): File or directory to search, defaults to current directory.
+        glob (str, optional): Filename glob filter.
+        max_results (int): Maximum matches, default and hard cap 100.
         root (str, optional): Restrict search to this root directory.
-        encoding (str, optional): File encoding. Defaults to utf-8.
-        errors (str, optional): Error handling for decoding. Defaults to replace.
-        max_file_size (int, optional): Skip files larger than this size in bytes.
 
     Returns:
-        dict: List of matches with file path and line number.
-    '''
+        dict: Matches with path, line number and bounded snippets, plus truncation status.
+    """
+    if not pattern or len(pattern) > 4096 or '\0' in pattern or max_results < 1:
+        raise ToolExecutionError('A valid pattern and positive result limit are required')
     _check_root(path, root)
-    path_abs = _resolve_path(path)
-    if not os.path.isdir(path_abs):
-        raise ToolExecutionError(f'Directory not found: {path_abs}')
-    regex = _compile_search_pattern(pattern)
-    results: List[Dict[str, str]] = []
-    for dirpath, dirnames, filenames in os.walk(path_abs):
-        dirnames[:] = [name for name in dirnames if not os.path.islink(os.path.join(dirpath, name))]
-        for name in filenames:
-            if glob and not fnmatch.fnmatch(name, glob):
-                continue
-            file_path = os.path.join(dirpath, name)
-            if os.path.islink(file_path):
-                continue
-            try:
-                if os.path.getsize(file_path) > max_file_size:
-                    continue
-                with _open_text(file_path, encoding=encoding, errors=errors) as f:
-                    for idx, line in enumerate(f, start=1):
-                        if regex.search(line):
-                            results.append({
-                                'path': file_path,
-                                'line': str(idx),
-                                'text': line.rstrip('\n'),
-                            })
-                            if len(results) >= max_results:
-                                return {'status': 'ok', 'results': results}
-            except (OSError, UnicodeDecodeError, ToolExecutionError):
-                continue
-    return {'status': 'ok', 'results': results}
+    path = _resolve_path(path)
+    max_results = min(max_results, 100)
+    executable = shutil.which('rg')
+    if not executable:
+        raise ToolExecutionError('grep requires ripgrep (rg) to be installed')
+    command = [executable, '--no-config', '--json', '--max-count', str(max_results + 1)]
+    if glob:
+        command += ['--glob', glob]
+    command += ['--', pattern, path]
+    results, truncated = _run_rg(command, lambda stream: _read_grep_matches(stream, path, max_results))
+    return {'status': 'ok', 'results': results, 'truncated': truncated}
+
+
+def _read_grep_matches(stream, path, limit):
+    results, size = [], 0
+    while line := stream.readline(65537):
+        if len(line) > 65536:
+            return results, True
+        event = json.loads(line)
+        if event['type'] != 'match':
+            continue
+        data = event['data']
+        item = {'path': data['path'].get('text', path), 'line': str(data['line_number']),
+                'text': data['lines'].get('text', '').rstrip('\n')[:1000]}
+        added = len(json.dumps(item, ensure_ascii=False).encode('utf-8')) + 2
+        if len(results) == limit or size + added > 65000:
+            return results, True
+        results.append(item)
+        size += added
+    return results, False
+
+
+def _run_rg(command, collect, cwd=None):
+    expired = threading.Event()
+    with tempfile.TemporaryFile() as errors, subprocess.Popen(
+        command, cwd=cwd, stdout=subprocess.PIPE, stderr=errors,
+    ) as process:
+        def expire():
+            expired.set()
+            process.kill()
+
+        timer = threading.Timer(30, expire)
+        timer.daemon = True
+        timer.start()
+        try:
+            results, truncated = collect(process.stdout)
+            if truncated:
+                process.kill()
+            code = process.wait()
+            if expired.is_set():
+                raise ToolExecutionError('Search timed out after 30 seconds; narrow the search path')
+            if not truncated and code not in (0, 1):
+                errors.seek(0)
+                raise ToolExecutionError('Search failed: ' + errors.read(4096).decode('utf-8', 'replace'))
+            return results, truncated
+        finally:
+            timer.cancel()
+            if process.poll() is None:
+                process.kill()
+                process.wait()
 
 
 @fc_register('builtin_tools')
@@ -264,10 +305,8 @@ def write(path: str, content: str, mode: str = 'overwrite', encoding: str = 'utf
 
     if parent and create_parents:
         os.makedirs(parent, exist_ok=True)
-    fmode = {'create': 'x', 'append': 'a', 'overwrite': 'w'}[mode]
-    with _open_text(path_abs, fmode, encoding=encoding) as f:
-        f.write(content)
-    return {'status': 'ok', 'path': path_abs, 'mode': mode, 'bytes': len(content.encode(encoding))}
+    size = _atomic_write(path_abs, content, encoding, mode)
+    return {'status': 'ok', 'path': path_abs, 'mode': mode, 'bytes': size}
 
 
 @fc_register('builtin_tools')
@@ -349,20 +388,19 @@ def edit(path: str, old_text: str, new_text: str, expected_replacements: int = 1
     if not old_text or expected_replacements < 1:
         raise ToolExecutionError('old_text and a positive replacement count are required')
     path = _resolve_path(path)
-    with _open_text(path, 'r+', encoding=encoding, newline='') as stream:
+    with _open_text(path, encoding=encoding, newline='') as stream:
         content = stream.read()
         count = content.count(old_text)
         if count != expected_replacements:
             raise ToolExecutionError(f'Expected {expected_replacements} matches, found {count}')
-        stream.seek(0)
-        stream.write(content.replace(old_text, new_text))
-        stream.truncate()
+    _atomic_write(path, content.replace(old_text, new_text), encoding)
     return {'status': 'ok', 'path': path, 'replacements': count}
 
 
 def _read_glob_paths(stream, path, limit):
     results = []
     pending = b''
+    size = 0
     while len(results) <= limit:
         chunk = stream.read1(65536)
         if not chunk:
@@ -372,10 +410,13 @@ def _read_glob_paths(stream, path, limit):
         for entry in entries:
             candidate = os.path.abspath(os.path.join(path, os.fsdecode(entry)))
             if not os.path.islink(candidate):
+                size += len(candidate.encode('utf-8', 'replace')) + 4
+                if size > 65000:
+                    return results, True
                 results.append(candidate)
             if len(results) > limit:
                 break
-    return results
+    return results[:limit], len(results) > limit
 
 
 @fc_register('builtin_tools')
@@ -395,44 +436,17 @@ def glob(pattern: str, path: str = '.', max_results: int = 100) -> dict:
     '''
     if max_results < 1 or not pattern or '\x00' in pattern or '..' in PurePath(pattern).parts:
         raise ToolExecutionError('A valid glob pattern and positive result limit are required')
+    max_results = min(max_results, 100)
     path = _resolve_path(path)
     if not os.path.isdir(path):
         raise ToolExecutionError(f'Directory not found: {path}')
     executable = shutil.which('rg')
     if not executable:
         raise ToolExecutionError('glob requires ripgrep (rg) to be installed')
-    results = []
-    expired = threading.Event()
-    with tempfile.TemporaryFile() as errors, subprocess.Popen(
-        [executable, '--no-config', '--files', '--null', '--glob', pattern,
-         '--glob', '!**/.git/**', '--', '.'],
-        cwd=path, stdout=subprocess.PIPE, stderr=errors,
-    ) as process:
-        def expire():
-            expired.set()
-            process.kill()
-
-        timer = threading.Timer(30, expire)
-        timer.daemon = True
-        timer.start()
-        try:
-            results = _read_glob_paths(process.stdout, path, max_results)
-            truncated = len(results) > max_results
-            if truncated:
-                process.kill()
-            code = process.wait()
-            if expired.is_set():
-                raise ToolExecutionError('glob search timed out after 30 seconds; narrow the search path')
-            if not truncated and code not in (0, 1):
-                errors.seek(0)
-                detail = errors.read(4096).decode('utf-8', errors='replace').strip()
-                raise ToolExecutionError(f'glob search failed: {detail}')
-        finally:
-            timer.cancel()
-            if process.poll() is None:
-                process.kill()
-                process.wait()
-    return {'status': 'ok', 'paths': results[:max_results], 'truncated': truncated}
+    command = [executable, '--no-config', '--files', '--null', '--glob', pattern,
+               '--glob', '!**/.git/**', '--', '.']
+    results, truncated = _run_rg(command, lambda stream: _read_glob_paths(stream, path, max_results), cwd=path)
+    return {'status': 'ok', 'paths': results, 'truncated': truncated}
 
 
 @fc_register('builtin_tools')

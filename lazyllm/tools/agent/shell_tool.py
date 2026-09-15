@@ -1,44 +1,13 @@
 import os
-import re
 import subprocess
 from typing import Dict, Optional
 
 from .toolsManager import register
 from .toolError import ToolExecutionError
+from .tool_runtime import resolve_host_path
 
-_DANGEROUS_WORD_TOKENS = [
-    'rm', 'sudo', 'chmod', 'chown', 'mkfs', 'dd', 'shutdown', 'reboot', 'poweroff',
-    'kill', 'killall', 'pkill', 'apt', 'yum', 'dnf', 'brew', 'pip', 'conda', 'curl',
-    'wget', 'scp', 'ssh',
-]
-_DANGEROUS_PHRASES = [
-    'git reset --hard',
-    'git clean -fd',
-]
-_DANGEROUS_SUBSTRINGS = [
-    '>>',
-    '>',
-]
-
-
-def _detect_dangerous_command(cmd: str) -> Optional[str]:
-    lowered = cmd.lower()
-    if re.search(r'\brm\s+-rf\b', lowered):
-        return 'rm -rf'
-    for token in _DANGEROUS_PHRASES:
-        if token in lowered:
-            return token
-    for token in _DANGEROUS_WORD_TOKENS:
-        if re.search(rf'\b{re.escape(token)}\b', lowered):
-            return token
-    for token in _DANGEROUS_SUBSTRINGS:
-        if token in lowered:
-            return token
-    return None
-
-
-@register('builtin_tools', execute_in_sandbox=False, host_file='OPAQUE')
-@register('tool', execute_in_sandbox=False, host_file='OPAQUE')
+@register('builtin_tools', execute_in_sandbox=False, host_file='OPAQUE', exclusive=True)
+@register('tool', execute_in_sandbox=False, host_file='OPAQUE', exclusive=True)
 def shell(cmd: str, cwd: Optional[str] = None, timeout: int = 30,
           env: Optional[Dict[str, str]] = None) -> dict:
     '''Run a shell command and return stdout/stderr/exit code.
@@ -55,7 +24,8 @@ def shell(cmd: str, cwd: Optional[str] = None, timeout: int = 30,
     cmd = cmd.strip()
     if not cmd:
         raise ToolExecutionError('cmd cannot be empty.')
-    if cwd is not None and not os.path.isdir(cwd):
+    cwd = resolve_host_path(cwd or '.')
+    if not os.path.isdir(cwd):
         raise ToolExecutionError(f'cwd not found: {cwd}')
 
     try:

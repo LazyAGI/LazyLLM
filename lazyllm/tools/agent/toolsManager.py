@@ -1089,7 +1089,8 @@ class ToolManager(ModuleBase):
             ))
         return invocations
 
-    def _build_prepared_invocation(self, invocation: _PreparedToolInvocation, execution_context=None):
+    def _build_prepared_invocation(self, invocation: _PreparedToolInvocation, execution_context=None,
+                                   working_directory=None):
         prepared = invocation.prepared
         if not prepared.ready:
             return (
@@ -1109,6 +1110,7 @@ class ToolManager(ModuleBase):
             arguments = copy.deepcopy(invocation.validated_arguments)
 
         def _safe_call(args=None, **sandbox_kwargs):
+            token = _HOST_WORKING_DIRECTORY.set(working_directory)
             if sandbox_kwargs:
                 args = kwargs(**sandbox_kwargs)
             try:
@@ -1124,6 +1126,8 @@ class ToolManager(ModuleBase):
                 lazyllm.LOG.warning(
                     f'[ToolCall] tool={prepared.tool_name!r} raised: {type(error).__name__}: {error}')
                 return exception_failure(prepared.tool_name, error)
+            finally:
+                _HOST_WORKING_DIRECTORY.reset(token)
 
         return (_safe_call, arguments, prepared.access, ToolExecutionDisposition.EXECUTED)
 
@@ -1223,7 +1227,7 @@ class ToolManager(ModuleBase):
             if not invocation.prepared.ready:
                 decision = AuthorizationDecision.DENY
             decided.append(replace(invocation, prepared=replace(invocation.prepared, authorization=decision)))
-        return PreparedToolBatch(self, tuple(decided))
+        return PreparedToolBatch(self, tuple(decided), working_directory)
 
     def execute_prepared(self, prepared, *, approved_indices=(), selected_indices=None,
                          execution_context=None):
@@ -1265,7 +1269,8 @@ class ToolManager(ModuleBase):
         selected = [invocations[index] for index in sorted(indices)]
         records = []
         if selected:
-            inputs = [self._build_prepared_invocation(item, execution_context) for item in selected]
+            inputs = [self._build_prepared_invocation(item, execution_context, prepared.working_directory)
+                      for item in selected]
             callables, arguments, accesses, dispositions = map(list, zip(*inputs))
             results = self._execute_tool_calls(len(selected), callables, arguments, accesses)
             records = [ToolExecutionRecord(copy.deepcopy(item.prepared), result, disposition)

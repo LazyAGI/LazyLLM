@@ -747,7 +747,7 @@ class SkillManager(ModuleBase):
         return read_reference
 
     def _build_run_script_tool(self):
-        @fc_register(host_file='OPAQUE')
+        @fc_register(host_file='OPAQUE', exclusive=True)
         def run_script(name: str, rel_path: str, args: Optional[List[str]] = None,
                        cwd: Optional[str] = None) -> dict:
             '''Run a script within a skill directory.
