@@ -386,16 +386,15 @@ local function bind_anchors(doc)
     local id, inline_target, declared_kind, anchor_caption = anchor_prefix(block)
     if id ~= nil then
       if pending_id ~= nil then
-        error('LazyMind Markdown anchor has no target: ' .. pending_id)
+        pandoc.log.warn('LazyMind Markdown anchor has no target: ' .. pending_id)
+        pending_id = nil
+        pending_kind = nil
+        pending_caption = nil
       end
       if labels[id] ~= nil then
         error('LazyMind Markdown contains duplicate anchor: ' .. id)
       end
-      local following = doc.blocks[index + 1]
-      if anchor_caption ~= nil and inline_target == nil and following ~= nil then
-        bind_anchor(blocks, following, id, labels, anchor_caption, declared_kind)
-        index = index + 1
-      elseif inline_target ~= nil then
+      if inline_target ~= nil then
         bind_anchor(blocks, inline_target, id, labels, anchor_caption, declared_kind)
       else
         pending_id = id
@@ -419,7 +418,7 @@ local function bind_anchors(doc)
   end
 
   if pending_id ~= nil then
-    error('LazyMind Markdown anchor has no target: ' .. pending_id)
+    pandoc.log.warn('LazyMind Markdown anchor has no target: ' .. pending_id)
   end
   doc.blocks = blocks
   return labels
