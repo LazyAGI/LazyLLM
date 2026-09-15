@@ -13,6 +13,9 @@ from .toolError import ToolExecutionError
 from .tool_runtime import HostFileIntent, HostFileResolution, resolve_host_path
 
 
+MAX_EDIT_BYTES = 64 * 1024
+
+
 def _host_files(*fields):
     def resolve(arguments):
         intents = []
@@ -49,6 +52,8 @@ def _open_text(path, mode='r', encoding='utf-8', errors='strict', newline=None):
             raise ToolExecutionError('Expected a regular file')
         if mode == 'w':
             os.ftruncate(fd, 0)
+        if encoding is None:
+            return os.fdopen(fd, mode + 'b')
         return os.fdopen(fd, mode, encoding=encoding, errors=errors, newline=newline)
     except BaseException:
         os.close(fd)
@@ -60,14 +65,19 @@ def _check_root(path: str, root: Optional[str]) -> None:
         return
     root_abs = _resolve_path(root)
     path_abs = _resolve_path(path)
-    if os.path.commonpath([path_abs, root_abs]) != root_abs:
+    try:
+        inside = os.path.commonpath([path_abs, root_abs]) == root_abs
+    except ValueError:
+        inside = False
+    if not inside:
         raise ToolExecutionError(
             f'Path {path_abs} is outside the allowed root {root_abs}.',
         )
 
 
 def _atomic_write(path, content, encoding, mode='overwrite'):
-    added_bytes = len(content.encode(encoding))
+    data = content.encode(encoding)
+    added_bytes = len(data)
     original = None
     try:
         original = os.stat(path, follow_symlinks=False)
@@ -75,10 +85,6 @@ def _atomic_write(path, content, encoding, mode='overwrite'):
             raise ToolExecutionError('Expected a regular file')
     except FileNotFoundError:
         pass
-    if mode == 'append' and original is not None:
-        with _open_text(path, encoding=encoding, newline='') as source:
-            content = source.read() + content
-    data = content.encode(encoding)
     if mode == 'create' and original is not None:
         raise FileExistsError(path)
     fd, temporary = tempfile.mkstemp(prefix='.lazyllm-', dir=os.path.dirname(path))
@@ -86,6 +92,9 @@ def _atomic_write(path, content, encoding, mode='overwrite'):
         with os.fdopen(fd, 'wb') as stream:
             if original is not None:
                 os.chmod(temporary, stat_module.S_IMODE(original.st_mode))
+            if mode == 'append' and original is not None:
+                with _open_text(path, encoding=None) as source:
+                    shutil.copyfileobj(source, stream, length=1024 * 1024)
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
@@ -373,7 +382,9 @@ def move(src: str, dst: str, root: Optional[str] = None, overwrite: bool = False
 @fc_register(host_file=_host_files(('path', 'write')))
 def edit(path: str, old_text: str, new_text: str, expected_replacements: int = 1,
          encoding: str = 'utf-8') -> dict:
-    '''Replace exact text in an existing file.
+    '''Replace exact text in an existing file up to 64 KiB (65536 bytes).
+
+    Larger files require a targeted or streaming workflow.
 
     Args:
         path (str): File to edit.
@@ -388,8 +399,15 @@ def edit(path: str, old_text: str, new_text: str, expected_replacements: int = 1
     if not old_text or expected_replacements < 1:
         raise ToolExecutionError('old_text and a positive replacement count are required')
     path = _resolve_path(path)
-    with _open_text(path, encoding=encoding, newline='') as stream:
-        content = stream.read()
+    with _open_text(path, encoding=None) as stream:
+        size = os.fstat(stream.fileno()).st_size
+        data = stream.read(MAX_EDIT_BYTES + 1) if size <= MAX_EDIT_BYTES else b''
+        if size > MAX_EDIT_BYTES or len(data) > MAX_EDIT_BYTES:
+            raise ToolExecutionError(
+                'File is too large for edit (limit 65536 bytes). '
+                'Use a targeted or streaming workflow for large files.'
+            )
+        content = data.decode(encoding)
         count = content.count(old_text)
         if count != expected_replacements:
             raise ToolExecutionError(f'Expected {expected_replacements} matches, found {count}')
