@@ -104,7 +104,7 @@ def _atomic_write(path, content, encoding, mode='overwrite'):
 @fc_register(host_file=_host_files(('path', 'read')))
 def read(path: str, offset: int = 1, limit: int = 500, max_bytes: int = 65536,
          encoding: str = 'utf-8', errors: str = 'replace', root: Optional[str] = None) -> dict:
-    """Read a bounded text window without loading the whole file.
+    '''Read a bounded text window without loading the whole file.
 
     Args:
         path (str): File path.
@@ -117,7 +117,7 @@ def read(path: str, offset: int = 1, limit: int = 500, max_bytes: int = 65536,
 
     Returns:
         dict: Content, next_offset, eof and truncation status.
-    """
+    '''
     if offset < 1 or limit < 1 or max_bytes < 4096:
         raise ToolExecutionError('offset/limit must be positive and max_bytes at least 4096')
     limit, max_bytes = min(limit, 2000), min(max_bytes, 262144)
@@ -147,7 +147,7 @@ def read(path: str, offset: int = 1, limit: int = 500, max_bytes: int = 65536,
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'read')))
 def ls(path: str = '.', limit: int = 200, root: Optional[str] = None) -> dict:
-    """List one directory level. Use glob for recursive discovery.
+    '''List one directory level. Use glob for recursive discovery.
 
     Args:
         path (str): Directory path, defaults to current directory.
@@ -156,7 +156,7 @@ def ls(path: str = '.', limit: int = 200, root: Optional[str] = None) -> dict:
 
     Returns:
         dict: Entries and truncation status.
-    """
+    '''
     if limit < 1:
         raise ToolExecutionError('limit must be positive')
     limit = min(limit, 1000)
@@ -177,7 +177,7 @@ def ls(path: str = '.', limit: int = 200, root: Optional[str] = None) -> dict:
 @fc_register(host_file=_host_files(('path', 'read')))
 def grep(pattern: str, path: str = '.', glob: Optional[str] = None,
          max_results: int = 100, root: Optional[str] = None) -> dict:
-    """Search file contents with ripgrep without following symbolic links.
+    '''Search file contents with ripgrep without following symbolic links.
 
     Args:
         pattern (str): Ripgrep regular expression.
@@ -188,7 +188,7 @@ def grep(pattern: str, path: str = '.', glob: Optional[str] = None,
 
     Returns:
         dict: Matches with path, line number and bounded snippets, plus truncation status.
-    """
+    '''
     if not pattern or len(pattern) > 4096 or '\0' in pattern or max_results < 1:
         raise ToolExecutionError('A valid pattern and positive result limit are required')
     _check_root(path, root)

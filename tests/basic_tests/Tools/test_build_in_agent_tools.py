@@ -3,6 +3,7 @@ import tempfile
 
 
 from lazyllm.tools import ToolManager
+from lazyllm.tools.agent import ToolExecutionError
 from lazyllm.tools.agent.file_tool import (read, write, ls, grep,
                                            move, remove)
 from lazyllm.tools.agent.shell_tool import shell
@@ -85,9 +86,10 @@ def test_filesystem_bounds_and_atomic_failures(tmp_path, monkeypatch):
     with pytest.raises(UnicodeEncodeError):
         write(str(target), '中文', encoding='ascii')
     assert target.read_text() == 'original'
-    with pytest.raises(Exception):
+    with pytest.raises(ToolExecutionError, match='Expected 1 matches, found 0'):
         file_tool.edit(str(target), 'missing', 'new')
     assert target.read_text() == 'original'
+
     def fail_replace(*_):
         raise OSError('simulated replace failure')
     with monkeypatch.context() as patch:
