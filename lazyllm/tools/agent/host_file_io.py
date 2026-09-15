@@ -1,4 +1,4 @@
-"""Execution-time host-file guard hooks kept separate from prepare metadata."""
+'''Execution-time host-file guard hooks kept separate from prepare metadata.'''
 from __future__ import annotations
 
 import os

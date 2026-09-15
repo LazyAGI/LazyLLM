@@ -30,7 +30,7 @@ class HostFileAccess(str, Enum):
 
 
 class HostFile(str, Enum):
-    """Public host-file declaration markers used by fc_register(host_file=...)."""
+    '''Public host-file declaration markers used by fc_register(host_file=...).'''
 
     NONE = 'NONE'
     OPAQUE = 'OPAQUE'
@@ -43,14 +43,14 @@ class AuthorizationDecision(str, Enum):
 
 
 class AuthorizationPolicy:
-    """Replaceable admission policy for prepared tool calls."""
+    '''Replaceable admission policy for prepared tool calls.'''
 
     def decide(self, prepared):
         raise NotImplementedError
 
 
 class DefaultAuthorizationPolicy(AuthorizationPolicy):
-    """Safe standalone defaults; products may supply a request-local policy."""
+    '''Safe standalone defaults; products may supply a request-local policy.'''
 
     def decide(self, prepared):
         if not prepared.ready:
@@ -81,7 +81,7 @@ class HostFileIntent:
 
 @dataclass(frozen=True)
 class HostFileResolution:
-    """Immutable prepare result: final arguments plus canonical host-file intents."""
+    '''Immutable prepare result: final arguments plus canonical host-file intents.'''
 
     arguments: Dict[str, Any]
     files: Tuple[HostFileIntent, ...] = ()

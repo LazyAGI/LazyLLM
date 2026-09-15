@@ -12,6 +12,51 @@ add_toolsmgr_chinese_doc = functools.partial(utils.add_chinese_doc, module=impor
 add_toolsmgr_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 add_toolsmgr_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 
+add_agent_chinese_doc('AuthorizationPolicy.decide', '''\
+为准备好的工具调用返回授权决策。子类必须实现此方法；基类会抛出 ``NotImplementedError``。
+
+Args:
+    prepared (PreparedToolCall): 待授权的工具调用，包含准备状态、宿主文件访问能力及文件操作意图。
+
+Returns:
+    AuthorizationDecision: 允许执行（ALLOW）、需要确认（ASK）或拒绝执行（DENY）。
+''')
+
+add_agent_english_doc('AuthorizationPolicy.decide', '''\
+Return an authorization decision for a prepared tool call. Subclasses must implement this method;
+the base implementation raises ``NotImplementedError``.
+
+Args:
+    prepared (PreparedToolCall): Tool call with its preparation state, host-file capability, and file operation intents.
+
+Returns:
+    AuthorizationDecision: Allow execution (ALLOW), require confirmation (ASK), or reject execution (DENY).
+''')
+
+add_agent_chinese_doc('DefaultAuthorizationPolicy.decide', '''\
+使用默认策略决定是否允许工具调用。未准备好或未声明宿主文件访问能力的调用会被拒绝。
+不访问宿主文件的调用，以及已声明且仅包含读取操作的调用，会被允许。
+已声明的写入或删除操作，以及不透明的宿主文件访问，需要用户确认。
+
+Args:
+    prepared (PreparedToolCall): 待授权的工具调用。
+
+Returns:
+    AuthorizationDecision: 默认策略返回的 ALLOW、ASK 或 DENY 决策。
+''')
+
+add_agent_english_doc('DefaultAuthorizationPolicy.decide', '''\
+Apply the default policy to a tool call. Reject calls that are not ready or have undeclared host-file access.
+Allow calls with no host-file access and declared calls containing only read operations.
+Require confirmation for declared write or delete operations and opaque host-file access.
+
+Args:
+    prepared (PreparedToolCall): Tool call to authorize.
+
+Returns:
+    AuthorizationDecision: The default policy's ALLOW, ASK, or DENY decision.
+''')
+
 add_agent_chinese_doc('ToolExecutionError', '''\
 可预期工具执行失败的基础异常。
 
