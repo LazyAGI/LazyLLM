@@ -34,6 +34,7 @@ from .code_interpreter import code_interpreter
 from .skill_manager import SkillManager
 from .skill_hub import install_skill
 from .todo_tool import todo_write
+from .file_tool import FileSystemToolkit
 from .toolError import ToolExecutionError
 
 __all__ = [
@@ -44,6 +45,7 @@ __all__ = [
     'normalize_tool_observation',
     'strip_tool_observations',
     'ToolManager',
+    'FileSystemToolkit',
     'FunctionCall',
     'FunctionCallAgent',
     'LazyLLMAgentBase',

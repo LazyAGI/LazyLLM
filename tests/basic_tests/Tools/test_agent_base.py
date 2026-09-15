@@ -11,26 +11,40 @@ class _DummyAgent(LazyLLMAgentBase):
 
 
 class TestLazyLLMAgentBase(object):
+    def test_filesystem_group_is_eager_without_changing_other_groups(self):
+        from lazyllm.tools.agent import FileSystemToolkit
+        from lazyllm.tools.agent.file_tool import read
+        from lazyllm.tools.agent.toolsManager import ToolGroup
+        agent = _DummyAgent(tools=[FileSystemToolkit(), ToolGroup([read], name='Other')], skills=False)
+        names = [item['function']['name'] for item in agent._tools_manager.tools_description]
+        assert len(names) == len(set(names))
+        assert {'read', 'write', 'edit', 'ls', 'glob', 'grep', 'mkdir', 'move', 'remove', 'stat'} <= set(names)
+        assert 'get_FileSystemToolkit_methods' not in names
+        assert 'get_Other_methods' in names
+        assert 'Other_read' not in names
+
     def test_enable_builtin_tools_warns_when_skills_disabled(self):
         agent = _DummyAgent(skills=False, enable_builtin_tools=False)
         assert agent._skill_manager is None
         assert agent._enable_builtin_tools is False
-        assert 'read_file' not in agent._builtin_tool_names
+        assert 'read' not in agent._builtin_tool_names
         assert all(not (isinstance(tool, str) and tool.startswith('builtin_tools.')) for tool in agent._tools)
 
     def test_enable_builtin_tools_default_does_not_warn_when_skills_disabled(self):
         agent = _DummyAgent(skills=False)
         assert agent._skill_manager is None
         assert agent._enable_builtin_tools is True
-        assert 'read_file' in agent._builtin_tool_names
-        assert any(isinstance(tool, str) and tool.startswith('builtin_tools.read_file') for tool in agent._tools)
-        assert 'read_file' in {tool.name for tool in agent._tools_manager.all_tools}
+        assert 'read' in agent._builtin_tool_names
+        assert any(isinstance(tool, str) and tool.startswith('builtin_tools.read') for tool in agent._tools)
+        assert 'read' in {tool.name for tool in agent._tools_manager.all_tools}
 
     def test_builtin_tools_are_added_without_skills(self):
         agent = _DummyAgent(skills=False, enable_builtin_tools=True)
         assert agent._skill_manager is None
-        assert any(isinstance(tool, str) and tool.startswith('builtin_tools.read_file') for tool in agent._tools)
-        assert {'read_file', 'shell_tool'}.issubset({tool.name for tool in agent._tools_manager.all_tools})
+        assert any(isinstance(tool, str) and tool.startswith('builtin_tools.read') for tool in agent._tools)
+        names = {item['function']['name'] for item in agent._tools_manager.tools_description}
+        assert {'read', 'shell'} <= names
+        assert names.isdisjoint({'shell_tool', 'download_file'})
 
     def test_skills_only_add_skill_tools_when_builtin_tools_disabled(self, monkeypatch):
         monkeypatch.setattr(SkillManager, 'get_skill_tools', lambda self: [

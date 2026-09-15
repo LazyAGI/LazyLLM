@@ -1070,7 +1070,6 @@ Args:
     name (str): 技能名称。
     rel_path (str): 脚本相对路径。
     args (List[str], optional): 脚本参数。
-    allow_unsafe (bool): 是否允许执行潜在风险脚本。
     cwd (str, optional): 工作目录。
 
 **Returns:**\n
@@ -1084,7 +1083,6 @@ Args:
     name (str): Skill name.
     rel_path (str): Script relative path.
     args (List[str], optional): Script arguments.
-    allow_unsafe (bool): Whether to allow potentially unsafe execution.
     cwd (str, optional): Working directory.
 
 **Returns:**\n

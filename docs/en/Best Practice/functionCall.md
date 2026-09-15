@@ -268,10 +268,12 @@ What changes when skills are enabled:
 - The agent can call skill tools: `get_skill`, `read_reference`, `run_script`.
 - A default toolset is auto-added for common operations (read/list/search/write/delete/move files, shell, download).
 
-Approval flow for risky operations:
-- Tools raise `ToolExecutionError.approval_required(...)` for dangerous actions; ToolManager converts it into an `ok=false`, `needs_approval=true` failure.
-- The front-end (or orchestrator) should ask for confirmation.
-- Re-run the tool with `allow_unsafe=True` only after explicit user approval.
+File tools and authorization:
+- `glob` uses ripgrep filters: `*.yml` matches any depth, `/*.yml` matches only the search root, and `**/*.{yaml,yml}` matches both extensions recursively. Requires `rg`; searches honor its ignore rules, skip `.git`, and do not follow symbolic links. Results may be truncated.
+
+- `FileSystemToolkit` exposes `read`, `write`, `edit`, `ls`, `glob`, `grep`, `mkdir`, `move`, `remove`, and `stat` immediately, without a prefix or discovery call. Other tool groups retain their loading behavior.
+- Use `prepare_tool_calls` to fix arguments and host-file intents before asking the application policy for authorization. Preparation does not write files.
+- After approval, pass the same prepared batch to `execute_prepared` with its approved indices. Do not rebuild calls from model-supplied approval flags.
 
 Complete code is as follows:
 ```python

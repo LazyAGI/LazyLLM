@@ -1,5 +1,4 @@
 from __future__ import annotations
-from lazyllm.tools.agent import host_file_io
 import json
 import os
 import re
@@ -99,7 +98,7 @@ class WriterToolBase(ModuleBase):
         if isinstance(value, str):
             if os.path.isfile(value):
                 if value.lower().endswith(('.md', '.markdown')):
-                    with host_file_io.open_read(value) as stream:
+                    with open(value, 'rb') as stream:
                         return stream.read().decode('utf-8')
                 return self._unified_model(value, WriterBlock)
             return value
@@ -113,7 +112,7 @@ class WriterToolBase(ModuleBase):
         if isinstance(value, str):
             if os.path.isfile(value):
                 if value.lower().endswith(('.md', '.markdown')):
-                    with host_file_io.open_read(value) as stream:
+                    with open(value, 'rb') as stream:
                         return stream.read().decode('utf-8')
                 return self._unified_model(value, WriterDocument)
             return value
@@ -161,8 +160,8 @@ class WriterToolBase(ModuleBase):
         if not self.artifact_store:
             raise ValueError('artifact_store is not set')
         path = os.path.join(self.artifact_store, filename)
-        host_file_io.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with host_file_io.open_write(path) as stream:
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, 'wb') as stream:
             stream.write(content.encode('utf-8'))
         return os.path.abspath(path)
 

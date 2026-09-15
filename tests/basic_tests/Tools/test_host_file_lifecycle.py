@@ -1,3 +1,4 @@
+from lazyllm.tools.agent.tool_runtime import host_file_access
 import copy
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -230,7 +231,7 @@ def test_host_intents_share_scheduler_conflicts(tmp_path):
     assert metadata.host_file_access is HostFileAccess.DECLARED
     intent = HostFileIntent(str(tmp_path / 'deleted.txt'), 'delete')
     resolution = HostFileResolution({}, (intent,))
-    assert resolution.access.write_keys == frozenset({('file', tmp_path / 'deleted.txt')})
+    assert host_file_access(resolution.files).write_keys == frozenset({('file', tmp_path / 'deleted.txt')})
     snapshot = copy.deepcopy(resolution.arguments)
     assert snapshot == {}
 
@@ -428,13 +429,13 @@ def test_context_error_prevents_invocation():
 
 
 def test_builtin_paths_use_request_working_directory(tmp_path):
-    from lazyllm.tools.agent.file_tool import read_file, write_file, delete_file
-    from lazyllm.tools.agent.shell_tool import shell_tool
+    from lazyllm.tools.agent.file_tool import read, write, remove
+    from lazyllm.tools.agent.shell_tool import shell
     from lazyllm.tools.agent.todo_tool import todo_write
 
-    manager = ToolManager([read_file, write_file, delete_file, shell_tool, todo_write])
+    manager = ToolManager([read, write, remove, shell, todo_write])
     batch = manager.prepare_tool_calls(
-        call('read_file', path='notes.txt'), require_host_file_access=True, working_directory=str(tmp_path))
+        call('read', path='notes.txt'), require_host_file_access=True, working_directory=str(tmp_path))
     assert batch[0].validated_arguments['path'] == str(tmp_path / 'notes.txt')
     assert batch[0].host_files == (HostFileIntent(str(tmp_path / 'notes.txt'), 'read'),)
 
@@ -542,11 +543,10 @@ def test_host_file_resolution_is_prepare_data_not_filesystem_facade():
 
 
 def test_model_visible_unsafe_flags_are_removed():
-    from lazyllm.tools.agent.download_tool import download_file
-    from lazyllm.tools.agent.file_tool import delete_file, move_file, write_file
-    from lazyllm.tools.agent.shell_tool import shell_tool
+    from lazyllm.tools.agent.file_tool import remove, move, write
+    from lazyllm.tools.agent.shell_tool import shell
 
-    manager = ToolManager([download_file, write_file, delete_file, move_file, shell_tool])
+    manager = ToolManager([write, remove, move, shell])
     descriptions = json.dumps(manager.tools_description)
     assert 'allow_unsafe' not in descriptions
 
@@ -564,9 +564,9 @@ def test_registration_rejects_split_host_file_options():
 
 def test_builtin_file_tools_do_not_duplicate_host_file_scheduler_keys():
     from lazyllm.tools.agent.file_tool import (
-        delete_file, list_dir, make_dir, move_file, read_file, search_in_files, write_file,
+        remove, ls, mkdir, move, read, grep, write,
     )
-    manager = ToolManager([read_file, list_dir, search_in_files, make_dir, write_file, delete_file, move_file])
+    manager = ToolManager([read, ls, grep, mkdir, write, remove, move])
     for tool in manager.all_tools:
         assert tool.runtime_metadata.read_keys is None
         assert tool.runtime_metadata.write_keys is None

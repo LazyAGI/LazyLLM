@@ -1,29 +1,59 @@
-from . import host_file_io
 import fnmatch
-import io
+import shutil
+import subprocess
+import tempfile
+import threading
+import stat as stat_module
+from pathlib import PurePath
 import os
 import re
 from typing import Dict, List, Optional
 
-from .toolsManager import fc_register
+from .toolsManager import fc_register, ToolGroup
 from .toolError import ToolExecutionError
-from .tool_runtime import HostFileIntent, HostFileResolution
+from .tool_runtime import HostFileIntent, HostFileResolution, resolve_host_path
 
 
 def _host_files(*fields):
     def resolve(arguments):
         intents = []
+        if any(operation == 'delete' for _, operation in fields):
+            for name, _ in fields:
+                _check_entry(arguments.get(name, '.'))
         for name, operation in fields:
-            arguments[name] = host_file_io.resolve_host_path(arguments.get(name, '.'))
+            arguments[name] = resolve_host_path(arguments.get(name, '.'))
             intents.append(HostFileIntent(arguments[name], operation))
         if arguments.get('root'):
-            arguments['root'] = host_file_io.resolve_host_path(arguments['root'])
+            arguments['root'] = resolve_host_path(arguments['root'])
         return HostFileResolution(arguments, tuple(intents))
     return resolve
 
 
 def _resolve_path(path: str) -> str:
-    return os.path.abspath(os.path.expanduser(path))
+    return resolve_host_path(path)
+
+
+def _check_entry(path):
+    path = os.path.expanduser(os.fspath(path))
+    entry = os.path.join(resolve_host_path(os.path.dirname(path) or '.'), os.path.basename(path))
+    if os.path.islink(entry):
+        raise ToolExecutionError('Moving or removing a symbolic link is not supported; use its target explicitly')
+
+
+def _open_text(path, mode='r', encoding='utf-8', errors='strict', newline=None):
+    flags = {'r': os.O_RDONLY, 'r+': os.O_RDWR, 'w': os.O_WRONLY | os.O_CREAT,
+             'a': os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+             'x': os.O_WRONLY | os.O_CREAT | os.O_EXCL}[mode]
+    fd = os.open(path, flags | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0), 0o600)
+    try:
+        if not stat_module.S_ISREG(os.fstat(fd).st_mode):
+            raise ToolExecutionError('Expected a regular file')
+        if mode == 'w':
+            os.ftruncate(fd, 0)
+        return os.fdopen(fd, mode, encoding=encoding, errors=errors, newline=newline)
+    except BaseException:
+        os.close(fd)
+        raise
 
 
 def _check_root(path: str, root: Optional[str]) -> None:
@@ -47,9 +77,9 @@ def _compile_search_pattern(pattern: str):
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'read')))
-def read_file(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None,
-              encoding: str = 'utf-8', errors: str = 'replace', root: Optional[str] = None,
-              max_chars: int = 200000) -> dict:
+def read(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None,
+         encoding: str = 'utf-8', errors: str = 'replace', root: Optional[str] = None,
+         max_chars: int = 200000) -> dict:
     '''Read a text file with optional line range.
 
     Args:
@@ -68,7 +98,7 @@ def read_file(path: str, start_line: Optional[int] = None, end_line: Optional[in
     path_abs = _resolve_path(path)
     if not os.path.isfile(path_abs):
         raise ToolExecutionError(f'File not found: {path_abs}')
-    with io.TextIOWrapper(host_file_io.open_read(path_abs), encoding=encoding, errors=errors) as f:
+    with _open_text(path_abs, encoding=encoding, errors=errors) as f:
         lines = f.readlines()
     total_lines = len(lines)
     s = 1 if start_line is None else max(1, start_line)
@@ -92,8 +122,8 @@ def read_file(path: str, start_line: Optional[int] = None, end_line: Optional[in
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'read')))
-def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
-             root: Optional[str] = None) -> dict:
+def ls(path: str = '.', recursive: bool = False, max_depth: int = 5,
+       root: Optional[str] = None) -> dict:
     '''List directory entries.
 
     Args:
@@ -111,10 +141,10 @@ def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
         raise ToolExecutionError(f'Directory not found: {path_abs}')
     entries: List[str] = []
     if not recursive:
-        entries = sorted(host_file_io.listdir(path_abs))
+        entries = sorted(os.listdir(path_abs))
     else:
         base_depth = path_abs.rstrip(os.sep).count(os.sep)
-        for dirpath, dirnames, filenames in host_file_io.walk(path_abs):
+        for dirpath, dirnames, filenames in os.walk(path_abs):
             depth = dirpath.count(os.sep) - base_depth
             if depth > max_depth:
                 dirnames[:] = []
@@ -132,10 +162,10 @@ def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'read')))
-def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
-                    max_results: int = 50, root: Optional[str] = None,
-                    encoding: str = 'utf-8', errors: str = 'replace',
-                    max_file_size: int = 2_000_000) -> dict:
+def grep(pattern: str, path: str = '.', glob: Optional[str] = None,
+         max_results: int = 50, root: Optional[str] = None,
+         encoding: str = 'utf-8', errors: str = 'replace',
+         max_file_size: int = 2_000_000) -> dict:
     '''Search files for a regex pattern.
 
     Args:
@@ -157,7 +187,7 @@ def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
         raise ToolExecutionError(f'Directory not found: {path_abs}')
     regex = _compile_search_pattern(pattern)
     results: List[Dict[str, str]] = []
-    for dirpath, dirnames, filenames in host_file_io.walk(path_abs):
+    for dirpath, dirnames, filenames in os.walk(path_abs):
         dirnames[:] = [name for name in dirnames if not os.path.islink(os.path.join(dirpath, name))]
         for name in filenames:
             if glob and not fnmatch.fnmatch(name, glob):
@@ -168,7 +198,7 @@ def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
             try:
                 if os.path.getsize(file_path) > max_file_size:
                     continue
-                with io.TextIOWrapper(host_file_io.open_read(file_path), encoding=encoding, errors=errors) as f:
+                with _open_text(file_path, encoding=encoding, errors=errors) as f:
                     for idx, line in enumerate(f, start=1):
                         if regex.search(line):
                             results.append({
@@ -186,8 +216,8 @@ def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'write')))
-def make_dir(path: str, parents: bool = True, exist_ok: bool = True,
-             root: Optional[str] = None) -> dict:
+def mkdir(path: str, parents: bool = True, exist_ok: bool = True,
+          root: Optional[str] = None) -> dict:
     '''Create a directory.
 
     Args:
@@ -201,21 +231,24 @@ def make_dir(path: str, parents: bool = True, exist_ok: bool = True,
     '''
     _check_root(path, root)
     path_abs = _resolve_path(path)
-    host_file_io.makedirs(path_abs, exist_ok=exist_ok, parents=parents)
+    if parents:
+        os.makedirs(path_abs, exist_ok=exist_ok)
+    elif not (exist_ok and os.path.isdir(path_abs)):
+        os.mkdir(path_abs)
     return {'status': 'ok', 'path': path_abs}
 
 
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'write')))
-def write_file(path: str, content: str, mode: str = 'overwrite', encoding: str = 'utf-8',
-               root: Optional[str] = None, create_parents: bool = True) -> dict:
+def write(path: str, content: str, mode: str = 'overwrite', encoding: str = 'utf-8',
+          root: Optional[str] = None, create_parents: bool = True) -> dict:
     '''Write content to a file.
 
     Args:
         path (str): File path.
         content (str): Content to write.
-        mode (str, optional): overwrite|append. Defaults to overwrite.
+        mode (str, optional): create|overwrite|append. Defaults to overwrite.
         encoding (str, optional): File encoding. Defaults to utf-8.
         root (str, optional): Restrict writes to this root directory.
         create_parents (bool, optional): Create parent directories if needed.
@@ -225,43 +258,48 @@ def write_file(path: str, content: str, mode: str = 'overwrite', encoding: str =
     '''
     _check_root(path, root)
     path_abs = _resolve_path(path)
-    if mode not in ('overwrite', 'append'):
-        raise ToolExecutionError(f'Invalid write mode {mode!r}; expected "overwrite" or "append".')
+    if mode not in ('create', 'overwrite', 'append'):
+        raise ToolExecutionError(f'Invalid write mode {mode!r}; expected "create", "overwrite" or "append".')
     parent = os.path.dirname(path_abs)
 
     if parent and create_parents:
-        host_file_io.makedirs(parent, exist_ok=True)
-    fmode = 'a' if mode == 'append' else 'w'
-    with io.TextIOWrapper(host_file_io.open_write(path_abs, fmode), encoding=encoding) as f:
+        os.makedirs(parent, exist_ok=True)
+    fmode = {'create': 'x', 'append': 'a', 'overwrite': 'w'}[mode]
+    with _open_text(path_abs, fmode, encoding=encoding) as f:
         f.write(content)
-    return {'status': 'ok', 'path': path_abs, 'mode': mode, 'bytes': len(content)}
+    return {'status': 'ok', 'path': path_abs, 'mode': mode, 'bytes': len(content.encode(encoding))}
 
 
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'delete')))
-def delete_file(path: str, root: Optional[str] = None) -> dict:
-    '''Delete a file.
+def remove(path: str, recursive: bool = False, root: Optional[str] = None) -> dict:
+    '''Delete a file or directory. Recursive deletion requires explicit opt-in.
 
     Args:
         path (str): File path.
+        recursive (bool): Delete nonempty directories recursively. Defaults to False.
         root (str, optional): Restrict deletion to this root directory.
     Returns:
         dict: Status result.
     '''
+    _check_entry(path)
     _check_root(path, root)
     path_abs = _resolve_path(path)
     if not os.path.exists(path_abs):
         raise ToolExecutionError(f'File not found: {path_abs}')
-    host_file_io.delete(path_abs)
+    if os.path.isdir(path_abs):
+        shutil.rmtree(path_abs) if recursive else os.rmdir(path_abs)
+    else:
+        os.unlink(path_abs)
     return {'status': 'ok', 'path': path_abs}
 
 
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
-@fc_register(host_file=_host_files(('src', 'delete'), ('dst', 'write')))
-def move_file(src: str, dst: str, root: Optional[str] = None, overwrite: bool = False,
-              create_parents: bool = True) -> dict:
+@fc_register(host_file=_host_files(('src', 'read'), ('src', 'delete'), ('dst', 'write')))
+def move(src: str, dst: str, root: Optional[str] = None, overwrite: bool = False,
+         create_parents: bool = True) -> dict:
     '''Move or rename a file.
 
     Args:
@@ -274,6 +312,8 @@ def move_file(src: str, dst: str, root: Optional[str] = None, overwrite: bool = 
     Returns:
         dict: Status result.
     '''
+    _check_entry(src)
+    _check_entry(dst)
     _check_root(src, root)
     _check_root(dst, root)
     src_abs = _resolve_path(src)
@@ -284,6 +324,139 @@ def move_file(src: str, dst: str, root: Optional[str] = None, overwrite: bool = 
         raise ToolExecutionError(f'Destination already exists: {dst_abs}')
     parent = os.path.dirname(dst_abs)
     if parent and create_parents:
-        host_file_io.makedirs(parent, exist_ok=True)
-    host_file_io.rename(src_abs, dst_abs, overwrite=overwrite)
+        os.makedirs(parent, exist_ok=True)
+    os.replace(src_abs, dst_abs) if overwrite else os.rename(src_abs, dst_abs)
     return {'status': 'ok', 'src': src_abs, 'dst': dst_abs}
+
+
+@fc_register('builtin_tools')
+@fc_register('tool', execute_in_sandbox=False)
+@fc_register(host_file=_host_files(('path', 'write')))
+def edit(path: str, old_text: str, new_text: str, expected_replacements: int = 1,
+         encoding: str = 'utf-8') -> dict:
+    '''Replace exact text in an existing file.
+
+    Args:
+        path (str): File to edit.
+        old_text (str): Exact nonempty text to replace.
+        new_text (str): Replacement text.
+        expected_replacements (int): Required number of matches, defaults to one.
+        encoding (str): Text encoding, defaults to utf-8.
+
+    Returns:
+        dict: Path and replacement count.
+    '''
+    if not old_text or expected_replacements < 1:
+        raise ToolExecutionError('old_text and a positive replacement count are required')
+    path = _resolve_path(path)
+    with _open_text(path, 'r+', encoding=encoding, newline='') as stream:
+        content = stream.read()
+        count = content.count(old_text)
+        if count != expected_replacements:
+            raise ToolExecutionError(f'Expected {expected_replacements} matches, found {count}')
+        stream.seek(0)
+        stream.write(content.replace(old_text, new_text))
+        stream.truncate()
+    return {'status': 'ok', 'path': path, 'replacements': count}
+
+
+def _read_glob_paths(stream, path, limit):
+    results = []
+    pending = b''
+    while len(results) <= limit:
+        chunk = stream.read1(65536)
+        if not chunk:
+            break
+        entries = (pending + chunk).split(b'\0')
+        pending = entries.pop()
+        for entry in entries:
+            candidate = os.path.abspath(os.path.join(path, os.fsdecode(entry)))
+            if not os.path.islink(candidate):
+                results.append(candidate)
+            if len(results) > limit:
+                break
+    return results
+
+
+@fc_register('builtin_tools')
+@fc_register('tool', execute_in_sandbox=False)
+@fc_register(host_file=_host_files(('path', 'read')))
+def glob(pattern: str, path: str = '.', max_results: int = 100) -> dict:
+    '''Find files using ripgrep glob rules without following symbolic links.
+
+    Args:
+        pattern (str): File filter: *.yml matches any depth, /*.yml only the search
+            root, and **/*.{yaml,yml} matches both extensions recursively.
+        path (str): Directory to search, defaults to the working directory.
+        max_results (int): Positive maximum number of results.
+
+    Returns:
+        dict: Matching absolute paths and truncation status, not a total count.
+    '''
+    if max_results < 1 or not pattern or '\x00' in pattern or '..' in PurePath(pattern).parts:
+        raise ToolExecutionError('A valid glob pattern and positive result limit are required')
+    path = _resolve_path(path)
+    if not os.path.isdir(path):
+        raise ToolExecutionError(f'Directory not found: {path}')
+    executable = shutil.which('rg')
+    if not executable:
+        raise ToolExecutionError('glob requires ripgrep (rg) to be installed')
+    results = []
+    expired = threading.Event()
+    with tempfile.TemporaryFile() as errors, subprocess.Popen(
+        [executable, '--no-config', '--files', '--null', '--glob', pattern,
+         '--glob', '!**/.git/**', '--', '.'],
+        cwd=path, stdout=subprocess.PIPE, stderr=errors,
+    ) as process:
+        def expire():
+            expired.set()
+            process.kill()
+
+        timer = threading.Timer(30, expire)
+        timer.daemon = True
+        timer.start()
+        try:
+            results = _read_glob_paths(process.stdout, path, max_results)
+            truncated = len(results) > max_results
+            if truncated:
+                process.kill()
+            code = process.wait()
+            if expired.is_set():
+                raise ToolExecutionError('glob search timed out after 30 seconds; narrow the search path')
+            if not truncated and code not in (0, 1):
+                errors.seek(0)
+                detail = errors.read(4096).decode('utf-8', errors='replace').strip()
+                raise ToolExecutionError(f'glob search failed: {detail}')
+        finally:
+            timer.cancel()
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+    return {'status': 'ok', 'paths': results[:max_results], 'truncated': truncated}
+
+
+@fc_register('builtin_tools')
+@fc_register('tool', execute_in_sandbox=False)
+@fc_register(host_file=_host_files(('path', 'read')))
+def stat(path: str) -> dict:
+    '''Inspect file or directory metadata.
+
+    Args:
+        path (str): File or directory path.
+
+    Returns:
+        dict: Canonical path, type, size and modification time.
+    '''
+    path = _resolve_path(path)
+    info = os.stat(path)
+    return {'status': 'ok', 'path': path,
+            'type': 'directory' if stat_module.S_ISDIR(info.st_mode) else 'file',
+            'size': info.st_size, 'mtime_ns': info.st_mtime_ns}
+
+
+class FileSystemToolkit(ToolGroup):
+    '''Common host filesystem tools, available immediately with short names.'''
+
+    def __init__(self):
+        super().__init__(tools=[read, write, edit, ls, glob, grep, mkdir, move, remove, stat],
+                         name='FileSystemToolkit', desc=self.__doc__, lazy=False, prefix=False)

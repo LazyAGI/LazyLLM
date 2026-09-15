@@ -92,14 +92,6 @@ class HostFileResolution:
         if not isinstance(self.files, tuple) or not all(isinstance(item, HostFileIntent) for item in self.files):
             raise TypeError('resolved files must be a tuple of HostFileIntent values')
 
-    @property
-    def access(self):
-        reads = frozenset(_normalize_resource_key(('file', item.path))
-                          for item in self.files if item.operation == 'read')
-        writes = frozenset(_normalize_resource_key(('file', item.path))
-                           for item in self.files if item.operation != 'read')
-        return ResolvedToolAccess(read_keys=reads - writes, write_keys=writes)
-
 
 def _readonly_snapshot(value):
     if isinstance(value, dict):
@@ -146,6 +138,13 @@ class ResolvedToolAccess:
     read_keys: frozenset = frozenset()
     write_keys: frozenset = frozenset()
     exclusive: bool = False
+
+
+def host_file_access(files):
+    '''Derive scheduler resources from the same intents used for authorization.'''
+    reads = frozenset(_normalize_resource_key(('file', item.path)) for item in files if item.operation == 'read')
+    writes = frozenset(_normalize_resource_key(('file', item.path)) for item in files if item.operation != 'read')
+    return ResolvedToolAccess(read_keys=reads - writes, write_keys=writes)
 
 
 @dataclass(frozen=True)

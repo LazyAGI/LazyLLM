@@ -35,6 +35,7 @@ from .tool_runtime import (
     _HOST_WORKING_DIRECTORY,
     _accesses_conflict,
     _get_tool_runtime_metadata,
+    host_file_access,
     _set_tool_runtime_metadata,
 )
 from typing import *  # noqa F403, to import all types for compile_func(), do not remove
@@ -1045,7 +1046,7 @@ class ToolManager(ModuleBase):
                     validated_arguments = {key: getattr(model, key) for key in resolution.arguments}
                     if validated_arguments != resolution.arguments:
                         raise ValueError('validation changed resolved arguments')
-                    host_files, host_access = resolution.files, resolution.access
+                    host_files, host_access = resolution.files, host_file_access(resolution.files)
                 except Exception:
                     failure = tool_failure('Host file access resolution failed.')
                     tool = None
