@@ -19,6 +19,18 @@ _SOURCE_KEY = 'source'
 _EXTRA_KEY = 'extra'
 
 
+CONTENT_CHARS = 16384
+PREVIEW_CHARS = 700
+
+
+def _content_window(offset: int, limit: int):
+    if type(offset) is not int or offset < 0:
+        raise ValueError('offset must be a non-negative integer')
+    if type(limit) is not int or limit <= 0:
+        raise ValueError('limit must be a positive integer')
+    return offset, min(limit, CONTENT_CHARS)
+
+
 def _html_to_text(html: str) -> str:
     html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
     html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
@@ -28,25 +40,32 @@ def _html_to_text(html: str) -> str:
 
 
 def _make_result(title: str, url: str, snippet: str = '', source: str = '', **extra: Any) -> Dict[str, Any]:
-    item = {
-        _TITLE_KEY: title,
-        _URL_KEY: url,
-        _SNIPPET_KEY: snippet,
-        _SOURCE_KEY: source,
-    }
+    snippet = str(snippet or '')
+    if len(snippet) > PREVIEW_CHARS:
+        snippet = snippet[:PREVIEW_CHARS]
+        extra['truncated'] = True
+    for key in ('raw_content', 'content', 'answer'):
+        if isinstance(extra.get(key), str) and len(extra[key]) > PREVIEW_CHARS:
+            extra[key] = extra[key][:PREVIEW_CHARS]
+            extra['truncated'] = True
+    item = {_TITLE_KEY: title, _URL_KEY: url, _SNIPPET_KEY: snippet, _SOURCE_KEY: source}
     if extra:
         item[_EXTRA_KEY] = extra
     return item
 
 
-def _make_content_result(item: Dict[str, Any], content: str) -> Dict[str, Any]:
+def _make_content_result(item: Dict[str, Any], content: str, *,
+                         content_type: Optional[str] = None, fallback: bool = False) -> Dict[str, Any]:
     extra = item.get(_EXTRA_KEY)
+    extra = dict(extra) if isinstance(extra, dict) else {}
+    if content_type is not None:
+        extra['content_read'] = {'content_type': content_type, 'fallback': fallback}
     return {
         _TITLE_KEY: str(item.get(_TITLE_KEY) or ''),
         _URL_KEY: str(item.get(_URL_KEY) or item.get('link') or ''),
         _SNIPPET_KEY: str(item.get(_SNIPPET_KEY) or ''),
         _SOURCE_KEY: str(item.get(_SOURCE_KEY) or ''),
-        _EXTRA_KEY: dict(extra) if isinstance(extra, dict) else {},
+        _EXTRA_KEY: extra,
         'content': str(content or ''),
     }
 
@@ -125,10 +144,38 @@ class SearchBase(ModuleBase, CredentialMixin):
         except Exception:
             return ''
 
-    @fc_register(host_file='NONE')
-    def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        return _make_content_result(item, self._fetch_content_text(item))
+    def _fetch_content_result(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        content = self._fetch_content_text(item)
+        return _make_content_result(item, content, content_type='webpage', fallback=not bool(content))
 
     @fc_register(host_file='NONE')
-    def get_contents(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        return [self.get_content(it) for it in items]
+    def get_content(self, item: Dict[str, Any], offset: int = 0, limit: int = CONTENT_CHARS) -> Dict[str, Any]:
+        offset, limit = _content_window(offset, limit)
+        result = self._fetch_content_result(item)
+        content = result['content']
+        extra = result['extra']
+        read = dict(extra.get('content_read') or {})
+        fallback = read.get('fallback', False)
+        start = 0 if fallback else offset
+        result['content'] = content[start:start + limit]
+        result['snippet'] = result['snippet'][:700]
+        extra.pop('content', None)
+        extra.pop('raw_content', None)
+        read.update(offset=None if fallback else offset, limit=limit, truncated=len(content) > start + limit)
+        if not fallback:
+            next_offset = offset + len(result['content'])
+            read.update(more=next_offset < len(content), next_offset=next_offset)
+        extra['content_read'] = read
+        return result
+
+    @fc_register(host_file='NONE')
+    def get_contents(self, items: List[Dict[str, Any]], offset: int = 0,
+                     limit: int = CONTENT_CHARS) -> List[Dict[str, Any]]:
+        offset, limit = _content_window(offset, limit)
+        if not items:
+            return []
+        if len(items) > limit:
+            raise ValueError('item count exceeds the batch character budget')
+        per_item, remainder = divmod(limit, len(items))
+        return [self.get_content(item, offset=offset, limit=per_item + (index < remainder))
+                for index, item in enumerate(items)]

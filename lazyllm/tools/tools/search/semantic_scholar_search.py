@@ -16,23 +16,28 @@ class SemanticScholarSearch(SearchBase):
         self._timeout = timeout
         self._base = 'https://api.semanticscholar.org/graph/v1'
 
-    def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    def _fetch_content_result(self, item: Dict[str, Any]) -> Dict[str, Any]:
         extra = item.get('extra') or {}
         paper_id = extra.get('paperId')
         if not paper_id:
             snippet = item.get('snippet', '')
             if snippet:
-                return _make_content_result(item, snippet)
-            return super().get_content(item)
+                return _make_content_result(item, snippet, content_type='search_preview', fallback=True)
+            return super()._fetch_content_result(item)
         url = f'{self._base}/paper/{paper_id}'
         try:
             resp = self._request('GET', url, params={'fields': 'abstract'}, timeout=self._timeout)
             data = resp.json()
         except Exception:
             snippet = item.get('snippet') or ''
-            return _make_content_result(item, snippet) if snippet else super().get_content(item)
-        content = (data.get('abstract') or '').strip() or (item.get('snippet') or '')
-        return _make_content_result(item, content)
+            if snippet:
+                return _make_content_result(item, snippet, content_type='search_preview', fallback=True)
+            return super()._fetch_content_result(item)
+        content = (data.get('abstract') or '').strip()
+        if not content:
+            snippet = item.get('snippet') or ''
+            return _make_content_result(item, snippet, content_type='search_preview', fallback=True)
+        return _make_content_result(item, content, content_type='abstract')
 
     def search(self, query: str, limit: int = 10,
                fields: Optional[str] = None) -> List[Dict[str, Any]]:
