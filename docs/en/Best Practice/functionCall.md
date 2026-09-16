@@ -284,7 +284,7 @@ prepared = manager.prepare_tool_calls(calls, authorization_policy=lambda call: A
 result = manager.execute_prepared(prepared, selected_indices=(0,), approved_indices=(0,))
 ```
 
-Unapproved ASK calls cannot execute. Selection is not approval. Decisions are fixed during preparation; failed preparation never executes a tool. `require_host_file_access=True` remains an explicit declaration-completeness check.
+Unapproved ASK calls cannot execute. Selection is not approval. Decisions are fixed during preparation; failed preparation never executes a tool.
 
 Complete code is as follows:
 ```python
