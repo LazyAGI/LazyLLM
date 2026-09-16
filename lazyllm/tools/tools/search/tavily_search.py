@@ -68,7 +68,6 @@ class TavilySearch(SearchBase):
         if answer or images:
             out.append(_make_result(
                 title='summary', url='', snippet=answer or '', source=self.source_name,
-                snippet_limit=700,
                 **({'images': images} if images else {}),
             ))
         return out

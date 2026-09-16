@@ -41,7 +41,7 @@ def test_search_content_preserves_identity_without_framework_citation_fields():
         'snippet': 'Snippet',
         'source': 'fake',
         'extra': {'doc_id': 'doc-1', 'content_read': {
-            'content_type': 'webpage', 'fallback': False, 'offset': 0, 'limit': 700,
+            'content_type': 'webpage', 'fallback': False, 'offset': 0, 'limit': 16384,
             'truncated': False, 'more': False, 'next_offset': 14,
         }},
         'content': 'Fetched Result',

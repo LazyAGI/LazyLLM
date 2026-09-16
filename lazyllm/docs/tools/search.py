@@ -14,7 +14,7 @@ _GENERAL_SEARCH_GUIDANCE_ZH = '''
 - 如果用户问题包含多个无关主题、实体、产品、关键词或问题，应分别调用搜索工具，不要把它们合并成一个 query。
 - query 应来自用户的核心问题，只加入有助于检索的时间、机构、产品、领域或站点等约束。
 - 返回的 title、url、snippet 和 metadata 是检索证据；不要编造未返回的来源。
-- 搜索结果 snippet 最多 700 字符，截断时 extra.truncated 为 True；显式请求的答案和原文不受此摘要限制。
+- 搜索结果 snippet 最多 700 字符，截断时 extra.truncated 为 True；显式请求的答案和原文也仅返回最多 700 字符的预览。
 - 当 snippet 或 metadata 不足以支撑回答时，再调用 get_content(item) 或 get_contents(items) 深读结果。
 '''
 
@@ -24,7 +24,7 @@ Usage guidance:
 - If the user asks about multiple unrelated topics, entities, products, keywords, or questions, call the search tool separately for each one instead of merging them into one query.
 - Build query from the user's core question and include only retrieval-useful constraints such as date, organization, product, domain, or site.
 - Treat returned titles, URLs, snippets, and metadata as search evidence; do not fabricate sources that were not returned.
-- Search result snippets are capped at 700 characters with extra.truncated=True when shortened; explicitly requested answers and raw content are exempt.
+- Search result snippets are capped at 700 characters with extra.truncated=True when shortened; explicitly requested answers and raw content are also capped at 700 characters.
 - Use get_content(item) or get_contents(items) when snippets or metadata are not enough to support the answer.
 '''
 
@@ -109,28 +109,28 @@ Calls search(query, **kwargs) and returns the result. Arguments are passed throu
 ''')
 
 add_chinese_doc('SearchBase.get_content', '''
-分段读取单条搜索结果的可获取文本，保留来源身份。默认每次最多返回 700 字符。
+分段读取单条搜索结果的可获取文本，保留来源身份。默认每次最多返回 16384 字符。
 
 Tavily、Google、Bing、Bocha、Tencent、Google Books 获取 URL 页面的可读文本，不保证是论文或书籍全文；Wikipedia 获取词条；arXiv 和 Semantic Scholar 获取论文摘要，不是论文全文；Stack Overflow 获取问题及可获取的采纳答案，不是所有答案。
 
 Args:
     item (Dict[str, Any]): 搜索结果项。
     offset (int): 已提取文本的字符偏移，默认 0；续读使用返回的 next_offset。
-    limit (int): 本次最多返回字符数，默认及最大 700。
+    limit (int): 本次最多返回正文字符数，默认及最大 16384；必须为正整数，超限取上限，offset 必须为非负整数。
 
 Returns:
     Dict[str, Any]: title、url、snippet、source、extra、content。extra.content_read 包含 content_type、offset、limit、truncated、fallback；正常读取还包含 more 和 next_offset。more=True 时按 next_offset 继续，more=False 仅表示当前 content_type 的可获取文本已到末尾，不表示读完论文。fallback=True 时不给续读游标，不能把失败或摘要预览当成全文读完。每次重新获取内容，动态网页变化时分页可能不稳定。
 ''')
 
 add_english_doc('SearchBase.get_content', '''
-Read a page of available text for a search result, preserving source identity. Returns at most 700 characters by default.
+Read a page of available text for a search result, preserving source identity. Returns at most 16384 characters by default.
 
 Tavily, Google, Bing, Bocha, Tencent and Google Books read the linked webpage, not necessarily a full paper or book. Wikipedia reads an article. Arxiv and SemanticScholar read abstracts, not full papers. StackOverflow reads the question and available accepted answer, not all answers.
 
 Args:
     item (Dict[str, Any]): Search result item.
     offset (int): Character offset in extracted text, default 0. Continue using returned next_offset.
-    limit (int): Maximum characters returned this time, default and maximum 700.
+    limit (int): Positive maximum content characters, default and maximum 16384; larger values are capped. offset must be a non-negative integer.
 
 Returns:
     Dict[str, Any]: title, url, snippet, source, extra, content. extra.content_read contains content_type, offset, limit, truncated, fallback, and on successful reads more and next_offset. When more=True, continue using next_offset. more=False marks only the end of the available content_type, not full-paper completion. Fallbacks omit cursors and must not be treated as successful full reads. Each call fetches again; changing webpages may produce unstable pagination.
@@ -142,22 +142,22 @@ add_chinese_doc('SearchBase.get_contents', '''
 Args:
     items (List[Dict[str, Any]]): 搜索结果列表（_make_result 格式）。
     offset (int): 每条结果的起始偏移，默认 0。各条目的后续游标可能不同，应分别续读。
-    limit (int): 每条结果的最大字符数，默认 700，不是整个批次的总上限。
+    limit (int): 整个批次的正文字符额度，默认及最大 16384；正整数。各篇均分，余数按输入顺序分配，未用额度不重新分配。不同于旧版本的每篇额度。
 
 Returns:
-    List[Dict[str, Any]]: 与 items 一一对应的结构化正文结果列表。
+    List[Dict[str, Any]]: 与 items 一一对应的结构化正文结果列表。空列表返回空列表；条目数大于有效额度时报错。后续使用 get_content 和各自 next_offset 续读。
 ''')
 
 add_english_doc('SearchBase.get_contents', '''
-Fetch full body text for multiple search result items while preserving source identity.
+Read pages of available text for multiple search result items while preserving source identity.
 
 Args:
     items (List[Dict[str, Any]]): List of search result items (_make_result format).
     offset (int): Starting offset for each item, default 0. Continue items separately using their own cursors.
-    limit (int): Maximum characters per item, default and maximum 700; not a total batch limit.
+    limit (int): Total content character budget for the batch, default and maximum 16384; a positive integer. Split evenly, with remainder assigned in input order and no redistribution. This replaces the former per-item limit.
 
 Returns:
-    List[Dict[str, Any]]: Structured content results in input order.
+    List[Dict[str, Any]]: Structured content results in input order. Empty input returns []. More items than the effective budget raises ValueError. Continue each item with get_content and its own next_offset.
 ''')
 
 add_example('SearchBase.get_content', '''
@@ -662,7 +662,7 @@ Sciverse search_type 选择:
 Args:
     query (str): 论文标题、作者、DOI、科研主题或自然语言问题。
     topk (int): 返回条数，默认 5，最大 10。
-    include_content (bool): 是否在 extra.content 中返回最多 700 字符的摘要或片段预览，默认 False。
+    include_content (bool): 是否在 extra.content 中返回最多 700 字符的摘要或片段预览，默认 True。
     search_type (str): "agentic" 返回适合问答的文献片段；"meta" 返回偏文献元数据的结果。
     year_from (int, optional): 发表年份下限，仅 meta 检索使用。
     year_to (int, optional): 发表年份上限，仅 meta 检索使用。
@@ -683,7 +683,7 @@ Sciverse search_type selection:
 Args:
     query (str): Paper title, author, DOI, research topic, or natural-language question.
     topk (int): Number of results, default 5, maximum 10.
-    include_content (bool): Whether to return at most 700 characters of abstract or passage preview in extra.content, default False.
+    include_content (bool): Whether to return at most 700 characters of abstract or passage preview in extra.content, default True.
     search_type (str): "agentic" returns passage-oriented results for question answering; "meta" returns metadata-oriented results.
     year_from (int, optional): Inclusive lower publication year bound, used by meta search.
     year_to (int, optional): Inclusive upper publication year bound, used by meta search.
@@ -699,11 +699,11 @@ add_chinese_doc('SciverseSearch.get_content', '''
 
 Args:
     item (Dict[str, Any]): SciverseSearch.search 或 meta_search 返回的单条结果。
-    offset (int, optional): 服务端原文偏移；省略时从 0 开始，续读使用返回的 next_offset。
-    limit (int): 单次读取字符数，默认及最大 700；始终传给接口，本地返回及失败回退也遵守此上限。
+    offset (int): 服务端原文偏移；省略时从 0 开始，续读使用返回的 next_offset。
+    limit (int): 单次读取字符数，默认及最大 16384；始终传给接口，本地返回及失败回退也遵守此上限。
 
 Returns:
-    Dict[str, Any]: 包含 title、url、snippet、source、extra 和 content；extra.content_read 包含 offset、limit、truncated、fallback。fallback 为 True 时返回已有片段或摘要，offset 为 null，不代表所请求的正文页；truncated 仅表示本地截断，不代表还有下一页。正常响应还会透传服务端 more 和 next_offset。more=True 时使用 next_offset 作为下一次 offset，不要按返回文本长度推算；完整读取必须从起点连续读取至 more=False。本地截断、回退或分页字段缺失/无效时不提供这两个字段，不能据此判断已读完；应重试当前页或明确说明阅读不完整。
+    Dict[str, Any]: 包含 title、url、snippet、source、extra 和 content；extra.content_read 包含 content_type、offset、limit、truncated、fallback。fallback 为 True 时返回已有片段或摘要，offset 为 null，不代表所请求的正文页；truncated 仅表示本地截断，不代表还有下一页。正常响应还会透传服务端 more 和 next_offset。more=True 时使用 next_offset 作为下一次 offset，不要按返回文本长度推算；完整读取必须从起点连续读取至 more=False。本地截断、回退或分页字段缺失/无效时不提供这两个字段，不能据此判断已读完；pagination_error 表示分页协议异常，应明确说明阅读不完整。
 ''')
 
 add_english_doc('SciverseSearch.get_content', '''
@@ -713,11 +713,11 @@ The method first calls the official /content endpoint with item.extra.doc_id or 
 
 Args:
     item (Dict[str, Any]): One item returned by SciverseSearch.search or meta_search.
-    offset (int, optional): Server source-text offset; defaults to 0. For subsequent pages, use the returned next_offset.
-    limit (int): Number of characters to read, default and maximum 700; always sent and enforced locally, including fallbacks.
+    offset (int): Server source-text offset; defaults to 0. For subsequent pages, use the returned next_offset.
+    limit (int): Number of characters to read, default and maximum 16384; always sent and enforced locally, including fallbacks.
 
 Returns:
-    Dict[str, Any]: title, url, snippet, source, extra, and content. extra.content_read includes offset, limit, truncated, and fallback. A fallback returns cached passage/summary text with offset=null, not the requested page. truncated indicates local clipping, not whether another page exists. Valid server pagination is exposed as more and next_offset. When more=True, use next_offset for the next request; do not calculate it from returned text length. Full reading requires continuous coverage from the start until more=False. These fields are omitted on local clipping, fallback, or missing/invalid pagination; retry the current page or report incomplete reading rather than assuming completion.
+    Dict[str, Any]: title, url, snippet, source, extra, and content. extra.content_read includes content_type, offset, limit, truncated, and fallback. A fallback returns cached passage/summary text with offset=null, not the requested page. truncated indicates local clipping, not whether another page exists. Valid server pagination is exposed as more and next_offset. When more=True, use next_offset for the next request; do not calculate it from returned text length. Full reading requires continuous coverage from the start until more=False. These fields are omitted on local clipping, fallback, or missing/invalid pagination; pagination_error identifies a pagination protocol error; report incomplete reading rather than assuming completion.
 ''')
 
 add_chinese_doc('SciverseSearch.meta_search', '''
@@ -734,7 +734,7 @@ Args:
     page_size (int): 每页条数，默认 25，范围 1-200。
     cursor (str, optional): 深翻页 cursor；与 page>1 互斥。
     freshness_boost (str): 新鲜度加权，NONE / MILD / STRONG。
-    include_content (bool): 是否在 extra.content 中返回最多 700 字符的摘要预览，默认 False。
+    include_content (bool): 是否在 extra.content 中返回最多 700 字符的摘要预览，默认 True。
     year_from (int, optional): 发表年份下限，会追加到 filters。
     year_to (int, optional): 发表年份上限，会追加到 filters。
 
@@ -756,7 +756,7 @@ Args:
     page_size (int): Items per page, default 25, clamped to 1-200.
     cursor (str, optional): Cursor for deep pagination; mutually exclusive with page > 1.
     freshness_boost (str): Freshness weighting, NONE / MILD / STRONG.
-    include_content (bool): Whether to return at most 700 characters of abstract preview in extra.content, default False.
+    include_content (bool): Whether to return at most 700 characters of abstract preview in extra.content, default True.
     year_from (int, optional): Inclusive lower publication year bound, appended to filters.
     year_to (int, optional): Inclusive upper publication year bound, appended to filters.
 

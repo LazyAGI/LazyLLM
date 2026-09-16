@@ -20,7 +20,7 @@ def test_search_snippet_budget_preserves_identity(size):
     assert result['url'] == 'https://example.test'
 
 
-def test_tavily_caps_snippets_but_preserves_requested_content(monkeypatch):
+def test_tavily_caps_requested_content_without_hidden_originals(monkeypatch):
     provider = TavilySearch(api_key='test')
     payload = {'results': [{'title': 'Title', 'url': 'https://example.test',
                             'content': 's' * 2000, 'raw_content': 'r' * 3000}], 'answer': 'a' * 2000}
@@ -29,9 +29,9 @@ def test_tavily_caps_snippets_but_preserves_requested_content(monkeypatch):
     assert results[0]['snippet'] == 's' * 700
     assert results[0]['extra']['truncated'] is True
     assert results[0]['extra']['raw_content'] == 'r' * 700
-    assert results[0].full_result['extra']['raw_content'] == 'r' * 3000
+    assert type(results[0]) is dict
     assert results[1]['snippet'] == 'a' * 700
-    assert results[1].full_result['snippet'] == 'a' * 2000
+    assert type(results[1]) is dict
 
 
 @pytest.mark.parametrize('meta', [False, True])
@@ -46,16 +46,16 @@ def test_sciverse_default_search_has_one_preview(monkeypatch, meta):
     item = search()[0]
     assert item['snippet'] == 'c' * 700
     assert item['extra']['truncated'] is True
-    assert 'content' not in item['extra']
+    assert item['extra']['content'] == 'c' * 700
     assert item['extra']['offset'] == 0
     assert item['extra']['doc_id'] == 'doc'
-    assert search(include_content=True)[0]['extra']['content'] == 'c' * 700
+    assert 'content' not in search(include_content=False)[0]['extra']
     payload['hits'][0].pop('chunk')
     assert search()[0]['snippet'] == 'a' * 700
 
 
 @pytest.mark.parametrize('kwargs,offset,limit', [
-    ({}, 0, 700), ({'offset': 700, 'limit': 200}, 700, 200), ({'offset': -3, 'limit': 0}, 0, 1),
+    ({}, 0, 16384), ({'offset': 700, 'limit': 200}, 700, 200),
 ])
 def test_sciverse_always_requests_a_page_and_bounds_response(monkeypatch, kwargs, offset, limit):
     provider = SciverseSearch(api_key='test')
@@ -63,7 +63,7 @@ def test_sciverse_always_requests_a_page_and_bounds_response(monkeypatch, kwargs
 
     def get(*args, **kw):
         calls.append(kw['params'])
-        return response({'text': 'x' * 10000})
+        return response({'text': 'x' * 20000})
     monkeypatch.setattr(sciverse_search, 'httpx', SimpleNamespace(get=get))
     item = {'title': 'Paper', 'snippet': 's' * 2000, 'extra': {'doc_id': 'doc', 'content': 'old', 'offset': 42}}
     result = provider.get_content(item, **kwargs)
@@ -74,6 +74,7 @@ def test_sciverse_always_requests_a_page_and_bounds_response(monkeypatch, kwargs
     assert result['extra']['offset'] == 42
     assert result['extra']['content_read'] == {
         'offset': offset, 'limit': limit, 'truncated': True, 'fallback': False,
+        'content_type': 'document', 'pagination_error': 'response_exceeds_limit',
     }
     assert item['extra']['content'] == 'old'
 
@@ -81,10 +82,12 @@ def test_sciverse_always_requests_a_page_and_bounds_response(monkeypatch, kwargs
 @pytest.mark.parametrize('payload', [{'text': ''}, {'text': 'x' * 700}])
 def test_sciverse_empty_or_exact_page_is_not_fallback_or_known_truncation(monkeypatch, payload):
     monkeypatch.setattr(sciverse_search, 'httpx', SimpleNamespace(get=lambda *a, **k: response(payload)))
-    result = SciverseSearch(api_key='test').get_content({'extra': {'doc_id': 'doc'}, 'snippet': 'old'}, offset=700)
+    result = SciverseSearch(api_key='test').get_content(
+        {'extra': {'doc_id': 'doc'}, 'snippet': 'old'}, offset=700, limit=700)
     assert result['content'] == payload['text']
     assert result['extra']['content_read'] == {
         'offset': 700, 'limit': 700, 'truncated': False, 'fallback': False,
+        'content_type': 'document', 'pagination_error': 'invalid_continuation',
     }
 
 
@@ -104,6 +107,7 @@ def test_sciverse_failure_fallback_is_bounded_and_not_a_document_page(monkeypatc
     assert len(result['content']) == 100
     assert result['extra']['content_read'] == {
         'offset': None, 'limit': 100, 'truncated': True, 'fallback': True,
+        'content_type': 'search_preview',
     }
 
 
@@ -111,7 +115,7 @@ def test_sciverse_failure_fallback_is_bounded_and_not_a_document_page(monkeypatc
 def test_sciverse_preserves_server_cursor_independent_of_text_length(monkeypatch, text, more, next_offset):
     payload = {'text': text, 'more': more, 'next_offset': next_offset}
     monkeypatch.setattr(sciverse_search, 'httpx', SimpleNamespace(get=lambda *a, **k: response(payload)))
-    result = SciverseSearch(api_key='test').get_content({'extra': {'doc_id': 'doc'}}, offset=700)
+    result = SciverseSearch(api_key='test').get_content({'extra': {'doc_id': 'doc'}}, offset=700, limit=700)
     read = result['extra']['content_read']
     assert read['more'] is more
     assert read['next_offset'] == next_offset
@@ -131,7 +135,21 @@ def test_sciverse_preserves_server_cursor_independent_of_text_length(monkeypatch
 def test_sciverse_omits_unsafe_pagination(monkeypatch, payload):
     monkeypatch.setattr(sciverse_search, 'httpx', SimpleNamespace(get=lambda *a, **k: response(payload)))
     item = {'snippet': 'fallback', 'extra': {'doc_id': 'doc', 'content_read': {'more': False, 'next_offset': 9999}}}
-    result = SciverseSearch(api_key='test').get_content(item, offset=700)
+    result = SciverseSearch(api_key='test').get_content(item, offset=700, limit=700)
     read = result['extra']['content_read']
     assert 'more' not in read
     assert 'next_offset' not in read
+
+
+@pytest.mark.parametrize('field', ['raw_content', 'content', 'answer'])
+def test_only_extra_truncation_is_marked(field):
+    result = _make_result('Title', 'https://example.test', 'short', **{field: '🙂' * 701})
+    assert result['extra'][field] == '🙂' * 700
+    assert result['extra']['truncated'] is True
+
+
+@pytest.mark.parametrize('kwargs', [{'offset': -1}, {'limit': 0}, {'limit': True}, {'offset': None}])
+def test_sciverse_rejects_invalid_window_before_request(monkeypatch, kwargs):
+    monkeypatch.setattr(sciverse_search, 'httpx', SimpleNamespace(get=lambda *a, **k: pytest.fail('network')))
+    with pytest.raises(ValueError):
+        SciverseSearch(api_key='test').get_content({'extra': {'doc_id': 'doc'}}, **kwargs)

@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from lazyllm.thirdparty import httpx
 
-from .base import SearchBase, _make_content_result, _make_result
+from .base import SearchBase, _make_content_result, _make_result, _content_window, CONTENT_CHARS
 
 
 _DEFAULT_META_FIELDS = [
@@ -54,11 +54,10 @@ class SciverseSearch(SearchBase):
     def get_content(
         self,
         item: Dict[str, Any],
-        offset: Optional[int] = None,
-        limit: int = 700,
+        offset: int = 0,
+        limit: int = CONTENT_CHARS,
     ) -> Dict[str, Any]:
-        offset = max(0, int(offset)) if offset is not None else 0
-        limit = max(1, min(int(limit), 700))
+        offset, limit = _content_window(offset, limit)
         extra = item.get('extra') or {}
         doc_id = item.get('doc_id') or extra.get('doc_id')
         content = None
@@ -81,12 +80,14 @@ class SciverseSearch(SearchBase):
         fallback = content is None
         if fallback:
             content = str(extra.get('content') or item.get('snippet') or self._fetch_content_text(item))
-        result = _make_content_result(item, content)
+        result = _make_content_result(item, content, content_type='search_preview' if fallback else 'document')
         result['content'] = content[:limit]
         result['snippet'] = result['snippet'][:700]
         result['extra'].pop('content', None)
+        result['extra'].pop('raw_content', None)
         # Keep read metadata separate from search-hit offsets and snippet truncation.
         result['extra']['content_read'] = {
+            'content_type': 'search_preview' if fallback else 'document',
             'offset': None if fallback else offset,
             'limit': limit,
             'truncated': len(content) > limit,
@@ -97,9 +98,12 @@ class SciverseSearch(SearchBase):
             if (isinstance(more, bool) and type(next_offset) is int
                     and (next_offset > offset if more else next_offset >= offset)):
                 result['extra']['content_read'].update(more=more, next_offset=next_offset)
+        if not fallback and 'more' not in result['extra']['content_read']:
+            result['extra']['content_read']['pagination_error'] = (
+                'response_exceeds_limit' if len(content) > limit else 'invalid_continuation')
         return result
 
-    def search(self, query: str, topk: int = 5, include_content: bool = False,
+    def search(self, query: str, topk: int = 5, include_content: bool = True,
                search_type: Literal['agentic', 'meta'] = 'agentic',
                year_from: Optional[int] = None,
                year_to: Optional[int] = None) -> List[dict]:
@@ -137,7 +141,7 @@ class SciverseSearch(SearchBase):
         page_size: int = 25,
         cursor: Optional[str] = None,
         freshness_boost: Literal['NONE', 'MILD', 'STRONG'] = 'NONE',
-        include_content: bool = False,
+        include_content: bool = True,
         year_from: Optional[int] = None,
         year_to: Optional[int] = None,
     ) -> Dict[str, Any]:
