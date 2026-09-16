@@ -723,7 +723,7 @@ class SkillManager(ModuleBase):
         return [self._build_get_skill_tool(), self._build_read_reference_tool(), self._build_run_script_tool()]
 
     def _build_get_skill_tool(self):
-        @fc_register(host_file='NONE')
+        @fc_register(host_file='NONE', tool_source='skill')
         def get_skill(name: str, allow_large: bool = False) -> dict:
             '''Get the full usage for a skill (SKILL.md).
 
@@ -735,7 +735,7 @@ class SkillManager(ModuleBase):
         return get_skill
 
     def _build_read_reference_tool(self):
-        @fc_register(host_file='NONE')
+        @fc_register(host_file='NONE', tool_source='skill')
         def read_reference(name: str, rel_path: str, **kwargs) -> dict:
             '''Read a reference file within a skill directory.
 
@@ -747,7 +747,7 @@ class SkillManager(ModuleBase):
         return read_reference
 
     def _build_run_script_tool(self):
-        @fc_register(host_file='OPAQUE', exclusive=True)
+        @fc_register(host_file='OPAQUE', exclusive=True, tool_source='skill')
         def run_script(name: str, rel_path: str, args: Optional[List[str]] = None,
                        cwd: Optional[str] = None) -> dict:
             '''Run a script within a skill directory.

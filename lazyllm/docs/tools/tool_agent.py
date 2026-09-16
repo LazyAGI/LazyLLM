@@ -33,10 +33,24 @@ Returns:
     AuthorizationDecision: Allow execution (ALLOW), require confirmation (ASK), or reject execution (DENY).
 ''')
 
+add_agent_chinese_doc('DefaultAuthorizationPolicy', '''\
+可配置的默认工具授权策略。创建实例时读取 host_file_security_enabled 和 host_file_full_trust；
+默认允许准备成功的调用，显式开启安全模式后检查声明，完全信任可覆盖默认安全检查。
+ToolManager 每次准备批次时创建默认策略；宿主也可以显式传入自己的授权策略。
+''')
+
+add_agent_english_doc('DefaultAuthorizationPolicy', '''\
+Configurable default tool authorization policy. Snapshots host_file_security_enabled and host_file_full_trust
+at construction. Prepared calls are allowed by default; security checks are opt-in and full trust overrides
+the default checks. ToolManager creates a default policy per batch; hosts may explicitly supply their own policy.
+''')
+
 add_agent_chinese_doc('DefaultAuthorizationPolicy.decide', '''\
-使用默认策略决定是否允许工具调用。未准备好或未声明宿主文件访问能力的调用会被拒绝。
-不访问宿主文件的调用，以及已声明且仅包含读取操作的调用，会被允许。
-已声明的写入或删除操作，以及不透明的宿主文件访问，需要用户确认。
+默认允许所有准备成功的调用，兼容未声明 host_file 的旧工具。
+策略创建时读取 config['host_file_security_enabled']（默认 False）和 config['host_file_full_trust']（默认 False）。
+仅在开启安全检查且未启用完全信任时检查声明：NONE 和 DECLARED read 允许，DECLARED write/delete 和 OPAQUE 需要审批，
+本地 UNDECLARED 拒绝；可信适配器标记为 mcp/skill 的 UNDECLARED 暂时放行，由外部服务或 Skill 负责文件访问安全。
+完全信任模式允许所有准备成功的调用。任何模式都拒绝准备失败的调用。
 
 Args:
     prepared (PreparedToolCall): 待授权的工具调用。
@@ -46,9 +60,12 @@ Returns:
 ''')
 
 add_agent_english_doc('DefaultAuthorizationPolicy.decide', '''\
-Apply the default policy to a tool call. Reject calls that are not ready or have undeclared host-file access.
-Allow calls with no host-file access and declared calls containing only read operations.
-Require confirmation for declared write or delete operations and opaque host-file access.
+Allow every successfully prepared call by default, including legacy tools without host_file declarations.
+At construction, the policy reads config['host_file_security_enabled'] and config['host_file_full_trust'], both False by default.
+Only when security is enabled and full trust is disabled: allow NONE and DECLARED read; ask for DECLARED write/delete
+and OPAQUE; deny local UNDECLARED calls. UNDECLARED tools marked mcp/skill by trusted adapters remain allowed for
+compatibility; the external server or Skill owns file-access safety. Full trust allows every successfully prepared call.
+Calls that failed preparation are denied in every mode.
 
 Args:
     prepared (PreparedToolCall): Tool call to authorize.
@@ -287,6 +304,8 @@ add_chinese_doc('ToolManager.prepare_tool_calls', '''\
 最后计算文件和其他资源的调度冲突。返回绑定当前 ToolManager 的 PreparedToolBatch；审批等待期间应保存并
 复用此批次。调用方完成整个批次的权限判断后，调用 execute_prepared 执行获准项。
 working_directory 可为 host_file resolver 提供请求级绝对工作目录，不改变进程 cwd。
+默认使用 DefaultAuthorizationPolicy；通过 config 显式开启 host_file_security_enabled，或设置 host_file_full_trust 完全信任。
+显式传入 authorization_policy 则替代默认策略，不受上述 config 开关覆盖。决策保存在批次中，执行阶段不重新读取配置。
 require_host_file_access=True 会检查本轮 exposed tools，存在 UNDECLARED 则拒绝准备，适合注册契约测试。
 传入 allowed_tool_names 可限制本轮可见工具。文件 resolver 失败产生 PREPARATION_FAILED，不会降级为可执行调用。
 ''')
@@ -296,6 +315,9 @@ Prepare a batch without executing tools. Resolve names, validate inputs, invoke 
 validate their normalized arguments, then resolve scheduling resources. Retain the returned manager-bound
 PreparedToolBatch while application authorization is pending and pass that same batch to execute_prepared.
 working_directory optionally supplies an absolute request-local base to host_file resolvers; it never changes process cwd.
+Uses DefaultAuthorizationPolicy unless authorization_policy is supplied. Opt into checks with config['host_file_security_enabled']
+or select full trust with config['host_file_full_trust']. An explicit policy replaces the default and is not overridden by these
+config switches. Decisions are stored in the batch; execution does not reread configuration.
 Set require_host_file_access=True to reject UNDECLARED tools in the exposed set (optionally limited by
 allowed_tool_names). This also supports registration contract tests with an empty call list. File-resolution
 errors produce PREPARATION_FAILED calls; they never fall back to executable exclusive calls.
@@ -337,14 +359,14 @@ ToolManager may execute it. Do not access private fields or change tool implemen
 add_chinese_doc('HostFileAccess', '''\
 可信注册的宿主文件能力：NONE 表示没有调用方管理资源范围之外的宿主文件访问，DECLARED 表示 resolver 完整声明
 模型输入决定的宿主文件路径及意图，OPAQUE 表示无法静态枚举（如脚本），UNDECLARED 为旧工具的兼容默认值。
-OPAQUE 不代表自动允许；由调用方策略明确决定允许或拒绝。对外统一通过 fc_register(host_file=...) 声明：NONE/OPAQUE marker 或 resolver callable。
+能力声明与授权决策分离：默认兼容模式放行，安全模式要求 OPAQUE 审批。对外统一通过 fc_register(host_file=...) 声明：NONE/OPAQUE marker 或 resolver callable。
 ''')
 
 add_english_doc('HostFileAccess', '''\
 Trusted registration capability: NONE has no host-file access outside application-managed resources;
 DECLARED requires a resolver enumerating all model-directed host-file accesses; OPAQUE cannot enumerate them
 statically (for example scripts); UNDECLARED is the backward-compatible default for existing tools.
-OPAQUE does not imply authorization. The application must explicitly allow or deny it.
+Capability declarations are separate from authorization: compatibility mode allows OPAQUE; security mode requires approval.
 Declare it only through fc_register(host_file=...): a NONE/OPAQUE marker or a resolver callable.
 ''')
 
@@ -500,6 +522,7 @@ Args:
     exclusive (bool): 是否独占执行，不能与 ``read_keys`` 或 ``write_keys`` 同时使用。
     polling (bool): 是否为允许连续返回相同结果的轮询工具。
     host_file: 宿主文件声明。未设置为 UNDECLARED；NONE/OPAQUE marker 分别声明无访问或不透明访问；callable 声明可解析访问并返回 HostFileResolution。
+    tool_source (str): 可信注册端标记的工具来源，local（默认）、mcp 或 skill。适配器自动标记外部来源；不是模型参数，不表示无文件访问。安全模式下仅 UNDECLARED 外部工具享有兼容放行，显式声明仍按策略处理。
 
 ``fc_register`` 采用显式字段合并：不同字段可由多层装饰组合，相同字段相同值为幂等声明，相同字段不同值会报错。
 ``tool_concurrency`` 已直接删除，属于 breaking change；请迁移为
@@ -524,6 +547,7 @@ Args:
     exclusive (bool): Whether the tool runs exclusively. Cannot be combined with resource keys.
     polling (bool): Whether unchanged repeated results are expected while polling.
     host_file: Host-file declaration. Omission means UNDECLARED; NONE/OPAQUE markers declare no or opaque access; a callable declares resolvable access and returns HostFileResolution.
+    tool_source (str): Trusted registration origin: local (default), mcp, or skill. Adapters mark external origins automatically. Not a model argument or a claim of no file access. In security mode, only UNDECLARED external tools receive the compatibility exemption; explicit declarations still follow policy.
 
 ``fc_register`` merges explicitly supplied fields across decorator layers. Repeating the same field and value is
 idempotent; declaring a different value for the same field raises an error. ``tool_concurrency`` has been removed as

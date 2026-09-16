@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel, model_validator
 
+from lazyllm import config
 from lazyllm.tools import (
     AuthorizationDecision,
     HostFile,
@@ -23,6 +24,12 @@ from lazyllm.tools import (
 
 def call(name='tool', **arguments):
     return {'id': 'provider-id', 'function': {'name': name, 'arguments': arguments}}
+
+
+@pytest.fixture
+def secure_mode():
+    with config.temp('host_file_security_enabled', True), config.temp('host_file_full_trust', False):
+        yield
 
 
 def test_declaration_contract_and_legacy_default():
@@ -49,7 +56,7 @@ def test_declaration_contract_and_legacy_default():
         HostFileIntent('/absolute.txt', 'execute')
 
 
-def test_prepare_resolves_once_then_executes_original_arguments(tmp_path):
+def test_prepare_resolves_once_then_executes_original_arguments(tmp_path, secure_mode):
     events = []
     target = tmp_path / 'result.txt'
 
@@ -148,7 +155,7 @@ def test_strict_preparation_checks_all_exposed_tools():
     manager = ToolManager([tool])
     with pytest.raises(ValueError, match='tool'):
         manager.prepare_tool_calls([], require_host_file_access=True)
-    assert not manager.execute_with_records(call(value='legacy')).results[0]['ok']
+    assert manager.execute_with_records(call(value='legacy')).results[0] == {'ok': True, 'value': 'legacy'}
     assert len(manager.prepare_tool_calls([], allowed_tool_names=set(), require_host_file_access=True)) == 0
 
 
@@ -260,7 +267,7 @@ def test_execution_does_not_revalidate_or_reresolve(tmp_path):
     assert manager.execute_prepared(prepared).results[0]['value'] == 'validated'
 
 
-def test_declared_file_access_drives_actual_scheduler(tmp_path):
+def test_declared_file_access_drives_actual_scheduler(tmp_path, secure_mode):
     events = []
 
     def resolve(args):
@@ -485,7 +492,7 @@ def test_single_host_file_registration_entry_derives_internal_capability(tmp_pat
     assert prepared[0].host_files == (HostFileIntent(str(tmp_path / 'a.txt'), 'read'),)
 
 
-def test_default_authorization_policy_is_fail_closed_without_approval(tmp_path):
+def test_security_mode_is_fail_closed_without_approval(tmp_path, secure_mode):
     effects = []
 
     def resolver(operation):
@@ -572,7 +579,7 @@ def test_builtin_file_tools_do_not_duplicate_host_file_scheduler_keys():
         assert tool.runtime_metadata.write_keys is None
 
 
-def test_trusted_host_selected_indices_replace_default_admission_policy():
+def test_trusted_host_selected_indices_replace_default_admission_policy(secure_mode):
     effects = []
 
     @fc_register(host_file='OPAQUE')

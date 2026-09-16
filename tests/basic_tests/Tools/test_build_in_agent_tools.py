@@ -2,6 +2,7 @@ import os
 import tempfile
 
 
+from lazyllm import config
 from lazyllm.tools import ToolManager
 from lazyllm.tools.agent import ToolExecutionError
 from lazyllm.tools.agent.file_tool import (read, write, ls, grep,
@@ -44,18 +45,20 @@ class TestShellTool(object):
 
     def test_shell_needs_approval(self):
         manager = ToolManager(['shell'])
-        prepared = manager.prepare_tool_calls({
-            'function': {'name': 'shell', 'arguments': {'cmd': 'echo approved'}},
-        })
+        with config.temp('host_file_security_enabled', True):
+            prepared = manager.prepare_tool_calls({
+                'function': {'name': 'shell', 'arguments': {'cmd': 'echo approved'}},
+            })
         result = manager.execute_prepared(prepared)
         assert result.results[0]['needs_approval'] is True
         assert result.records[0].reason == 'approval_required'
 
     def test_shell_executes_after_host_approval(self):
         manager = ToolManager(['shell'])
-        prepared = manager.prepare_tool_calls({
-            'function': {'name': 'shell', 'arguments': {'cmd': 'echo approved'}},
-        })
+        with config.temp('host_file_security_enabled', True):
+            prepared = manager.prepare_tool_calls({
+                'function': {'name': 'shell', 'arguments': {'cmd': 'echo approved'}},
+            })
         result = manager.execute_prepared(prepared, approved_indices=(0,))
         assert result.results[0]['ok'] is True
         assert 'approved' in result.results[0]['value']['stdout']
@@ -119,7 +122,7 @@ def test_shell_prepared_cwd_and_exclusive_schedule(tmp_path):
     batch = manager.prepare_tool_calls({'function': {'name': 'shell', 'arguments': {'cmd': 'pwd'}}},
                                        working_directory=str(tmp_path))
     assert batch[0].access.exclusive
-    result = manager.execute_prepared(batch, approved_indices=(0,))
+    result = manager.execute_prepared(batch)
     assert result.results[0]['value']['cwd'] == str(tmp_path)
 
 

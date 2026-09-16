@@ -358,6 +358,7 @@ _RUNTIME_METADATA_FIELDS = {
     'exclusive',
     'polling',
     'host_file',
+    'tool_source',
 }
 
 
@@ -1081,6 +1082,7 @@ class ToolManager(ModuleBase):
                 polling=tool.runtime_metadata.polling,
                 host_file_access=tool.runtime_metadata.host_file_access,
                 host_files=host_files,
+                tool_source=tool.runtime_metadata.tool_source,
             )
             invocations.append(_PreparedToolInvocation(
                 prepared=view,

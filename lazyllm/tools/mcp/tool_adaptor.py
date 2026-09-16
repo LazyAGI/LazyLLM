@@ -5,6 +5,7 @@ import re
 from typing import Any, Callable, Dict, List, Set
 from lazyllm import LOG
 from lazyllm.thirdparty import mcp
+from ..agent.toolsManager import fc_register
 
 from .utils import run_async_in_new_loop, run_async_in_thread
 
@@ -137,4 +138,4 @@ def generate_lazyllm_tool(client, mcp_tool) -> Callable:
     )
     dynamic_lazyllm_func.__signature__ = sig
 
-    return dynamic_lazyllm_func
+    return fc_register(tool_source='mcp')(dynamic_lazyllm_func)

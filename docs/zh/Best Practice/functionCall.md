@@ -319,6 +319,31 @@ agent = ReactAgent(
 - 使用 `prepare_tool_calls` 固定参数和宿主文件 intents，再由应用权限策略授权；prepare 不写入文件。
 - 批准后将同一 prepared batch 及获准索引传给 `execute_prepared`，不通过模型参数中的审批标记重新构造调用。
 
+宿主文件安全检查需要显式开启。默认允许所有准备成功的调用，包括未声明 `host_file` 的旧工具、MCP 和 Skill 工具。开启方式：
+
+```python
+lazyllm.config['host_file_security_enabled'] = True
+```
+
+用户在宿主产品中选择完全信任时，设置以下开关，使准备成功的调用全部放行，无需 host_file 审批：
+
+```python
+lazyllm.config['host_file_full_trust'] = True
+```
+
+两个配置默认均为 `False`，对应环境变量为 `LAZYLLM_HOST_FILE_SECURITY_ENABLED` 和 `LAZYLLM_HOST_FILE_FULL_TRUST`。开启安全检查且未启用完全信任时，策略如下：
+
+| 声明 | 安全模式决策 |
+| --- | --- |
+| `NONE` 或 `DECLARED` read | `ALLOW` |
+| `DECLARED` write/delete 或 `OPAQUE` | `ASK` |
+| 本地 `UNDECLARED` | `DENY` |
+| MCP/Skill `UNDECLARED` | 为兼容性保留 `ALLOW` |
+
+MCP/Skill 适配器自动携带可信来源标记，不要求外部作者声明 `host_file`。未声明外部工具的文件访问安全由对应 Server 或 Skill 负责，这不构成沙箱保证。已有显式声明仍生效，因此内置 Skill `run_script`（`OPAQUE`）在安全模式下需要审批。
+
+没有审批处理器时，`ASK` 返回 `approval_required` 且不执行。完全信任和关闭安全检查都保留工具可见性、参数校验、resolver 失败和执行约束。显式传入 `authorization_policy` 会替代配置决定的默认策略，宿主应用仍控制自己的权限规则。决策在 prepare 阶段固定，后续修改配置不影响原批次。显式的 `require_host_file_access=True` 注册契约检查在所有模式下仍拒绝未声明工具。
+
 完整代码如下：
 ```python
 from typing import Literal

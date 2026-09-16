@@ -8,6 +8,17 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Dict, Optional, Tuple
 
+from lazyllm import config
+
+
+config.add(
+    'host_file_security_enabled', bool, False, 'HOST_FILE_SECURITY_ENABLED',
+    description='Enable host-file authorization checks in the default tool policy.'
+).add(
+    'host_file_full_trust', bool, False, 'HOST_FILE_FULL_TRUST',
+    description='Allow all prepared tool calls in the default policy, including when host-file security is enabled.'
+)
+
 
 _TOOL_RUNTIME_METADATA_ATTR = '__lazyllm_tool_runtime_metadata__'
 _TOOL_RUNTIME_METADATA_PATCH_ATTR = '__lazyllm_tool_runtime_metadata_patch__'
@@ -50,11 +61,15 @@ class AuthorizationPolicy:
 
 
 class DefaultAuthorizationPolicy(AuthorizationPolicy):
-    '''Safe standalone defaults; products may supply a request-local policy.'''
+
+    def __init__(self):
+        self._check_host_files = config['host_file_security_enabled'] and not config['host_file_full_trust']
 
     def decide(self, prepared):
         if not prepared.ready:
             return AuthorizationDecision.DENY
+        if not self._check_host_files:
+            return AuthorizationDecision.ALLOW
         capability = prepared.host_file_access
         if capability is HostFileAccess.NONE:
             return AuthorizationDecision.ALLOW
@@ -64,6 +79,8 @@ class DefaultAuthorizationPolicy(AuthorizationPolicy):
                     else AuthorizationDecision.ASK)
         if capability is HostFileAccess.OPAQUE:
             return AuthorizationDecision.ASK
+        if capability is HostFileAccess.UNDECLARED and prepared.tool_source in ('mcp', 'skill'):
+            return AuthorizationDecision.ALLOW
         return AuthorizationDecision.DENY
 
 
@@ -160,6 +177,7 @@ class PreparedToolCall:
     host_file_access: HostFileAccess = HostFileAccess.UNDECLARED
     host_files: Tuple[HostFileIntent, ...] = ()
     authorization: AuthorizationDecision = AuthorizationDecision.DENY
+    tool_source: str = 'local'
 
     @property
     def ready(self) -> bool:
@@ -194,6 +212,7 @@ class PreparedToolBatch:
             host_file_access=prepared.host_file_access,
             host_files=prepared.host_files,
             authorization=prepared.authorization,
+            tool_source=prepared.tool_source,
         )
 
 
@@ -270,6 +289,7 @@ class ToolRuntimeMetadata:
     exclusive: bool = False
     polling: bool = False
     host_file: Any = None
+    tool_source: str = 'local'
     host_file_access: HostFileAccess = field(init=False, default=HostFileAccess.UNDECLARED)
     host_file_resolver: Optional[Callable] = field(init=False, default=None)
 
@@ -287,6 +307,8 @@ class ToolRuntimeMetadata:
 
     def __post_init__(self):
         self._validate_host_file_metadata()
+        if self.tool_source not in ('local', 'mcp', 'skill'):
+            raise ValueError('tool_source must be local, mcp, or skill')
         if not isinstance(self.execute_in_sandbox, bool):
             raise TypeError('execute_in_sandbox must be a bool')
         for name in ('input_files_parm', 'output_files_parm'):

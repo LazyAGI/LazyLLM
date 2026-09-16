@@ -275,6 +275,31 @@ File tools and authorization:
 - Use `prepare_tool_calls` to fix arguments and host-file intents before asking the application policy for authorization. Preparation does not write files.
 - After approval, pass the same prepared batch to `execute_prepared` with its approved indices. Do not rebuild calls from model-supplied approval flags.
 
+Host-file checks are opt-in. By default, every successfully prepared call is allowed, including legacy, MCP, and Skill tools without `host_file` declarations. To enable checks:
+
+```python
+lazyllm.config['host_file_security_enabled'] = True
+```
+
+When the user selects full trust in the host product, allow all successfully prepared calls without host-file approval:
+
+```python
+lazyllm.config['host_file_full_trust'] = True
+```
+
+Both settings default to `False`; their environment variables are `LAZYLLM_HOST_FILE_SECURITY_ENABLED` and `LAZYLLM_HOST_FILE_FULL_TRUST`. Leave full trust disabled to apply this security policy:
+
+| Declaration | Security-mode decision |
+| --- | --- |
+| `NONE` or `DECLARED` read | `ALLOW` |
+| `DECLARED` write/delete or `OPAQUE` | `ASK` |
+| Local `UNDECLARED` | `DENY` |
+| MCP/Skill `UNDECLARED` | `ALLOW` for compatibility |
+
+MCP and Skill adapters supply trusted source metadata without requiring external authors to declare `host_file`. Undeclared external tools delegate file-access safety to their server or Skill; this is not a sandbox guarantee. Explicit declarations still apply, so the built-in Skill `run_script` (`OPAQUE`) requires approval in security mode.
+
+Without an approval handler, `ASK` calls return `approval_required` and do not execute. Full trust and disabled security still preserve tool visibility, argument validation, resolver failures, and execution constraints. An explicit `authorization_policy` replaces the configured default; host applications retain control of their own policy. Decisions are fixed during preparation and are not changed by later config updates. The explicit `require_host_file_access=True` registration check continues to reject undeclared tools in every mode.
+
 Complete code is as follows:
 ```python
 from typing import Literal

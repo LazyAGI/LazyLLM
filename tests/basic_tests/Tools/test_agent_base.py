@@ -96,7 +96,7 @@ class TestLazyLLMAgentBase(object):
             },
         }
         prepared = agent._tools_manager.prepare_tool_calls(call)
-        result = agent._tools_manager.execute_prepared(prepared, approved_indices=(0,)).results[0]
+        result = agent._tools_manager.execute_prepared(prepared).results[0]
 
         assert result['ok'] is True
         assert result['value']['status'] == 'ok'
