@@ -122,6 +122,7 @@ def generate_lazyllm_tool(client, mcp_tool) -> Callable:
     # servers commonly namespace tools with dots, so expose a valid Python
     # identifier while retaining the original name in the call closure.
     dynamic_lazyllm_func.__name__ = exposed_tool_name
+    dynamic_lazyllm_func.__mcp_tool_name__ = tool_name
     dynamic_lazyllm_func.__doc__ = func_desc
     dynamic_lazyllm_func.__annotations__ = annotations
 

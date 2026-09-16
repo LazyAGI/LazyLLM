@@ -33,47 +33,6 @@ Returns:
     AuthorizationDecision: Allow execution (ALLOW), require confirmation (ASK), or reject execution (DENY).
 ''')
 
-add_agent_chinese_doc('DefaultAuthorizationPolicy', '''\
-可配置的默认工具授权策略。创建实例时读取 host_file_security_enabled 和 host_file_full_trust；
-默认允许准备成功的调用，显式开启安全模式后检查声明，完全信任可覆盖默认安全检查。
-ToolManager 每次准备批次时创建默认策略；宿主也可以显式传入自己的授权策略。
-''')
-
-add_agent_english_doc('DefaultAuthorizationPolicy', '''\
-Configurable default tool authorization policy. Snapshots host_file_security_enabled and host_file_full_trust
-at construction. Prepared calls are allowed by default; security checks are opt-in and full trust overrides
-the default checks. ToolManager creates a default policy per batch; hosts may explicitly supply their own policy.
-''')
-
-add_agent_chinese_doc('DefaultAuthorizationPolicy.decide', '''\
-默认允许所有准备成功的调用，兼容未声明 host_file 的旧工具。
-策略创建时读取 config['host_file_security_enabled']（默认 False）和 config['host_file_full_trust']（默认 False）。
-仅在开启安全检查且未启用完全信任时检查声明：NONE 和 DECLARED read 允许，DECLARED write/delete 和 OPAQUE 需要审批，
-本地 UNDECLARED 拒绝；可信适配器标记为 mcp/skill 的 UNDECLARED 暂时放行，由外部服务或 Skill 负责文件访问安全。
-完全信任模式允许所有准备成功的调用。任何模式都拒绝准备失败的调用。
-
-Args:
-    prepared (PreparedToolCall): 待授权的工具调用。
-
-Returns:
-    AuthorizationDecision: 默认策略返回的 ALLOW、ASK 或 DENY 决策。
-''')
-
-add_agent_english_doc('DefaultAuthorizationPolicy.decide', '''\
-Allow every successfully prepared call by default, including legacy tools without host_file declarations.
-At construction, the policy reads config['host_file_security_enabled'] and config['host_file_full_trust'], both False by default.
-Only when security is enabled and full trust is disabled: allow NONE and DECLARED read; ask for DECLARED write/delete
-and OPAQUE; deny local UNDECLARED calls. UNDECLARED tools marked mcp/skill by trusted adapters remain allowed for
-compatibility; the external server or Skill owns file-access safety. Full trust allows every successfully prepared call.
-Calls that failed preparation are denied in every mode.
-
-Args:
-    prepared (PreparedToolCall): Tool call to authorize.
-
-Returns:
-    AuthorizationDecision: The default policy's ALLOW, ASK, or DENY decision.
-''')
-
 add_agent_chinese_doc('ToolExecutionError', '''\
 可预期工具执行失败的基础异常。
 
@@ -304,8 +263,7 @@ add_chinese_doc('ToolManager.prepare_tool_calls', '''\
 最后计算文件和其他资源的调度冲突。返回绑定当前 ToolManager 的 PreparedToolBatch；审批等待期间应保存并
 复用此批次。调用方完成整个批次的权限判断后，调用 execute_prepared 执行获准项。
 working_directory 可为 host_file resolver 提供请求级绝对工作目录，不改变进程 cwd。
-默认使用 DefaultAuthorizationPolicy；通过 config 显式开启 host_file_security_enabled，或设置 host_file_full_trust 完全信任。
-显式传入 authorization_policy 则替代默认策略，不受上述 config 开关覆盖。决策保存在批次中，执行阶段不重新读取配置。
+authorization_policy=None 时准备成功即 ALLOW；调用方可传入自定义策略，LazyLLM 不提供内置策略。决策在 prepare 固定。
 require_host_file_access=True 会检查本轮 exposed tools，存在 UNDECLARED 则拒绝准备，适合注册契约测试。
 传入 allowed_tool_names 可限制本轮可见工具。文件 resolver 失败产生 PREPARATION_FAILED，不会降级为可执行调用。
 ''')
@@ -315,16 +273,15 @@ Prepare a batch without executing tools. Resolve names, validate inputs, invoke 
 validate their normalized arguments, then resolve scheduling resources. Retain the returned manager-bound
 PreparedToolBatch while application authorization is pending and pass that same batch to execute_prepared.
 working_directory optionally supplies an absolute request-local base to host_file resolvers; it never changes process cwd.
-Uses DefaultAuthorizationPolicy unless authorization_policy is supplied. Opt into checks with config['host_file_security_enabled']
-or select full trust with config['host_file_full_trust']. An explicit policy replaces the default and is not overridden by these
-config switches. Decisions are stored in the batch; execution does not reread configuration.
+With authorization_policy=None, every ready call is ALLOW. Callers may supply a custom policy; LazyLLM has no built-in policy.
+Decisions are fixed during preparation.
 Set require_host_file_access=True to reject UNDECLARED tools in the exposed set (optionally limited by
 allowed_tool_names). This also supports registration contract tests with an empty call list. File-resolution
 errors produce PREPARATION_FAILED calls; they never fall back to executable exclusive calls.
 ''')
 
 add_chinese_doc('ToolManager.execute_prepared', '''\
-执行当前 manager 准备的原批次，不重新解析、校验或调用 resolver。默认执行 ALLOW 调用；ASK 调用只有其索引出现在 approved_indices 时才执行，DENY 永不执行。可信宿主可用 selected_indices 执行自身统一授权层已准入的子集，并以宿主决策替代默认 policy；该参数不能与 approved_indices 同时使用。未获准的 ASK 返回 SKIPPED / approval_required，DENY 返回 SKIPPED / authorization_rejected，准备失败仍返回 PREPARATION_FAILED。结果和记录保持原顺序，并沿用 ToolManager 的调度、沙箱及异常处理。
+执行当前 manager 准备的原批次，不重新解析、校验或调用 resolver。默认执行 ALLOW 调用；ASK 调用只有其索引出现在 approved_indices 时才执行，DENY 永不执行。selected_indices 只选择调用，必须通过 approved_indices 显式批准选中的 ready ASK。选中 ready DENY 或未批准 ASK 会在整个批次执行前报错；准备失败保留原错误。未获准的 ASK 返回 SKIPPED / approval_required，DENY 返回 SKIPPED / authorization_rejected，准备失败仍返回 PREPARATION_FAILED。结果和记录保持原顺序，并沿用 ToolManager 的调度、沙箱及异常处理。
 可选 execution_context(prepared_call) 返回上下文管理器，在实际执行线程内包围注册工具调用；适合授权 claim/complete 和请求上下文传递，无需替换工具实现。
 本接口不保存审批结果，也不保证批次只能执行一次；重试、幂等和一次性授权由调用方负责。
 ''')
@@ -332,8 +289,9 @@ add_chinese_doc('ToolManager.execute_prepared', '''\
 add_english_doc('ToolManager.execute_prepared', '''\
 Execute the original batch prepared by this manager without parsing, validation, or resolution again.
 ALLOW calls execute by default. ASK calls execute only when their indices are supplied in approved_indices;
-DENY calls never execute. A trusted host with its own centralized authorization layer may use selected_indices
-for the admitted subset, replacing the default policy decision; it cannot be combined with approved_indices. Unapproved ASK calls
+DENY calls never execute. selected_indices only selects calls; selected ready ASK calls require approved_indices.
+Selecting ready DENY or unapproved ASK fails before any tool executes; preparation failures retain their original result.
+Unselected ASK calls
 return SKIPPED / approval_required, DENY calls return
 SKIPPED / authorization_rejected, and invalid calls retain PREPARATION_FAILED. Results retain original order.
 An optional execution_context(prepared_call) returns a context manager entered on the actual execution worker
@@ -421,7 +379,7 @@ add_example('ToolManager.prepare_tool_calls', '''\
 ...     {'function': {'name': 'read_text', 'arguments': {'path': 'notes.txt'}}},
 ...     require_host_file_access=True)
 >>> # Inspect all calls, wait for application approvals, and then execute the same batch.
->>> # This read-only call is ALLOW under the default policy.
+>>> # This read-only call is ALLOW without an application policy.
 >>> result = manager.execute_prepared(prepared)
 ''')
 
@@ -522,7 +480,9 @@ Args:
     exclusive (bool): 是否独占执行，不能与 ``read_keys`` 或 ``write_keys`` 同时使用。
     polling (bool): 是否为允许连续返回相同结果的轮询工具。
     host_file: 宿主文件声明。未设置为 UNDECLARED；NONE/OPAQUE marker 分别声明无访问或不透明访问；callable 声明可解析访问并返回 HostFileResolution。
-    tool_source (str): 可信注册端标记的工具来源，local（默认）、mcp 或 skill。适配器自动标记外部来源；不是模型参数，不表示无文件访问。安全模式下仅 UNDECLARED 外部工具享有兼容放行，显式声明仍按策略处理。
+    tool_source (str): 可信注册端标记的工具来源，local（默认）、mcp 或 skill。适配器自动标记外部来源；不是模型参数，不表示无文件访问。来源不隐含任何授权或豁免。
+    tool_identity (str): 可信接入层提供的不透明工具身份，未提供时生成临时实例身份。
+    tool_origin (str): 用于宿主审批展示的工具来源名称。
 
 ``fc_register`` 采用显式字段合并：不同字段可由多层装饰组合，相同字段相同值为幂等声明，相同字段不同值会报错。
 ``tool_concurrency`` 已直接删除，属于 breaking change；请迁移为
@@ -547,7 +507,9 @@ Args:
     exclusive (bool): Whether the tool runs exclusively. Cannot be combined with resource keys.
     polling (bool): Whether unchanged repeated results are expected while polling.
     host_file: Host-file declaration. Omission means UNDECLARED; NONE/OPAQUE markers declare no or opaque access; a callable declares resolvable access and returns HostFileResolution.
-    tool_source (str): Trusted registration origin: local (default), mcp, or skill. Adapters mark external origins automatically. Not a model argument or a claim of no file access. In security mode, only UNDECLARED external tools receive the compatibility exemption; explicit declarations still follow policy.
+    tool_source (str): Trusted registration origin: local (default), mcp, or skill. Adapters mark external origins automatically. Not a model argument or a claim of no file access. Source does not imply authorization or exemptions.
+    tool_identity (str): Opaque identity supplied by the trusted adapter; omission generates a temporary instance identity.
+    tool_origin (str): Display name of the tool origin for host approval.
 
 ``fc_register`` merges explicitly supplied fields across decorator layers. Repeating the same field and value is
 idempotent; declaring a different value for the same field raises an error. ``tool_concurrency`` has been removed as

@@ -21,7 +21,6 @@ from lazyllm import LOG, locals as lazyllm_locals
 from .toolError import ToolExecutionError, exception_failure, tool_failure
 from .tool_runtime import (
     AuthorizationDecision,
-    DefaultAuthorizationPolicy,
     HostFile,
     HostFileAccess,
     HostFileResolution,
@@ -104,6 +103,8 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self._description = self._description.strip(' \n')
         metadata = _get_tool_runtime_metadata(metadata_func or schema_func or apply_func or self.__class__.apply)
         self._runtime_metadata = metadata or ToolRuntimeMetadata(execute_in_sandbox=execute_in_sandbox)
+        if not self._runtime_metadata.tool_identity:
+            self._runtime_metadata = replace(self._runtime_metadata, tool_identity=f'temporary:{uuid.uuid4().hex}')
         self._params_schema = self._load_function_schema(schema_func or self.__class__.apply)
 
     @staticmethod
@@ -358,6 +359,8 @@ _RUNTIME_METADATA_FIELDS = {
     'exclusive',
     'polling',
     'host_file',
+    'tool_identity',
+    'tool_origin',
     'tool_source',
 }
 
@@ -1083,6 +1086,8 @@ class ToolManager(ModuleBase):
                 host_file_access=tool.runtime_metadata.host_file_access,
                 host_files=host_files,
                 tool_source=tool.runtime_metadata.tool_source,
+                tool_identity=tool.runtime_metadata.tool_identity,
+                tool_origin=tool.runtime_metadata.tool_origin,
             )
             invocations.append(_PreparedToolInvocation(
                 prepared=view,
@@ -1220,11 +1225,12 @@ class ToolManager(ModuleBase):
             invocations = self._prepare_tool_invocations(tools, allowed_tool_names)
         finally:
             _HOST_WORKING_DIRECTORY.reset(token)
-        policy = authorization_policy or DefaultAuthorizationPolicy()
+        policy = authorization_policy
         decided = []
         for invocation in invocations:
             snapshot = copy.deepcopy(invocation.prepared)
-            raw = policy.decide(snapshot) if hasattr(policy, 'decide') else policy(snapshot)
+            raw = (AuthorizationDecision.ALLOW if policy is None else
+                   policy.decide(snapshot) if hasattr(policy, 'decide') else policy(snapshot))
             decision = AuthorizationDecision(raw)
             if not invocation.prepared.ready:
                 decision = AuthorizationDecision.DENY
@@ -1241,24 +1247,24 @@ class ToolManager(ModuleBase):
         if len(set(approved)) != len(approved):
             raise ValueError('approved prepared-call indices must be unique')
         invalid_approvals = [index for index in approved
-                             if prepared[index].authorization is not AuthorizationDecision.ASK]
+                             if not prepared[index].ready
+                             or prepared[index].authorization is not AuthorizationDecision.ASK]
         if invalid_approvals:
             raise ValueError('only ASK prepared calls may be explicitly approved')
         if selected_indices is None:
             selected = tuple(item.index for item in prepared
                              if item.authorization is AuthorizationDecision.ALLOW) + approved
         else:
-            if approved:
-                raise ValueError('selected_indices and approved_indices are mutually exclusive')
             selected = tuple(selected_indices)
             if any(type(index) is not int or index < 0 or index >= len(prepared) for index in selected):
                 raise IndexError('selected prepared-call index is out of range')
             if len(set(selected)) != len(selected):
                 raise ValueError('selected prepared-call indices must be unique')
         return self._execute_prepared_batch(
-            prepared, selected, include_skipped=True, execution_context=execution_context)
+            prepared, selected, include_skipped=True, execution_context=execution_context, approved_indices=approved)
 
-    def _execute_prepared_batch(self, prepared, selected_indices, *, include_skipped, execution_context=None):
+    def _execute_prepared_batch(self, prepared, selected_indices, *, include_skipped, execution_context=None,
+                                approved_indices=()):
         if not isinstance(prepared, PreparedToolBatch) or prepared._owner is not self:
             raise ValueError('prepared batch must originate from this ToolManager')
         started = time.monotonic()
@@ -1268,6 +1274,14 @@ class ToolManager(ModuleBase):
             raise IndexError('selected prepared-call index is out of range')
         if len(set(indices)) != len(indices):
             raise ValueError('selected prepared-call indices must be unique')
+        approved = set(approved_indices)
+        if not approved.issubset(indices):
+            raise ValueError('approved calls must be selected')
+        for index in indices:
+            call = invocations[index].prepared
+            if call.ready and (call.authorization is AuthorizationDecision.DENY
+                               or (call.authorization is AuthorizationDecision.ASK and index not in approved)):
+                raise ValueError('DENY or unapproved ASK prepared calls cannot be selected for execution')
         selected = [invocations[index] for index in sorted(indices)]
         records = []
         if selected:

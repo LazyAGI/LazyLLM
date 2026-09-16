@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel, model_validator
 
-from lazyllm import config
 from lazyllm.tools import (
     AuthorizationDecision,
     HostFile,
@@ -27,9 +26,20 @@ def call(name='tool', **arguments):
 
 
 @pytest.fixture
-def secure_mode():
-    with config.temp('host_file_security_enabled', True), config.temp('host_file_full_trust', False):
-        yield
+def application_policy(monkeypatch):
+    original = ToolManager.prepare_tool_calls
+
+    def decide(call):
+        if call.host_file_access is HostFileAccess.NONE:
+            return AuthorizationDecision.ALLOW
+        if call.host_file_access is HostFileAccess.DECLARED and all(f.operation == 'read' for f in call.host_files):
+            return AuthorizationDecision.ALLOW
+        return AuthorizationDecision.ASK
+
+    def prepare(self, *args, **kwargs):
+        kwargs.setdefault('authorization_policy', decide)
+        return original(self, *args, **kwargs)
+    monkeypatch.setattr(ToolManager, 'prepare_tool_calls', prepare)
 
 
 def test_declaration_contract_and_legacy_default():
@@ -56,7 +66,7 @@ def test_declaration_contract_and_legacy_default():
         HostFileIntent('/absolute.txt', 'execute')
 
 
-def test_prepare_resolves_once_then_executes_original_arguments(tmp_path, secure_mode):
+def test_prepare_resolves_once_then_executes_original_arguments(tmp_path, application_policy):
     events = []
     target = tmp_path / 'result.txt'
 
@@ -267,7 +277,7 @@ def test_execution_does_not_revalidate_or_reresolve(tmp_path):
     assert manager.execute_prepared(prepared).results[0]['value'] == 'validated'
 
 
-def test_declared_file_access_drives_actual_scheduler(tmp_path, secure_mode):
+def test_declared_file_access_drives_actual_scheduler(tmp_path, application_policy):
     events = []
 
     def resolve(args):
@@ -492,7 +502,7 @@ def test_single_host_file_registration_entry_derives_internal_capability(tmp_pat
     assert prepared[0].host_files == (HostFileIntent(str(tmp_path / 'a.txt'), 'read'),)
 
 
-def test_security_mode_is_fail_closed_without_approval(tmp_path, secure_mode):
+def test_application_policy_requires_approval(tmp_path, application_policy):
     effects = []
 
     def resolver(operation):
@@ -579,7 +589,7 @@ def test_builtin_file_tools_do_not_duplicate_host_file_scheduler_keys():
         assert tool.runtime_metadata.write_keys is None
 
 
-def test_trusted_host_selected_indices_replace_default_admission_policy(secure_mode):
+def test_selected_indices_require_explicit_approval(application_policy):
     effects = []
 
     @fc_register(host_file='OPAQUE')
@@ -604,13 +614,16 @@ def test_trusted_host_selected_indices_replace_default_admission_policy(secure_m
 
     manager = ToolManager([opaque, denied])
     ask_batch = manager.prepare_tool_calls(call('opaque', value='approved-by-host'))
-    result = manager.execute_prepared(ask_batch, selected_indices=(0,))
+    with pytest.raises(ValueError, match='unapproved ASK'):
+        manager.execute_prepared(ask_batch, selected_indices=(0,))
+    assert effects == []
+    result = manager.execute_prepared(ask_batch, selected_indices=(0,), approved_indices=(0,))
     assert result.results[0] == {'ok': True, 'value': 'approved-by-host'}
 
     deny_batch = manager.prepare_tool_calls(
         call('denied', value='blocked'),
         authorization_policy=lambda _: AuthorizationDecision.DENY,
     )
-    result = manager.execute_prepared(deny_batch, selected_indices=(0,))
-    assert result.results[0] == {'ok': True, 'value': 'blocked'}
-    assert effects == ['approved-by-host', 'blocked']
+    with pytest.raises(ValueError, match='DENY'):
+        manager.execute_prepared(deny_batch, selected_indices=(0,))
+    assert effects == ['approved-by-host']

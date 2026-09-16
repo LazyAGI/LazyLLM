@@ -2,8 +2,7 @@ import os
 import tempfile
 
 
-from lazyllm import config
-from lazyllm.tools import ToolManager
+from lazyllm.tools import AuthorizationDecision, ToolManager
 from lazyllm.tools.agent import ToolExecutionError
 from lazyllm.tools.agent.file_tool import (read, write, ls, grep,
                                            move, remove)
@@ -45,20 +44,18 @@ class TestShellTool(object):
 
     def test_shell_needs_approval(self):
         manager = ToolManager(['shell'])
-        with config.temp('host_file_security_enabled', True):
-            prepared = manager.prepare_tool_calls({
-                'function': {'name': 'shell', 'arguments': {'cmd': 'echo approved'}},
-            })
+        prepared = manager.prepare_tool_calls({
+            'function': {'name': 'shell', 'arguments': {'cmd': 'echo approved'}},
+        }, authorization_policy=lambda _: AuthorizationDecision.ASK)
         result = manager.execute_prepared(prepared)
         assert result.results[0]['needs_approval'] is True
         assert result.records[0].reason == 'approval_required'
 
     def test_shell_executes_after_host_approval(self):
         manager = ToolManager(['shell'])
-        with config.temp('host_file_security_enabled', True):
-            prepared = manager.prepare_tool_calls({
-                'function': {'name': 'shell', 'arguments': {'cmd': 'echo approved'}},
-            })
+        prepared = manager.prepare_tool_calls({
+            'function': {'name': 'shell', 'arguments': {'cmd': 'echo approved'}},
+        }, authorization_policy=lambda _: AuthorizationDecision.ASK)
         result = manager.execute_prepared(prepared, approved_indices=(0,))
         assert result.results[0]['ok'] is True
         assert 'approved' in result.results[0]['value']['stdout']

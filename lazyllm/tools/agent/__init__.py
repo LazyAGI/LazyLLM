@@ -3,7 +3,6 @@ from .toolsManager import fc_register, register, ToolManager
 from .tool_runtime import (
     AuthorizationDecision,
     AuthorizationPolicy,
-    DefaultAuthorizationPolicy,
     HostFile,
     HostFileAccess,
     HostFileIntent,
@@ -55,7 +54,6 @@ __all__ = [
     'resolve_host_path',
     'AuthorizationDecision',
     'AuthorizationPolicy',
-    'DefaultAuthorizationPolicy',
     'HostFile',
     'HostFileAccess',
     'HostFileIntent',
