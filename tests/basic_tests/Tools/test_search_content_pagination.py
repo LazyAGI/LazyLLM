@@ -46,7 +46,7 @@ def test_webpage_pages_reconstruct_text_and_drop_repeated_content(monkeypatch):
     assert item['extra']['raw_content'] == text
     end = provider.get_content(item, offset=len(text))
     assert end['content'] == '' and end['extra']['content_read']['more'] is False
-    assert provider.get_content(item, limit=len(text))['content'] == text
+    assert provider.get_content(item, limit=len(text))['content'] == text[:700]
     batch = provider.get_contents([item, item], offset=700, limit=100)
     assert all(r['content'] == text[700:800] for r in batch)
 

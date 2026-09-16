@@ -28,8 +28,10 @@ def test_tavily_caps_snippets_but_preserves_requested_content(monkeypatch):
     results = provider.search('query', include_answer=True, include_raw_content=True)
     assert results[0]['snippet'] == 's' * 700
     assert results[0]['extra']['truncated'] is True
-    assert results[0]['extra']['raw_content'] == 'r' * 3000
-    assert results[1]['snippet'] == 'a' * 2000
+    assert results[0]['extra']['raw_content'] == 'r' * 700
+    assert results[0].full_result['extra']['raw_content'] == 'r' * 3000
+    assert results[1]['snippet'] == 'a' * 700
+    assert results[1].full_result['snippet'] == 'a' * 2000
 
 
 @pytest.mark.parametrize('meta', [False, True])
@@ -47,7 +49,7 @@ def test_sciverse_default_search_has_one_preview(monkeypatch, meta):
     assert 'content' not in item['extra']
     assert item['extra']['offset'] == 0
     assert item['extra']['doc_id'] == 'doc'
-    assert search(include_content=True)[0]['extra']['content'] == 'c' * 1500
+    assert search(include_content=True)[0]['extra']['content'] == 'c' * 700
     payload['hits'][0].pop('chunk')
     assert search()[0]['snippet'] == 'a' * 700
 

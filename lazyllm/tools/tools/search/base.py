@@ -18,6 +18,14 @@ _SOURCE_KEY = 'source'
 _EXTRA_KEY = 'extra'
 
 
+class _SearchResult(dict):
+    # Keep fetched text available to a host's result middleware without putting
+    # it into the serialized preview. No instance/session cache is involved.
+    def __init__(self, value):
+        super().__init__(value)
+        self.full_result = {**value, 'extra': dict(value.get('extra') or {})}
+
+
 def _html_to_text(html: str) -> str:
     html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
     html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
@@ -28,7 +36,7 @@ def _html_to_text(html: str) -> str:
 
 def _make_result(title: str, url: str, snippet: str = '', source: str = '',
                  *, snippet_limit: Optional[int] = 700, **extra: Any) -> Dict[str, Any]:
-    snippet = str(snippet or '')
+    full_snippet = snippet = str(snippet or '')
     if snippet_limit is not None and len(snippet) > snippet_limit:
         snippet = snippet[:snippet_limit]
         extra['truncated'] = True
@@ -40,7 +48,12 @@ def _make_result(title: str, url: str, snippet: str = '', source: str = '',
     }
     if extra:
         item[_EXTRA_KEY] = extra
-    return item
+    result = _SearchResult(item)
+    result.full_result['snippet'] = full_snippet
+    for key in ('raw_content', 'content'):
+        if isinstance(extra.get(key), str):
+            result.setdefault('extra', {})[key] = extra[key][:700]
+    return result
 
 
 def _make_content_result(item: Dict[str, Any], content: str, *,
@@ -49,14 +62,14 @@ def _make_content_result(item: Dict[str, Any], content: str, *,
     extra = dict(extra) if isinstance(extra, dict) else {}
     if content_type is not None:
         extra['content_read'] = {'content_type': content_type, 'fallback': fallback}
-    return {
+    return _SearchResult({
         _TITLE_KEY: str(item.get(_TITLE_KEY) or ''),
         _URL_KEY: str(item.get(_URL_KEY) or item.get('link') or ''),
         _SNIPPET_KEY: str(item.get(_SNIPPET_KEY) or ''),
         _SOURCE_KEY: str(item.get(_SOURCE_KEY) or ''),
         _EXTRA_KEY: extra,
         'content': str(content or ''),
-    }
+    })
 
 
 # TODO: add tests after key is ready
@@ -138,7 +151,7 @@ class SearchBase(ModuleBase, CredentialMixin):
         return _make_content_result(item, content, content_type='webpage', fallback=not bool(content))
 
     def get_content(self, item: Dict[str, Any], offset: int = 0, limit: int = 700) -> Dict[str, Any]:
-        offset, limit = max(0, int(offset)), max(1, int(limit))
+        offset, limit = max(0, int(offset)), max(1, min(int(limit), 700))
         result = self._fetch_content_result(item)
         content = result['content']
         extra = result['extra']

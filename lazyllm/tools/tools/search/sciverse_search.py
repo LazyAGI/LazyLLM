@@ -58,7 +58,7 @@ class SciverseSearch(SearchBase):
         limit: int = 700,
     ) -> Dict[str, Any]:
         offset = max(0, int(offset)) if offset is not None else 0
-        limit = max(1, int(limit))
+        limit = max(1, min(int(limit), 700))
         extra = item.get('extra') or {}
         doc_id = item.get('doc_id') or extra.get('doc_id')
         content = None
@@ -81,7 +81,8 @@ class SciverseSearch(SearchBase):
         fallback = content is None
         if fallback:
             content = str(extra.get('content') or item.get('snippet') or self._fetch_content_text(item))
-        result = _make_content_result(item, content[:limit])
+        result = _make_content_result(item, content)
+        result['content'] = content[:limit]
         result['snippet'] = result['snippet'][:700]
         result['extra'].pop('content', None)
         # Keep read metadata separate from search-hit offsets and snippet truncation.
