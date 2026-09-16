@@ -15,11 +15,11 @@ class ArxivSearch(SearchBase):
         self._url = base_url
         self._timeout = timeout
 
-    def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    def _fetch_content_result(self, item: Dict[str, Any]) -> Dict[str, Any]:
         url = item.get('url') or ''
         m = re.search(r'/abs/([\d.]+(?:v\d+)?)', url) if url else None
         if not m:
-            return super().get_content(item)
+            return super()._fetch_content_result(item)
         arxiv_id = m.group(1)
         try:
             resp = httpx.get(
@@ -30,17 +30,17 @@ class ArxivSearch(SearchBase):
             resp.raise_for_status()
             text = resp.text
         except Exception:
-            return super().get_content(item)
+            return super()._fetch_content_result(item)
         ns = {'atom': 'http://www.w3.org/2005/Atom'}
         try:
             root = xml.etree.ElementTree.fromstring(text)
         except xml.etree.ElementTree.ParseError:
-            return super().get_content(item)
+            return super()._fetch_content_result(item)
         for entry in root.findall('atom:entry', ns):
             summary_el = entry.find('atom:summary', ns)
             if summary_el is not None and summary_el.text:
-                return _make_content_result(item, summary_el.text.strip().replace('\n', ' '))
-        return super().get_content(item)
+                return _make_content_result(item, summary_el.text.strip().replace('\n', ' '), content_type='abstract')
+        return super()._fetch_content_result(item)
 
     def search(self, query: str, max_results: int = 10,
                sort_by: str = 'relevance') -> List[dict]:

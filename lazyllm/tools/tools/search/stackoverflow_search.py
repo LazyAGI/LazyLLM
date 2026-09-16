@@ -18,11 +18,11 @@ class StackOverflowSearch(SearchBase):
         self._site = site
         self._timeout = timeout
 
-    def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    def _fetch_content_result(self, item: Dict[str, Any]) -> Dict[str, Any]:
         url = item.get('url') or ''
         m = re.search(r'/questions/(\d+)', url) if url else None
         if not m:
-            return super().get_content(item)
+            return super()._fetch_content_result(item)
         qid = m.group(1)
         api_url = f'https://api.stackexchange.com/2.3/questions/{qid}'
         params = self.inject_auth_params({'site': self._site, 'filter': 'withbody'})
@@ -31,28 +31,30 @@ class StackOverflowSearch(SearchBase):
             resp.raise_for_status()
             data = resp.json()
         except Exception:
-            return super().get_content(item)
+            return super()._fetch_content_result(item)
         items = data.get('items') or []
         if not items:
-            return super().get_content(item)
+            return super()._fetch_content_result(item)
         q = items[0]
         raw = (q.get('body') or '').strip()
         if not raw:
-            return super().get_content(item)
+            return super()._fetch_content_result(item)
         body = _html_to_text(raw)
         accepted_id = q.get('accepted_answer_id')
         if not accepted_id:
-            return _make_content_result(item, body)
+            return _make_content_result(item, body, content_type='question')
         ans_url = f'https://api.stackexchange.com/2.3/answers/{accepted_id}'
+        content_type = 'question'
         try:
             ar = httpx.get(ans_url, params=params, timeout=self._timeout)
             ar.raise_for_status()
             ans_items = ar.json().get('items') or []
             if ans_items and ans_items[0].get('body'):
                 body = body + '\n\n--- Accepted Answer ---\n\n' + _html_to_text(ans_items[0]['body'])
+                content_type = 'question_and_accepted_answer'
         except Exception:
             pass
-        return _make_content_result(item, body)
+        return _make_content_result(item, body, content_type=content_type)
 
     def search(self, query: str, count: int = 10,
                sort: str = 'relevance') -> List[Dict[str, Any]]:

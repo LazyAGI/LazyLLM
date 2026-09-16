@@ -21,11 +21,11 @@ class WikipediaSearch(SearchBase):
         self._timeout = timeout
         self._headers = {'User-Agent': self._UA}
 
-    def get_content(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    def _fetch_content_result(self, item: Dict[str, Any]) -> Dict[str, Any]:
         extra = item.get('extra') or {}
         pageid = extra.get('pageid')
         if pageid is None:
-            return super().get_content(item)
+            return super()._fetch_content_result(item)
         params = {
             'action': 'query',
             'pageids': pageid,
@@ -39,11 +39,13 @@ class WikipediaSearch(SearchBase):
             resp.raise_for_status()
             data = resp.json()
         except Exception:
-            return super().get_content(item)
+            return super()._fetch_content_result(item)
         pages = data.get('query', {}).get('pages') or {}
         page = pages.get(str(pageid)) or {}
         content = (page.get('extract') or '').strip()
-        return _make_content_result(item, content) if content else super().get_content(item)
+        if content:
+            return _make_content_result(item, content, content_type='encyclopedia_article')
+        return super()._fetch_content_result(item)
 
     def search(self, query: str, limit: int = 10) -> List[dict]:
         params = {
