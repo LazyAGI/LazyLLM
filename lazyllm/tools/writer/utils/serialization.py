@@ -82,13 +82,22 @@ def to_prompt_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2, default=default)
 
 
-def locate_markdown_paragraph(markdown: str, selected_text: str) -> str:
+def locate_markdown_paragraph(
+    markdown: str,
+    selected_text: str,
+    *,
+    heading_path: Optional[List[str]] = None,
+    occurrence: int = 1,
+) -> str:
     '''Return the unique source paragraph containing rendered selected text.'''
     selected = _normalize_markdown_text(selected_text)
     if not selected:
         raise MarkdownSelectionError(
             'SELECTION_UNSUPPORTED', 'selected_text must not be empty.',
         )
+    if heading_path:
+        start, end = markdown_section_range(markdown, heading_path, occurrence)
+        markdown = markdown[start:end]
     parser = mistune.create_markdown(renderer='ast', plugins=['table'])
     matches: List[str] = []
     for block in _markdown_source_blocks(markdown):
@@ -270,46 +279,81 @@ def apply_markdown_outline_instructions(
     return f'{value}\n' if trailing_newline else value
 
 
-def parse_markdown_sections(markdown: str) -> List[tuple[int, List[str], int, str]]:
-    sections: List[tuple[int, List[str], int, str]] = []
-    heading_path: List[str] = []
-    occurrences: dict[tuple[str, ...], int] = {}
-    current: Optional[tuple[int, List[str], int, List[str]]] = None
-    fence: Optional[str] = None
+def _markdown_fence_marker(line: str, fence: Optional[str]) -> Optional[str]:
+    if fence is not None:
+        closing = r' {0,3}' + re.escape(fence[0]) + '{' + str(len(fence)) + r',}[ \t]*'
+        return None if re.fullmatch(closing, line) else fence
+    match = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$', line)
+    if match and (match.group(1)[0] != '`' or '`' not in match.group(2)):
+        return match.group(1)
+    return None
 
-    for line in markdown.splitlines():
-        fence_match = re.match(r'^\s*(```+|~~~+)', line)
-        if fence_match:
-            marker = fence_match.group(1)[0]
-            if fence is None:
-                fence = marker
-            elif fence == marker:
-                fence = None
-            if current is not None:
-                current[3].append(line)
+
+def _markdown_heading_ranges(markdown: str) -> List[tuple[int, int, int, List[str], int]]:
+    headings: List[tuple[int, int, int, List[str], int]] = []
+    stack: List[tuple[int, str]] = []
+    occurrences: dict[tuple[str, ...], int] = {}
+    fence: Optional[str] = None
+    anchor_start: Optional[int] = None
+    offset = 0
+    for raw_line in markdown.splitlines(keepends=True):
+        start = offset
+        offset += len(raw_line)
+        line = raw_line.rstrip('\r\n')
+        previous_fence = fence
+        fence = _markdown_fence_marker(line, fence)
+        if previous_fence is not None or fence is not None:
+            anchor_start = None
             continue
-        if fence is not None:
-            if current is not None:
-                current[3].append(line)
+        if re.fullmatch(
+            r'''[ \t]*<a\b[^>]*\bid\s*=\s*["'][^"']+["'][^>]*(?:/\s*>|>\s*</a\s*>)[ \t]*''',
+            line, re.IGNORECASE,
+        ):
+            anchor_start = start if anchor_start is None else anchor_start
             continue
-        match = re.match(r'^(#{1,6})\s+(.+?)\s*$', line)
+        match = re.match(r'^ {0,3}(#{1,6})(?:[ \t]+|$)(.*?)[ \t]*$', line)
         if not match:
-            if current is not None and not MARKDOWN_OUTLINE_INSTRUCTION_RE.match(line):
-                current[3].append(line)
+            if line.strip():
+                anchor_start = None
             continue
-        if current is not None:
-            sections.append((current[0], current[1], current[2], '\n'.join(current[3]).strip()))
         level = len(match.group(1))
-        title = match.group(2)
-        heading_path = heading_path[:level - 1]
-        heading_path.append(title)
+        title = re.sub(r'(?:^|[ \t]+)#+[ \t]*$', '', match.group(2))
+        while stack and stack[-1][0] >= level:
+            stack.pop()
+        stack.append((level, title))
+        heading_path = [item[1] for item in stack]
         path_key = tuple(heading_path)
         occurrence = occurrences.get(path_key, 0) + 1
         occurrences[path_key] = occurrence
-        current = (level, list(heading_path), occurrence, [])
+        headings.append((start if anchor_start is None else anchor_start, offset, level, heading_path, occurrence))
+        anchor_start = None
+    return headings
 
-    if current is not None:
-        sections.append((current[0], current[1], current[2], '\n'.join(current[3]).strip()))
+
+def markdown_section_range(markdown: str, heading_path: List[str], occurrence: int = 1) -> tuple[int, int]:
+    headings = _markdown_heading_ranges(markdown)
+    for index, (start, _, level, path, current_occurrence) in enumerate(headings):
+        if path != heading_path or current_occurrence != occurrence:
+            continue
+        end = next((item[0] for item in headings[index + 1:] if item[2] <= level), len(markdown))
+        return start, end
+    raise ValueError('content_ref is absent from Markdown document.')
+
+
+def parse_markdown_sections(markdown: str) -> List[tuple[int, List[str], int, str]]:
+    sections: List[tuple[int, List[str], int, str]] = []
+    headings = _markdown_heading_ranges(markdown)
+    for index, (_, body_start, level, path, occurrence) in enumerate(headings):
+        end = headings[index + 1][0] if index + 1 < len(headings) else len(markdown)
+        body_lines: List[str] = []
+        fence: Optional[str] = None
+        for line in markdown[body_start:end].splitlines():
+            if fence is None and MARKDOWN_OUTLINE_INSTRUCTION_RE.match(line):
+                continue
+            fence = _markdown_fence_marker(line, fence)
+            body_lines.append(line)
+        body = '\n'.join(body_lines).strip()
+        sections.append((level, path, occurrence, body))
     return sections
 
 
