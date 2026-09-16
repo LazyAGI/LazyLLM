@@ -44,7 +44,7 @@ def test_sciverse_default_search_has_one_preview(monkeypatch, meta):
     def search(**kwargs):
         return provider.meta_search('query', **kwargs)['items'] if meta else provider.search('query', **kwargs)
     item = search()[0]
-    assert item['snippet'] == 'c' * 700
+    assert item['snippet'] == 'a' * 700
     assert item['extra']['truncated'] is True
     assert item['extra']['content'] == 'c' * 700
     assert item['extra']['offset'] == 0
@@ -153,3 +153,24 @@ def test_sciverse_rejects_invalid_window_before_request(monkeypatch, kwargs):
     monkeypatch.setattr(sciverse_search, 'httpx', SimpleNamespace(get=lambda *a, **k: pytest.fail('network')))
     with pytest.raises(ValueError):
         SciverseSearch(api_key='test').get_content({'extra': {'doc_id': 'doc'}}, **kwargs)
+
+
+@pytest.mark.parametrize('meta', [False, True])
+@pytest.mark.parametrize('include_content', [False, True])
+@pytest.mark.parametrize('abstract,chunk', [
+    ('摘要', '命中段落'), ('摘要', ''), ('', '命中段落'), ('', ''),
+    ('摘' * 699, '命中段落'), ('摘' * 701, '命中段落'),
+])
+def test_sciverse_preserves_snippet_order(monkeypatch, meta, include_content, abstract, chunk):
+    payload = {'hits': [{'title': 'Paper', 'doc_id': 'doc', 'abstract': abstract, 'chunk': chunk}]}
+    monkeypatch.setattr(sciverse_search, 'httpx', SimpleNamespace(post=lambda *a, **k: response(payload)))
+    provider = SciverseSearch(api_key='test')
+    result = (provider.meta_search('query', include_content=include_content)['items'] if meta
+              else provider.search('query', include_content=include_content))[0]
+    snippet = '\n'.join(part for part in (abstract, chunk) if part)
+    assert result['snippet'] == snippet[:700]
+    assert result['extra'].get('truncated', False) == (len(snippet) > 700)
+    if include_content and (chunk or abstract):
+        assert result['extra']['content'] == (chunk or abstract)[:700]
+    else:
+        assert 'content' not in result['extra']

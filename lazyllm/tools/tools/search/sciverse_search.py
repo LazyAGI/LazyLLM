@@ -255,7 +255,7 @@ class SciverseSearch(SearchBase):
             out.append(_make_result(
                 title=title,
                 url=url,
-                snippet=content,
+                snippet='\n'.join(part for part in (abstract, chunk) if part),
                 source=self.source_name,
                 **{key: value for key, value in extra.items() if value not in (None, '', [])},
             ))
