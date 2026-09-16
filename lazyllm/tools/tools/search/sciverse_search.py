@@ -1,3 +1,4 @@
+from lazyllm.tools.agent.toolsManager import fc_register
 from typing import Any, Dict, List, Literal, Optional
 
 from lazyllm.thirdparty import httpx
@@ -51,6 +52,7 @@ class SciverseSearch(SearchBase):
         self._base_url = base_url.rstrip('/')
         self._timeout = timeout
 
+    @fc_register(host_file='NONE')
     def get_content(
         self,
         item: Dict[str, Any],
@@ -103,6 +105,7 @@ class SciverseSearch(SearchBase):
                 'response_exceeds_limit' if len(content) > limit else 'invalid_continuation')
         return result
 
+    @fc_register(host_file='NONE')
     def search(self, query: str, topk: int = 5, include_content: bool = True,
                search_type: Literal['agentic', 'meta'] = 'agentic',
                year_from: Optional[int] = None,
@@ -131,6 +134,7 @@ class SciverseSearch(SearchBase):
 
         return self._normalize_items(_items(data)[:limit], include_content=include_content, search_type='agentic')
 
+    @fc_register(host_file='NONE')
     def meta_search(
         self,
         query: str = '',
@@ -209,6 +213,7 @@ class SciverseSearch(SearchBase):
             'search_time_ms': data.get('search_time_ms'),
         }
 
+    @fc_register(host_file='NONE')
     def meta_catalog(self, include_sample_values: bool = False) -> Dict[str, Any]:
         resp = httpx.get(
             f'{self._base_url}/meta-catalog',

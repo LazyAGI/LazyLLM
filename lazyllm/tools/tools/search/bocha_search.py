@@ -1,3 +1,4 @@
+from lazyllm.tools.agent.toolsManager import fc_register
 from typing import List, Optional
 
 from .base import SearchBase, _make_result
@@ -11,6 +12,7 @@ class BochaSearch(SearchBase):
         self._base_url = base_url.rstrip('/')
         self._timeout = timeout
 
+    @fc_register(host_file='NONE')
     def search(self, query: str, count: int = 10,
                freshness: Optional[str] = None,
                summary: bool = False) -> List[dict]:

@@ -1,3 +1,4 @@
+from lazyllm.tools.agent.toolsManager import fc_register
 import re
 from typing import Any, Dict, List
 from urllib.parse import quote
@@ -47,6 +48,7 @@ class WikipediaSearch(SearchBase):
             return _make_content_result(item, content, content_type='encyclopedia_article')
         return super()._fetch_content_result(item)
 
+    @fc_register(host_file='NONE')
     def search(self, query: str, limit: int = 10) -> List[dict]:
         params = {
             'action': 'query',

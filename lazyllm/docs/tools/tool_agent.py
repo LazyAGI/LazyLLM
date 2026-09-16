@@ -12,6 +12,27 @@ add_toolsmgr_chinese_doc = functools.partial(utils.add_chinese_doc, module=impor
 add_toolsmgr_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 add_toolsmgr_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 
+add_agent_chinese_doc('AuthorizationPolicy.decide', '''\
+为准备好的工具调用返回授权决策。子类必须实现此方法；基类会抛出 ``NotImplementedError``。
+
+Args:
+    prepared (PreparedToolCall): 待授权的工具调用，包含准备状态、宿主文件访问能力及文件操作意图。
+
+Returns:
+    AuthorizationDecision: 允许执行（ALLOW）、需要确认（ASK）或拒绝执行（DENY）。
+''')
+
+add_agent_english_doc('AuthorizationPolicy.decide', '''\
+Return an authorization decision for a prepared tool call. Subclasses must implement this method;
+the base implementation raises ``NotImplementedError``.
+
+Args:
+    prepared (PreparedToolCall): Tool call with its preparation state, host-file capability, and file operation intents.
+
+Returns:
+    AuthorizationDecision: Allow execution (ALLOW), require confirmation (ASK), or reject execution (DENY).
+''')
+
 add_agent_chinese_doc('ToolExecutionError', '''\
 可预期工具执行失败的基础异常。
 
@@ -224,11 +245,142 @@ Args:
 
 ''')
 
+add_chinese_doc('ToolManager.execute_with_records', '''\
+通过一次参数校验和资源解析准备并执行工具调用，返回按调用顺序排列的结果及包含明确执行状态的
+``ToolExecutionRecord``。可选的 ``dispatch_selector`` 接收已准备调用的独立检查快照，
+并返回要执行的唯一调用索引。工具参数校验和动态资源解析始终只运行一次。
+''')
+
 add_english_doc('ToolManager.execute_with_records', '''\
 Prepare and execute tool calls through one validation and resource-resolution pass, returning ordered results together
 with ``ToolExecutionRecord`` values and their explicit execution dispositions. An optional ``dispatch_selector`` receives
 the prepared inspection snapshots and returns the unique call indices to execute. Tool validation and dynamic resource
 resolution still run exactly once.
+''')
+
+add_chinese_doc('ToolManager.prepare_tool_calls', '''\
+准备工具批次但不执行任何工具。先解析名称并校验参数，再调用可信 host_file_resolver，校验解析后的参数，
+最后计算文件和其他资源的调度冲突。返回绑定当前 ToolManager 的 PreparedToolBatch；审批等待期间应保存并
+复用此批次。调用方完成整个批次的权限判断后，调用 execute_prepared 执行获准项。
+working_directory 可为 host_file resolver 提供请求级绝对工作目录，不改变进程 cwd。
+authorization_policy=None 时准备成功即 ALLOW；调用方可传入自定义策略，LazyLLM 不提供内置策略。决策在 prepare 固定。
+require_host_file_access=True 会检查本轮 exposed tools，存在 UNDECLARED 则拒绝准备，适合注册契约测试。
+传入 allowed_tool_names 可限制本轮可见工具。文件 resolver 失败产生 PREPARATION_FAILED，不会降级为可执行调用。
+''')
+
+add_english_doc('ToolManager.prepare_tool_calls', '''\
+Prepare a batch without executing tools. Resolve names, validate inputs, invoke trusted host-file resolvers,
+validate their normalized arguments, then resolve scheduling resources. Retain the returned manager-bound
+PreparedToolBatch while application authorization is pending and pass that same batch to execute_prepared.
+working_directory optionally supplies an absolute request-local base to host_file resolvers; it never changes process cwd.
+With authorization_policy=None, every ready call is ALLOW. Callers may supply a custom policy; LazyLLM has no built-in policy.
+Decisions are fixed during preparation.
+Set require_host_file_access=True to reject UNDECLARED tools in the exposed set (optionally limited by
+allowed_tool_names). This also supports registration contract tests with an empty call list. File-resolution
+errors produce PREPARATION_FAILED calls; they never fall back to executable exclusive calls.
+''')
+
+add_chinese_doc('ToolManager.execute_prepared', '''\
+执行当前 manager 准备的原批次，不重新解析、校验或调用 resolver。默认执行 ALLOW 调用；ASK 调用只有其索引出现在 approved_indices 时才执行，DENY 永不执行。selected_indices 只选择调用，必须通过 approved_indices 显式批准选中的 ready ASK。选中 ready DENY 或未批准 ASK 会在整个批次执行前报错；准备失败保留原错误。未获准的 ASK 返回 SKIPPED / approval_required，DENY 返回 SKIPPED / authorization_rejected，准备失败仍返回 PREPARATION_FAILED。结果和记录保持原顺序，并沿用 ToolManager 的调度、沙箱及异常处理。
+可选 execution_context(prepared_call) 返回上下文管理器，在实际执行线程内包围注册工具调用；适合授权 claim/complete 和请求上下文传递，无需替换工具实现。
+本接口不保存审批结果，也不保证批次只能执行一次；重试、幂等和一次性授权由调用方负责。
+''')
+
+add_english_doc('ToolManager.execute_prepared', '''\
+Execute the original batch prepared by this manager without parsing, validation, or resolution again.
+ALLOW calls execute by default. ASK calls execute only when their indices are supplied in approved_indices;
+DENY calls never execute. selected_indices only selects calls; selected ready ASK calls require approved_indices.
+Selecting ready DENY or unapproved ASK fails before any tool executes; preparation failures retain their original result.
+Unselected ASK calls
+return SKIPPED / approval_required, DENY calls return
+SKIPPED / authorization_rejected, and invalid calls retain PREPARATION_FAILED. Results retain original order.
+An optional execution_context(prepared_call) returns a context manager entered on the actual execution worker
+before tool invocation and exited afterward, including failures. Use it for claim/completion and context propagation
+without modifying tool bindings. It never replaces the registered tool.
+Existing scheduling, sandbox, and exception handling are reused. The application owns approvals, cancellation,
+idempotency, and one-use authorization. Executing a batch again runs its selected tools again.
+''')
+
+add_chinese_doc('PreparedToolBatch', '''\
+请求内的 prepared batch。支持 len、索引、切片和迭代，每次访问返回独立只读视图：字典为只读映射，列表为 tuple，
+自定义参数对象为副本。执行输入保存在私有快照中，不受原请求、检查视图或上次执行修改影响。
+只能交给创建它的 ToolManager 执行；不要直接访问私有字段或在等待审批时改变工具实现。
+''')
+
+add_english_doc('PreparedToolBatch', '''\
+A request-local prepared batch supporting len, indexing, slicing, and iteration. Each access returns a detached
+inspection view with read-only mappings and tuple sequences; custom argument objects are copied. Private execution
+inputs are isolated from the original request, inspection views, and previous tool executions. Only the originating
+ToolManager may execute it. Do not access private fields or change tool implementations while approval is pending.
+''')
+
+add_chinese_doc('HostFileAccess', '''\
+可信注册的宿主文件能力：NONE 表示没有调用方管理资源范围之外的宿主文件访问，DECLARED 表示 resolver 完整声明
+模型输入决定的宿主文件路径及意图，OPAQUE 表示无法静态枚举（如脚本），UNDECLARED 为旧工具的兼容默认值。
+能力声明与授权决策分离：默认兼容模式放行，安全模式要求 OPAQUE 审批。对外统一通过 fc_register(host_file=...) 声明：NONE/OPAQUE marker 或 resolver callable。
+''')
+
+add_english_doc('HostFileAccess', '''\
+Trusted registration capability: NONE has no host-file access outside application-managed resources;
+DECLARED requires a resolver enumerating all model-directed host-file accesses; OPAQUE cannot enumerate them
+statically (for example scripts); UNDECLARED is the backward-compatible default for existing tools.
+Capability declarations are separate from authorization: compatibility mode allows OPAQUE; security mode requires approval.
+Declare it only through fc_register(host_file=...): a NONE/OPAQUE marker or a resolver callable.
+''')
+
+add_chinese_doc('HostFileIntent', '''\
+文件访问意图：path 必须是绝对路径，operation 为 read、write 或 delete。目录路径表示包含其子路径的访问范围。
+写入和删除意图用于写冲突调度，读取意图用于读冲突调度；权限判断保留三个独立操作类型。
+''')
+
+add_english_doc('HostFileIntent', '''\
+A file access intent with an absolute path and a read, write, or delete operation. A directory path denotes
+an access scope including descendants. Write and delete intents contribute write scheduling keys; read intents
+contribute read keys. Authorization can still distinguish all three operations.
+''')
+
+add_chinese_doc('HostFileResolution', '''\
+host_file resolver 接收独立的已校验参数字典，返回 HostFileResolution(arguments, files)。arguments 是最终执行参数；
+files 是 HostFileIntent tuple，允许为空（本次调用不访问宿主文件）。resolver 必须属于可信工具模块，完整解析嵌套参数、
+默认路径、相对路径和软链接，声明全部读写删除范围，并让最终执行参数使用相同路径。调度复用 files 的规范化路径。
+解析后的参数会进行严格 schema 校验，不重新调用输入适配器；如果校验器改变参数则拒绝该调用，防止审批路径漂移。
+这是工具能力契约而非文件沙箱；准备后文件身份变化、动态脚本和工具中的未声明 IO 仍需要调用方或工具自身防护。
+''')
+
+add_english_doc('HostFileResolution', '''\
+The host_file resolver receives a private validated argument dictionary and returns HostFileResolution(arguments, files).
+arguments are the final execution inputs; files is a tuple of HostFileIntent values, possibly empty for a call
+without host-file accesses. Resolvers belong to trusted tool modules. They must cover nested/default/relative paths,
+symlinks, and all read/write/delete scopes, and put the matching final paths into execution arguments.
+Scheduling reuses the normalized file intents. This contract is not a filesystem sandbox: tools or applications
+must handle filesystem identity changes after preparation and undeclared or dynamically executed IO.
+Resolved arguments undergo strict schema validation without reapplying input adapters. If a validator changes
+them, preparation fails rather than executing arguments that differ from the resolver's approved snapshot.
+''')
+
+add_chinese_doc('resolve_host_path', '''\
+供 host_file resolver 使用的路径辅助函数：展开并解析为绝对规范路径；相对路径使用 prepare_tool_calls 的 working_directory，缺省使用进程 cwd。
+''')
+add_english_doc('resolve_host_path', '''\
+Path helper for host_file resolvers. It expands and canonicalizes a path using the preparation working_directory, or process cwd when none is supplied.
+''')
+add_example('ToolManager.prepare_tool_calls', '''\
+>>> from pathlib import Path
+>>> from lazyllm.tools import ToolManager, HostFileIntent, HostFileResolution, fc_register, resolve_host_path
+>>> def resolve_read(arguments):
+...     arguments['path'] = resolve_host_path(arguments['path'])
+...     return HostFileResolution(arguments, (HostFileIntent(arguments['path'], 'read'),))
+>>> @fc_register(host_file=resolve_read)
+>>> def read_text(path: str):
+...     """Read text. Args: path (str): File to read."""
+...     return Path(path).read_text()
+>>> manager = ToolManager([read_text])
+>>> prepared = manager.prepare_tool_calls(
+...     {'function': {'name': 'read_text', 'arguments': {'path': 'notes.txt'}}},
+...     require_host_file_access=True)
+>>> # Inspect all calls, wait for application approvals, and then execute the same batch.
+>>> # This read-only call is ALLOW without an application policy.
+>>> result = manager.execute_prepared(prepared)
 ''')
 
 add_example('ToolManager', """\
@@ -327,6 +479,10 @@ Args:
     write_keys: 静态写资源 key，或根据已校验工具参数返回写资源 key 的函数。
     exclusive (bool): 是否独占执行，不能与 ``read_keys`` 或 ``write_keys`` 同时使用。
     polling (bool): 是否为允许连续返回相同结果的轮询工具。
+    host_file: 宿主文件声明。未设置为 UNDECLARED；NONE/OPAQUE marker 分别声明无访问或不透明访问；callable 声明可解析访问并返回 HostFileResolution。
+    tool_source (str): 可信注册端标记的工具来源，local（默认）、mcp 或 skill。适配器自动标记外部来源；不是模型参数，不表示无文件访问。来源不隐含任何授权或豁免。
+    tool_identity (str): 可信接入层提供的不透明工具身份，未提供时生成临时实例身份。
+    tool_origin (str): 用于宿主审批展示的工具来源名称。
 
 ``fc_register`` 采用显式字段合并：不同字段可由多层装饰组合，相同字段相同值为幂等声明，相同字段不同值会报错。
 ``tool_concurrency`` 已直接删除，属于 breaking change；请迁移为
@@ -350,6 +506,10 @@ Args:
     write_keys: Static write resource keys or a callable receiving validated tool arguments.
     exclusive (bool): Whether the tool runs exclusively. Cannot be combined with resource keys.
     polling (bool): Whether unchanged repeated results are expected while polling.
+    host_file: Host-file declaration. Omission means UNDECLARED; NONE/OPAQUE markers declare no or opaque access; a callable declares resolvable access and returns HostFileResolution.
+    tool_source (str): Trusted registration origin: local (default), mcp, or skill. Adapters mark external origins automatically. Not a model argument or a claim of no file access. Source does not imply authorization or exemptions.
+    tool_identity (str): Opaque identity supplied by the trusted adapter; omission generates a temporary instance identity.
+    tool_origin (str): Display name of the tool origin for host approval.
 
 ``fc_register`` merges explicitly supplied fields across decorator layers. Repeating the same field and value is
 idempotent; declaring a different value for the same field raises an error. ``tool_concurrency`` has been removed as
@@ -896,7 +1056,6 @@ Args:
     name (str): 技能名称。
     rel_path (str): 脚本相对路径。
     args (List[str], optional): 脚本参数。
-    allow_unsafe (bool): 是否允许执行潜在风险脚本。
     cwd (str, optional): 工作目录。
 
 **Returns:**\n
@@ -910,7 +1069,6 @@ Args:
     name (str): Skill name.
     rel_path (str): Script relative path.
     args (List[str], optional): Script arguments.
-    allow_unsafe (bool): Whether to allow potentially unsafe execution.
     cwd (str, optional): Working directory.
 
 **Returns:**\n

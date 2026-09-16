@@ -312,10 +312,23 @@ agent = ReactAgent(
 - 智能体可调用技能工具：`get_skill`、`read_reference`、`run_script`。
 - 默认注入一组通用工具（文件读写/检索、Shell 执行、下载等）。
 
-危险操作的审批流程：
-- 工具对高风险操作抛出 `ToolExecutionError.approval_required(...)`；ToolManager 将其转换为包含 `ok=false` 和 `needs_approval=true` 的失败结果。
-- 由前端/编排层进行用户确认。
-- 用户确认后再以 `allow_unsafe=True` 重新调用工具。
+文件工具与授权：
+- `glob` 使用 ripgrep 过滤规则：`*.yml` 匹配任意层级，`/*.yml` 只匹配搜索根目录，`**/*.{yaml,yml}` 递归匹配两种扩展名。需要安装 `rg`；遵循其忽略规则，排除 `.git`，不跟随符号链接。结果可能截断。
+
+- `FileSystemToolkit` 直接提供 `read`、`write`、`edit`、`ls`、`glob`、`grep`、`mkdir`、`move`、`remove`、`stat`，没有名称前缀，无需方法发现调用；其他工具组的加载方式不变。
+- 使用 `prepare_tool_calls` 固定参数和宿主文件 intents，再由应用权限策略授权；prepare 不写入文件。
+- 批准后将同一 prepared batch 及获准索引传给 `execute_prepared`，不通过模型参数中的审批标记重新构造调用。
+
+LazyLLM 不提供内置授权策略。不传 `authorization_policy` 时，所有准备成功的调用默认放行，包括未声明工具。调用方可传入返回 ALLOW / ASK / DENY 的函数或 `AuthorizationPolicy` 实现：
+
+```python
+from lazyllm.tools import AuthorizationDecision
+prepared = manager.prepare_tool_calls(calls, authorization_policy=lambda call: AuthorizationDecision.ASK)
+# 调用方取得索引 0 的用户批准后：
+result = manager.execute_prepared(prepared, selected_indices=(0,), approved_indices=(0,))
+```
+
+选择调用不代表批准。未批准的 ASK 不能执行，准备失败保留原错误。授权决定在 prepare 固定。`require_host_file_access=True` 仍用于显式声明完整性检查。
 
 完整代码如下：
 ```python

@@ -92,6 +92,13 @@ def multi_read_tool(paths: List[str]):
     return '|'.join(results)
 
 
+for _tool in (
+    sandbox_add_tool, direct_tool, no_sandbox_tool, read_file_tool,
+    write_file_tool, gen_summary_tool, multi_read_tool,
+):
+    fc_register(host_file='NONE')(_tool)
+
+
 class TestDummySandbox:
     def test_sandbox_registry(self):
         assert hasattr(lazyllm, 'sandbox')

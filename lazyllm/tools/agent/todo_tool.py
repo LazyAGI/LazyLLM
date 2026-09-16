@@ -10,7 +10,7 @@ _TODO_HEADER = (
 )
 
 
-@register('builtin_tools', execute_in_sandbox=False)
+@register('builtin_tools', execute_in_sandbox=False, host_file='NONE')
 def todo_write(todos: List[Dict], merge: bool = False) -> str:
     '''Write or update the todo list for the current agent session.
 

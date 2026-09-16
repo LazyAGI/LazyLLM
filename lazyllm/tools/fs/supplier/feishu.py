@@ -12,6 +12,7 @@ import requests
 from lazyllm import LOG, config
 from lazyllm import globals as lazyllm_globals
 from lazyllm.common import Credential
+from lazyllm.tools.agent.toolsManager import fc_register
 from lazyllm.tools.writer.utils.feishu_docx import (
     DOCX_BLOCK_TYPE_FIELDS,
     normalize_docx_clone_content,
@@ -1391,12 +1392,14 @@ class FeishuFS(FeishuFSBase):
             current_token = match.get('token') or ''
         return current_token
 
+    @fc_register(host_file='NONE')
     def ls(self, path: str = '/', detail: bool = True, **kwargs) -> List:
         folder_token = self._resolve_path_to_token(path)
         items = self._list_files_raw(folder_token)
         entries = [self._item_to_entry(item) for item in items]
         return entries if detail else [e['name'] for e in entries]
 
+    @fc_register(host_file='NONE')
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
         token = self._resolve_path_to_token(path)
         if not token:
@@ -1436,6 +1439,7 @@ class FeishuFS(FeishuFSBase):
             'folder_token': folder_token,
         }
 
+    @fc_register(host_file='NONE')
     def create_document(self, title: str, parent: str = '') -> Dict[str, Any]:
         '''Create a Feishu Docx in the default Cloud Docs root or a selected folder.'''
         title = (title or '').strip()
@@ -1445,6 +1449,7 @@ class FeishuFS(FeishuFSBase):
         folder_token = self._resolve_path_to_token(parent) if parent and parent != '/' else ''
         return self._create_drive_docx(title, folder_token=folder_token)
 
+    @fc_register(host_file='NONE')
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
         parts = [p for p in path.strip('/').split('/') if p]
         if not parts:
@@ -1479,6 +1484,7 @@ class FeishuFS(FeishuFSBase):
             raise FileNotFoundError(path)
         return match
 
+    @fc_register(host_file='NONE')
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         src = self._get_item_raw(path1)
         if src.get('type') == 'folder':
@@ -1491,6 +1497,7 @@ class FeishuFS(FeishuFSBase):
         self._post(f'{self._base_url}/drive/v1/files/{src_token}/copy',
                    json={'name': new_name, 'type': src.get('type', 'file'), 'folder_token': folder_token})
 
+    @fc_register(host_file='NONE')
     def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         src = self._get_item_raw(path1)
         src_token = src.get('token', '')
@@ -1559,6 +1566,31 @@ class FeishuFS(FeishuFSBase):
             title=name, token=item.get('token') or '',
         )
 
+    @fc_register(host_file='NONE')
+    def exists(self, path: str, **kwargs) -> bool:
+        '''Return whether a remote file or folder exists.'''
+        return super().exists(path, **kwargs)
+
+    @fc_register(host_file='NONE')
+    def read(self, path: str) -> str:
+        '''Read a remote text file or document.'''
+        return super().read(path)
+
+    @fc_register(host_file='NONE')
+    def read_file(self, path: str) -> str:
+        '''Read a remote file as text.'''
+        return super().read_file(path)
+
+    @fc_register(host_file='NONE')
+    def write(self, path: str, content: str) -> None:
+        '''Write text content to a remote file or document.'''
+        return super().write(path, content)
+
+    @fc_register(host_file='NONE')
+    def rm(self, path: str, recursive: bool = False) -> None:
+        '''Remove a remote file or folder, recursively when requested.'''
+        return super().rm(path, recursive=recursive)
+
 
 class FeishuWikiFile(CloudFSBufferedFile):
 
@@ -1601,6 +1633,7 @@ class FeishuWikiFS(FeishuFSBase):
             raise RuntimeError('Feishu wiki create docx node failed: empty obj_token')
         return node
 
+    @fc_register(host_file='NONE')
     def create_document(self, title: str, parent: str = '') -> Dict[str, Any]:
         '''Create an empty Feishu Docx node in a Wiki space.'''
         title = (title or '').strip()
@@ -1781,6 +1814,7 @@ class FeishuWikiFS(FeishuFSBase):
     def _list_child_nodes(self, node_token: str) -> List[Dict[str, Any]]:
         return self._list_nodes_raw(node_token)
 
+    @fc_register(host_file='NONE')
     def ls(self, path: str = '/', detail: bool = True, **kwargs) -> List:
         if _is_wiki_locator_path(path):
             ref = self.resolve_wiki_ref(path)
@@ -1799,6 +1833,7 @@ class FeishuWikiFS(FeishuFSBase):
         entries = [self._node_to_entry(item) for item in items]
         return entries if detail else [e['name'] for e in entries]
 
+    @fc_register(host_file='NONE')
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
         if _is_wiki_locator_path(path):
             ref = self.resolve_wiki_ref(path)
@@ -1814,6 +1849,7 @@ class FeishuWikiFS(FeishuFSBase):
         name = path.rstrip('/').split('/')[-1] if path != '/' else '/'
         return self._node_to_entry(node, default_name=name)
 
+    @fc_register(host_file='NONE')
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         src_token = self._resolve_path_to_token(path1)
         if not src_token:
@@ -1829,6 +1865,7 @@ class FeishuWikiFS(FeishuFSBase):
             payload['title'] = title
         self._post(f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes/{src_token}/copy', json=payload)
 
+    @fc_register(host_file='NONE')
     def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         src_token = self._resolve_path_to_token(path1)
         if not src_token:
@@ -1974,6 +2011,7 @@ class FeishuWikiFS(FeishuFSBase):
         return CloudFSBufferedFile(self, path, mode=mode, block_size=block_size or self.blocksize,
                                    autocommit=autocommit, cache_options=cache_options)
 
+    @fc_register(host_file='NONE')
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
         parts = [p for p in path.strip('/').split('/') if p]
         if not parts:
@@ -2053,6 +2091,7 @@ class FeishuWikiFS(FeishuFSBase):
                 self._space_id = sid
         return node or {}
 
+    @fc_register(host_file='NONE')
     def search(self, query: Union[str, List[str]], space_id: str = '', node_id: str = '',
                page_size: int = 20) -> List[Dict[str, Any]]:
         '''Search Feishu Wiki nodes by text.
@@ -2197,6 +2236,7 @@ class FeishuWikiFS(FeishuFSBase):
             )
         return len(results) >= max_results
 
+    @fc_register(host_file='NONE')
     def find(self, pattern: str, space_id: str = '', max_results: int = 50) -> List[Dict[str, Any]]:
         '''Find Feishu Wiki nodes whose paths or titles match a pattern.
 
@@ -2218,6 +2258,7 @@ class FeishuWikiFS(FeishuFSBase):
                 break
         return results[:max_results]
 
+    @fc_register(host_file='NONE')
     def get_document_id(self, path: str) -> str:
         if self.is_link_path(path):
             path = self.decode_link_path(path)
@@ -2251,6 +2292,7 @@ class FeishuWikiFS(FeishuFSBase):
             )
         return document_id
 
+    @fc_register(host_file='NONE')
     def get_doc_blocks(self, path: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
         '''Return native Feishu blocks with an added derived ``plain_text`` field.'''
         document_id = self.get_document_id(path)
@@ -2259,6 +2301,7 @@ class FeishuWikiFS(FeishuFSBase):
             block.setdefault('plain_text', self._docx_block_plain_text(block))
         return blocks
 
+    @fc_register(host_file='NONE')
     def update_doc_block_text(self, path: str, block_id: str, new_text: str) -> None:
         document_id = self.get_document_id(path)
         url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{block_id}'
@@ -2292,3 +2335,42 @@ class FeishuWikiFS(FeishuFSBase):
             creator=node.get('creator') or '', owner=node.get('owner') or '',
             node_creator=node.get('node_creator') or '',
         )
+
+    @fc_register(host_file='NONE')
+    def resolve_link(self, url_or_path: str) -> Dict[str, Any]:
+        '''Resolve a supplier document URL or path to metadata.'''
+        return super().resolve_link(url_or_path)
+
+    @fc_register(host_file='NONE')
+    def read_with_references(self, path: str) -> str:
+        '''Read a remote document including its linked references.'''
+        return super().read_with_references(path)
+
+    @fc_register(host_file='NONE')
+    def rm(self, path: str, recursive: bool = False) -> None:
+        '''Remove a remote file or folder, recursively when requested.'''
+        return super().rm(path, recursive=recursive)
+
+    @fc_register(host_file='NONE')
+    def exists(self, path: str, **kwargs) -> bool:
+        '''Return whether a remote file or folder exists.
+
+        Args:
+            path (str): Remote file or folder path.
+        '''
+        return super().exists(path, **kwargs)
+
+    @fc_register(host_file='NONE')
+    def read(self, path: str) -> str:
+        '''Read a remote text file or document.'''
+        return super().read(path)
+
+    @fc_register(host_file='NONE')
+    def read_file(self, path: str) -> str:
+        '''Read a remote file as text.'''
+        return super().read_file(path)
+
+    @fc_register(host_file='NONE')
+    def write(self, path: str, content: str) -> None:
+        '''Write text content to a remote document.'''
+        return super().write(path, content)

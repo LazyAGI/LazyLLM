@@ -1,3 +1,4 @@
+from lazyllm.tools.agent.toolsManager import fc_register
 import re
 from typing import Any, Dict, List
 
@@ -42,6 +43,7 @@ class ArxivSearch(SearchBase):
                 return _make_content_result(item, summary_el.text.strip().replace('\n', ' '), content_type='abstract')
         return super()._fetch_content_result(item)
 
+    @fc_register(host_file='NONE')
     def search(self, query: str, max_results: int = 10,
                sort_by: str = 'relevance') -> List[dict]:
         params = {

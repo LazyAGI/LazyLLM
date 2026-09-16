@@ -1,3 +1,4 @@
+from lazyllm.tools.agent.toolsManager import fc_register
 import re
 from html import unescape
 from typing import List, Dict, Any, Optional
@@ -147,6 +148,7 @@ class SearchBase(ModuleBase, CredentialMixin):
         content = self._fetch_content_text(item)
         return _make_content_result(item, content, content_type='webpage', fallback=not bool(content))
 
+    @fc_register(host_file='NONE')
     def get_content(self, item: Dict[str, Any], offset: int = 0, limit: int = CONTENT_CHARS) -> Dict[str, Any]:
         offset, limit = _content_window(offset, limit)
         result = self._fetch_content_result(item)
@@ -166,6 +168,7 @@ class SearchBase(ModuleBase, CredentialMixin):
         extra['content_read'] = read
         return result
 
+    @fc_register(host_file='NONE')
     def get_contents(self, items: List[Dict[str, Any]], offset: int = 0,
                      limit: int = CONTENT_CHARS) -> List[Dict[str, Any]]:
         offset, limit = _content_window(offset, limit)

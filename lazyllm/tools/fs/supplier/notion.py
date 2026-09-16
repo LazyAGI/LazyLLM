@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import parse_qs, unquote, urlparse
 
 import lazyllm
+from lazyllm.tools.agent.toolsManager import fc_register
 import requests
 from lazyllm import config
 
@@ -211,6 +212,7 @@ class NotionFS(LinkDocumentFSBase):
             'Content-Type': 'application/json',
         })
 
+    @fc_register(host_file='NONE')
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
         kind, object_id = self._resolve_access_ref(path)
         if kind == 'root':
@@ -225,6 +227,7 @@ class NotionFS(LinkDocumentFSBase):
         entries = [self._block_to_entry(b) for b in self._list_children_raw(object_id)]
         return entries if detail else [e['name'] for e in entries]
 
+    @fc_register(host_file='NONE')
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
         kind, object_id = self._resolve_access_ref(path)
         if kind == 'root':
@@ -271,6 +274,7 @@ class NotionFS(LinkDocumentFSBase):
             raise ValueError(f'Cannot parse Notion browser URL: {url!r}')
         return self._fetch_content(_parsed_notion_ref_to_path(parsed))
 
+    @fc_register(host_file='NONE')
     def search(self, query: str, object_type: str = '', limit: int = 20,
                sort_direction: str = 'descending', scope: str = '',
                title_pattern: str = '') -> List[Dict[str, Any]]:
@@ -324,6 +328,7 @@ class NotionFS(LinkDocumentFSBase):
             if self._entry_matches_title_regex(entry, title_regex)
         ][:limit]
 
+    @fc_register(host_file='NONE')
     def find(self, pattern: str, object_type: str = '', limit: int = 50,
              scope: str = '') -> List[Dict[str, Any]]:
         '''Find connected Notion objects matching a pattern.
@@ -473,6 +478,7 @@ class NotionFS(LinkDocumentFSBase):
         title = cls._entry_title(entry).lower()
         return all(part.lower() in title for part in query.split())
 
+    @fc_register(host_file='NONE')
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
         parent_kind, parent_id, title = self._resolve_parent_ref(path)
         if parent_kind not in ('page', 'database', 'data_source') or not parent_id or not title:
@@ -510,9 +516,11 @@ class NotionFS(LinkDocumentFSBase):
             return
         self._patch(f'{self._base_url}/pages/{object_id}', json={'in_trash': True})
 
+    @fc_register(host_file='NONE')
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         raise NotImplementedError('NotionFS: Notion official API does not support copy')
 
+    @fc_register(host_file='NONE')
     def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         src_kind, page_id = self._resolve_access_ref(path1)
         if src_kind != 'page':
@@ -798,6 +806,7 @@ class NotionFS(LinkDocumentFSBase):
             'last_edited_time': str(page.get('last_edited_time') or ''),
         }
 
+    @fc_register(host_file='NONE')
     def create_document(self, title: str, parent_path: str = '') -> Dict[str, Any]:
         '''Create a Notion page and return its normalized Writer target metadata.'''
         title = str(title or '').strip()
@@ -856,12 +865,14 @@ class NotionFS(LinkDocumentFSBase):
     def _resolve_document_ref(self, url_or_path: str) -> Dict[str, Any]:
         return self.resolve_notion_ref(url_or_path)
 
+    @fc_register(host_file='NONE')
     def get_document_id(self, path: str) -> str:
         kind, object_id = self._resolve_ref(path)
         if kind == 'root' or not object_id:
             raise FileNotFoundError(f'Path not found: {path}')
         return object_id
 
+    @fc_register(host_file='NONE')
     def get_doc_blocks(self, path: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
         kind, object_id = self._resolve_access_ref(path)
         if kind == 'root' or not object_id:
@@ -1652,6 +1663,7 @@ class NotionFS(LinkDocumentFSBase):
                 'block_id': created_id,
             })
 
+    @fc_register(host_file='NONE')
     def update_doc_block_text(self, path: str, block_id: str, new_text: str) -> None:
         block_id = _normalize_notion_id(block_id)
         self._ensure_block_belongs_to_document(path, block_id)
@@ -2370,3 +2382,42 @@ class NotionFS(LinkDocumentFSBase):
             ftype='directory' if has_children else 'file',
             block_type=btype, title=title, id=bid, notion_path=notion_path,
         )
+
+    @fc_register(host_file='NONE')
+    def exists(self, path: str, **kwargs) -> bool:
+        '''Return whether a remote file or folder exists.
+
+        Args:
+            path (str): Remote file or folder path.
+        '''
+        return super().exists(path, **kwargs)
+
+    @fc_register(host_file='NONE')
+    def read(self, path: str) -> str:
+        '''Read a remote text file or document.'''
+        return super().read(path)
+
+    @fc_register(host_file='NONE')
+    def read_file(self, path: str) -> str:
+        '''Read a remote file as text.'''
+        return super().read_file(path)
+
+    @fc_register(host_file='NONE')
+    def write(self, path: str, content: str) -> None:
+        '''Write text content to a remote file or document.'''
+        return super().write(path, content)
+
+    @fc_register(host_file='NONE')
+    def resolve_link(self, url_or_path: str) -> Dict[str, Any]:
+        '''Resolve a supplier document URL or path to metadata.'''
+        return super().resolve_link(url_or_path)
+
+    @fc_register(host_file='NONE')
+    def read_with_references(self, path: str) -> str:
+        '''Read a remote document including its linked references.'''
+        return super().read_with_references(path)
+
+    @fc_register(host_file='NONE')
+    def rm(self, path: str, recursive: bool = False) -> None:
+        '''Remove a remote file or folder, recursively when requested.'''
+        return super().rm(path, recursive=recursive)
