@@ -78,6 +78,38 @@ def test_switch_tracing(exporter):
     assert unmatched_switch.attributes.get('lazyllm.status') == 'ok'
 
 
+def test_switch_callable_tracing(exporter):
+    def is_1(value): return value == 1
+    def is_2(value): return value == 2
+
+    flow = switch(is_1, add_one, is_2, double)
+
+    assert flow(1) == 2
+    assert flow(2) == 4
+
+    spans = exporter.get_finished_spans()
+    first_cond, first_branch, first_switch = spans[0:3]
+    second_is1, second_is2, second_branch, second_switch = spans[3:7]
+    assert len(spans) == 7
+
+    assert first_cond.name == 'is_1' and first_branch.name == 'add_one'
+    assert first_switch.name == 'Switch'
+    assert first_cond.parent.span_id == first_switch.context.span_id
+    assert first_branch.parent.span_id == first_switch.context.span_id
+    assert first_switch.attributes.get('lazyllm.matched.index') == 0
+    assert first_switch.attributes.get('lazyllm.matched.branch') == 'add_one'
+    assert first_switch.attributes.get('lazyllm.matched.condition')
+
+    assert second_is1.name == 'is_1' and second_is2.name == 'is_2'
+    assert second_branch.name == 'double' and second_switch.name == 'Switch'
+    assert second_is1.parent.span_id == second_switch.context.span_id
+    assert second_is2.parent.span_id == second_switch.context.span_id
+    assert second_branch.parent.span_id == second_switch.context.span_id
+    assert second_switch.attributes.get('lazyllm.matched.index') == 1
+    assert second_switch.attributes.get('lazyllm.matched.branch') == 'double'
+    assert second_switch.attributes.get('lazyllm.matched.condition')
+
+
 def test_ifs_tracing(exporter):
     def is_even(value): return value % 2 == 0
 
@@ -117,10 +149,12 @@ def test_loop_tracing(exporter):
     flow(0)
 
     spans = exporter.get_finished_spans()
-    loop_span, iteration_spans = spans[-1], spans[:3]
-    assert len(spans) == 4 and len(iteration_spans) == 3
+    loop_span, child_spans = spans[-1], spans[:-1]
+    assert len(spans) == 7
     assert loop_span.name == 'Loop'
-    assert all(s.name == 'increment' for s in iteration_spans)
+    assert [s.name for s in child_spans] == [
+        'increment', 'stop_at_three', 'increment', 'stop_at_three', 'increment', 'stop_at_three']
+    assert all(s.parent.span_id == loop_span.context.span_id for s in child_spans)
     assert loop_span.attributes.get('lazyllm.loop.actual_iterations') == 3
 
 

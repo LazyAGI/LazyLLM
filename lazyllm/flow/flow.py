@@ -113,6 +113,11 @@ class FlowBase(SessionConfigableBase, metaclass=_MetaBind):
             return _FuncWrap(v)
         return v
 
+    def _wrap_control_callback(self, v):
+        if v is None or not callable(v):
+            return v
+        return self._make_step_item(v)
+
     def _add(self, k, v):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
         item = self._make_step_item(v)
@@ -374,7 +379,7 @@ class Pipeline(LazyLLMFlowsBase):
 
     @_stop_condition.setter
     def _stop_condition(self, cond):
-        self._stop_condition_var = cond
+        self._stop_condition_var = self._wrap_control_callback(cond)
 
     @property
     def _judge_on_full_input(self):
@@ -627,6 +632,7 @@ class Switch(LazyLLMFlowsBase):
         else:
             self.conds, items = list(args[0::2]), args[1::2]
         super().__init__(*items, post_action=post_action)
+        self.conds = [self._wrap_control_callback(cond) for cond in self.conds]
         self._judge_on_full_input = judge_on_full_input
         self._set_conversion(conversion)
 
@@ -649,7 +655,8 @@ class Switch(LazyLLMFlowsBase):
                 alias = self._item_names[idx] if self._item_names and idx < len(self._item_names) else None
                 actual = getattr(self._items[idx], '__name__', None) or type(self._items[idx]).__name__
                 branch = f'{alias} -> {actual}' if alias and alias != actual else actual
-                matched = {'index': idx, 'condition': str(cond), 'branch': branch}
+                cond_repr = cond._f if type.__instancecheck__(_FuncWrap, cond) else cond
+                matched = {'index': idx, 'condition': str(cond_repr), 'branch': branch}
                 push_switch_matched_attrs(matched)
                 return self.invoke(self._items[idx], __input, **kw)
 
@@ -672,7 +679,7 @@ class Switch(LazyLLMFlowsBase):
     def case(self): return Switch.Case(self)
 
     def _add_case(self, case, func):
-        self.conds.append(case)
+        self.conds.append(self._wrap_control_callback(case))
         self._add(None, func)
 
 
