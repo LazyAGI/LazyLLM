@@ -265,7 +265,7 @@ class WriterMultimodalTools(WriterToolBase):
                 resource,
                 suffix_hint=Path(parsed.path).suffix,
             )
-        if parsed.scheme not in {'', 'file'}:
+        if parsed.scheme not in {'', 'file'} and not os.path.isabs(uri):
             raise ValueError('image inputs must use a local file path or an HTTP(S) URL.')
         source = Path(unquote(parsed.path) if parsed.scheme == 'file' else uri).expanduser().absolute()
         if not source.is_file():
