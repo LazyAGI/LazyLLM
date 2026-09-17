@@ -328,7 +328,7 @@ prepared = manager.prepare_tool_calls(calls, authorization_policy=lambda call: A
 result = manager.execute_prepared(prepared, selected_indices=(0,), approved_indices=(0,))
 ```
 
-选择调用不代表批准。未批准的 ASK 不能执行，准备失败保留原错误。授权决定在 prepare 固定。`require_host_file_access=True` 仍用于显式声明完整性检查。
+选择调用不代表批准。未批准的 ASK 不能执行，准备失败保留原错误。授权决定在 prepare 固定。
 
 完整代码如下：
 ```python

@@ -1205,19 +1205,8 @@ class ToolManager(ModuleBase):
             raise min(errors, key=lambda item: item[0])[1]
         return lazyllm.package(ordered_results)
 
-    def prepare_tool_calls(self, tools, allowed_tool_names=None, *,
-                           require_host_file_access=False, working_directory=None,
-                           require_host_file=None,
+    def prepare_tool_calls(self, tools, allowed_tool_names=None, *, working_directory=None,
                            authorization_policy=None):
-        if require_host_file is not None:
-            require_host_file_access = require_host_file
-        if require_host_file_access:
-            exposed = self._tool_call if allowed_tool_names is None else allowed_tool_names
-            undeclared = sorted(name for name in exposed if name in self._tool_call
-                                and self._tool_call[name].runtime_metadata.host_file_access
-                                is HostFileAccess.UNDECLARED)
-            if undeclared:
-                raise ValueError(f'Tools have undeclared host file access: {undeclared}')
         if working_directory is not None and not os.path.isabs(working_directory):
             raise ValueError('working_directory must be absolute')
         token = _HOST_WORKING_DIRECTORY.set(working_directory)
@@ -1256,10 +1245,6 @@ class ToolManager(ModuleBase):
                              if item.authorization is AuthorizationDecision.ALLOW) + approved
         else:
             selected = tuple(selected_indices)
-            if any(type(index) is not int or index < 0 or index >= len(prepared) for index in selected):
-                raise IndexError('selected prepared-call index is out of range')
-            if len(set(selected)) != len(selected):
-                raise ValueError('selected prepared-call indices must be unique')
         return self._execute_prepared_batch(
             prepared, selected, include_skipped=True, execution_context=execution_context, approved_indices=approved)
 
@@ -1326,14 +1311,6 @@ class ToolManager(ModuleBase):
         else:
             snapshots = tuple(copy.deepcopy(item.prepared) for item in prepared._invocations)
             selected = tuple(dispatch_selector(snapshots)) if len(prepared) else ()
-            if any(type(index) is not int or index < 0 or index >= len(prepared) for index in selected):
-                raise IndexError('selected prepared-call index is out of range')
-            if len(set(selected)) != len(selected):
-                raise ValueError('selected prepared-call indices must be unique')
-            denied = [index for index in selected
-                      if prepared[index].ready and prepared[index].authorization is AuthorizationDecision.DENY]
-            if denied:
-                raise ValueError('DENY prepared calls cannot be selected for execution')
             batch = self._execute_prepared_batch(prepared, selected, include_skipped=False)
         return replace(batch, duration_ms=round(max(0.0, (time.monotonic() - started) * 1000.0)))
 

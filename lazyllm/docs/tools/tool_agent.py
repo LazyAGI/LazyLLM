@@ -264,7 +264,6 @@ add_chinese_doc('ToolManager.prepare_tool_calls', '''\
 复用此批次。调用方完成整个批次的权限判断后，调用 execute_prepared 执行获准项。
 working_directory 可为 host_file resolver 提供请求级绝对工作目录，不改变进程 cwd。
 authorization_policy=None 时准备成功即 ALLOW；调用方可传入自定义策略，LazyLLM 不提供内置策略。决策在 prepare 固定。
-require_host_file_access=True 会检查本轮 exposed tools，存在 UNDECLARED 则拒绝准备，适合注册契约测试。
 传入 allowed_tool_names 可限制本轮可见工具。文件 resolver 失败产生 PREPARATION_FAILED，不会降级为可执行调用。
 ''')
 
@@ -275,9 +274,7 @@ PreparedToolBatch while application authorization is pending and pass that same 
 working_directory optionally supplies an absolute request-local base to host_file resolvers; it never changes process cwd.
 With authorization_policy=None, every ready call is ALLOW. Callers may supply a custom policy; LazyLLM has no built-in policy.
 Decisions are fixed during preparation.
-Set require_host_file_access=True to reject UNDECLARED tools in the exposed set (optionally limited by
-allowed_tool_names). This also supports registration contract tests with an empty call list. File-resolution
-errors produce PREPARATION_FAILED calls; they never fall back to executable exclusive calls.
+File-resolution errors produce PREPARATION_FAILED calls; they never fall back to executable exclusive calls.
 ''')
 
 add_chinese_doc('ToolManager.execute_prepared', '''\
@@ -376,8 +373,7 @@ add_example('ToolManager.prepare_tool_calls', '''\
 ...     return Path(path).read_text()
 >>> manager = ToolManager([read_text])
 >>> prepared = manager.prepare_tool_calls(
-...     {'function': {'name': 'read_text', 'arguments': {'path': 'notes.txt'}}},
-...     require_host_file_access=True)
+...     {'function': {'name': 'read_text', 'arguments': {'path': 'notes.txt'}}})
 >>> # Inspect all calls, wait for application approvals, and then execute the same batch.
 >>> # This read-only call is ALLOW without an application policy.
 >>> result = manager.execute_prepared(prepared)

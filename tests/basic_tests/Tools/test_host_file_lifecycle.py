@@ -90,7 +90,7 @@ def test_prepare_resolves_once_then_executes_original_arguments(tmp_path, applic
 
     manager = ToolManager([tool])
     original = call(path='result.txt', count='2')
-    prepared = manager.prepare_tool_calls(original, require_host_file_access=True)
+    prepared = manager.prepare_tool_calls(original)
     assert events == [('resolve', 2)] and not target.exists()
     assert prepared[0].host_file_access is HostFileAccess.DECLARED
     assert prepared[0].host_files == (HostFileIntent(str(target), 'write'),)
@@ -151,22 +151,6 @@ def test_invalid_schema_never_reaches_host_resolver():
 
     prepared = ToolManager([tool]).prepare_tool_calls(call(count='not-an-int'))
     assert not prepared[0].ready and resolved == []
-
-
-def test_strict_preparation_checks_all_exposed_tools():
-    def tool(value: str):
-        '''Return a value.
-
-        Args:
-            value: Input value.
-        '''
-        return value
-
-    manager = ToolManager([tool])
-    with pytest.raises(ValueError, match='tool'):
-        manager.prepare_tool_calls([], require_host_file_access=True)
-    assert manager.execute_with_records(call(value='legacy')).results[0] == {'ok': True, 'value': 'legacy'}
-    assert len(manager.prepare_tool_calls([], allowed_tool_names=set(), require_host_file_access=True)) == 0
 
 
 def test_nested_views_are_read_only_and_results_do_not_mutate_batch():
@@ -310,7 +294,6 @@ def test_skill_tools_have_explicit_capabilities(tmp_path):
         'read_reference': HostFileAccess.NONE,
         'run_script': HostFileAccess.OPAQUE,
     }
-    manager.prepare_tool_calls([], require_host_file_access=True)
 
 
 def test_validation_cannot_change_a_resolver_approved_path(tmp_path):
@@ -452,7 +435,7 @@ def test_builtin_paths_use_request_working_directory(tmp_path):
 
     manager = ToolManager([read, write, remove, shell, todo_write])
     batch = manager.prepare_tool_calls(
-        call('read', path='notes.txt'), require_host_file_access=True, working_directory=str(tmp_path))
+        call('read', path='notes.txt'), working_directory=str(tmp_path))
     assert batch[0].validated_arguments['path'] == str(tmp_path / 'notes.txt')
     assert batch[0].host_files == (HostFileIntent(str(tmp_path / 'notes.txt'), 'read'),)
 
