@@ -814,6 +814,56 @@ class ToolManager(ModuleBase):
         self._format_tools()
         self._tools_desc = self._transform_to_openai_function()
         self._sandbox = sandbox
+        self.retrieval = None
+        self.context_validator = None
+
+    def atomic_tool_catalog(self):
+        '''Describe allowed leaves with their final public names, independent of exposure.'''
+        result = {}
+
+        def visit(item, groups=(), group_description='', schema=None):
+            if isinstance(item, SkipMixin) and item.should_skip():
+                return
+            if isinstance(item, ToolGroupWrapper):
+                visit(item._inner, groups, group_description)
+            elif isinstance(item, ToolGroup):
+                children = list(zip(item._children, item._expanded_descs))
+                if item._pick_first_valid:
+                    children = next(([pair] for pair in children if _child_is_valid(pair[0])), [])
+                for child, description in children:
+                    visit(child, (*groups, item._name), item._desc,
+                          description if isinstance(description, dict) else None)
+            elif isinstance(item, ModuleTool):
+                description = schema or _build_tool_desc(item)
+                result[description['function']['name']] = {
+                    'schema': description, 'groups': groups, 'group_description': group_description,
+                    'source': item._runtime_metadata.tool_source,
+                }
+        for item in self._tools:
+            visit(item)
+        return result
+
+    def enable_tool_retrieval(self, **options):
+        from .tool_retrieval import ToolRetrieval
+        self.retrieval = ToolRetrieval(self, **options)
+        controls = [_build_tool_from_element(tool) for tool in self.retrieval.tools()]
+        self._tools.extend(controls)
+        # Keep all leaf callables registered, including temporarily unavailable providers.
+
+        def gateways(item):
+            if isinstance(item, ToolGroupWrapper):
+                return gateways(item._inner)
+            if not isinstance(item, ToolGroup):
+                return set()
+            names = {item._gateway_tool.name} if item._gateway_tool else set()
+            return names | {name for child in item._children for name in gateways(child)}
+        for gateway_name in {name for item in self._tools for name in gateways(item)}:
+            self._tool_call.pop(gateway_name, None)
+        for tool in controls:
+            if tool.name in self._tool_call:
+                raise ValueError(f'Duplicate tool name [{tool.name}]')
+            self._tool_call[tool.name] = tool
+        return self.retrieval
 
     @property
     def all_tools(self) -> List[ModuleTool]:
@@ -821,6 +871,8 @@ class ToolManager(ModuleBase):
 
     @property
     def tools_description(self) -> List[Dict]:
+        if self.retrieval is not None:
+            return self.retrieval.descriptions()
         try:
             workspace = lazyllm_locals['_lazyllm_agent'].get('workspace', {})
         except Exception:
@@ -852,6 +904,8 @@ class ToolManager(ModuleBase):
 
     def sync_active_groups(self, input: Any = None, history: Optional[List[Dict[str, Any]]] = None) -> Set[str]:  # noqa C901
         '''Activate lazy Toolkits from registered input rules and structured gateway calls in history.'''
+        if self.retrieval is not None:
+            return set()
         try:
             workspace = lazyllm_locals['_lazyllm_agent'].setdefault('workspace', {})
         except Exception:
@@ -995,6 +1049,8 @@ class ToolManager(ModuleBase):
         if name not in visible_names:
             suggested_tool = _closest_tool_name(name, visible_names)
             message = f'Tool [{name}] was not exposed in this turn.'
+            if self.retrieval is not None:
+                message += ' Use search_tools/load_tools and wait for the next model round before calling it.'
             if suggested_tool:
                 message += f' Did you mean [{suggested_tool}]? Call it explicitly.'
             failure = tool_failure(message)

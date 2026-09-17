@@ -147,6 +147,7 @@ class FunctionCall(ModuleBase):
             locals[_ROUND_TOOLS_KEY] = snapshots
         if refresh or self._module_id not in snapshots:
             snapshots[self._module_id] = tuple(self._tools_manager.tools_description)
+            self._observe_runtime('tools_ready', tool_definitions=list(snapshots[self._module_id]))
         return list(snapshots[self._module_id])
 
     def _get_visible_tool_names(self):
@@ -265,6 +266,13 @@ class FunctionCall(ModuleBase):
         self._observe_runtime('runtime_context_delivered', context_count=1)
         return [{'role': 'user', 'content': content}]
 
+    def _validate_context(self, history, current_input=None):
+        validator = getattr(self._tools_manager, 'context_validator', None)
+        if validator is not None:
+            prefix = _model_facing_prefix(self._system_prompt, self._tools_manager, self._skill_manager)
+            prefix['tool_definitions'] = self._get_current_tools()
+            validator(prefix, history, current_input)
+
     def _notify_history_ready(
         self,
         workspace: Dict[str, Any],
@@ -331,6 +339,7 @@ class FunctionCall(ModuleBase):
             locals['chat_history'][self._llm._module_id] = compacted_prior
         else:
             locals['chat_history'].pop(self._llm._module_id, None)
+        self._validate_context(compacted_prior + compacted_current)
         self._notify_history_ready(workspace, current_round, compacted_prior + compacted_current)
         return {'input': compacted_current}
 
@@ -372,6 +381,7 @@ class FunctionCall(ModuleBase):
             locals['chat_history'][self._llm._module_id] = compacted_prior
         else:
             locals['chat_history'].pop(self._llm._module_id, None)
+        self._validate_context(compacted_prior, current_input)
         self._notify_history_ready(workspace, current_round, compacted_prior)
         return input
 
