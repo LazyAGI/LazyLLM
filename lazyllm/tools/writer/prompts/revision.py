@@ -1,4 +1,12 @@
 # flake8: noqa
+RETRY_MARKDOWN_IMAGE_REFERENCES_PROMPT = '''
+The previous replacements failed image validation: {error}
+Regenerate the complete StringReplaceSet against the original document and plan.
+Preserve existing images. Every new image must use ![caption](media-placeholder://<need_id>)
+with the exact visual_instruction.need_id from the plan. Include every required image.
+Do not copy invented paths from the plan's prose. Image acquisition is already handled separately.
+'''
+
 LOCATE_REVISION_TARGET_PROMPT = '''You are a revision target locator. Identify the existing document content that participates in the requested revision. The document may be represented as Writer IR or Markdown.
 
 Output semantics:

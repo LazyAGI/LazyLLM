@@ -762,6 +762,46 @@ def test_markdown_replace_rejects_partial_image_old_string():
         WriterRevisionTools()._validate_string_replace_images(replace_set, markdown)
 
 
+@pytest.mark.parametrize('bad_image', [
+    '![diagram](docs/assets/invented.png)',
+    '<img src="docs/assets/invented.png">',
+    '![diagram][new]\n\n[new]: docs/assets/invented.png',
+    '![diagram](media-placeholder://wrong-need)',
+    '',
+])
+def test_markdown_revision_retries_invalid_new_images_once(tmp_path, bad_image):
+    ref = ContentRef(document_root=True)
+    plan = ModifyPlan(scope='document', instructions=[ModifyInstruction(
+        instruction_id='new-diagram', content_ref=ref, modify_type='create', position='after',
+        instruction='Add section and image.', visual_instruction=VisualInstruction(
+            need_id='new-diagram', content_ref=ref, visual_type='diagram', purpose='Architecture', required=True,
+        ),
+    )])
+    source = '# Title\n\nKeep ![old](existing.png)\n\nEnd.'
+
+    def result(image):
+        return StringReplaceSet(replacements=[StringReplace(
+            old_string='End.', new_string='End.\n\n## New section\n\n' + image,
+        )])
+
+    valid = result('![diagram](media-placeholder://new-diagram)')
+    tool = WriterRevisionTools(llm=MagicMock(), artifact_store=str(tmp_path))
+    with patch.object(tool, '_call_llm_structured', side_effect=[result(bad_image), valid]) as model:
+        tool.generate_string_replace_set(source, plan, WritingContext(context_id='image-check'))
+        assert model.call_count == 2
+        assert 'Invalid revision images' in model.call_args.args[0]
+    with patch.object(tool, '_call_llm_structured', return_value=result(bad_image)) as model:
+        with pytest.raises(ValueError, match='Invalid revision images'):
+            tool.generate_string_replace_set(source, plan, WritingContext(context_id='image-check'))
+        assert model.call_count == 2
+
+
+def test_markdown_image_sources_ignore_code_and_parse_reference_images():
+    from lazyllm.tools.writer.utils.serialization import markdown_image_sources
+    source = '![real][ref]\n\n[ref]: images/a(b).png\n\n`![code](fake.png)`\n\n```md\n![code](fake2.png)\n```'
+    assert markdown_image_sources(source) == {'images/a(b).png'}
+
+
 def test_apply_string_replace_updates_markdown_section():
     markdown = '# 第一章\n\n原始正文\n\n# 第二章\n\n保持不变'
     replace_set = StringReplaceSet(replacements=[StringReplace(

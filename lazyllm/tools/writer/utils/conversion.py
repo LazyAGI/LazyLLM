@@ -19,6 +19,7 @@ from ..numbering import (
 from .pandoc import markdown_to_latex
 from .artifact import deserialize_artifact_json, serialize_artifact_json
 from .markdown_inline import MarkdownInlineContent, parse_markdown_inline
+from .markdown_ids import markdown_anchor_ids, next_markdown_node_id
 from .tables import table_grid
 
 
@@ -110,14 +111,18 @@ class _MarkdownParser:
         self.parser = mistune.create_markdown(
             renderer='ast', plugins=['table', 'strikethrough', 'math'],
         )
+        self.tokens = self.parser(self.parser_markdown)
+        self.reserved_ids = markdown_anchor_ids(self.tokens)
 
     def next_id(self, block_type: str) -> str:
         if self.pending_anchor_ids:
             candidate = self.pending_anchor_ids.pop(0)
         else:
-            self.sequence += 1
             safe_type = re.sub(r'[^a-zA-Z0-9_-]+', '-', block_type).strip('-') or 'block'
-            candidate = f'{self.document_id}-{safe_type}-{self.sequence}'
+            candidate, self.sequence = next_markdown_node_id(
+                self.document_id, safe_type, self.sequence, self.reserved_ids, self.used_ids,
+            )
+            return candidate
         if candidate in self.used_ids:
             raise ValueError(f'duplicate Markdown anchor target: {candidate!r}')
         self.used_ids.add(candidate)
@@ -372,7 +377,7 @@ class _MarkdownParser:
         return roots
 
     def parse(self) -> WriterDocument:
-        blocks = self.heading_tree(self.parse_sequence(self.parser(self.parser_markdown)))
+        blocks = self.heading_tree(self.parse_sequence(self.tokens))
         document = WriterDocument(
             document_id=self.document_id,
             stage='final',

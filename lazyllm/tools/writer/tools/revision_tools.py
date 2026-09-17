@@ -51,6 +51,7 @@ from ..prompts.revision import (
     LOCATE_REVISION_TARGET_MARKDOWN_PROMPT,
     RETRY_LOCATE_REVISION_TARGET_MARKDOWN_PROMPT,
     RETRY_MODIFY_PLAN_MARKDOWN_PROMPT,
+    RETRY_MARKDOWN_IMAGE_REFERENCES_PROMPT,
 )
 from ..utils import (
     MarkdownSelectionError,
@@ -60,7 +61,7 @@ from ..utils import (
     validate_markdown_paragraph,
     validate_writer_tables,
 )
-from ..utils.serialization import markdown_section_range
+from ..utils.serialization import markdown_image_sources, markdown_section_range
 
 
 def apply_patch_to_ir(
@@ -585,7 +586,13 @@ locator kind per reference. Return valid JSON only.
             context_json=to_prompt_json(context),
         )
         generated = self._call_llm_structured(prompt, StringReplaceSet)
-        self._validate_string_replace_images(generated, source)
+        try:
+            self._validate_string_replace_images(generated, source, plan)
+        except ValueError as exc:
+            generated = self._call_llm_structured(
+                prompt + RETRY_MARKDOWN_IMAGE_REFERENCES_PROMPT.format(error=str(exc)), StringReplaceSet,
+            )
+            self._validate_string_replace_images(generated, source, plan)
         return generated
 
     def _locate_markdown_instruction(self, source: str, instruction: MarkdownModifyInstruction) -> str:
@@ -667,7 +674,7 @@ locator kind per reference. Return valid JSON only.
                 ))
             for index, replacement in enumerate(result.replacements, start=1):
                 replacement.replacement_id = f'replace-{index}'
-            self._validate_string_replace_images(result, source)
+            self._validate_string_replace_images(result, source, plan)
             if self._markdown_replacements_are_independent(source, result):
                 return result
         except ValueError:
@@ -696,6 +703,7 @@ locator kind per reference. Return valid JSON only.
         self,
         replace_set: StringReplaceSet,
         source: str,
+        plan: Optional[MarkdownModifyPlan] = None,
     ) -> None:
         image_line = re.compile(r'!\[[^\]]*\]\([^)]*\)')
         for replacement in replace_set.replacements:
@@ -727,6 +735,21 @@ locator kind per reference. Return valid JSON only.
             raise ValueError(
                 f'Image old_string is absent in section for {replacement.replacement_id!r}.'
             )
+
+        if plan is not None:
+            needs = {instruction.visual_instruction.need_id: instruction.visual_instruction
+                     for instruction in plan.instructions if instruction.visual_instruction is not None}
+            placeholders = {f'media-placeholder://{need_id}' for need_id in needs}
+            existing = markdown_image_sources(source)
+            revised = source
+            for replacement in replace_set.replacements:
+                revised = self._apply_markdown_replacement(revised, replacement)
+            images = markdown_image_sources(revised)
+            unknown = images - existing - placeholders
+            missing = {f'media-placeholder://{need_id}' for need_id, visual in needs.items()
+                       if visual.required} - images
+            if unknown or missing:
+                raise ValueError(f'Invalid revision images: unknown={sorted(unknown)}, missing={sorted(missing)}')
 
     def _compile_generated_revision(
         self,

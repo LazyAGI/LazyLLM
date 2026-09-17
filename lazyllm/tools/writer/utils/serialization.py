@@ -23,6 +23,7 @@ from ..numbering import (
     strip_markdown_heading_numbering_config,
 )
 from .markdown_inline import parse_markdown_inline
+from .markdown_ids import markdown_anchor_ids, next_markdown_node_id
 
 
 class MarkdownSelectionError(ValueError):
@@ -136,6 +137,19 @@ def validate_markdown_paragraph(markdown: str) -> str:
             'The generated Markdown must contain exactly one paragraph.',
         )
     return candidate
+
+
+def markdown_image_sources(markdown: str) -> set[str]:
+    sources: set[str] = set()
+    pending = list(mistune.create_markdown(renderer='ast', plugins=['table'])(markdown))
+    while pending:
+        token = pending.pop()
+        if token.get('type') == 'image':
+            sources.add(str((token.get('attrs') or {}).get('url') or ''))
+        elif token.get('type') in {'block_html', 'inline_html'}:
+            sources.update(image.source for image in find_markdown_images(token.get('raw') or ''))
+        pending.extend(token.get('children') or [])
+    return sources
 
 
 def _markdown_source_blocks(markdown: str) -> List[str]:
@@ -431,6 +445,8 @@ def parse_document_markdown(  # noqa: C901
             if block.type == 'heading' and block.content.strip():
                 outline_ids[block.content.strip()].append(block.node_id)
 
+    anchor_ids = markdown_anchor_ids(tokens)
+    reserved_ids = anchor_ids | {block.node_id for block in outline.iter_blocks()} if outline else anchor_ids
     used_ids = set()
     sequence = 0
     pending_anchor_ids: List[tuple[str, Dict[str, Any]]] = []
@@ -441,15 +457,10 @@ def parse_document_markdown(  # noqa: C901
             candidates = outline_ids.get(title.strip()) or []
             while candidates:
                 candidate = candidates.pop(0)
-                if candidate not in used_ids:
+                if candidate not in used_ids and candidate not in anchor_ids:
                     used_ids.add(candidate)
                     return candidate
-        sequence += 1
-        candidate = f'{document_id}-{kind}-{sequence}'
-        while candidate in used_ids:
-            sequence += 1
-            candidate = f'{document_id}-{kind}-{sequence}'
-        used_ids.add(candidate)
+        candidate, sequence = next_markdown_node_id(document_id, kind, sequence, reserved_ids, used_ids)
         return candidate
 
     def normalize_anchor_target(raw: str) -> str:
