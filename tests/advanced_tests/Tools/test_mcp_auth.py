@@ -1,10 +1,14 @@
 import asyncio
+import sys
 from contextlib import asynccontextmanager
 
 import httpx
 import pytest
 
 from lazyllm.tools.mcp.client import MCPClient
+
+if sys.version_info < (3, 11):
+    from exceptiongroup import ExceptionGroup
 
 
 def unauthorized():
