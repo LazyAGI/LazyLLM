@@ -12,10 +12,11 @@ from .tool_runtime import _set_tool_runtime_metadata
 
 class ToolRetrieval:
     def __init__(self, manager, *, required, groups, estimate_tokens, threshold_tokens,
-                 state_store=None, skill_dependencies=None):
+                 state_store=None, skill_dependencies=None, group_descriptions=None):
         self.manager = manager
         self.required = tuple(required)
         self.groups = set(groups)
+        self.group_descriptions = dict(group_descriptions or {})
         self.estimate_tokens = estimate_tokens
         self.threshold_tokens = threshold_tokens
         self.state_store = state_store
@@ -24,6 +25,7 @@ class ToolRetrieval:
         self._index_key = None
         self._index = None
         self._vocab = None
+        self._member_indexes = {}
 
     def catalog(self):
         return self.manager.atomic_tool_catalog()
@@ -105,48 +107,97 @@ class ToolRetrieval:
             parts.extend(ToolRetrieval._parameter_text(child) for child in schema)
         return ' '.join(parts)
 
+    @staticmethod
+    def _words(name):
+        return re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', name).replace('_', ' ')
+
+    @classmethod
+    def _member_text(cls, name, entry):
+        function = entry['schema']['function']
+        return ' '.join([name, cls._words(name), function.get('description') or '',
+                         cls._parameter_text(function.get('parameters', {}))])
+
+    @staticmethod
+    def _build_index(texts):
+        from lazyllm.thirdparty import bm25s
+        tokens = bm25s.tokenize(texts, stopwords='en', show_progress=False)
+        index = bm25s.BM25()
+        index.index(tokens, show_progress=False)
+        return index, tokens.vocab
+
+    @staticmethod
+    def _scores(index, vocab, query):
+        from lazyllm.thirdparty import bm25s
+        tokens = bm25s.tokenize(query.replace('_', ' '), stopwords='en', show_progress=False)
+        ids = [vocab[word] for word in tokens.vocab if word in vocab]
+        return index.get_scores_from_ids(ids) if ids else []
+
+    @staticmethod
+    def _summary(description):
+        return docstring_parser.parse(description or '').short_description or description or ''
+
+    def _candidates(self, catalog):
+        candidates = {}
+        for name, entry in catalog.items():
+            group = next((g for g in reversed(entry['groups']) if g in self.groups), None)
+            candidate = group or name
+            if candidate not in candidates:
+                description = (entry['group_descriptions'][group] if group else
+                               entry['schema']['function'].get('description') or '')
+                candidates[candidate] = {
+                    'type': 'group' if group else 'tool', 'description': description,
+                    'members': [], 'texts': [candidate, self._words(candidate), description] if group else [],
+                }
+            item = candidates[candidate]
+            item['members'].append(name)
+            item['texts'].append(' '.join([self._member_text(name, entry), entry['source'], *entry['groups']]))
+        return candidates
+
+    def _matched_members(self, name, members, catalog, query, loaded):
+        rows = [(member, self._member_text(member, catalog[member])) for member in members if member not in loaded]
+        key = tuple(rows)
+        cached = self._member_indexes.get(name)
+        if cached is None or cached[0] != key:
+            index, vocab = self._build_index([text for _, text in rows])
+            cached = self._member_indexes[name] = (key, index, vocab)
+        scores = self._scores(cached[1], cached[2], query)
+        ranked = sorted(((member, float(score)) for (member, _), score in zip(rows, scores) if score > 0),
+                        key=lambda item: (-item[1], item[0]))[:3]
+        return [{'name': member, 'description': self._summary(catalog[member]['schema']['function'].get('description'))}
+                for member, _ in ranked]
+
     def search(self, query, limit, detail):
         if not query.strip() or not 1 <= limit <= 5 or detail not in ('short', 'long'):
             raise ToolExecutionError('Use a non-empty query, limit 1..5, and detail short or long.')
-        from lazyllm.thirdparty import bm25s
         with self._lock:
             catalog = self.catalog()
             state, _ = self._reconcile(self._read(), catalog)
-            names = list(catalog)
-            texts = []
-            for name, entry in catalog.items():
-                function = entry['schema']['function']
-                words = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', name).replace('_', ' ')
-                texts.append(' '.join([name, words, entry['source'], *entry['groups'],
-                                       function.get('description') or '',
-                                       self._parameter_text(function.get('parameters', {}))]))
+            loaded = set(state['loaded'])
+            candidates = self._candidates(catalog)
+            if not candidates:
+                return []
+            names = list(candidates)
+            texts = [' '.join(item['texts']) for item in candidates.values()]
             key = tuple(zip(names, texts))
             if key != self._index_key:
-                tokens = bm25s.tokenize(texts, stopwords='en', show_progress=False)
-                self._index = bm25s.BM25()
-                self._index.index(tokens, show_progress=False)
-                self._vocab = tokens.vocab
+                self._index, self._vocab = self._build_index(texts)
                 self._index_key = key
-            query_tokens = bm25s.tokenize(query.replace('_', ' '), stopwords='en', show_progress=False)
-            ids = [self._vocab[word] for word in query_tokens.vocab if word in self._vocab]
-            if not ids:
-                return []
-            scores = self._index.get_scores_from_ids(ids)
-            candidates = {}
-            for name, score in zip(names, scores):
-                if name in state['loaded'] or score <= 0:
-                    continue
-                entry = catalog[name]
-                group = next((g for g in reversed(entry['groups']) if g in self.groups), None)
-                candidate = group or name
-                description = entry['group_description'] if group else entry['schema']['function']['description']
-                if candidate not in candidates or score > candidates[candidate][0]:
-                    candidates[candidate] = (float(score), {
-                        'name': candidate, 'type': 'group' if group else 'tool',
-                        'description': description if detail == 'long' else (
-                            docstring_parser.parse(description or '').short_description or description),
-                    })
-            return [value[1] for _, value in sorted(candidates.items(), key=lambda item: (-item[1][0], item[0]))[:limit]]
+                self._member_indexes.clear()
+            scores = self._scores(self._index, self._vocab, query)
+            ranked = sorted(((name, float(score)) for name, score in zip(names, scores)
+                             if score > 0 and not loaded.issuperset(candidates[name]['members'])),
+                            key=lambda item: (-item[1], item[0]))[:limit]
+            results = []
+            for name, _ in ranked:
+                item = candidates[name]
+                description = (self.group_descriptions.get(name, item['description'])
+                               if item['type'] == 'group' else item['description'])
+                result = {'name': name, 'type': item['type'],
+                          'description': description if detail == 'long' else self._summary(description)}
+                if item['type'] == 'group':
+                    result['matched_members'] = self._matched_members(name, item['members'], catalog, query, loaded)
+                results.append(result)
+            return results
 
     def load(self, tool_names, unload_tool_names):
         with self._lock:
@@ -198,7 +249,10 @@ class ToolRetrieval:
 
     def tools(self):
         def search_tools(query: str, limit: int = 5, detail: Literal['short', 'long'] = 'short') -> list:
-            '''Find allowed tools without loading their schemas. Prefer English capability keywords.
+            '''Find allowed tools or groups without loading schemas. Prefer English capability keywords.
+
+            Group member summaries explain matching capabilities, not every member. Load the group
+            to expose complete member schemas next round; no get_*_methods activation is needed.
 
             Args:
                 query (str): English tool capability keywords, not a business data query.

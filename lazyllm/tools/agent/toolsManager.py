@@ -821,22 +821,24 @@ class ToolManager(ModuleBase):
         '''Describe allowed leaves with their final public names, independent of exposure.'''
         result = {}
 
-        def visit(item, groups=(), group_description='', schema=None):
+        def visit(item, groups=(), group_description='', schema=None, group_descriptions=None):
             if isinstance(item, SkipMixin) and item.should_skip():
                 return
             if isinstance(item, ToolGroupWrapper):
-                visit(item._inner, groups, group_description)
+                visit(item._inner, groups, group_description, group_descriptions=group_descriptions)
             elif isinstance(item, ToolGroup):
                 children = list(zip(item._children, item._expanded_descs))
                 if item._pick_first_valid:
                     children = next(([pair] for pair in children if _child_is_valid(pair[0])), [])
                 for child, description in children:
                     visit(child, (*groups, item._name), item._desc,
-                          description if isinstance(description, dict) else None)
+                          description if isinstance(description, dict) else None,
+                          {**(group_descriptions or {}), item._name: item._desc})
             elif isinstance(item, ModuleTool):
                 description = schema or _build_tool_desc(item)
                 result[description['function']['name']] = {
                     'schema': description, 'groups': groups, 'group_description': group_description,
+                    'group_descriptions': group_descriptions or {},
                     'source': item._runtime_metadata.tool_source,
                 }
         for item in self._tools:

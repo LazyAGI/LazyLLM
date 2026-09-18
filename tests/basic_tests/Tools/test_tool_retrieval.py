@@ -123,10 +123,81 @@ def test_group_deduplication_happens_before_top_k():
     tool = ToolManager([{'name': name, 'desc': 'Search email messages.', 'prefix': True,
                          'tools': [find_mail, read_mail]} for name in sorted(groups)])
     retrieval = tool.enable_tool_retrieval(required=[], groups=groups,
-                                          estimate_tokens=lambda schemas: len(schemas), threshold_tokens=100)
+                                           estimate_tokens=lambda schemas: len(schemas), threshold_tokens=100)
     found = retrieval.search('email', 5, 'short')
     assert len(found) == 5
     assert len({item['name'] for item in found}) == 5
     assert all(item['type'] == 'group' for item in found)
     assert found == retrieval.search('email', 5, 'short')
     assert retrieval.search('unmatchablezz', 5, 'short') == []
+
+
+def test_group_document_and_member_explanations():
+    tool = ToolManager([{'name': 'Mail', 'desc': 'Correspondence orchestration.',
+                         'tools': [find_mail, read_mail]}])
+    retrieval = tool.enable_tool_retrieval(
+        required=[], groups={'Mail'}, group_descriptions={'Mail': 'Manage your inbox.'},
+        estimate_tokens=len, threshold_tokens=100)
+    result = retrieval.search('correspondence', 5, 'long')
+    assert result == [{'name': 'Mail', 'type': 'group', 'description': 'Manage your inbox.',
+                       'matched_members': []}]
+    result = retrieval.search('subject', 5, 'short')[0]
+    assert result['name'] == 'Mail'
+    assert result['matched_members'] == [{'name': 'find_mail',
+                                         'description': 'Search email messages by subject.'}]
+    retrieval.load(['find_mail'], [])
+    assert retrieval.search('subject', 5, 'short')[0]['matched_members'] == []
+    retrieval.load(['Mail'], [])
+    assert retrieval.search('correspondence', 5, 'short') == []
+
+
+def test_nested_group_description_and_provider_refresh():
+    available = [True]
+    tool = ToolManager([{'name': 'Business', 'desc': 'Correspondence orchestration.',
+                         'pick_first_valid': True, 'tools': [
+                             ({'name': 'First', 'desc': 'First supplier.', 'tools': [find_mail]},
+                              lambda: available[0]),
+                             {'name': 'Second', 'desc': 'Second supplier.', 'tools': [read_mail]},
+                         ]}])
+    retrieval = tool.enable_tool_retrieval(required=[], groups={'Business'},
+                                           estimate_tokens=len, threshold_tokens=100)
+    assert retrieval.search('correspondence', 5, 'long')[0]['description'] == 'Correspondence orchestration.'
+    assert retrieval.search('subject', 5, 'short')[0]['matched_members'][0]['name'] == 'find_mail'
+    available[0] = False
+    assert retrieval.search('subject', 5, 'short') == []
+    assert retrieval.search('body', 5, 'short')[0]['matched_members'][0]['name'] == 'read_mail'
+    retrieval.load(['Business'], [])
+    assert {d['function']['name'] for d in tool.tools_description} == {'search_tools', 'load_tools', 'read_mail'}
+
+
+def test_member_summary_cap_and_partial_load_preserve_group_rank():
+    def member(name):
+        def search(query: str) -> str:
+            '''Search messages.
+
+            Args:
+                query (str): Keywords to search.
+            '''
+            return query
+        search.__name__ = name
+        return search
+    tool = ToolManager([{'name': name, 'desc': 'Correspondence service.',
+                         'tools': [member(f'{name}_{i}') for i in range(4)]} for name in ('A', 'B')])
+    retrieval = tool.enable_tool_retrieval(required=[], groups={'A', 'B'}, estimate_tokens=len, threshold_tokens=100)
+    before = retrieval.search('messages', 5, 'short')
+    assert [r['name'] for r in before] == ['A', 'B']
+    assert [r['name'] for r in before[0]['matched_members']] == ['A_0', 'A_1', 'A_2']
+    retrieval.load(['A_0'], [])
+    after = retrieval.search('messages', 5, 'short')
+    assert [r['name'] for r in after] == ['A', 'B']
+    assert [r['name'] for r in after[0]['matched_members']] == ['A_1', 'A_2', 'A_3']
+
+
+def test_disabled_retrieval_gateway_still_activates():
+    tool = ToolManager([{'name': 'Mail', 'desc': 'Call the gateway before reading mail.',
+                         'lazy': True, 'tools': [find_mail, read_mail]}])
+    lazyllm.locals['_lazyllm_agent'] = {'workspace': {}}
+    assert [d['function']['name'] for d in tool.tools_description] == ['get_Mail_methods']
+    result = tool([{'id': 'gateway', 'function': {'name': 'get_Mail_methods', 'arguments': '{}'}}])
+    assert result[0]['ok'] is True
+    assert {d['function']['name'] for d in tool.tools_description} == {'find_mail', 'read_mail'}
