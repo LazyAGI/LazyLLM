@@ -162,3 +162,33 @@ def test_exact_final_alias_collision_is_rejected():
     local.__name__ = alias
     with pytest.raises(ValueError, match='Duplicate tool name'):
         ToolManager([local, tool])
+
+
+@pytest.mark.parametrize('wire_name', ['search.documents', None])
+def test_opaque_identity_registration_keeps_alias_and_execution(wire_name):
+    @fc_register(tool_source='mcp', tool_origin='server-a', tool_identity='server-a/search')
+    def search() -> str:
+        '''Search documents.'''
+        return 'remote result'
+
+    if wire_name is not None:
+        search.__mcp_tool_name__ = wire_name
+    manager = ToolManager([search])
+    name = next(iter(manager.atomic_tool_catalog()))
+    assert name.startswith('search_documents_mcp_' if wire_name else 'mcp_mcp_')
+    assert manager.tools_info[name]({}) == 'remote result'
+    search.__name__ = 'host_display_name'
+    restored = ToolManager([search, make_tool('b')])
+    assert name in restored.atomic_tool_catalog()
+    assert restored.tools_info[name]({}) == 'remote result'
+
+
+def test_official_adapter_alias_keeps_existing_identity_hash():
+    import hashlib
+
+    tool = make_tool('a', 'search.documents')
+    identity = get_tool_runtime_metadata(tool).tool_identity
+    expected = 'search_documents_mcp_' + hashlib.sha256(identity.encode()).hexdigest()[:12]
+    manager = ToolManager([tool])
+    assert set(manager.atomic_tool_catalog()) == {expected}
+    assert 'a:search.documents' in manager.tools_info[expected]({})
