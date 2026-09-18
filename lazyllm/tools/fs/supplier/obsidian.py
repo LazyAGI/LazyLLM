@@ -1,10 +1,10 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-"""Local file access for Obsidian Vaults.
+'''Local file access for Obsidian Vaults.
 
 ``OBSIDIAN_VAULT_PATH`` remains compatible with a single Vault.  It may also
 point at a scan root: every directory below it that contains an ``.obsidian``
 directory is then available as a Vault.
-"""
+'''
 import hashlib
 import os
 import re
@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import parse_qs, quote, unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 from uuid import uuid4
 
 from lazyllm import config
@@ -51,7 +51,7 @@ _VAULT_DISCOVERY_CACHE: Dict[str, tuple[float, tuple[ObsidianVault, ...]]] = {}
 
 class ObsidianFS(LazyLLMFSBase):
 
-    """File-system backed Obsidian access plus small Vault discovery helpers."""
+    '''File-system backed Obsidian access plus small Vault discovery helpers.'''
 
     def __init__(
         self,
@@ -156,11 +156,11 @@ class ObsidianFS(LazyLLMFSBase):
         *,
         markdown_relative: bool = False,
     ) -> Path:
-        """Resolve one local image reference without leaving the source Vault.
+        '''Resolve one local image reference without leaving the source Vault.
 
         Explicit paths use the syntax's normal base directory.  A bare image
         filename is accepted only when it has exactly one match in the Vault.
-        """
+        '''
         target = self._image_reference_target(reference)
         if Path(target).suffix.lower() not in OBSIDIAN_IMAGE_SUFFIXES:
             raise ValueError('Obsidian image format is not supported by Writer.')
@@ -186,7 +186,7 @@ class ObsidianFS(LazyLLMFSBase):
         return resolved
 
     def display_note_path(self, note: ObsidianNote) -> str:
-        """Return the host-local path that corresponds to a resolved note."""
+        '''Return the host-local path that corresponds to a resolved note.'''
         host_root = str(config['obsidian_host_root'] or '').strip()
         if not host_root:
             return str(note.path)
@@ -201,7 +201,7 @@ class ObsidianFS(LazyLLMFSBase):
         os.replace(temporary, note.path)
 
     def create_note(self, title: str) -> ObsidianNote:
-        """Create a Markdown note in the first discovered Vault without overwriting one."""
+        '''Create a Markdown note in the first discovered Vault without overwriting one.'''
         vaults = self.discover_vaults()
         if not vaults:
             raise FileNotFoundError('No Obsidian Vault was found under OBSIDIAN_VAULT_PATH.')

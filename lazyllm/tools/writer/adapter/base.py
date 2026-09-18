@@ -129,24 +129,7 @@ class WriterAdapterBase(ABC):
     ) -> WriterDocument:
         if not cls.materializes_table_captions:
             return refreshed
-        previous_by_node_id = {block.node_id: block for block in previous.iter_blocks()}
-        for table in refreshed.iter_blocks():
-            old_table = previous_by_node_id.get(table.node_id)
-            if table.type != 'table' or old_table is None or old_table.type != 'table':
-                continue
-            if len(table.children) != len(old_table.children):
-                continue
-            for row, old_row in zip(table.children, old_table.children):
-                if len(row.children) != len(old_row.children):
-                    continue
-                if not row.provider_binding.get('block_id'):
-                    if [cell.node_id for cell in row.children] == [cell.node_id for cell in old_row.children]:
-                        row.node_id = old_row.node_id
-                elif row.node_id == old_row.node_id:
-                    for cell, old_cell in zip(row.children, old_row.children):
-                        if not cell.provider_binding.get('block_id'):
-                            cell.node_id = old_cell.node_id
-                            cell.references = deepcopy(old_cell.references)
+        cls._restore_table_node_ids(previous, refreshed)
 
         if previous.provider_binding.get('document_id') != refreshed.provider_binding.get('document_id'):
             return refreshed
@@ -168,27 +151,7 @@ class WriterAdapterBase(ABC):
                             and caption.provider_binding.get('parent_block_id') == \
                             block.provider_binding.get('parent_block_id'):
                         output.pop()
-                        block.editable = True
-                        block.content = strip_caption_numbering(caption.content)
-                        block.spans = deepcopy(caption.spans)
-                        prefix = caption.content.find(block.content) if block.content else len(caption.content)
-                        while prefix > 0 and block.spans:
-                            span = block.spans[0]
-                            removed = min(prefix, len(span.text))
-                            span.text = span.text[removed:]
-                            prefix -= removed
-                            if not span.text:
-                                block.spans.pop(0)
-                        if block.spans:
-                            block.spans[-1].text = block.spans[-1].text.rstrip()
-                        if ''.join(span.text for span in block.spans) != block.content:
-                            block.spans = [WriterSpan(text=block.content)] if block.content else []
-                        block.provider_payload['table_caption'] = {
-                            'content': caption.content,
-                            'spans': [span.model_dump() for span in caption.spans],
-                            'provider_binding': deepcopy(caption.provider_binding),
-                            'provider_payload': deepcopy(caption.provider_payload),
-                        }
+                        cls._restore_table_caption(block, caption)
                 output.append(block)
             return output
 
@@ -318,6 +281,52 @@ class WriterAdapterBase(ABC):
     ) -> WriterDocument:
         raise NotImplementedError(
             f'{type(self).__name__} does not support merging refreshed documents.')
+
+    @staticmethod
+    def _restore_table_node_ids(previous, refreshed) -> None:
+        previous_by_node_id = {block.node_id: block for block in previous.iter_blocks()}
+        for table in refreshed.iter_blocks():
+            old_table = previous_by_node_id.get(table.node_id)
+            if table.type != 'table' or old_table is None or old_table.type != 'table':
+                continue
+            if len(table.children) != len(old_table.children):
+                continue
+            for row, old_row in zip(table.children, old_table.children):
+                if len(row.children) != len(old_row.children):
+                    continue
+                if not row.provider_binding.get('block_id'):
+                    if [cell.node_id for cell in row.children] == [cell.node_id for cell in old_row.children]:
+                        row.node_id = old_row.node_id
+                elif row.node_id == old_row.node_id:
+                    for cell, old_cell in zip(row.children, old_row.children):
+                        if not cell.provider_binding.get('block_id'):
+                            cell.node_id = old_cell.node_id
+                            cell.references = deepcopy(old_cell.references)
+
+    @staticmethod
+    def _restore_table_caption(block, caption) -> None:
+        block.editable = True
+        block.content = strip_caption_numbering(caption.content)
+        block.spans = deepcopy(caption.spans)
+        prefix = caption.content.find(block.content) if block.content else len(caption.content)
+        while prefix > 0 and block.spans:
+            span = block.spans[0]
+            removed = min(prefix, len(span.text))
+            span.text = span.text[removed:]
+            prefix -= removed
+            if not span.text:
+                block.spans.pop(0)
+        if block.spans:
+            block.spans[-1].text = block.spans[-1].text.rstrip()
+        if ''.join(span.text for span in block.spans) != block.content:
+            block.spans = [WriterSpan(text=block.content)] if block.content else []
+        block.provider_payload['table_caption'] = {
+            'content': caption.content,
+            'spans': [span.model_dump() for span in caption.spans],
+            'provider_binding': deepcopy(caption.provider_binding),
+            'provider_payload': deepcopy(caption.provider_payload),
+        }
+
 
 __all__ = [
     'NativeBlock',

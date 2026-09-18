@@ -8,7 +8,7 @@ _TEMPLATES = {
 
 
 def load_latex_template(language: str) -> str:
-    """Load a bundled basic LaTeX template by locale."""
+    '''Load a bundled basic LaTeX template by locale.'''
     try:
         name = _TEMPLATES[language]
     except KeyError as exc:
@@ -17,7 +17,7 @@ def load_latex_template(language: str) -> str:
 
 
 def latex_template_resource(language: str):
-    """Return the bundled template resource for an internally selected locale."""
+    '''Return the bundled template resource for an internally selected locale.'''
     try:
         name = _TEMPLATES[language]
     except KeyError as exc:
@@ -26,7 +26,7 @@ def latex_template_resource(language: str):
 
 
 def writer_latex_filter_resource():
-    """Return the bundled filter implementing the LazyMind Markdown contract."""
+    '''Return the bundled filter implementing the LazyMind Markdown contract.'''
     return files(__package__).joinpath('filters', 'writer.lua')
 
 

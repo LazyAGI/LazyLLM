@@ -561,125 +561,14 @@ class FeishuWriterProvider(WriterProviderBase):
         media_assets: MediaAssetLibrary | None,
     ) -> WriterDocument:
         '''Advance Writer IR and provider bindings without a full Feishu reread.'''
-        previous_by_block_id = {
-            block.provider_binding.get('block_id'): block.node_id
-            for block in document.iter_blocks()
-            if isinstance(block.provider_binding.get('block_id'), str)
-        }
         updated = apply_persisted_patch_hunk(document, patch)
 
         updated = cls._with_operation_revision(updated, operation_result)
 
         if operation.operation == 'create':
-            bindings = operation_result.get('node_id_bindings') \
-                if isinstance(operation_result, dict) else None
-            if not isinstance(bindings, dict) or not bindings:
-                raise ValueError('create operation did not return Feishu node ID bindings.')
-            relation_map = bindings
-            native_blocks = operation.params.get('blocks')
-            native_by_temporary_id = {
-                block.get('block_id'): block
-                for block in native_blocks
-                if isinstance(native_blocks, list) and isinstance(block, dict)
-                and isinstance(block.get('block_id'), str)
-            } if isinstance(native_blocks, list) else {}
-            if any(not relation_map.get(node_id) for node_id in native_by_temporary_id):
-                raise ValueError('Feishu create returned incomplete block ID relations.')
-            if len(set(relation_map.values())) != len(relation_map):
-                raise ValueError('Feishu create returned duplicate block IDs.')
-            for node_id, block_id in relation_map.items():
-                block = updated.block_by_id(node_id)
-                if block is None:
-                    if node_id.endswith('-caption'):
-                        root = updated.block_by_id(node_id[:-8])
-                        if root is not None and root.type == 'table':
-                            root.provider_payload['table_caption'] = {
-                                'provider_binding': {
-                                    'provider': 'feishu',
-                                    'block_id': block_id,
-                                },
-                                'raw_block': deepcopy(
-                                    native_by_temporary_id.get(node_id) or {}),
-                            }
-                        continue
-                    if node_id.endswith(('::text', '_text')) or '-covered-' in node_id:
-                        continue
-                    raise ValueError(
-                        f'Feishu returned a block relation for unknown node {node_id!r}.')
-                cls._bind_local_feishu_block(
-                    block, block_id, native_by_temporary_id.get(node_id), relation_map,
-                    native_by_temporary_id)
-            for temporary_id, native in native_by_temporary_id.items():
-                for child_id in native.get('children') or []:
-                    child = updated.block_by_id(child_id)
-                    if child is not None:
-                        child.provider_binding['parent_block_id'] = relation_map[temporary_id]
-            root = updated.block_by_id(patch.target_node_id)
-            if root is not None:
-                root.provider_binding['parent_block_id'] = operation.params['parent_block_id']
-
+            cls._apply_created_blocks(updated, patch, operation, operation_result)
         elif operation.operation in {'move', 'replace'}:
-            provider_id_remap = operation_result.get('provider_id_remap') \
-                if isinstance(operation_result, dict) else None
-            if not isinstance(provider_id_remap, dict) or not provider_id_remap:
-                raise ValueError(
-                    f'{operation.operation} operation did not return Feishu provider ID remap.')
-            # Native cell text blocks are folded into payloads rather than IR children.
-            physical_ids = set(previous_by_block_id)
-            for item in document.iter_blocks():
-                physical_ids.update(
-                    raw['block_id'] for raw in item.provider_payload.get('table_content_blocks', [])
-                    if isinstance(raw, dict) and isinstance(raw.get('block_id'), str)
-                )
-                caption_id = FeishuWriterAdapter._caption_binding(item).get('block_id')
-                if caption_id:
-                    physical_ids.add(caption_id)
-            if any(source_id not in physical_ids or not isinstance(created_id, str)
-                   for source_id, created_id in provider_id_remap.items()):
-                raise ValueError(f'{operation.operation} provider ID remap does not match local IR.')
-            previous_root = document.block_by_id(patch.target_node_id)
-            required_ids = {
-                item.provider_binding['block_id'] for item in previous_root.iter_blocks()
-                if item.provider_binding.get('block_id')
-            }
-            if not required_ids.issubset(provider_id_remap) \
-                    or any(not value for value in provider_id_remap.values()):
-                raise ValueError(f'{operation.operation} returned an incomplete Feishu provider ID remap.')
-            if len(set(provider_id_remap.values())) != len(provider_id_remap):
-                raise ValueError(f'{operation.operation} returned duplicate Feishu block IDs.')
-
-            def remap(value: Any, key: str = '') -> Any:
-                if isinstance(value, dict):
-                    return {field: remap(item, field) for field, item in value.items()}
-                if isinstance(value, list):
-                    return [remap(item, key) for item in value]
-                if isinstance(value, str) and key in {
-                    'block_id', 'parent_block_id', 'parent_id', 'children', 'cells',
-                }:
-                    return provider_id_remap.get(value, value)
-                return value
-
-            for block in updated.iter_blocks():
-                block.provider_binding = remap(block.provider_binding)
-                block.provider_payload = remap(block.provider_payload)
-            if operation.operation == 'replace':
-                root = updated.block_by_id(patch.target_node_id)
-                if root is not None:
-                    replacement = deepcopy(operation.params.get('replacement_block') or {})
-                    children = (root.provider_payload.get('raw_block') or {}).get('children')
-                    if children:
-                        replacement['children'] = deepcopy(children)
-                    cls._bind_local_feishu_block(
-                        root, root.provider_binding['block_id'],
-                        replacement, provider_id_remap, {})
-            root = updated.block_by_id(patch.target_node_id)
-            if root is not None:
-                parent_key = 'target_parent_block_id' \
-                    if operation.operation == 'move' else 'parent_block_id'
-                root.provider_binding['parent_block_id'] = operation.params[parent_key]
-                caption_binding = FeishuWriterAdapter._caption_binding(root)
-                if caption_binding:
-                    caption_binding['parent_block_id'] = operation.params[parent_key]
+            cls._apply_remapped_blocks(document, updated, patch, operation, operation_result)
         FeishuWriterAdapter._update_local_caption(updated, patch)
         return WriterDocument.model_validate(updated.model_dump())
 
@@ -957,6 +846,134 @@ class FeishuWriterProvider(WriterProviderBase):
             'provider_metadata': metadata,
         }
         return document
+
+    @classmethod
+    def _apply_created_blocks(cls, updated, patch, operation, operation_result) -> None:
+        bindings = operation_result.get('node_id_bindings') \
+            if isinstance(operation_result, dict) else None
+        if not isinstance(bindings, dict) or not bindings:
+            raise ValueError('create operation did not return Feishu node ID bindings.')
+        relation_map = bindings
+        native_blocks = operation.params.get('blocks')
+        native_by_temporary_id = {
+            block.get('block_id'): block
+            for block in native_blocks
+            if isinstance(native_blocks, list) and isinstance(block, dict)
+            and isinstance(block.get('block_id'), str)
+        } if isinstance(native_blocks, list) else {}
+        if any(not relation_map.get(node_id) for node_id in native_by_temporary_id):
+            raise ValueError('Feishu create returned incomplete block ID relations.')
+        if len(set(relation_map.values())) != len(relation_map):
+            raise ValueError('Feishu create returned duplicate block IDs.')
+        cls._bind_created_nodes(updated, relation_map, native_by_temporary_id)
+        for temporary_id, native in native_by_temporary_id.items():
+            for child_id in native.get('children') or []:
+                child = updated.block_by_id(child_id)
+                if child is not None:
+                    child.provider_binding['parent_block_id'] = relation_map[temporary_id]
+        root = updated.block_by_id(patch.target_node_id)
+        if root is not None:
+            root.provider_binding['parent_block_id'] = operation.params['parent_block_id']
+
+    @classmethod
+    def _apply_remapped_blocks(cls, document, updated, patch, operation, operation_result) -> None:
+        previous_by_block_id = {
+            block.provider_binding.get('block_id'): block.node_id
+            for block in document.iter_blocks()
+            if isinstance(block.provider_binding.get('block_id'), str)
+        }
+        provider_id_remap = operation_result.get('provider_id_remap') \
+            if isinstance(operation_result, dict) else None
+        if not isinstance(provider_id_remap, dict) or not provider_id_remap:
+            raise ValueError(
+                f'{operation.operation} operation did not return Feishu provider ID remap.')
+        # Native cell text blocks are folded into payloads rather than IR children.
+        physical_ids = set(previous_by_block_id)
+        for item in document.iter_blocks():
+            physical_ids.update(
+                raw['block_id'] for raw in item.provider_payload.get('table_content_blocks', [])
+                if isinstance(raw, dict) and isinstance(raw.get('block_id'), str)
+            )
+            caption_id = FeishuWriterAdapter._caption_binding(item).get('block_id')
+            if caption_id:
+                physical_ids.add(caption_id)
+        if any(source_id not in physical_ids or not isinstance(created_id, str)
+               for source_id, created_id in provider_id_remap.items()):
+            raise ValueError(f'{operation.operation} provider ID remap does not match local IR.')
+        previous_root = document.block_by_id(patch.target_node_id)
+        required_ids = {
+            item.provider_binding['block_id'] for item in previous_root.iter_blocks()
+            if item.provider_binding.get('block_id')
+        }
+        if not required_ids.issubset(provider_id_remap) \
+                or any(not value for value in provider_id_remap.values()):
+            raise ValueError(f'{operation.operation} returned an incomplete Feishu provider ID remap.')
+        if len(set(provider_id_remap.values())) != len(provider_id_remap):
+            raise ValueError(f'{operation.operation} returned duplicate Feishu block IDs.')
+
+        for block in updated.iter_blocks():
+            block.provider_binding = cls._remap_provider_ids(block.provider_binding, provider_id_remap)
+            block.provider_payload = cls._remap_provider_ids(block.provider_payload, provider_id_remap)
+        cls._bind_replacement_block(updated, patch, operation, provider_id_remap)
+        root = updated.block_by_id(patch.target_node_id)
+        if root is not None:
+            parent_key = 'target_parent_block_id' \
+                if operation.operation == 'move' else 'parent_block_id'
+            root.provider_binding['parent_block_id'] = operation.params[parent_key]
+            caption_binding = FeishuWriterAdapter._caption_binding(root)
+            if caption_binding:
+                caption_binding['parent_block_id'] = operation.params[parent_key]
+
+    @classmethod
+    def _bind_created_nodes(cls, updated, relation_map, native_by_temporary_id) -> None:
+        for node_id, block_id in relation_map.items():
+            block = updated.block_by_id(node_id)
+            if block is None:
+                if node_id.endswith('-caption'):
+                    root = updated.block_by_id(node_id[:-8])
+                    if root is not None and root.type == 'table':
+                        root.provider_payload['table_caption'] = {
+                            'provider_binding': {
+                                'provider': 'feishu',
+                                'block_id': block_id,
+                            },
+                            'raw_block': deepcopy(
+                                native_by_temporary_id.get(node_id) or {}),
+                        }
+                    continue
+                if node_id.endswith(('::text', '_text')) or '-covered-' in node_id:
+                    continue
+                raise ValueError(
+                    f'Feishu returned a block relation for unknown node {node_id!r}.')
+            cls._bind_local_feishu_block(
+                block, block_id, native_by_temporary_id.get(node_id), relation_map,
+                native_by_temporary_id)
+
+    @staticmethod
+    def _remap_provider_ids(value: Any, provider_id_remap, key: str = '') -> Any:
+        if isinstance(value, dict):
+            return {field: FeishuWriterProvider._remap_provider_ids(item, provider_id_remap, field)
+                    for field, item in value.items()}
+        if isinstance(value, list):
+            return [FeishuWriterProvider._remap_provider_ids(item, provider_id_remap, key) for item in value]
+        if isinstance(value, str) and key in {
+            'block_id', 'parent_block_id', 'parent_id', 'children', 'cells',
+        }:
+            return provider_id_remap.get(value, value)
+        return value
+
+    @classmethod
+    def _bind_replacement_block(cls, updated, patch, operation, provider_id_remap) -> None:
+        if operation.operation == 'replace':
+            root = updated.block_by_id(patch.target_node_id)
+            if root is not None:
+                replacement = deepcopy(operation.params.get('replacement_block') or {})
+                children = (root.provider_payload.get('raw_block') or {}).get('children')
+                if children:
+                    replacement['children'] = deepcopy(children)
+                cls._bind_local_feishu_block(
+                    root, root.provider_binding['block_id'],
+                    replacement, provider_id_remap, {})
 
 
 __all__ = ['FeishuWriterProvider']

@@ -26,20 +26,22 @@ _SAFE_OPERATION_RE = re.compile(r'[^A-Za-z0-9._-]+')
 
 
 class GitHubFSError(RuntimeError):
-    """Stable, provider-safe GitHub filesystem failure."""
+    '''Stable, provider-safe GitHub filesystem failure.'''
 
     def __init__(
         self,
         code: str,
         message: str,
-        *,
         status_code: int = 0,
         retryable: bool = False,
     ) -> None:
-        super().__init__(message)
+        super().__init__(code, message, status_code, retryable)
         self.code = code
         self.status_code = status_code
         self.retryable = retryable
+
+    def __str__(self) -> str:
+        return self.args[1]
 
 
 def _validate_repo_part(value: str, label: str) -> str:
@@ -320,7 +322,7 @@ class _GitHubFSBase(LazyLLMFSBase):
 
 
 class GitHubRepoFS(_GitHubFSBase):
-    """Read and atomically publish files in GitHub repositories."""
+    '''Read and atomically publish files in GitHub repositories.'''
 
     __public_apis__ = LazyLLMFSBase.__public_apis__ + [
         'resolve_target', 'resolve_create_parent', 'resolve_create_target',
@@ -835,12 +837,7 @@ class GitHubRepoFS(_GitHubFSBase):
         mode = str(publish_mode or 'pull_request').strip().lower()
         if mode not in {'pull_request', 'direct'}:
             raise ValueError('publish_mode must be pull_request or direct')
-        all_files = {repo_path: markdown.encode('utf-8')}
-        for file_path, data in (files or {}).items():
-            clean_path = _validate_repo_path(file_path)
-            if clean_path == repo_path:
-                raise ValueError('Resource path cannot replace the target Markdown path.')
-            all_files[clean_path] = bytes(data)
+        all_files = self._patch_files(repo_path, markdown, files)
         operation_id = str(operation_id or '').strip() or _operation_id_for_files(
             owner,
             repo,
@@ -855,31 +852,9 @@ class GitHubRepoFS(_GitHubFSBase):
             message = f'{message} ({operation_id})'
 
         warnings: list[str] = []
-        target_branch = document_ref
-        branch_existed = False
-        base_update_allowed = False
-        if mode == 'pull_request':
-            target_branch = work_branch.strip() or self._operation_branch(operation_id)
-            current = self._branch_head(owner, repo, target_branch, missing_ok=True)
-            branch_existed = current is not None
-            if current is None:
-                current = self._branch_head(owner, repo, pull_request_base)
-                if expected_revision and current != expected_revision and not self._paths_unchanged(
-                    owner,
-                    repo,
-                    list(all_files),
-                    expected_revision,
-                    current,
-                ):
-                    raise GitHubFSError(
-                        'GITHUB_REVISION_CONFLICT',
-                        'GitHub branch changed after the document was loaded.',
-                        status_code=409,
-                    )
-                base_update_allowed = bool(expected_revision and current != expected_revision)
-                self._create_ref(owner, repo, target_branch, current)
-        else:
-            current = self._branch_head(owner, repo, document_ref)
+        target_branch, current, branch_existed, base_update_allowed = self._prepare_patch_branch(
+            owner, repo, document_ref, mode, work_branch, operation_id,
+            pull_request_base, expected_revision, all_files)
 
         possible_retry = branch_existed or (
             mode == 'direct' and bool(expected_revision and current != expected_revision)
@@ -987,9 +962,48 @@ class GitHubRepoFS(_GitHubFSBase):
             publish_mode='direct',
         )
 
+    def _prepare_patch_branch(self, owner, repo, document_ref, mode, work_branch, operation_id,
+                              pull_request_base, expected_revision, all_files):
+        target_branch = document_ref
+        branch_existed = False
+        base_update_allowed = False
+        if mode == 'pull_request':
+            target_branch = work_branch.strip() or self._operation_branch(operation_id)
+            current = self._branch_head(owner, repo, target_branch, missing_ok=True)
+            branch_existed = current is not None
+            if current is None:
+                current = self._branch_head(owner, repo, pull_request_base)
+                if expected_revision and current != expected_revision and not self._paths_unchanged(
+                    owner,
+                    repo,
+                    list(all_files),
+                    expected_revision,
+                    current,
+                ):
+                    raise GitHubFSError(
+                        'GITHUB_REVISION_CONFLICT',
+                        'GitHub branch changed after the document was loaded.',
+                        status_code=409,
+                    )
+                base_update_allowed = bool(expected_revision and current != expected_revision)
+                self._create_ref(owner, repo, target_branch, current)
+        else:
+            current = self._branch_head(owner, repo, document_ref)
+        return target_branch, current, branch_existed, base_update_allowed
+
+    @staticmethod
+    def _patch_files(repo_path, markdown, files):
+        all_files = {repo_path: markdown.encode('utf-8')}
+        for file_path, data in (files or {}).items():
+            clean_path = _validate_repo_path(file_path)
+            if clean_path == repo_path:
+                raise ValueError('Resource path cannot replace the target Markdown path.')
+            all_files[clean_path] = bytes(data)
+        return all_files
+
 
 class GitHubWikiFS(_GitHubFSBase):
-    """Read and safely publish pages in a repository's separate Wiki Git repository."""
+    '''Read and safely publish pages in a repository's separate Wiki Git repository.'''
 
     __public_apis__ = LazyLLMFSBase.__public_apis__ + [
         'resolve_target', 'resolve_create_parent', 'resolve_create_target',
@@ -1257,7 +1271,7 @@ class GitHubWikiFS(_GitHubFSBase):
         self,
         path: str,
     ) -> Iterator[tuple[dict[str, Any], Callable[[str], bytes]]]:
-        """Resolve and read files from one immutable Wiki checkout."""
+        '''Resolve and read files from one immutable Wiki checkout.'''
         owner, repo, page_path = self._parse_target(path, document_only=True)
         with tempfile.TemporaryDirectory(prefix='lazyllm-github-wiki-') as root:
             checkout = self._clone(owner, repo, root, materialize=False)

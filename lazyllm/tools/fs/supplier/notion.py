@@ -1067,7 +1067,7 @@ class NotionFS(LinkDocumentFSBase):
         }
 
     def write_doc_blocks(self, document_id: str, blocks: List[Dict[str, Any]], *,
-                           block_id_relations: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, Any]]:
+                         block_id_relations: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, Any]]:
         '''Append native Writer blocks to an existing Notion page.'''
         document_id = _normalize_notion_id(document_id)
         self._validate_write_blocks(blocks)

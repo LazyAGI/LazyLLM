@@ -2731,3 +2731,104 @@ _add_fs_example('ObsidianFS', '''\
 ...     content = f.read()
 >>> fs.get_file('Daily/note.md', '/tmp/note.md')
 ''')
+
+
+def _add_bilingual_docs(chinese_adder, english_adder, entries):
+    for target, chinese, english in entries:
+        chinese_adder(target, chinese)
+        english_adder(target, english)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.obsidian')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.obsidian')),
+    [
+        ('ObsidianFS.discover_vaults_for_root',
+         '扫描 root 下包含 .obsidian 的目录；返回带稳定标识、根路径和名称的 Vault 列表，并缓存发现结果。',
+         'Discover directories containing .obsidian under root; return and cache Vault records with stable IDs, roots and names.'),
+        ('ObsidianFS.discover_vaults',
+         '返回当前配置根目录下发现的 Vault 列表。',
+         'Return the Vault records discovered under the configured root.'),
+        ('ObsidianFS.resolve_locator',
+         '解析 obsidian URI 为笔记路径与 Vault；拒绝歧义 Vault 名称、越界路径和不存在的笔记。',
+         'Resolve an obsidian URI to a note and Vault; reject ambiguous Vault names, escaping paths and missing notes.'),
+        ('ObsidianFS.read_note',
+         '解析 locator 并按 UTF-8 读取笔记，返回笔记记录和 Markdown 正文。',
+         'Resolve locator and read UTF-8 Markdown, returning the note record and its text.'),
+        ('ObsidianFS.write_note',
+         '将 content 以 UTF-8 写入临时文件后原子替换 note 对应的笔记。',
+         'Write UTF-8 content to a temporary file and atomically replace the supplied note.'),
+        ('ObsidianFS.copy_attachment',
+         '将 source 文件按内容哈希复制到笔记 Vault 的 assets/lazymind 目录，返回 Vault 相对路径。',
+         'Copy source into the note Vault assets/lazymind directory by content hash and return its Vault-relative path.'),
+    ],
+)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.feishu')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.feishu')),
+    [
+        ('FeishuWikiFS.get_document_metadata',
+         '解析文档路径并获取飞书文档元数据，校验 revision_id，返回包含文档 ID 和版本号的字典。',
+         'Resolve the document path, fetch metadata and validate revision_id, returning document ID and revision information.'),
+    ],
+)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.github')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.github')),
+    [
+        ('GitHubRepoFS.matches_create_parent',
+         '判断输入链接是否可作为 GitHub 仓库文档的创建位置。',
+         'Check whether the link identifies a GitHub repository parent for document creation.'),
+        ('GitHubRepoFS.resolve_create_parent',
+         '解析并校验 GitHub 仓库创建位置，返回规范 URI、路径及平台元数据。',
+         'Resolve and validate a GitHub repository creation parent and return canonical URI, path and provider metadata.'),
+        ('GitHubRepoFS.resolve_create_target',
+         '根据 title 与 parent 生成待创建文档的目标元数据，不写入文档正文。',
+         'Build pending document target metadata from title and parent without writing document content.'),
+        ('GitHubRepoFS.resolve_target',
+         '解析文档定位符并返回规范 URI、浏览器地址、路径及版本信息。',
+         'Resolve a document locator into canonical URI, browser URL, path and revision metadata.'),
+        ('GitHubRepoFS.get_document_id',
+         '从文档路径或链接解析规范的平台文档标识。',
+         'Resolve the canonical provider document identifier from a path or link.'),
+        ('GitHubRepoFS.apply_document_patch',
+         '校验预期版本后写入 Markdown 和资源文件，返回发布结果；仓库支持 PR 或直接提交，Wiki 通过 Git 写回。',
+         'Check the expected revision, write Markdown and assets, and return publication metadata; repositories support PR or direct commits, while Wiki uses Git.'),
+        ('GitHubRepoFS.create_document',
+         '在 parent 位置为 title 创建 Markdown 文档并返回发布结果。',
+         'Create a Markdown document with title under parent and return publication metadata.'),
+    ],
+)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.github')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.github')),
+    [
+        ('GitHubWikiFS.matches_create_parent',
+         '判断输入链接是否可作为 GitHub Wiki文档的创建位置。',
+         'Check whether the link identifies a GitHub Wiki parent for document creation.'),
+        ('GitHubWikiFS.resolve_create_parent',
+         '解析并校验 GitHub Wiki创建位置，返回规范 URI、路径及平台元数据。',
+         'Resolve and validate a GitHub Wiki creation parent and return canonical URI, path and provider metadata.'),
+        ('GitHubWikiFS.resolve_create_target',
+         '根据 title 与 parent 生成待创建文档的目标元数据，不写入文档正文。',
+         'Build pending document target metadata from title and parent without writing document content.'),
+        ('GitHubWikiFS.resolve_target',
+         '解析文档定位符并返回规范 URI、浏览器地址、路径及版本信息。',
+         'Resolve a document locator into canonical URI, browser URL, path and revision metadata.'),
+        ('GitHubWikiFS.get_document_id',
+         '从文档路径或链接解析规范的平台文档标识。',
+         'Resolve the canonical provider document identifier from a path or link.'),
+        ('GitHubWikiFS.apply_document_patch',
+         '校验预期版本后写入 Markdown 和资源文件，返回发布结果；仓库支持 PR 或直接提交，Wiki 通过 Git 写回。',
+         'Check the expected revision, write Markdown and assets, and return publication metadata; repositories support PR or direct commits, while Wiki uses Git.'),
+        ('GitHubWikiFS.create_document',
+         '在 parent 位置为 title 创建 Markdown 文档并返回发布结果。',
+         'Create a Markdown document with title under parent and return publication metadata.'),
+    ],
+)

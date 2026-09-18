@@ -473,17 +473,26 @@ def _cell_batch_setup():
         cells = []
         for c in range(2):
             node_id = f'cell-{r}-{c}'
-            cells.append(WriterBlock(node_id=node_id, type='table_cell', content=node_id,
+            cells.append(WriterBlock(
+                node_id=node_id, type='table_cell', content=node_id,
                 provider_binding={'provider': 'feishu', 'block_id': node_id},
-                provider_payload={'table_content_blocks': [{'block_id': f'text-{r}-{c}', 'block_type': 2,
-                'text': {'elements': [{'text_run': {'content': node_id}}]}}]}))
+                provider_payload={'table_content_blocks': [{
+                    'block_id': f'text-{r}-{c}', 'block_type': 2,
+                    'text': {'elements': [{'text_run': {'content': node_id}}]},
+                }]},
+            ))
         rows.append(WriterBlock(node_id=f'row-{r}', type='table_row', children=cells))
-    document = WriterDocument(document_id='writer-doc', revision='10', provider_binding={'provider': 'feishu',
-        'document_id': 'doc'}, blocks=[WriterBlock(node_id='table', type='table', children=rows,
-        provider_binding={'provider': 'feishu', 'block_id': 'table', 'parent_block_id': 'doc'}),
-        WriterBlock(node_id='paragraph', type='paragraph', content='end', provider_binding={'provider': 'feishu',
-        'block_id': 'paragraph', 'parent_block_id': 'doc'}, provider_payload={'raw_block': {'block_type': 2,
-        'text': {}}})])
+    document = WriterDocument(
+        document_id='writer-doc', revision='10',
+        provider_binding={'provider': 'feishu', 'document_id': 'doc'},
+        blocks=[
+            WriterBlock(node_id='table', type='table', children=rows,
+                        provider_binding={'provider': 'feishu', 'block_id': 'table', 'parent_block_id': 'doc'}),
+            WriterBlock(node_id='paragraph', type='paragraph', content='end',
+                        provider_binding={'provider': 'feishu', 'block_id': 'paragraph', 'parent_block_id': 'doc'},
+                        provider_payload={'raw_block': {'block_type': 2, 'text': {}}}),
+        ],
+    )
     instance = FeishuWriterProvider()
     adapter = FeishuWriterAdapter()
     fs = MagicMock()
@@ -495,9 +504,12 @@ def _cell_batch_setup():
 
 
 def _cell_edit(document, node_id, value, hunk_id=None):
-    return PatchHunk(hunk_id=hunk_id or f'edit-{node_id}', target_node_id=node_id, modify_type='update',
-        block=document.block_by_id(node_id).model_copy(update={'content': value, 'spans': [WriterSpan(text=value,
-        style={'bold': True})]}))
+    return PatchHunk(
+        hunk_id=hunk_id or f'edit-{node_id}', target_node_id=node_id, modify_type='update',
+        block=document.block_by_id(node_id).model_copy(update={
+            'content': value, 'spans': [WriterSpan(text=value, style={'bold': True})],
+        }),
+    )
 
 
 def test_feishu_load_document_records_remote_revision():
@@ -530,14 +542,14 @@ def test_feishu_patch_rejects_a_stale_loaded_revision_before_writing():
 
 def _apply_cell_hunks(instance, document, hunks):
     return instance.apply_patch_to_document(PatchSet(target_doc_id=document.document_id, hunks=hunks), document,
-        TargetDocument(doc_id='doc', adapter=instance.provider, uri='/doc'))
+                                            TargetDocument(doc_id='doc', adapter=instance.provider, uri='/doc'))
 
 
 def test_feishu_cells_merge_by_provider_granularity_and_repeated_edit_keeps_last():
     instance, fs, document = _cell_batch_setup()
     before = document.model_dump()
     hunks = [_cell_edit(document, 'cell-0-0', 'first', 'h1'), _cell_edit(document, 'cell-1-0', 'other row', 'h2'),
-        _cell_edit(document, 'cell-0-1', 'same row', 'h3'), _cell_edit(document, 'cell-0-0', 'last', 'h4')]
+             _cell_edit(document, 'cell-0-1', 'same row', 'h3'), _cell_edit(document, 'cell-0-0', 'last', 'h4')]
     result = _apply_cell_hunks(instance, document, hunks)
     assert fs.update_block.call_count == 1
     assert result['patch_result'].applied_hunks == ['h1', 'h2', 'h3', 'h4']
@@ -558,8 +570,11 @@ def test_feishu_move_flushes_cells_and_following_batch_uses_new_ids():
     ids += [f'text-{r}-{c}' for r in range(2) for c in range(2)]
     relations = {key: key + '-moved' for key in ids}
     fs.move_block.return_value = {'provider_id_remap': relations, 'document_revision_id': 20}
-    _apply_cell_hunks(instance, document, [_cell_edit(document, 'cell-0-0', 'before'), PatchHunk(hunk_id='move',
-        target_node_id='table', modify_type='move', index=1), _cell_edit(document, 'cell-0-1', 'after')])
+    _apply_cell_hunks(instance, document, [
+        _cell_edit(document, 'cell-0-0', 'before'),
+        PatchHunk(hunk_id='move', target_node_id='table', modify_type='move', index=1),
+        _cell_edit(document, 'cell-0-1', 'after'),
+    ])
     assert [call[0] for call in fs.method_calls] == ['update_block', 'move_block', 'update_block']
     assert fs.update_block.call_args.kwargs['requests'][0]['block_id'] == 'text-0-1-moved'
     assert fs.update_block.call_args.kwargs['document_revision_id'] == 20

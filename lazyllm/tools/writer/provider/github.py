@@ -351,7 +351,7 @@ def _unresolved_writer_preview_references(markdown: str) -> list[str]:
 
 
 class GitHubWriterProvider(WriterProviderBase):
-    """Keep GitHub repository and Wiki Writer documents as native Markdown."""
+    '''Keep GitHub repository and Wiki Writer documents as native Markdown.'''
 
     provider = 'github'
     capabilities = WriterProviderCapabilities(
@@ -625,28 +625,10 @@ class GitHubWriterProvider(WriterProviderBase):
             return ''
         parsed = urlparse(value)
         if parsed.scheme in ('http', 'https'):
-            if target_type != 'repository':
+            resource = self._absolute_resource_path(parsed, target, target_type, owner, repo)
+            if resource is None:
                 return ''
-            hostname = (parsed.hostname or '').lower()
-            parts = [unquote(part) for part in parsed.path.split('/') if part]
-            if hostname in {'github.com', 'www.github.com'}:
-                if len(parts) < 5 or parts[0] != owner or parts[1] != repo or parts[2] != 'blob':
-                    return ''
-                # Referenced browser URLs are normally generated with the same ref
-                # as the source document, so remove that exact prefix without
-                # guessing another branch boundary.
-                ref = str(target.meta.get('ref') or '')
-                tail = '/'.join(parts[3:])
-                if not ref or not tail.startswith(ref + '/'):
-                    return ''
-                resource_path = tail[len(ref) + 1:]
-            elif hostname == 'raw.githubusercontent.com':
-                if len(parts) < 4:
-                    return ''
-                owner, repo, ref = parts[:3]
-                resource_path = '/'.join(parts[3:])
-            else:
-                return ''
+            owner, repo, resource_path = resource
         else:
             relative_path = unquote(parsed.path)
             if relative_path.startswith('/'):
@@ -841,28 +823,7 @@ class GitHubWriterProvider(WriterProviderBase):
             source_reference = self._imported_media_source_reference(asset)
             if source_reference and source_reference in references:
                 continue
-            local_path = str(asset.local_path or '').strip()
-            meta = asset.meta if isinstance(asset.meta, Mapping) else {}
-            candidates = {
-                f'asset://{asset_id}',
-                local_path,
-                str(asset.uri or '').strip(),
-                str(meta.get('preview_reference') or '').strip(),
-            }
-            candidates.discard('')
-            matched = references.intersection(candidates)
-            digest = str(meta.get('sha256') or '').strip().lower()
-            data: bytes | None = None
-            if not matched and local_path and os.path.isfile(local_path):
-                data = Path(local_path).read_bytes()
-                digest = hashlib.sha256(data).hexdigest()
-            if not matched and digest:
-                matched = {
-                    reference
-                    for reference in references
-                    if _matches_writer_preview(reference, digest)
-                    or _matches_materialized_asset(reference, digest)
-                }
+            local_path, matched, data = self._match_media_asset(asset_id, asset, references)
             if not matched:
                 continue
             if not local_path or not os.path.isfile(local_path):
@@ -963,22 +924,7 @@ class GitHubWriterProvider(WriterProviderBase):
         markdown: str,
         media_assets: MediaAssetLibrary,
     ) -> str:
-        replacements: dict[str, str] = {}
-        digest_sources: dict[str, set[str]] = {}
-        for asset in media_assets.assets.values():
-            meta = asset.meta if isinstance(asset.meta, Mapping) else {}
-            source_reference = GitHubWriterProvider._imported_media_source_reference(asset)
-            if not source_reference:
-                continue
-            digest = str(meta.get('sha256') or '').strip().lower()
-            if re.fullmatch(r'[0-9a-f]{64}', digest):
-                digest_sources.setdefault(digest, set()).add(source_reference)
-            for candidate in (
-                str(asset.local_path or '').strip(),
-                str(meta.get('preview_reference') or '').strip(),
-            ):
-                if candidate:
-                    replacements[candidate] = source_reference
+        replacements, digest_sources = GitHubWriterProvider._imported_media_replacements(media_assets)
         if not replacements:
             return markdown
 
@@ -1018,6 +964,78 @@ class GitHubWriterProvider(WriterProviderBase):
             lambda match: replace_url(match, image_only=False),
             restored,
         )
+
+    @staticmethod
+    def _match_media_asset(asset_id, asset, references):
+        local_path = str(asset.local_path or '').strip()
+        meta = asset.meta if isinstance(asset.meta, Mapping) else {}
+        candidates = {
+            f'asset://{asset_id}',
+            local_path,
+            str(asset.uri or '').strip(),
+            str(meta.get('preview_reference') or '').strip(),
+        }
+        candidates.discard('')
+        matched = references.intersection(candidates)
+        digest = str(meta.get('sha256') or '').strip().lower()
+        data: bytes | None = None
+        if not matched and local_path and os.path.isfile(local_path):
+            data = Path(local_path).read_bytes()
+            digest = hashlib.sha256(data).hexdigest()
+        if not matched and digest:
+            matched = {
+                reference
+                for reference in references
+                if _matches_writer_preview(reference, digest)
+                or _matches_materialized_asset(reference, digest)
+            }
+        return local_path, matched, data
+
+    @staticmethod
+    def _imported_media_replacements(media_assets):
+        replacements: dict[str, str] = {}
+        digest_sources: dict[str, set[str]] = {}
+        for asset in media_assets.assets.values():
+            meta = asset.meta if isinstance(asset.meta, Mapping) else {}
+            source_reference = GitHubWriterProvider._imported_media_source_reference(asset)
+            if not source_reference:
+                continue
+            digest = str(meta.get('sha256') or '').strip().lower()
+            if re.fullmatch(r'[0-9a-f]{64}', digest):
+                digest_sources.setdefault(digest, set()).add(source_reference)
+            for candidate in (
+                str(asset.local_path or '').strip(),
+                str(meta.get('preview_reference') or '').strip(),
+            ):
+                if candidate:
+                    replacements[candidate] = source_reference
+        return replacements, digest_sources
+
+    @staticmethod
+    def _absolute_resource_path(parsed, target, target_type, owner, repo):
+        if target_type != 'repository':
+            return None
+        hostname = (parsed.hostname or '').lower()
+        parts = [unquote(part) for part in parsed.path.split('/') if part]
+        if hostname in {'github.com', 'www.github.com'}:
+            if len(parts) < 5 or parts[0] != owner or parts[1] != repo or parts[2] != 'blob':
+                return None
+            # Referenced browser URLs are normally generated with the same ref
+            # as the source document, so remove that exact prefix without
+            # guessing another branch boundary.
+            ref = str(target.meta.get('ref') or '')
+            tail = '/'.join(parts[3:])
+            if not ref or not tail.startswith(ref + '/'):
+                return None
+            resource_path = tail[len(ref) + 1:]
+        elif hostname == 'raw.githubusercontent.com':
+            if len(parts) < 4:
+                return None
+            owner, repo, ref = parts[:3]
+            resource_path = '/'.join(parts[3:])
+        else:
+            return None
+        return owner, repo, resource_path
 
 
 __all__ = ['GitHubWriterProvider']

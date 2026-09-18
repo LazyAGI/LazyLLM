@@ -762,7 +762,7 @@ def _markdown_spans_from_token(token: Dict[str, Any]) -> List[WriterSpan]:
             spans.append(WriterSpan(text='$' + str(node.get('raw') or '') + '$',
                                     style={'math_source': True}))
             return
-        if node_type in {'text', 'codespan'}:
+        if node_type in {'text', 'codespan', 'inline_html'}:
             text = str(node.get('raw') or '')
             if text:
                 spans.append(WriterSpan(text=text))
@@ -795,11 +795,6 @@ def _markdown_spans_from_token(token: Dict[str, Any]) -> List[WriterSpan]:
             attrs = node.get('attrs') or {}
             alt = ''.join(_markdown_token_text(child) for child in node.get('children') or [])
             spans.append(WriterSpan(text=f'![{alt}]({attrs.get("url") or ""})'))
-            return
-        if node_type == 'inline_html':
-            text = str(node.get('raw') or '')
-            if text:
-                spans.append(WriterSpan(text=text))
             return
         for child in node.get('children') or []:
             walk(child)

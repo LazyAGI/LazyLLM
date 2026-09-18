@@ -736,20 +736,7 @@ locator kind per reference. Return valid JSON only.
                 f'Image old_string is absent in section for {replacement.replacement_id!r}.'
             )
 
-        if plan is not None:
-            needs = {instruction.visual_instruction.need_id: instruction.visual_instruction
-                     for instruction in plan.instructions if instruction.visual_instruction is not None}
-            placeholders = {f'media-placeholder://{need_id}' for need_id in needs}
-            existing = markdown_image_sources(source)
-            revised = source
-            for replacement in replace_set.replacements:
-                revised = self._apply_markdown_replacement(revised, replacement)
-            images = markdown_image_sources(revised)
-            unknown = images - existing - placeholders
-            missing = {f'media-placeholder://{need_id}' for need_id, visual in needs.items()
-                       if visual.required} - images
-            if unknown or missing:
-                raise ValueError(f'Invalid revision images: unknown={sorted(unknown)}, missing={sorted(missing)}')
+        self._validate_planned_images(replace_set, source, plan)
 
     def _compile_generated_revision(
         self,
@@ -1681,3 +1668,19 @@ locator kind per reference. Return valid JSON only.
             if deeper is not None:
                 return deeper
         return None
+
+    def _validate_planned_images(self, replace_set, source, plan) -> None:
+        if plan is not None:
+            needs = {instruction.visual_instruction.need_id: instruction.visual_instruction
+                     for instruction in plan.instructions if instruction.visual_instruction is not None}
+            placeholders = {f'media-placeholder://{need_id}' for need_id in needs}
+            existing = markdown_image_sources(source)
+            revised = source
+            for replacement in replace_set.replacements:
+                revised = self._apply_markdown_replacement(revised, replacement)
+            images = markdown_image_sources(revised)
+            unknown = images - existing - placeholders
+            missing = {f'media-placeholder://{need_id}' for need_id, visual in needs.items()
+                       if visual.required} - images
+            if unknown or missing:
+                raise ValueError(f'Invalid revision images: unknown={sorted(unknown)}, missing={sorted(missing)}')

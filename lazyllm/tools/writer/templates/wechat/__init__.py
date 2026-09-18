@@ -1,4 +1,4 @@
-"""Built-in WeChat Official Account rendering templates."""
+'''Built-in WeChat Official Account rendering templates.'''
 
 from __future__ import annotations
 

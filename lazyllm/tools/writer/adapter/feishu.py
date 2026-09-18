@@ -874,15 +874,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
             ]
             return raw
 
-        if not block.editable and original:
-            original_content, original_spans = self._content_and_spans(original)
-            if (
-                block.type != _BLOCK_TYPE_NAMES.get(original_type, 'feishu_unknown')
-                or block.content != original_content
-                or block.spans != original_spans
-            ):
-                raise ValueError(
-                    f'non-editable Feishu block {block.node_id!r} was modified.')
+        self._validate_readonly_block(block, original, original_type)
 
         raw['block_type'] = block_type
         content_field = _BLOCK_TYPE_FIELDS.get(block_type)
@@ -899,18 +891,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
             and block.content == original_content
             and block.spans == original_spans
         )
-        if block_type == 14:
-            code = raw.setdefault('code', {})
-            style = code.get('style') or {}
-            if original_type == 14:
-                language_id = style.get('language')
-                if language_id not in _CODE_LANGUAGES:
-                    language_id = 1
-            else:
-                language = str(block.provider_payload.get('code_language') or '').strip().lower()
-                name = _CODE_LANGUAGE_ALIASES.get(language, language)
-                language_id = _CODE_LANGUAGE_IDS.get(name, 1)
-            code['style'] = {**style, 'language': language_id}
+        self._restore_code_language(raw, block, block_type, original_type)
         if same_visible_content:
             return raw
 
@@ -1302,6 +1283,32 @@ class FeishuWriterAdapter(WriterAdapterBase):
             if isinstance(candidate, str) and candidate.strip():
                 return candidate.strip()
         raise ValueError(f'Writer block {block.node_id!r} does not have a usable block ID.')
+
+    @staticmethod
+    def _restore_code_language(raw, block, block_type, original_type) -> None:
+        if block_type == 14:
+            code = raw.setdefault('code', {})
+            style = code.get('style') or {}
+            if original_type == 14:
+                language_id = style.get('language')
+                if language_id not in _CODE_LANGUAGES:
+                    language_id = 1
+            else:
+                language = str(block.provider_payload.get('code_language') or '').strip().lower()
+                name = _CODE_LANGUAGE_ALIASES.get(language, language)
+                language_id = _CODE_LANGUAGE_IDS.get(name, 1)
+            code['style'] = {**style, 'language': language_id}
+
+    def _validate_readonly_block(self, block, original, original_type) -> None:
+        if not block.editable and original:
+            original_content, original_spans = self._content_and_spans(original)
+            if (
+                block.type != _BLOCK_TYPE_NAMES.get(original_type, 'feishu_unknown')
+                or block.content != original_content
+                or block.spans != original_spans
+            ):
+                raise ValueError(
+                    f'non-editable Feishu block {block.node_id!r} was modified.')
 
 
 __all__ = ['FeishuWriterAdapter']

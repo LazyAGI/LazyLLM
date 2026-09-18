@@ -74,6 +74,46 @@ _GENERATED_ANCHOR_KIND = {
 }
 
 
+def _validate_pandoc_input(markdown, command, timeout_seconds, max_input_bytes, max_output_bytes) -> None:
+    if not isinstance(markdown, str):
+        raise TypeError('Pandoc input must be a Markdown string.')
+    if not command:
+        raise ValueError('Pandoc command must not be empty.')
+    if timeout_seconds <= 0:
+        raise ValueError('Pandoc conversion timeout must be positive.')
+    if max_input_bytes <= 0 or max_output_bytes <= 0:
+        raise ValueError('Pandoc input and output limits must be positive.')
+
+    input_size = len(markdown.encode('utf-8'))
+    if input_size > max_input_bytes:
+        raise PandocError(
+            'PANDOC_INPUT_TOO_LARGE',
+            'Markdown input exceeds the Pandoc conversion limit.',
+            details={'input_bytes': input_size, 'max_input_bytes': max_input_bytes},
+        )
+
+def _associate_markdown_objects(lines, objects) -> list[_MarkdownObject]:
+    associated: list[_MarkdownObject] = []
+    for item in objects:
+        anchor_search_from = item.start
+        caption = item.caption
+        caption_index = None
+        previous = _previous_nonblank_line(lines, item.start)
+        if previous is not None and item.kind in {'table', 'code'}:
+            caption_kind, visible_caption = _numbered_object_caption(lines[previous])
+            if caption_kind == item.kind and visible_caption is not None:
+                caption = visible_caption
+                caption_index = previous
+                anchor_search_from = previous
+        anchor_index = _previous_nonblank_line(lines, anchor_search_from)
+        anchor = _MARKDOWN_ANCHOR_RE.match(lines[anchor_index]) if anchor_index is not None else None
+        if anchor is None or _MARKDOWN_ANCHOR_ID_RE.search(anchor.group('attrs')) is None:
+            anchor_index = None
+        associated.append(_MarkdownObject(
+            item.kind, item.start, item.end, caption, anchor_index, caption_index,
+        ))
+    return associated
+
 @dataclass(frozen=True)
 class _MarkdownObject:
     kind: str
@@ -93,18 +133,20 @@ class _MarkdownBibliography:
 
 
 class PandocError(RuntimeError):
-    """Error raised by the controlled Pandoc execution boundary."""
+    '''Error raised by the controlled Pandoc execution boundary.'''
 
     def __init__(
         self,
         code: str,
         message: str,
-        *,
         details: Optional[Mapping[str, object]] = None,
     ):
-        super().__init__(message)
+        super().__init__(code, message, details)
         self.code = code
         self.details = dict(details or {})
+
+    def __str__(self) -> str:
+        return self.args[1]
 
 
 def _validated_executable(path: str, *, source: str) -> str:
@@ -137,7 +179,7 @@ def resolve_pandoc_path(
     *,
     environ: Optional[Mapping[str, str]] = None,
 ) -> str:
-    """Resolve Pandoc from an internal override, the runtime env, or development PATH."""
+    '''Resolve Pandoc from an internal override, the runtime env, or development PATH.'''
     if explicit_path and explicit_path.strip():
         return _validated_executable(explicit_path.strip(), source='explicit_path')
 
@@ -279,26 +321,7 @@ def _scan_markdown_objects(
             continue
         index += 1
 
-    associated: list[_MarkdownObject] = []
-    for item in objects:
-        anchor_search_from = item.start
-        caption = item.caption
-        caption_index = None
-        previous = _previous_nonblank_line(lines, item.start)
-        if previous is not None and item.kind in {'table', 'code'}:
-            caption_kind, visible_caption = _numbered_object_caption(lines[previous])
-            if caption_kind == item.kind and visible_caption is not None:
-                caption = visible_caption
-                caption_index = previous
-                anchor_search_from = previous
-        anchor_index = _previous_nonblank_line(lines, anchor_search_from)
-        anchor = _MARKDOWN_ANCHOR_RE.match(lines[anchor_index]) if anchor_index is not None else None
-        if anchor is None or _MARKDOWN_ANCHOR_ID_RE.search(anchor.group('attrs')) is None:
-            anchor_index = None
-        associated.append(_MarkdownObject(
-            item.kind, item.start, item.end, caption, anchor_index, caption_index,
-        ))
-    return associated
+    return _associate_markdown_objects(lines, objects)
 
 
 def _citation_numbers(lines: Sequence[str], end: int) -> set[int]:
@@ -454,7 +477,7 @@ def normalize_writer_markdown_for_latex(
     *,
     materialized_numbering: bool = True,
 ) -> str:
-    """Canonicalize Writer Markdown for LaTeX without changing the stored source."""
+    '''Canonicalize Writer Markdown for LaTeX without changing the stored source.'''
     newline = '\r\n' if '\r\n' in markdown else '\n'
     trailing_newline = markdown.endswith(('\n', '\r'))
     lines = _normalize_numbered_bibliography(
@@ -570,7 +593,7 @@ def check_pandoc_version(
     required_version: str = PANDOC_REQUIRED_VERSION,
     timeout_seconds: float = DEFAULT_VERSION_TIMEOUT_SECONDS,
 ) -> str:
-    """Return the validated Pandoc version, caching successful checks by executable path."""
+    '''Return the validated Pandoc version, caching successful checks by executable path.'''
     if timeout_seconds <= 0:
         raise ValueError('Pandoc version timeout must be positive.')
     return _check_pandoc_version_cached(pandoc_path, required_version, timeout_seconds)
@@ -581,7 +604,7 @@ def build_pandoc_command(
     template_path: str,
     filter_path: str,
 ) -> list[str]:
-    """Build the fixed Markdown-to-LaTeX command; callers cannot inject CLI options."""
+    '''Build the fixed Markdown-to-LaTeX command; callers cannot inject CLI options.'''
     return [
         pandoc_path,
         f'--from={PANDOC_READER}',
@@ -605,7 +628,7 @@ def _command_option_value(command: Sequence[str], option: str) -> str:
 
 
 def _conversion_failure_code(command: Sequence[str], diagnostic: str) -> str:
-    """Classify failures emitted by the controlled template and Lua filter."""
+    '''Classify failures emitted by the controlled template and Lua filter.'''
     normalized = diagnostic.lower()
     filter_path = _command_option_value(command, '--lua-filter').lower()
     template_path = _command_option_value(command, '--template').lower()
@@ -624,23 +647,8 @@ def run_pandoc(
     max_input_bytes: int = DEFAULT_MAX_INPUT_BYTES,
     max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
 ) -> str:
-    """Execute a pre-built Pandoc command using stdin/stdout under fixed resource limits."""
-    if not isinstance(markdown, str):
-        raise TypeError('Pandoc input must be a Markdown string.')
-    if not command:
-        raise ValueError('Pandoc command must not be empty.')
-    if timeout_seconds <= 0:
-        raise ValueError('Pandoc conversion timeout must be positive.')
-    if max_input_bytes <= 0 or max_output_bytes <= 0:
-        raise ValueError('Pandoc input and output limits must be positive.')
-
-    input_size = len(markdown.encode('utf-8'))
-    if input_size > max_input_bytes:
-        raise PandocError(
-            'PANDOC_INPUT_TOO_LARGE',
-            'Markdown input exceeds the Pandoc conversion limit.',
-            details={'input_bytes': input_size, 'max_input_bytes': max_input_bytes},
-        )
+    '''Execute a pre-built Pandoc command using stdin/stdout under fixed resource limits.'''
+    _validate_pandoc_input(markdown, command, timeout_seconds, max_input_bytes, max_output_bytes)
 
     try:
         result = subprocess.run(
@@ -707,7 +715,7 @@ def markdown_to_latex(
     max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
     materialized_numbering: bool = True,
 ) -> str:
-    """Convert a Markdown string to standalone LaTeX with the supported Pandoc version."""
+    '''Convert a Markdown string to standalone LaTeX with the supported Pandoc version.'''
     executable = resolve_pandoc_path(pandoc_path)
     check_pandoc_version(executable, required_version=required_version)
     try:
@@ -724,7 +732,7 @@ def markdown_to_latex(
             template_path = resources.enter_context(as_file(template_resource))
             if not template_path.is_file():
                 raise FileNotFoundError(str(template_path))
-        except (FileNotFoundError, OSError) as exc:
+        except OSError as exc:
             raise PandocError(
                 'PANDOC_TEMPLATE_INVALID',
                 'The selected LaTeX template is unavailable.',
@@ -734,7 +742,7 @@ def markdown_to_latex(
             filter_path = resources.enter_context(as_file(filter_resource))
             if not filter_path.is_file():
                 raise FileNotFoundError(str(filter_path))
-        except (FileNotFoundError, OSError) as exc:
+        except OSError as exc:
             raise PandocError(
                 'PANDOC_FILTER_FAILED',
                 'The bundled Lua Filter is unavailable.',

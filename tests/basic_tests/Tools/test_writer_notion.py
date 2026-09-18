@@ -1039,17 +1039,26 @@ def _cell_batch_setup():
         cells = []
         for c in range(2):
             node_id = f'cell-{r}-{c}'
-            cells.append(WriterBlock(node_id=node_id, type='table_cell', content=node_id, provider_binding={},
-                provider_payload={}))
-        rows.append(WriterBlock(node_id=f'row-{r}', type='table_row', children=cells,
+            cells.append(WriterBlock(node_id=node_id, type='table_cell', content=node_id,
+                                     provider_binding={}, provider_payload={}))
+        rows.append(WriterBlock(
+            node_id=f'row-{r}', type='table_row', children=cells,
             provider_binding={'provider': 'notion', 'block_id': _table_native_id(f'row-{r}')},
-            provider_payload={'raw_block': {'type': 'table_row', 'table_row': {}}}))
-    document = WriterDocument(document_id='writer-doc', revision='10', provider_binding={'provider': 'notion',
-        'document_id': 'doc'}, blocks=[WriterBlock(node_id='table', type='table', children=rows,
-        provider_binding={'provider': 'notion', 'block_id': _table_native_id('table'), 'parent_block_id': 'doc'}),
-        WriterBlock(node_id='paragraph', type='paragraph', content='end', provider_binding={'provider': 'notion',
-        'block_id': _table_native_id('paragraph'), 'parent_block_id': 'doc'},
-        provider_payload={'raw_block': {'type': 'paragraph', 'paragraph': {}}})])
+            provider_payload={'raw_block': {'type': 'table_row', 'table_row': {}}},
+        ))
+    document = WriterDocument(
+        document_id='writer-doc', revision='10',
+        provider_binding={'provider': 'notion', 'document_id': 'doc'},
+        blocks=[
+            WriterBlock(node_id='table', type='table', children=rows,
+                        provider_binding={'provider': 'notion', 'block_id': _table_native_id('table'),
+                                          'parent_block_id': 'doc'}),
+            WriterBlock(node_id='paragraph', type='paragraph', content='end',
+                        provider_binding={'provider': 'notion', 'block_id': _table_native_id('paragraph'),
+                                          'parent_block_id': 'doc'},
+                        provider_payload={'raw_block': {'type': 'paragraph', 'paragraph': {}}}),
+        ],
+    )
     instance = NotionWriterProvider()
     adapter = NotionWriterAdapter()
     fs = MagicMock()
@@ -1061,40 +1070,49 @@ def _cell_batch_setup():
 
 
 def _cell_edit(document, node_id, value, hunk_id=None):
-    return PatchHunk(hunk_id=hunk_id or f'edit-{node_id}', target_node_id=node_id, modify_type='update',
-        block=document.block_by_id(node_id).model_copy(update={'content': value, 'spans': [WriterSpan(text=value,
-        style={'bold': True})]}))
+    return PatchHunk(
+        hunk_id=hunk_id or f'edit-{node_id}', target_node_id=node_id, modify_type='update',
+        block=document.block_by_id(node_id).model_copy(update={
+            'content': value, 'spans': [WriterSpan(text=value, style={'bold': True})],
+        }),
+    )
 
 
 def _apply_cell_hunks(instance, document, hunks):
     return instance.apply_patch_to_document(PatchSet(target_doc_id=document.document_id, hunks=hunks), document,
-        TargetDocument(doc_id='doc', adapter=instance.provider, uri='/doc'))
+                                            TargetDocument(doc_id='doc', adapter=instance.provider, uri='/doc'))
 
 
 def test_notion_cells_merge_by_provider_granularity_and_repeated_edit_keeps_last():
     instance, fs, document = _cell_batch_setup()
     before = document.model_dump()
     hunks = [_cell_edit(document, 'cell-0-0', 'first', 'h1'), _cell_edit(document, 'cell-1-0', 'other row', 'h2'),
-        _cell_edit(document, 'cell-0-1', 'same row', 'h3'), _cell_edit(document, 'cell-0-0', 'last', 'h4')]
+             _cell_edit(document, 'cell-0-1', 'same row', 'h3'), _cell_edit(document, 'cell-0-0', 'last', 'h4')]
     result = _apply_cell_hunks(instance, document, hunks)
     assert fs.update_block.call_count == 2
     assert result['patch_result'].applied_hunks == ['h1', 'h2', 'h3', 'h4']
     assert document.model_dump() == before
     assert result['persisted_document'].block_by_id('cell-0-0').content == 'last'
     instance._read_persisted_document.assert_called_once()
-    calls = {call.kwargs['block_id']: call.kwargs['block']['table_row']['cells'] for call in fs.update_block.call_args_list}
-    assert [[cell[0]['text']['content'] for cell in calls[_table_native_id(row)]] for row in ['row-0',
-        'row-1']] == [['last', 'same row'], ['other row', 'cell-1-1']]
+    calls = {call.kwargs['block_id']: call.kwargs['block']['table_row']['cells']
+             for call in fs.update_block.call_args_list}
+    assert [
+        [cell[0]['text']['content'] for cell in calls[_table_native_id(row)]]
+        for row in ['row-0', 'row-1']
+    ] == [['last', 'same row'], ['other row', 'cell-1-1']]
     assert calls[_table_native_id('row-0')][0][0]['annotations']['bold'] is True
 
 
 def test_notion_move_flushes_cells_and_following_batch_uses_new_ids():
     instance, fs, document = _cell_batch_setup()
     relations = [{'temporary_block_id': key, 'block_id': _table_native_id(key + '-moved')} for key in ['table',
-        'row-0', 'row-1']]
+                                                                                                       'row-0', 'row-1']]
     fs.move_block.return_value = {'block_id_relations': relations, 'document_revision_id': 20}
-    _apply_cell_hunks(instance, document, [_cell_edit(document, 'cell-0-0', 'before'), PatchHunk(hunk_id='move',
-        target_node_id='table', modify_type='move', index=1), _cell_edit(document, 'cell-0-1', 'after')])
+    _apply_cell_hunks(instance, document, [
+        _cell_edit(document, 'cell-0-0', 'before'),
+        PatchHunk(hunk_id='move', target_node_id='table', modify_type='move', index=1),
+        _cell_edit(document, 'cell-0-1', 'after'),
+    ])
     assert [call[0] for call in fs.method_calls] == ['update_block', 'move_block', 'update_block']
     assert fs.update_block.call_args.kwargs['block_id'] == _table_native_id('row-0-moved')
     cells = fs.update_block.call_args.kwargs['block']['table_row']['cells']

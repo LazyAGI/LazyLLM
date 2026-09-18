@@ -54,7 +54,6 @@ _WRITABLE_CODE_LANGUAGES = frozenset({
     'ruby', 'rust', 'sass', 'scala', 'scheme', 'scss', 'shell', 'sql', 'swift',
     'typescript', 'vb.net', 'verilog', 'vhdl', 'visual basic', 'webassembly',
     'xml', 'yaml', 'java/c/c++/c#',
-    'verilog', 'vhdl', 'visual basic', 'webassembly', 'xml', 'yaml', 'java/c/c++/c#',
 })
 _IR_TO_BLOCK_TYPE = {
     'paragraph': 'paragraph',
@@ -814,21 +813,7 @@ class NotionWriterAdapter(WriterAdapterBase):
         if not isinstance(target_parent_block_id, str) or not target_parent_block_id:
             raise ValueError('Notion move target parent is missing its block_id binding.')
 
-        blocks_by_node_id = {block.node_id: block for block in document.iter_blocks()}
-        document_id = str(document.provider_binding.get('document_id') or '')
-        document_uri = str(document.provider_binding.get('uri') or '')
-
-        def resolve_internal_ref(span: WriterSpan) -> Optional[str]:
-            link = span.style.get('link')
-            if not isinstance(link, dict) or link.get('type') != 'internal_ref':
-                return None
-            target_node_id = link.get('target_node_id')
-            target = blocks_by_node_id.get(target_node_id)
-            if target is None:
-                raise ValueError(
-                    f'internal reference target does not exist: {target_node_id!r}.')
-            target_id = target.provider_binding.get('block_id') or document_id
-            return self._notion_block_url(document_uri, document_id, str(target_id))
+        resolve_internal_ref = self._move_link_resolver(document)
 
         media_library = None if media_assets is None \
             else MediaAssetLibrary.model_validate(media_assets)
@@ -1140,6 +1125,24 @@ class NotionWriterAdapter(WriterAdapterBase):
                 target = targets.get(cls._canonical_notion_id(match.group(1))) if match else None
                 if target is not None:
                     span.style['link'] = {'type': 'internal_ref', 'target_node_id': target.node_id}
+
+    def _move_link_resolver(self, document):
+        blocks_by_node_id = {block.node_id: block for block in document.iter_blocks()}
+        document_id = str(document.provider_binding.get('document_id') or '')
+        document_uri = str(document.provider_binding.get('uri') or '')
+
+        def resolve_internal_ref(span: WriterSpan) -> Optional[str]:
+            link = span.style.get('link')
+            if not isinstance(link, dict) or link.get('type') != 'internal_ref':
+                return None
+            target_node_id = link.get('target_node_id')
+            target = blocks_by_node_id.get(target_node_id)
+            if target is None:
+                raise ValueError(
+                    f'internal reference target does not exist: {target_node_id!r}.')
+            target_id = target.provider_binding.get('block_id') or document_id
+            return self._notion_block_url(document_uri, document_id, str(target_id))
+        return resolve_internal_ref
 
 
 __all__ = ['NotionWriterAdapter']

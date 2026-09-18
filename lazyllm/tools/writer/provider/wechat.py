@@ -248,11 +248,11 @@ class WeChatClient:
             detail = f'HTTP {status}' if status is not None else str(exc)
             if body:
                 detail += f'; response={body[:1000]}'
-            print(f'WeChat API {path} HTTP failure: {detail}', flush=True)
+            lazyllm.LOG.error(f'WeChat API {path} HTTP failure: {detail}')
             raise RuntimeError(f'WeChat API {path} request failed: {detail}') from exc
         try:
             payload = json.loads(response.content.decode('utf-8-sig'))
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        except ValueError as exc:
             body = str(getattr(response, 'text', '') or '').strip()
             detail = f'response={body[:1000]}' if body else str(exc)
             raise RuntimeError(f'WeChat API {path} returned invalid JSON: {detail}') from exc
@@ -261,10 +261,9 @@ class WeChatClient:
         errcode = payload.get('errcode')
         if errcode not in (None, 0, '0'):
             errmsg = str(payload.get('errmsg') or 'unknown error')
-            print(
+            lazyllm.LOG.error(
                 f'WeChat API {path} returned error: errcode={errcode}; '
                 f'errmsg={errmsg}; payload={json.dumps(payload, ensure_ascii=False)[:1000]}',
-                flush=True,
             )
             raise RuntimeError(f'WeChat API {path} failed ({errcode}): {errmsg}')
         return payload
@@ -549,30 +548,7 @@ class WeChatWriterProvider(WriterProviderBase):
             or existing_binding.get('thumb_media_id')
             or ''
         ).strip()
-        if not thumb_media_id:
-            if media_id:
-                articles = self._news_items(client.get_draft(media_id))
-                if article_index >= len(articles):
-                    raise ValueError(
-                        f'WeChat draft {media_id!r} has {len(articles)} articles; '
-                        f'article index {article_index} is out of range.')
-                thumb_media_id = str(
-                    articles[article_index].get('thumb_media_id') or '').strip()
-                if not thumb_media_id:
-                    raise ValueError('Existing WeChat draft article has no reusable cover.')
-            else:
-                cover_path = str(target.meta.get('cover_path') or '').strip()
-                if cover_path:
-                    try:
-                        thumb_media_id = client.upload_cover_file(Path(cover_path))
-                    except (OSError, ValueError) as exc:
-                        lazyllm.LOG.warning(
-                            'Cannot use WeChat cover %r; using the placeholder cover: %s',
-                            cover_path, exc,
-                        )
-                if not thumb_media_id:
-                    thumb_media_id = client.upload_cover(
-                        'lazymind-cover.png', wechat_placeholder_cover_png(), 'image/png')
+        thumb_media_id = self._resolve_cover(client, target, media_id, article_index, thumb_media_id)
 
         previous_article = document.metadata.get('wechat_article')
         article = {
@@ -728,6 +704,33 @@ class WeChatWriterProvider(WriterProviderBase):
                 raise ValueError(f'Image media asset {asset_id!r} is unavailable.')
             seen.add(asset_id)
             yield asset_id, path
+
+    def _resolve_cover(self, client, target, media_id, article_index, thumb_media_id):
+        if not thumb_media_id:
+            if media_id:
+                articles = self._news_items(client.get_draft(media_id))
+                if article_index >= len(articles):
+                    raise ValueError(
+                        f'WeChat draft {media_id!r} has {len(articles)} articles; '
+                        f'article index {article_index} is out of range.')
+                thumb_media_id = str(
+                    articles[article_index].get('thumb_media_id') or '').strip()
+                if not thumb_media_id:
+                    raise ValueError('Existing WeChat draft article has no reusable cover.')
+            else:
+                cover_path = str(target.meta.get('cover_path') or '').strip()
+                if cover_path:
+                    try:
+                        thumb_media_id = client.upload_cover_file(Path(cover_path))
+                    except (OSError, ValueError) as exc:
+                        lazyllm.LOG.warning(
+                            'Cannot use WeChat cover %r; using the placeholder cover: %s',
+                            cover_path, exc,
+                        )
+                if not thumb_media_id:
+                    thumb_media_id = client.upload_cover(
+                        'lazymind-cover.png', wechat_placeholder_cover_png(), 'image/png')
+        return thumb_media_id
 
 
 __all__ = [

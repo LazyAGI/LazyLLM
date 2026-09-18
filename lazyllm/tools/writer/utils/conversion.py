@@ -600,6 +600,20 @@ def _preserved_block_source(block: WriterBlock) -> Optional[str]:
     return None
 
 
+def _render_code_block(block: WriterBlock) -> str:
+    if re.match(r'^\s*(```|~~~)', block.content):
+        code = block.content
+    else:
+        extras = block.model_extra or {}
+        language = str(extras.get('language') or block.provider_payload.get('code_language') or '').strip()
+        meta = str(block.provider_payload.get('code_meta') or '').strip()
+        info = f'{language}{(" " + meta) if meta else ""}'
+        fence = _code_fence(block.content)
+        code = f'{fence}{info}\n{block.content}\n{fence}'
+    caption = str(block.provider_payload.get('numbering_caption') or '').strip()
+    return '\n'.join(filter(None, [caption, code]))
+
+
 def _render_block(block: WriterBlock, depth: int, allow_raw: bool) -> str:
     if allow_raw:
         raw = _preserved_block_source(block)
@@ -625,17 +639,7 @@ def _render_block(block: WriterBlock, depth: int, allow_raw: bool) -> str:
         ]))
         return '\n'.join(f'> {line}' if line else '>' for line in body.split('\n'))
     elif block.type == 'code':
-        if re.match(r'^\s*(```|~~~)', block.content):
-            code = block.content
-        else:
-            extras = block.model_extra or {}
-            language = str(extras.get('language') or block.provider_payload.get('code_language') or '').strip()
-            meta = str(block.provider_payload.get('code_meta') or '').strip()
-            info = f'{language}{(" " + meta) if meta else ""}'
-            fence = _code_fence(block.content)
-            code = f'{fence}{info}\n{block.content}\n{fence}'
-        caption = str(block.provider_payload.get('numbering_caption') or '').strip()
-        current = '\n'.join(filter(None, [caption, code]))
+        current = _render_code_block(block)
     elif block.type == 'table':
         grid = table_grid(block)
         cells = [

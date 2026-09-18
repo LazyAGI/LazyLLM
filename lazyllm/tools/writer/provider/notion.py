@@ -208,25 +208,12 @@ class NotionWriterProvider(WriterProviderBase):
         pending_rows: dict[str, NativePatchOperation] = {}
         pending_hunk_ids: List[str] = []
 
-        def flush_cells() -> None:
-            for operation in pending_rows.values():
-                try:
-                    self._execute_native_operation(fs, document_id, operation)
-                except Exception as exc:
-                    raise RuntimeError(
-                        f'Notion cell batch failed for row {operation.params["block_id"]!r} '
-                        f'and hunks {pending_hunk_ids!r}; earlier rows may have been applied.'
-                    ) from exc
-            applied_hunks.extend(pending_hunk_ids)
-            pending_rows.clear()
-            pending_hunk_ids.clear()
-
         for source_hunk in patch_set.hunks:
             current = persisted.block_by_id(source_hunk.target_node_id)
             is_cell_update = source_hunk.modify_type == 'update' and current is not None \
                 and current.type == 'table_cell'
             if not is_cell_update:
-                flush_cells()
+                self._flush_cell_updates(fs, document_id, pending_rows, pending_hunk_ids, applied_hunks)
             hunk = self._materialize_table_caption_hunk(
                 source_hunk, final_numbering)
             operation = adapter.patch_to_operation(
@@ -254,7 +241,7 @@ class NotionWriterProvider(WriterProviderBase):
             persisted = self._apply_operation_result_locally(
                 persisted, hunk, operation, result, media_assets=media_assets)
 
-        flush_cells()
+        self._flush_cell_updates(fs, document_id, pending_rows, pending_hunk_ids, applied_hunks)
 
         title_updated = patch_set.new_title is not None \
             and patch_set.new_title != source_document.title
@@ -265,26 +252,8 @@ class NotionWriterProvider(WriterProviderBase):
             update_title(document_id, patch_set.new_title)
             persisted = persisted.model_copy(update={'title': patch_set.new_title})
 
-        for sync_hunk in self._numbering_sync_hunks(numbered_document, persisted):
-            operation = adapter.patch_to_operation(
-                sync_hunk, persisted, media_assets=media_assets)
-            try:
-                sync_result = self._execute_native_operation(fs, document_id, operation)
-            except Exception as exc:
-                LOG.error(
-                    'Notion numbering sync failed: hunk_id=%s block_id=%s error=%s',
-                    sync_hunk.hunk_id,
-                    operation.params.get('block_id'),
-                    exc,
-                )
-                raise RuntimeError(
-                    f'provider numbering sync failed for block '
-                    f'{operation.params.get("block_id") or "unknown"!r}: {exc}'
-                ) from exc
-            applied_hunks.append(sync_hunk.hunk_id or sync_hunk.target_node_id)
-            persisted = self._apply_operation_result_locally(
-                persisted, sync_hunk, operation, sync_result,
-                media_assets=media_assets)
+        persisted = self._sync_numbering(
+            numbered_document, persisted, adapter, fs, document_id, media_assets, applied_hunks)
 
         refreshed = self._read_persisted_document(
             fs=fs, adapter=adapter, real_path=real_path,
@@ -332,26 +301,7 @@ class NotionWriterProvider(WriterProviderBase):
             raise ValueError(
                 f'{operation.operation} operation did not return Notion node ID bindings.')
 
-        native_by_node_id: dict[str, dict[str, Any]] = {}
-
-        def collect_native(value: Any) -> None:
-            if isinstance(value, list):
-                for item in value:
-                    collect_native(item)
-                return
-            if not isinstance(value, dict):
-                return
-            temporary_id = value.get('_temporary_node_id')
-            if isinstance(temporary_id, str) and temporary_id:
-                native_by_node_id[temporary_id] = value
-            for item in value.values():
-                collect_native(item)
-
-        collect_native(operation.params.get('blocks'))
-        collect_native(operation.params.get('block'))
-        caption_operation = operation.params.get('_caption_operation')
-        if caption_operation is not None:
-            collect_native(caption_operation.params.get('block'))
+        native_by_node_id = NotionWriterProvider._collect_native_nodes(operation)
         relation_map = bindings
         if any(not isinstance(relation_map.get(node_id), str) or not relation_map[node_id]
                for node_id in native_by_node_id):
@@ -359,41 +309,7 @@ class NotionWriterProvider(WriterProviderBase):
         physical_ids = [relation_map[node_id] for node_id in native_by_node_id]
         if len(physical_ids) != len(set(physical_ids)):
             raise ValueError('Notion operation returned duplicate block IDs.')
-        for node_id, block_id in bindings.items():
-            if not isinstance(node_id, str) or not node_id \
-                    or not isinstance(block_id, str) or not block_id:
-                continue
-            block = updated.block_by_id(node_id)
-            if block is None:
-                if node_id.endswith('::caption'):
-                    root = updated.block_by_id(node_id[:-9])
-                    if root is not None and root.type == 'table':
-                        root.provider_payload['table_caption'] = {
-                            'provider_binding': {
-                                'provider': 'notion',
-                                'block_id': block_id,
-                            },
-                            'raw_block': deepcopy(native_by_node_id.get(node_id) or {}),
-                        }
-                    continue
-                raise ValueError(
-                    f'Notion returned a block relation for unknown node {node_id!r}.')
-            block.provider_binding = {
-                **block.provider_binding,
-                'provider': 'notion',
-                'block_id': block_id,
-            }
-            native = native_by_node_id.get(node_id)
-            if native is not None:
-                raw = deepcopy(native)
-                raw.pop('_temporary_node_id', None)
-                raw.pop('_media', None)
-                raw['object'] = 'block'
-                raw['id'] = block_id
-                block.provider_payload = {
-                    **block.provider_payload,
-                    'raw_block': raw,
-                }
+        NotionWriterProvider._bind_created_nodes(updated, bindings, native_by_node_id)
         root = updated.block_by_id(patch.target_node_id)
         if root is not None:
             parent_key = 'target_parent_block_id' if operation.operation == 'move' else 'parent_block_id'
@@ -733,6 +649,104 @@ class NotionWriterProvider(WriterProviderBase):
             asset = media_assets.assets.get(references[0]) if media_assets else None
             if asset is None or not asset.local_path or not Path(asset.local_path).is_file():
                 raise ValueError(f'Image block {block.node_id!r} media is unavailable.')
+
+    def _flush_cell_updates(self, fs, document_id, pending_rows, pending_hunk_ids, applied_hunks) -> None:
+        for operation in pending_rows.values():
+            try:
+                self._execute_native_operation(fs, document_id, operation)
+            except Exception as exc:
+                raise RuntimeError(
+                    f'Notion cell batch failed for row {operation.params["block_id"]!r} '
+                    f'and hunks {pending_hunk_ids!r}; earlier rows may have been applied.'
+                ) from exc
+        applied_hunks.extend(pending_hunk_ids)
+        pending_rows.clear()
+        pending_hunk_ids.clear()
+
+    @staticmethod
+    def _collect_native_nodes(operation):
+        native_by_node_id: dict[str, dict[str, Any]] = {}
+
+        def collect_native(value: Any) -> None:
+            if isinstance(value, list):
+                for item in value:
+                    collect_native(item)
+                return
+            if not isinstance(value, dict):
+                return
+            temporary_id = value.get('_temporary_node_id')
+            if isinstance(temporary_id, str) and temporary_id:
+                native_by_node_id[temporary_id] = value
+            for item in value.values():
+                collect_native(item)
+
+        collect_native(operation.params.get('blocks'))
+        collect_native(operation.params.get('block'))
+        caption_operation = operation.params.get('_caption_operation')
+        if caption_operation is not None:
+            collect_native(caption_operation.params.get('block'))
+        return native_by_node_id
+
+    @staticmethod
+    def _bind_created_nodes(updated, bindings, native_by_node_id) -> None:
+        for node_id, block_id in bindings.items():
+            if not isinstance(node_id, str) or not node_id \
+                    or not isinstance(block_id, str) or not block_id:
+                continue
+            block = updated.block_by_id(node_id)
+            if block is None:
+                if node_id.endswith('::caption'):
+                    root = updated.block_by_id(node_id[:-9])
+                    if root is not None and root.type == 'table':
+                        root.provider_payload['table_caption'] = {
+                            'provider_binding': {
+                                'provider': 'notion',
+                                'block_id': block_id,
+                            },
+                            'raw_block': deepcopy(native_by_node_id.get(node_id) or {}),
+                        }
+                    continue
+                raise ValueError(
+                    f'Notion returned a block relation for unknown node {node_id!r}.')
+            block.provider_binding = {
+                **block.provider_binding,
+                'provider': 'notion',
+                'block_id': block_id,
+            }
+            native = native_by_node_id.get(node_id)
+            if native is not None:
+                raw = deepcopy(native)
+                raw.pop('_temporary_node_id', None)
+                raw.pop('_media', None)
+                raw['object'] = 'block'
+                raw['id'] = block_id
+                block.provider_payload = {
+                    **block.provider_payload,
+                    'raw_block': raw,
+                }
+
+    def _sync_numbering(self, numbered_document, persisted, adapter, fs, document_id, media_assets, applied_hunks):
+        for sync_hunk in self._numbering_sync_hunks(numbered_document, persisted):
+            operation = adapter.patch_to_operation(
+                sync_hunk, persisted, media_assets=media_assets)
+            try:
+                sync_result = self._execute_native_operation(fs, document_id, operation)
+            except Exception as exc:
+                LOG.error(
+                    'Notion numbering sync failed: hunk_id=%s block_id=%s error=%s',
+                    sync_hunk.hunk_id,
+                    operation.params.get('block_id'),
+                    exc,
+                )
+                raise RuntimeError(
+                    f'provider numbering sync failed for block '
+                    f'{operation.params.get("block_id") or "unknown"!r}: {exc}'
+                ) from exc
+            applied_hunks.append(sync_hunk.hunk_id or sync_hunk.target_node_id)
+            persisted = self._apply_operation_result_locally(
+                persisted, sync_hunk, operation, sync_result,
+                media_assets=media_assets)
+        return persisted
 
 
 __all__ = ['NotionWriterProvider']

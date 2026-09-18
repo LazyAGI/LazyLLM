@@ -39,7 +39,7 @@ _LOCAL_MARKDOWN_IMAGE_RE = re.compile(
 
 
 class ObsidianWriterProvider(WriterProviderBase):
-    """Bridge an Obsidian Markdown note through Writer's Markdown path."""
+    '''Bridge an Obsidian Markdown note through Writer's Markdown path.'''
 
     provider = 'obsidian'
     capabilities = WriterProviderCapabilities(
@@ -136,11 +136,11 @@ class ObsidianWriterProvider(WriterProviderBase):
         }
 
     def create_document(self, title: str, parent_uri: str = '') -> TargetDocument:
-        """Create a note in the configured default Vault.
+        '''Create a note in the configured default Vault.
 
         Obsidian has no remote parent container to resolve here: the first
         discovered Vault is the explicit local default.
-        """
+        '''
         fs = self._fs()
         note = fs.create_note(title)
         return TargetDocument(
@@ -285,37 +285,6 @@ class ObsidianWriterProvider(WriterProviderBase):
         external_images: Dict[str, str] = bridge['external_images']
         warnings: List[str] = bridge['warnings']
 
-        def unsupported_image(raw: str, reason: str) -> str:
-            warnings.append(reason)
-            return raw
-
-        def bridge_image(
-            raw: str,
-            reference: str,
-            alt: str,
-            *,
-            markdown_relative: bool,
-        ) -> str:
-            try:
-                source = fs.resolve_image_reference(
-                    note,
-                    reference,
-                    markdown_relative=markdown_relative,
-                )
-            except (FileNotFoundError, ValueError) as exc:
-                return unsupported_image(raw, f'Obsidian image was kept without import: {exc}')
-            writer_reference = self._writer_image_reference(note, source)
-            image = images.setdefault(
-                writer_reference,
-                {
-                    'raw': raw,
-                    'resource_uri': source.as_uri(),
-                    'raw_variants': [],
-                },
-            )
-            image.setdefault('raw_variants', []).append(raw)
-            return f'![{alt or source.stem}]({writer_reference})'
-
         def obsidian_image(match: re.Match[str]) -> str:
             raw = match.group(0)
             reference = match.group(1)
@@ -324,7 +293,7 @@ class ObsidianWriterProvider(WriterProviderBase):
             if suffix in OBSIDIAN_IMAGE_SUFFIXES:
                 alias = reference.partition('|')[2].strip()
                 alt = alias if alias and not alias.isdigit() else ''
-                return bridge_image(raw, reference, alt, markdown_relative=False)
+                return self._bridge_image(note, fs, images, warnings, raw, reference, alt, markdown_relative=False)
             return raw
 
         def local_markdown_image(match: re.Match[str]) -> str:
@@ -344,8 +313,8 @@ class ObsidianWriterProvider(WriterProviderBase):
                 return raw
             suffix = Path(unquote(parsed.path)).suffix.lower()
             if suffix in OBSIDIAN_IMAGE_SUFFIXES:
-                return bridge_image(
-                    raw,
+                return self._bridge_image(
+                    note, fs, images, warnings, raw,
                     target,
                     match.group('alt').strip(),
                     markdown_relative=True,
@@ -461,6 +430,35 @@ class ObsidianWriterProvider(WriterProviderBase):
             if local.is_file():
                 return local
         return None
+
+    def _bridge_image(
+        self, note, fs, images, warnings,
+        raw: str,
+        reference: str,
+        alt: str,
+        *,
+        markdown_relative: bool,
+    ) -> str:
+        try:
+            source = fs.resolve_image_reference(
+                note,
+                reference,
+                markdown_relative=markdown_relative,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            warnings.append(f'Obsidian image was kept without import: {exc}')
+            return raw
+        writer_reference = self._writer_image_reference(note, source)
+        image = images.setdefault(
+            writer_reference,
+            {
+                'raw': raw,
+                'resource_uri': source.as_uri(),
+                'raw_variants': [],
+            },
+        )
+        image.setdefault('raw_variants', []).append(raw)
+        return f'![{alt or source.stem}]({writer_reference})'
 
 
 __all__ = ['ObsidianWriterProvider']

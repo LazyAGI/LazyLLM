@@ -1,4 +1,4 @@
-"""Template contract for WeChat Official Account draft rendering."""
+'''Template contract for WeChat Official Account draft rendering.'''
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 
 class WeChatTemplate:
-    """Provide presentation decisions without owning WeChat API behavior."""
+    '''Provide presentation decisions without owning WeChat API behavior.'''
 
     template_id = ''
     display_name = ''

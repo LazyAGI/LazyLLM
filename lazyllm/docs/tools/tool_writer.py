@@ -439,3 +439,114 @@ utils.add_english_doc('WriterProviderBase.convert_common_document', '''
 Convert Markdown or WriterDocument without a platform instance. Specify output_format as
 markdown, latex or text. Returns WriterProviderDocument without file writes or platform IO.
 ''', module=_writer_provider_module)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.base')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.base')),
+    [
+        ('WriterAdapterBase.bind_written_document',
+         '根据写入返回的临时 ID 映射绑定平台块，并与重新读取的文档合并，保留 Writer 节点身份。',
+         'Bind temporary IDs to written provider blocks and merge the refreshed document while preserving Writer node identities.'),
+        ('WriterAdapterBase.materialize_internal_links',
+         '将平台原生块中的内部引用转换为目标文档链接；基类返回块的深拷贝。',
+         'Resolve internal references in native blocks against the target document; the base implementation returns a deep copy.'),
+        ('WriterAdapterBase.merge_refreshed_document',
+         '合并写入前与重新读取的文档，恢复稳定节点 ID、表格标题及本地状态；未实现的平台抛出异常。',
+         'Merge previous and refreshed documents to restore stable node IDs, table captions and local state; unsupported adapters raise an error.'),
+    ],
+)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.feishu')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.feishu')),
+    [
+        ('FeishuWriterAdapter.materialize_internal_links',
+         '根据 document_uri 与 document_id 将待写入块中的内部引用转换为可访问的平台链接。',
+         'Resolve internal references in outgoing blocks to provider URLs using document_uri and document_id.'),
+    ],
+)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.notion')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.adapter.notion')),
+    [
+        ('NotionWriterAdapter.materialize_internal_links',
+         '根据 document_uri 与 document_id 将待写入块中的内部引用转换为可访问的平台链接。',
+         'Resolve internal references in outgoing blocks to provider URLs using document_uri and document_id.'),
+    ],
+)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.provider.base')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.provider.base')),
+    [
+        ('WriterProviderCapabilityError',
+         '平台不支持请求能力时抛出的异常，包含 provider、capability 和结构化 details，不可重试。',
+         'Non-retryable error for an unsupported provider capability, carrying provider, capability and structured details.'),
+        ('WriterProviderRevisionError',
+         '文档远端版本与加载版本不一致时抛出的异常，携带 provider、expected、actual，阻止覆盖并发修改。',
+         'Revision conflict carrying provider, expected and actual revisions, preventing overwrites of concurrent changes.'),
+        ('WriterProviderWriteOutcomeError',
+         '平台未确认写入结果时抛出的异常，携带 provider 和 operation；重试前应检查远端文档。',
+         'Ambiguous write outcome carrying provider and operation; inspect the remote document before retrying.'),
+        ('WriterProviderBase.require_capability',
+         '检查 capability 是否在当前平台启用，不支持时抛出 WriterProviderCapabilityError。',
+         'Check that the requested capability is enabled; otherwise raise WriterProviderCapabilityError.'),
+        ('WriterProviderBase.prepare_markdown_for_editor',
+         '为目标文档准备编辑用 Markdown；默认原样返回，平台可覆盖以处理自身标记。',
+         'Prepare Markdown for editing the target document; return it unchanged unless a provider overrides this hook.'),
+    ],
+)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.provider.github')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.provider.github')),
+    [
+        ('GitHubWriterProvider.prepare_markdown_for_editor',
+         '将 GitHub Markdown 代码围栏规范化为编辑器支持的形式，并在目标元数据中保存原始围栏。',
+         'Normalize GitHub Markdown code fences for the editor and save their original forms in target metadata.'),
+        ('GitHubWriterProvider.normalize_code_fences_for_writer',
+         '返回规范化代码围栏后的 Markdown；恢复信息写入 target.meta，replace_existing 控制替换或合并已有记录。',
+         'Return normalized Markdown and store restoration metadata in target.meta; replace_existing controls replacing or merging existing records.'),
+    ],
+)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.templates.wechat.base')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.templates.wechat.base')),
+    [
+        ('WeChatTemplate.heading_style',
+         '返回当前微信公众号模板的标题 CSS 属性映射，用于生成内联样式。',
+         'Return the template CSS property mapping for heading levels clamped to 1–3 for inline rendering.'),
+        ('WeChatTemplate.paragraph_style',
+         '返回当前微信公众号模板的段落 CSS 属性映射，用于生成内联样式。',
+         'Return the template CSS property mapping for paragraphs for inline rendering.'),
+        ('WeChatTemplate.caption_style',
+         '返回当前微信公众号模板的图片或表格说明 CSS 属性映射，用于生成内联样式。',
+         'Return the template CSS property mapping for captions for inline rendering.'),
+        ('WeChatTemplate.quote_style',
+         '返回当前微信公众号模板的引用块 CSS 属性映射，用于生成内联样式。',
+         'Return the template CSS property mapping for quotes for inline rendering.'),
+        ('WeChatTemplate.code_style',
+         '返回当前微信公众号模板的代码块 CSS 属性映射，用于生成内联样式。',
+         'Return the template CSS property mapping for code blocks for inline rendering.'),
+        ('WeChatTemplate.divider_style',
+         '返回当前微信公众号模板的分隔线 CSS 属性映射，用于生成内联样式。',
+         'Return the template CSS property mapping for dividers for inline rendering.'),
+        ('WeChatTemplate.list_style',
+         '返回当前微信公众号模板的列表容器 CSS 属性映射，用于生成内联样式。',
+         'Return the template CSS property mapping for list containers for inline rendering.'),
+        ('WeChatTemplate.list_item_style',
+         '返回当前微信公众号模板的列表项 CSS 属性映射，用于生成内联样式。',
+         'Return the template CSS property mapping for list items for inline rendering.'),
+        ('WeChatTemplate.list_marker_style',
+         '返回当前微信公众号模板的有序或无序列表标记 CSS 属性映射，用于生成内联样式。',
+         'Return the template CSS property mapping for ordered or unordered list markers for inline rendering.'),
+    ],
+)

@@ -21,7 +21,7 @@ def register_writer_provider(provider_class: Type[WriterProviderBase]) -> None:
 
 
 def list_writer_providers() -> list[dict[str, Any]]:
-    """Return registered providers and their declared capabilities."""
+    '''Return registered providers and their declared capabilities.'''
     return [
         {
             'id': provider_id,
