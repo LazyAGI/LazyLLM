@@ -74,7 +74,7 @@ class MCPClient(object):
                 # Timeout instance created by LazyLLM's httpx shim.
                 timeout=self._timeout,
             ) as http_client:
-                if headers or self._auth_provider:
+                if self._auth_provider:
                     # Newer SDKs follow same-origin redirects themselves. Reject
                     # responses before the SDK can resend credentials.
                     http_client.follow_redirects = False
