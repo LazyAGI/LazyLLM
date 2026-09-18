@@ -329,6 +329,11 @@ def _get_tool_runtime_metadata(func: Optional[Callable]) -> Optional[ToolRuntime
         or getattr(target, _TOOL_RUNTIME_METADATA_ATTR, None)
 
 
+def get_tool_runtime_metadata(func: Optional[Callable]) -> Optional[ToolRuntimeMetadata]:
+    '''Read a callable's runtime declaration, including wrapped callables.'''
+    return _get_tool_runtime_metadata(func)
+
+
 def _set_tool_runtime_metadata(func: Callable, patch: Dict[str, Any]) -> None:
     target = getattr(func, '__func__', func)
     try:

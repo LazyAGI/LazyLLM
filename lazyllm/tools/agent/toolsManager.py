@@ -816,23 +816,6 @@ def _resolve_registration_tool(tool):
     return tool
 
 
-def _registration_tool_name(tool):
-    if isinstance(tool, ModuleTool):
-        return tool.name
-    if isinstance(tool, tuple) and len(tool) == 2:
-        return _registration_tool_name(tool[0])
-    if isinstance(tool, dict):
-        return str(tool.get('name') or '')
-    return str(getattr(tool, '__name__', '') or '') or tool.__class__.__name__
-
-
-def _mcp_origin(tool):
-    if isinstance(tool, tuple) and len(tool) == 2:
-        tool = tool[0]
-    metadata = _get_tool_runtime_metadata(tool)
-    return metadata.tool_origin if metadata and metadata.tool_source == 'mcp' else ''
-
-
 def _alias_mcp_tool(tool, name):
     if isinstance(tool, tuple) and len(tool) == 2:
         return (_alias_mcp_tool(tool[0], name), tool[1])
@@ -848,29 +831,22 @@ def _alias_mcp_tool(tool, name):
 
 
 def _disambiguate_mcp_tools(tools):
-    servers_by_name = {}
-    for tool in tools:
-        servers_by_name.setdefault(_registration_tool_name(tool), set()).add(_mcp_origin(tool))
-    reserved = set(servers_by_name)
-    aliases = {}
-    for name, servers in sorted(servers_by_name.items()):
-        if len(servers) < 2:
-            continue
-        for server_id in sorted(servers - {''}):
-            digest = hashlib.sha256(f'{server_id}\0{name}'.encode()).hexdigest()[:12]
-            suffix = f'_mcp_{digest}'
-            alias = f'{name[:64 - len(suffix)]}{suffix}'
-            counter = 0
-            while alias in reserved:
-                counter += 1
-                suffix = f'_mcp_{digest}_{counter}'
-                alias = f'{name[:64 - len(suffix)]}{suffix}'
-            aliases[server_id, name] = alias
-            reserved.add(alias)
     result = []
     for tool in tools:
-        key = (_mcp_origin(tool), _registration_tool_name(tool))
-        result.append(_alias_mcp_tool(tool, aliases[key]) if key in aliases else tool)
+        target = tool[0] if isinstance(tool, tuple) and len(tool) == 2 else tool
+        metadata = _get_tool_runtime_metadata(target)
+        if metadata and metadata.tool_source == 'mcp' and metadata.tool_origin and metadata.tool_identity:
+            # Identity records the immutable server ID and original wire name.
+            # Always alias: adding/removing other tools must not change saved names.
+            _, wire_name = std_json.loads(metadata.tool_identity)
+            prefix = re.sub(r'[^a-zA-Z0-9_]', '_', wire_name)
+            if prefix[:1].isdigit():
+                prefix = '_' + prefix
+            digest = hashlib.sha256(metadata.tool_identity.encode()).hexdigest()[:12]
+            suffix = f'_mcp_{digest}'
+            tool = _alias_mcp_tool(tool, f'{prefix[:64 - len(suffix)]}{suffix}')
+        result.append(tool)
+    # Exact final-name collisions are rejected by the normal duplicate validation.
     return result
 
 
