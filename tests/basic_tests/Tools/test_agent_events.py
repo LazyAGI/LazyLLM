@@ -6,7 +6,7 @@ import time
 from types import SimpleNamespace
 
 import lazyllm
-from lazyllm.tools import PlanAndSolveAgent, ReactAgent
+from lazyllm.tools import PlanAndSolveAgent, ReactAgent, fc_register
 from lazyllm.tools.agent import ToolExecutionError
 from lazyllm.tools.agent.base import (
     TOOL_OBSERVATION_KEY,
@@ -64,6 +64,10 @@ def approval_failure(path: str) -> str:
         path (str): Path that would be changed.
     '''
     raise ToolExecutionError.approval_required(f'Changing {path} requires approval.')
+
+
+for _tool in (add_one, get_status, private_status, exposed_failure, approval_failure):
+    fc_register(host_file='NONE')(_tool)
 
 
 def _private_tool_group():

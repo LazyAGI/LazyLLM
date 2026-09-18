@@ -251,7 +251,7 @@ class TestSkills(object):
         )
         manager = SkillManager(dir='skills', fs=fs)
 
-        result = manager.run_script('script-skill', 'scripts/ok.py', allow_unsafe=True)
+        result = manager.run_script('script-skill', 'scripts/ok.py')
 
         assert result['status'] == 'ok'
         assert result['exit_code'] == 0
@@ -271,9 +271,9 @@ class TestSkills(object):
 
             manager = SkillManager(dir=tmp)
 
-            ok_result = manager.run_script('script-skill', 'scripts/ok.py', allow_unsafe=True)
+            ok_result = manager.run_script('script-skill', 'scripts/ok.py')
             with pytest.raises(ToolExecutionError) as exc_info:
-                manager.run_script('script-skill', 'scripts/fail.py', allow_unsafe=True)
+                manager.run_script('script-skill', 'scripts/fail.py')
 
             assert ok_result['status'] == 'ok'
             assert ok_result['exit_code'] == 0
@@ -293,7 +293,7 @@ class TestSkills(object):
             lazyllm.globals['dynamic_env_vars'] = {'DYNAMIC_TEST_API_KEY': 'secret-from-session'}
             try:
                 manager = SkillManager(dir=tmp)
-                result = manager.run_script('env-skill', 'scripts/print_env.py', allow_unsafe=True)
+                result = manager.run_script('env-skill', 'scripts/print_env.py')
             finally:
                 if old_dynamic_env is None:
                     lazyllm.globals.pop('dynamic_env_vars', None)
@@ -326,13 +326,13 @@ class TestSkills(object):
                 manager = SkillManager(dir=tmp)
                 with pytest.raises(ToolExecutionError) as exc_info:
                     manager.run_script(
-                        'retry-env-skill', 'scripts/needs_key.py', allow_unsafe=True,
+                        'retry-env-skill', 'scripts/needs_key.py',
                     )
                 assert exc_info.value.missing_env == ['DYNAMIC_TEST_API_KEY']
                 assert 'missing_env: ["DYNAMIC_TEST_API_KEY"]' in str(exc_info.value)
                 inject_env_vars({'DYNAMIC_TEST_API_KEY': 'secret-after-set'})
                 result = manager.run_script(
-                    'retry-env-skill', 'scripts/needs_key.py', allow_unsafe=True,
+                    'retry-env-skill', 'scripts/needs_key.py',
                 )
             finally:
                 if old_dynamic_env is None:
@@ -363,7 +363,7 @@ class TestSkills(object):
 
             manager = SkillManager(dir=tmp)
             result = manager.run_script(
-                'optional-env-skill', 'scripts/ok.py', allow_unsafe=True,
+                'optional-env-skill', 'scripts/ok.py',
             )
 
             assert result['status'] == 'ok'
@@ -394,7 +394,7 @@ class TestSkills(object):
                 manager = SkillManager(dir=tmp)
                 with pytest.raises(ToolExecutionError) as exc_info:
                     manager.run_script(
-                        'declared-env-skill', 'scripts/fail.py', allow_unsafe=True,
+                        'declared-env-skill', 'scripts/fail.py',
                     )
             finally:
                 if old_dynamic_env is None:
@@ -420,7 +420,7 @@ class TestSkills(object):
             manager = SkillManager(dir=tmp)
             with pytest.raises(ToolExecutionError) as exc_info:
                 manager.run_script(
-                    'convention-env-skill', 'scripts/fail.py', allow_unsafe=True,
+                    'convention-env-skill', 'scripts/fail.py',
                 )
 
             assert exc_info.value.missing_env == ['CONVENTION_API_KEY']
@@ -436,7 +436,7 @@ class TestSkills(object):
 
             manager = SkillManager(dir=tmp)
             with pytest.raises(ToolExecutionError) as exc_info:
-                manager.run_script('cwd-skill', 'scripts/ok.py', allow_unsafe=True, cwd='missing')
+                manager.run_script('cwd-skill', 'scripts/ok.py', cwd='missing')
 
             assert 'scripts/ok.py' in str(exc_info.value)
             assert 'missing' in str(exc_info.value)

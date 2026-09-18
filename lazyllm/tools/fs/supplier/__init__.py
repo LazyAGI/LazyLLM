@@ -7,6 +7,7 @@ from .onedrive import OneDriveFS
 from .yuque import YuqueFS
 from .ones import OnesFS
 from .obsidian import ObsidianFS
+from .github import GitHubRepoFS, GitHubWikiFS
 
 __all__ = [
     'FeishuFS',
@@ -17,4 +18,6 @@ __all__ = [
     'YuqueFS',
     'OnesFS',
     'ObsidianFS',
+    'GitHubRepoFS',
+    'GitHubWikiFS',
 ]

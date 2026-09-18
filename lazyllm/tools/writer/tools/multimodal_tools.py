@@ -1,8 +1,10 @@
 from __future__ import annotations
+import os
 
 import hashlib
 import ipaddress
 import json
+import re
 import socket
 from io import BytesIO
 from pathlib import Path
@@ -30,7 +32,9 @@ from ..prompts import RESOLVE_VISUAL_NEEDS_PROMPT, VISION_SUMMARY_PROMPT
 
 
 _MAX_IMAGE_BYTES = 20 * 1024 * 1024
-_IMAGE_SUFFIXES = {'.bmp', '.gif', '.jpeg', '.jpg', '.png', '.tif', '.tiff', '.webp'}
+_IMAGE_SUFFIXES = {
+    '.bmp', '.gif', '.jpeg', '.jpg', '.png', '.svg', '.tif', '.tiff', '.webp',
+}
 _MAX_REDIRECTS = 5
 
 
@@ -258,6 +262,15 @@ class WriterMultimodalTools(WriterToolBase):
         parsed = urlparse(uri)
         if not uri:
             raise ValueError('image resource URI is required.')
+        cache = resource.meta.get('github_resource_cache')
+        if parsed.scheme == 'githubrepo' and isinstance(cache, dict) and cache.get('uri') == uri:
+            try:
+                cached_path = Path(str(cache.get('path') or ''))
+                data = cached_path.read_bytes() if 0 < cached_path.stat().st_size <= _MAX_IMAGE_BYTES else b''
+            except (OSError, ValueError):
+                data = b''
+            if data and hashlib.sha256(data).hexdigest() == cache.get('sha256'):
+                return self._materialize_image_bytes(data, resource, suffix_hint=Path(parsed.path).suffix)
         if parsed.scheme in {'http', 'https'}:
             return self._materialize_image_bytes(
                 self._download_external_image(uri),
@@ -265,13 +278,20 @@ class WriterMultimodalTools(WriterToolBase):
                 suffix_hint=Path(parsed.path).suffix,
             )
         if parsed.scheme not in {'', 'file'}:
-            raise ValueError('image inputs must use a local file path or an HTTP(S) URL.')
-        source = Path(unquote(parsed.path) if parsed.scheme == 'file' else uri).expanduser().resolve()
+            import lazyllm.tools.fs.client as _fs_client
+            return self._materialize_image_bytes(
+                _fs_client.FS.read_bytes(uri),
+                resource,
+                suffix_hint=Path(parsed.path).suffix,
+            )
+        source = Path(unquote(parsed.path) if parsed.scheme == 'file' else uri).expanduser().absolute()
         if not source.is_file():
             raise FileNotFoundError(f'image file does not exist: {source}')
         if not 0 < source.stat().st_size <= _MAX_IMAGE_BYTES:
             raise ValueError('image file must be between 1 byte and 20 MB.')
-        return self._materialize_image_bytes(source.read_bytes(), resource, suffix_hint=source.suffix)
+        with open(str(source), 'rb') as stream:
+            data = stream.read(_MAX_IMAGE_BYTES + 1)
+        return self._materialize_image_bytes(data, resource, suffix_hint=source.suffix)
 
     def _materialize_image_bytes(
         self,
@@ -283,12 +303,24 @@ class WriterMultimodalTools(WriterToolBase):
         size = len(data)
         if not 0 < size <= _MAX_IMAGE_BYTES:
             raise ValueError('image file must be between 1 byte and 20 MB.')
-        image_format, width, height = self._inspect_image_bytes(data)
+        is_svg = (
+            str(resource.mime_type or '').lower() == 'image/svg+xml'
+            or str(suffix_hint or '').lower() == '.svg'
+        )
+        if is_svg:
+            image_format, width, height = self._inspect_svg_bytes(data)
+        else:
+            image_format, width, height = self._inspect_image_bytes(data)
         digest = hashlib.sha256(data).hexdigest()
         suffix = self._image_suffix(suffix_hint, image_format)
         destination = self._assets_dir() / f'{digest}{suffix}'
-        if not destination.exists():
-            destination.write_bytes(data)
+        try:
+            with open(str(destination), 'xb') as stream:
+                stream.write(data)
+        except FileExistsError:
+            with open(str(destination), 'rb') as stream:
+                if stream.read(_MAX_IMAGE_BYTES + 1) != data:
+                    raise ValueError('Existing media asset does not match its content digest.')
 
         caption = str(resource.meta.get('caption') or '').strip() or None
         summary = str(resource.summary or '').strip()
@@ -301,7 +333,10 @@ class WriterMultimodalTools(WriterToolBase):
         source_type = str(resource.meta.get('source_type') or 'input_resource')
         source_meta = {
             key: resource.meta[key]
-            for key in ('origin', 'provider', 'provider_block_id')
+            for key in (
+                'origin', 'provider', 'provider_block_id', 'referenced_from',
+                'source_reference',
+            )
             if resource.meta.get(key) not in (None, '')
         }
         return MediaAsset(
@@ -315,7 +350,10 @@ class WriterMultimodalTools(WriterToolBase):
             meta={
                 **source_meta,
                 'sha256': digest,
-                'mime_type': PIL.Image.MIME.get(image_format),
+                'mime_type': (
+                    'image/svg+xml' if image_format == 'SVG'
+                    else PIL.Image.MIME.get(image_format)
+                ),
                 'byte_size': size,
                 'width': width,
                 'height': height,
@@ -354,54 +392,29 @@ class WriterMultimodalTools(WriterToolBase):
         self,
         document: WriterDocument,
     ) -> tuple[List[tuple[InputResource, MediaAsset]], List[str]]:
-        provider = str(document.provider_binding.get('provider') or '').lower()
-        image_blocks = [block for block in document.iter_blocks() if block.type == 'image']
-        if not image_blocks or provider != 'feishu':
+        provider_key = str(document.provider_binding.get('provider') or '').lower()
+        if not provider_key or not any(block.type == 'image' for block in document.iter_blocks()):
             return [], []
-
-        locator = str(
-            document.provider_binding.get('uri')
-            or ((document.metadata.get('source') or {}).get('uri') if isinstance(
-                document.metadata.get('source'), dict) else '')
-            or f'feishu:/~docx/{document.provider_binding.get("document_id") or ""}'
-        ).strip()
-        import lazyllm.tools.fs.client as _fs_client
-        protocol, space_id, real_path = _fs_client.FS._parse(locator)
-        fs = _fs_client.FS._get_or_create_fs(protocol, space_id, real_path)
-        download_media = getattr(fs, 'download_media', None)
-        if not callable(download_media):
-            return [], [f'{type(fs).__name__} does not support Feishu media downloads.']
-
+        from ..provider import get_writer_provider
+        try:
+            provider = get_writer_provider(provider_key, adapters=self.adapters)
+        except ValueError:
+            return [], []
+        resources, warnings = provider.document_image_resources(document)
         collected: List[tuple[InputResource, MediaAsset]] = []
-        warnings: List[str] = []
-        for block in image_blocks:
-            raw = block.provider_payload.get('raw_block') or {}
-            image = raw.get('image') if isinstance(raw, dict) else None
-            token = str((image or {}).get('token') or '').strip()
-            block_id = str(block.provider_binding.get('block_id') or block.node_id)
-            if not token:
-                warnings.append(f'Feishu image block {block_id!r} has no media token.')
-                continue
-            resource = InputResource(
-                resource_id=f'feishu-image-{block_id}',
-                resource_type='image',
-                uri=f'{locator}#image={block_id}',
-                title=block.content or f'Feishu image {block_id}',
-                summary=block.content or None,
-                meta={
-                    'provider': 'feishu',
-                    'provider_block_id': block_id,
-                    'source_type': 'input_resource',
-                    'origin': 'source_document',
-                    'caption': block.content or None,
-                },
-            )
+        provider_name = type(provider).__name__.removesuffix('WriterProvider')
+        for resource in resources:
             try:
-                asset = self._materialize_image_bytes(download_media(token), resource)
+                data = provider.download_document_image(document, resource)
+                asset = (
+                    self._materialize_image_bytes(data, resource)
+                    if data is not None else self._materialize_input_resource(resource)
+                )
                 collected.append((resource, asset))
             except Exception as exc:
+                block_id = resource.meta.get('provider_block_id') or resource.resource_id
                 warnings.append(
-                    f'Failed to download Feishu image {block_id!r}: '
+                    f'Failed to download {provider_name} image {block_id!r}: '
                     f'{type(exc).__name__}: {exc}'
                 )
         return collected, warnings
@@ -455,6 +468,7 @@ class WriterMultimodalTools(WriterToolBase):
                     'caption': alt or None,
                     'source_type': 'input_resource',
                     'origin': 'markdown',
+                    'source_reference': uri,
                 },
             ))
         return resources
@@ -551,8 +565,8 @@ class WriterMultimodalTools(WriterToolBase):
     def _assets_dir(self) -> Path:
         if not self.artifact_store:
             raise ValueError('artifact_store is not set')
-        path = Path(self.artifact_store).expanduser().resolve() / 'assets'
-        path.mkdir(parents=True, exist_ok=True)
+        path = Path(self.artifact_store).expanduser().absolute() / 'assets'
+        os.makedirs(str(path), exist_ok=True)
         return path
 
     @staticmethod
@@ -570,7 +584,8 @@ class WriterMultimodalTools(WriterToolBase):
 
     @staticmethod
     def _inspect_image(path: Path) -> tuple[str, int, int]:
-        return WriterMultimodalTools._inspect_image_bytes(path.read_bytes())
+        with open(str(path), 'rb') as stream:
+            return WriterMultimodalTools._inspect_image_bytes(stream.read(_MAX_IMAGE_BYTES + 1))
 
     @staticmethod
     def _inspect_image_bytes(data: bytes) -> tuple[str, int, int]:
@@ -584,6 +599,44 @@ class WriterMultimodalTools(WriterToolBase):
         if not image_format:
             raise ValueError('image format cannot be detected.')
         return image_format, width, height
+
+    @staticmethod
+    def _inspect_svg_bytes(data: bytes) -> tuple[str, int, int]:
+        try:
+            text = data.decode('utf-8-sig').lstrip()
+        except UnicodeDecodeError as exc:
+            raise ValueError('SVG data must be UTF-8 text.') from exc
+        lowered = text[:4096].lower()
+        if '<!doctype' in lowered or '<!entity' in lowered:
+            raise ValueError('SVG data must not contain DTD or entity declarations.')
+        svg_match = re.search(r'<svg\b(?P<attrs>[^>]*)>', text, re.IGNORECASE)
+        if not svg_match:
+            raise ValueError('image data is not a valid SVG image.')
+        attrs = svg_match.group('attrs')
+
+        def dimension(name: str) -> int:
+            match = re.search(
+                rf'\b{name}\s*=\s*["\']\s*([0-9]+(?:\.[0-9]+)?)',
+                attrs,
+                re.IGNORECASE,
+            )
+            return int(float(match.group(1))) if match else 0
+
+        width, height = dimension('width'), dimension('height')
+        if not width or not height:
+            view_box = re.search(
+                r'\bviewBox\s*=\s*["\']\s*[-+0-9.eE]+\s+[-+0-9.eE]+\s+'
+                r'([-+0-9.eE]+)\s+([-+0-9.eE]+)',
+                attrs,
+                re.IGNORECASE,
+            )
+            if view_box:
+                try:
+                    width = width or max(0, int(float(view_box.group(1))))
+                    height = height or max(0, int(float(view_box.group(2))))
+                except ValueError:
+                    pass
+        return 'SVG', width, height
 
     @staticmethod
     def _image_suffix(suffix_hint: str, image_format: str) -> str:

@@ -5,6 +5,8 @@ Requirements:
 - Return a single WriterBlock object with stage="draft".
 - The returned block is the section root. Use type="heading" and put the section title in content.
 - The section's actual prose lives in the block's children. Use paragraph blocks for prose.
+- Tables use table children of type table_row, whose children are table_cell blocks; put cell text in
+  table_cell.content/spans and never put a Markdown table in table.content.
 - When heading_structure is present, reproduce one descendant heading for every listed item,
   using its exact title and order. The system assigns node_id and numbering.level. Do not add
   other headings. An empty list means no subheadings.
@@ -103,6 +105,11 @@ Requirements:
 - When section_instruction.meta.rewrite=true, treat meta.source_content as the authoritative
   source material for this section and meta.source_format as formatting guidance. Rewrite it
   according to the instruction without exposing source metadata in the result.
+- Unless the user explicitly asks to modify the relevant structure, preserve non-standard Markdown
+  extensions and structural markers exactly: double-bracket links and embeds including their targets;
+  Callout prefixes such as > [!note] and their + or - fold markers; inline comments; block-ID markers;
+  and complete query fenced blocks including their contents. Callout titles and bodies may be rewritten.
+  Do not convert double-bracket links into ordinary Markdown links or URLs.
 - Use references when relevant, but do not copy reference metadata into the document.
 - Do not invent facts that conflict with the writing context.
 - If previous Markdown is provided, maintain continuity and avoid repetition.
@@ -114,7 +121,8 @@ Requirements:
   [reference wording](#block-<target>) exactly once inside a complete sentence.
   Do not use target keys outside section_instruction.meta.cross_reference_targets.
 - Return substantial finished prose, not a summary, placeholder, or planning notes.
-- The system places planned images after the prose link. Do not output image markup.
+- The system places planned images after the prose link. Do not output new image markup, but
+  preserve any existing image reference from source material unchanged.
 
 Writing task:
 {task_json}
@@ -154,6 +162,11 @@ CONDENSE_DRAFT_SECTION_MARKDOWN_PROMPT = '''Condense this Markdown section body 
 
 Preserve every heading unchanged, along with the main plot or argument, ending, point of view,
 tone, and essential Markdown.
+Unless the user explicitly asks to modify the relevant structure, preserve non-standard Markdown
+extensions and structural markers exactly: double-bracket links and embeds including their targets;
+Callout prefixes such as > [!note] and their + or - fold markers; inline comments; block-ID markers;
+and complete query fenced blocks including their contents. Callout titles and bodies may be rewritten.
+Do not convert double-bracket links into ordinary Markdown links or URLs.
 Do not add new content, a section heading, reasoning, or planning notes.
 Return only the condensed section body.
 
@@ -180,6 +193,11 @@ Requirements:
   asset paths, URLs, HTML anchors, or prose links to the image. When short_visuals is empty, output no images.
 - Treat expected_blocks as an internal order and coverage guide. Do not copy its entries as headings,
   labels, a checklist, or separately generated fragments.
+- Unless the user explicitly asks to modify the relevant structure, preserve non-standard Markdown
+  extensions and structural markers exactly: double-bracket links and embeds including their targets;
+  Callout prefixes such as > [!note] and their + or - fold markers; inline comments; block-ID markers;
+  and complete query fenced blocks including their contents. Callout titles and bodies may be rewritten.
+  Do not convert double-bracket links into ordinary Markdown links or URLs.
 - Express core_viewpoint clearly while covering required_points within the available length.
 - Respect fact_constraints and style_constraints.
 - Use relevant references as source guidance, but do not copy reference metadata into the article.
@@ -212,6 +230,8 @@ Requirements:
   for the title or any other subsection heading.
 - Put the article body in the document blocks. Use paragraph blocks for prose and choose
   other block types only when they materially help the requested content.
+- Tables use table children of type table_row, whose children are table_cell blocks; put cell text in
+  table_cell.content/spans and never put a Markdown table in table.content.
 - The document must be flat: do not create blocks with type="heading" anywhere in the body.
 - Each block and child block must have a stable non-empty node_id. The system may normalize
   the document id, stage, title, and editability metadata after generation.

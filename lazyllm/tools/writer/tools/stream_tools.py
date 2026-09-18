@@ -407,7 +407,7 @@ class IRJSONMarkdownParser:
 
     STREAMABLE_TYPES = frozenset({
         'paragraph', 'quote', 'code', 'heading', 'list_item',
-        'todo', 'callout', 'link_preview', 'table', 'divider',
+        'todo', 'callout', 'link_preview', 'divider',
     })
     _ESCAPES = {
         '"': '"', '\\': '\\', '/': '/',

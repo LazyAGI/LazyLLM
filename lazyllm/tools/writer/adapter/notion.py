@@ -15,7 +15,10 @@ from ..data_models.writer_ir import (
     WriterSpan,
     WriterStage,
 )
-from ..utils import strip_caption_numbering, strip_heading_numbering
+from ..utils import (
+    strip_caption_numbering, strip_heading_numbering, strip_math_delimiters,
+    table_grid, validate_writer_tables,
+)
 from .base import NativeBlock, NativePatchOperation, WriterAdapterBase
 
 
@@ -24,7 +27,7 @@ _BLOCK_TYPE_NAMES: Dict[str, str] = {
     **{f'heading_{level}': 'heading' for level in range(1, 5)},
     'bulleted_list_item': 'list_item', 'numbered_list_item': 'list_item',
     'quote': 'quote', 'code': 'code', 'to_do': 'todo', 'callout': 'callout',
-    'divider': 'divider', 'image': 'image', 'table': 'table',
+    'divider': 'divider', 'image': 'image', 'table': 'table', 'equation': 'math',
     'table_row': 'table_row', 'link_preview': 'link_preview',
     'column_list': 'grid', 'column': 'grid_column',
 }
@@ -37,6 +40,21 @@ _EDITABLE_TEXT_TYPES = {
 
 _RICH_TEXT_BLOCK_TYPES = _EDITABLE_TEXT_TYPES
 _CAPTION_BLOCK_TYPES = {'image'}
+# Notion code.language values accepted for writes. Keep this in sync with the
+# documented enum and fall back conservatively when reading newer values.
+# https://developers.notion.com/reference/block#code
+_WRITABLE_CODE_LANGUAGES = frozenset({
+    'abap', 'arduino', 'bash', 'basic', 'c', 'c#', 'c++', 'clojure',
+    'coffeescript', 'css', 'dart', 'diff', 'docker', 'elixir', 'elm', 'erlang',
+    'f#', 'flow', 'fortran', 'gherkin', 'glsl', 'go', 'graphql', 'groovy',
+    'haskell', 'html', 'java', 'javascript', 'json', 'julia', 'kotlin', 'latex',
+    'less', 'lisp', 'livescript', 'lua', 'makefile', 'markdown', 'markup',
+    'matlab', 'mermaid', 'nix', 'objective-c', 'ocaml', 'pascal', 'perl', 'php',
+    'plain text', 'powershell', 'prolog', 'protobuf', 'python', 'r', 'reason',
+    'ruby', 'rust', 'sass', 'scala', 'scheme', 'scss', 'shell', 'sql', 'swift',
+    'typescript', 'vb.net', 'verilog', 'vhdl', 'visual basic', 'webassembly',
+    'xml', 'yaml', 'java/c/c++/c#',
+})
 _IR_TO_BLOCK_TYPE = {
     'paragraph': 'paragraph',
     'quote': 'quote',
@@ -45,16 +63,12 @@ _IR_TO_BLOCK_TYPE = {
     'callout': 'callout',
     'divider': 'divider',
     'image': 'image',
+    'math': 'equation',
     'table': 'table',
     'table_row': 'table_row',
     'link_preview': 'link_preview',
     'grid': 'column_list',
     'grid_column': 'column',
-}
-_READ_ONLY_BLOCK_FIELDS = {
-    'id', 'block_id', 'object', 'parent', 'parent_id', 'created_time',
-    'last_edited_time', 'created_by', 'last_edited_by', 'archived',
-    'in_trash', 'has_children', 'block_type', 'plain_text',
 }
 _ANNOTATION_STYLES = {
     'bold': 'bold',
@@ -74,6 +88,60 @@ _UUID_FRAGMENT_RE = re.compile(
 
 class NotionWriterAdapter(WriterAdapterBase):
     provider = 'notion'
+    materializes_table_captions = True
+
+    def _table_patch_to_operation(
+        self, patch: PatchHunk, document: WriterDocument, media_assets: Any = None,
+    ) -> NativePatchOperation:
+        if not isinstance(patch, PatchHunk) or not isinstance(document, WriterDocument):
+            raise TypeError('patch and document must be PatchHunk and WriterDocument instances.')
+        current = document.block_by_id(patch.target_node_id)
+        if patch.modify_type == 'update' and current is not None and current.type == 'table':
+            return self._table_caption_update(patch, document, current, media_assets)
+        operation = self._patch_to_operation(patch, document, media_assets)
+        params = operation.params
+        if operation.operation == 'replace':
+            _, parent, index = self._block_location(document, patch.target_node_id)
+            params['source_index'] = self._physical_index(parent.children if parent else document.blocks, index)
+        if patch.modify_type == 'create':
+            parent = document.block_by_id(patch.parent_node_id) if patch.parent_node_id else None
+            siblings = parent.children if parent else document.blocks
+            params['index'] = self._physical_index(siblings, patch.index)
+        elif patch.modify_type in {'delete', 'move'}:
+            current, parent, index = self._block_location(document, patch.target_node_id)
+            siblings = parent.children if parent else document.blocks
+            source_index = self._physical_index(siblings, index)
+            caption_binding = self._caption_binding(current)
+            caption_id = caption_binding.get('block_id')
+            if patch.modify_type == 'delete':
+                if caption_id:
+                    params['_caption_operation'] = NativePatchOperation('delete', {'block_id': caption_id})
+            else:
+                target_parent = document.block_by_id(patch.parent_node_id) if patch.parent_node_id else None
+                target_siblings = target_parent.children if target_parent else document.blocks
+                target_siblings = [block for block in target_siblings if block.node_id != current.node_id]
+                target_index = self._physical_index(target_siblings, patch.index)
+                same_parent = params['source_parent_block_id'] == params['target_parent_block_id']
+                params.update(source_index=source_index + bool(caption_id), target_index=target_index)
+                if caption_id:
+                    # Move the grid first, then place its caption immediately before it.
+                    params['target_index'] += int(same_parent and source_index < target_index)
+                    caption_params = {
+                        'source_block_id': caption_id,
+                        'source_parent_block_id': params['source_parent_block_id'],
+                        'source_index': source_index + int(same_parent and target_index <= source_index),
+                        'target_parent_block_id': params['target_parent_block_id'],
+                        'target_index': target_index,
+                    }
+                    caption = self._bound_caption_block(current)
+                    raw = self.ir_to_blocks(WriterDocument(
+                        document_id=document.document_id, blocks=[caption],
+                        provider_binding=deepcopy(document.provider_binding),
+                    ))[0]
+                    raw['_temporary_node_id'] = caption.node_id
+                    caption_params['block'] = raw
+                    params['_caption_operation'] = NativePatchOperation('move', caption_params)
+        return operation
 
     def blocks_to_ir(self, blocks: List[NativeBlock], *, external_document_id: str,
                      stage: WriterStage = 'final', title: str = '', uri: Optional[str] = None,
@@ -97,6 +165,32 @@ class NotionWriterAdapter(WriterAdapterBase):
             writer_by_id[parent_id].children = [
                 writer_by_id[child_id] for child_id in children
             ] + writer_by_id[parent_id].children
+        for table in writer_by_id.values():
+            if table.type != 'table':
+                continue
+            table_payload = (table.provider_payload.get('raw_block') or {}).get('table') or {}
+            has_column_header = bool(table_payload.get('has_column_header'))
+            has_row_header = bool(table_payload.get('has_row_header'))
+            for row_index, row in enumerate(table.children):
+                if row.type != 'table_row':
+                    continue
+                native_cells = row.provider_payload.get('table_cells') or []
+                row.content = ''
+                row.children = []
+                for cell_index, native_cell in enumerate(native_cells):
+                    spans = self._rich_text_to_spans(
+                        native_cell if isinstance(native_cell, list) else [],
+                    )
+                    row.children.append(WriterBlock(
+                        node_id=f'{row.node_id}-cell-{cell_index + 1}',
+                        type='table_cell',
+                        content=''.join(span.text for span in spans),
+                        spans=spans,
+                        stage=stage,
+                        numbering={'header': (
+                            has_column_header and row_index == 0
+                        ) or (has_row_header and cell_index == 0)},
+                    ))
         nested_ids = {child_id for children in child_ids.values() for child_id in children}
         root_blocks = [writer_by_id[block_id] for block_id in source_order if block_id not in nested_ids]
 
@@ -108,10 +202,12 @@ class NotionWriterAdapter(WriterAdapterBase):
             binding['uri'] = uri
         if revision is not None:
             binding['revision'] = revision
-        return WriterDocument(document_id=self.make_document_id(external_document_id), stage=stage, title=title,
-                              blocks=root_blocks, revision=revision,
-                              metadata={'source_block_count': len(blocks)}, provider_binding=binding,
-                              ui_editable=False)
+        document = WriterDocument(document_id=self.make_document_id(external_document_id), stage=stage, title=title,
+                                  blocks=root_blocks, revision=revision,
+                                  metadata={'source_block_count': len(blocks)}, provider_binding=binding,
+                                  ui_editable=False)
+        validate_writer_tables(document)
+        return document
 
     def ir_to_blocks(self, document: WriterDocument, media_assets: Any = None) -> List[NativeBlock]:
         if not isinstance(document, WriterDocument):
@@ -119,6 +215,7 @@ class NotionWriterAdapter(WriterAdapterBase):
         provider = document.provider_binding.get('provider')
         if provider and str(provider).lower() != self.provider:
             raise ValueError(f'document provider must be {self.provider!r}, got {provider!r}.')
+        validate_writer_tables(document)
 
         blocks_by_node_id = {block.node_id: block for block in document.iter_blocks()}
         if len(blocks_by_node_id) != sum(1 for _ in document.iter_blocks()):
@@ -127,6 +224,8 @@ class NotionWriterAdapter(WriterAdapterBase):
         document_uri = str(document.provider_binding.get('uri') or '')
         media_library = None if media_assets is None else MediaAssetLibrary.model_validate(media_assets)
         track_internal_refs = any(
+            block.type == 'table' and block.content.strip() for block in document.iter_blocks()
+        ) or any(
             isinstance(span.style.get('link'), dict)
             and span.style['link'].get('type') == 'internal_ref'
             for block in document.iter_blocks()
@@ -153,6 +252,30 @@ class NotionWriterAdapter(WriterAdapterBase):
             track_internal_refs=track_internal_refs,
         )
 
+    @classmethod
+    def materialize_internal_links(
+        cls, blocks: List[NativeBlock], *, document_uri: str, document_id: str,
+    ) -> List[NativeBlock]:
+        output = deepcopy(blocks)
+        target_url = cls._notion_block_url(document_uri, document_id, document_id)
+
+        def visit(value: Any) -> None:
+            if isinstance(value, list):
+                for item in value:
+                    visit(item)
+                return
+            if not isinstance(value, dict):
+                return
+            text = value.get('text')
+            link = text.get('link') if isinstance(text, dict) else None
+            if isinstance(link, dict) and link.get('_target_node_id'):
+                link['url'] = target_url
+            for item in value.values():
+                visit(item)
+
+        visit(output)
+        return output
+
     def _ir_blocks_to_raw(self, blocks: List[WriterBlock], resolve_internal_ref: Any, *,
                           media_library: Optional[MediaAssetLibrary] = None,
                           track_internal_refs: bool = False) -> List[NativeBlock]:
@@ -165,6 +288,14 @@ class NotionWriterAdapter(WriterAdapterBase):
         '''
         output: List[NativeBlock] = []
         for block in blocks:
+            caption_block = self._table_caption_block(block) if block.type == 'table' else None
+            if caption_block is not None:
+                output.append(self._ir_block_to_raw(
+                    caption_block,
+                    resolve_internal_ref,
+                    media_library=media_library,
+                    track_internal_refs=track_internal_refs,
+                ))
             output.append(self._ir_block_to_raw(
                 block,
                 resolve_internal_ref,
@@ -210,7 +341,7 @@ class NotionWriterAdapter(WriterAdapterBase):
                 raise ValueError('notion_unknown blocks must remain read-only.')
             if not block_type:
                 raise ValueError('notion_unknown block does not preserve its Notion type.')
-            output = self._writable_raw_block(raw, block_type)
+            output = deepcopy(raw)
         else:
             payload = deepcopy(
                 raw.get(block_type)
@@ -223,12 +354,31 @@ class NotionWriterAdapter(WriterAdapterBase):
                 payload['rich_text'] = self._spans_to_rich_text(block, resolve_internal_ref)
                 if block_type == 'code':
                     payload['language'] = self._code_language(block, payload)
+            elif block_type == 'equation':
+                payload['expression'] = strip_math_delimiters(block.content)
             elif block_type in _CAPTION_BLOCK_TYPES:
                 payload['caption'] = self._spans_to_rich_text(block, resolve_internal_ref)
             elif block_type == 'link_preview':
                 payload['url'] = block.content
+            elif block_type == 'table':
+                grid = table_grid(block)
+                rows = block.children
+                payload.update(
+                    table_width=len(grid[0]),
+                    has_column_header=bool(rows and any(
+                        cell.numbering.get('header') for cell in rows[0].children
+                    )),
+                    has_row_header=bool(rows and all(
+                        row.children and row.children[0].numbering.get('header')
+                        for row in rows
+                    )),
+                )
             elif block_type == 'table_row':
-                cells = block.provider_payload.get('table_cells')
+                cells = [
+                    self._spans_to_rich_text(cell, resolve_internal_ref)
+                    for cell in block.children
+                    if cell.type == 'table_cell'
+                ]
                 if isinstance(cells, list):
                     payload['cells'] = deepcopy(cells)
             output = {'object': 'block', 'type': block_type, block_type: payload}
@@ -238,7 +388,19 @@ class NotionWriterAdapter(WriterAdapterBase):
         if track_internal_refs:
             output['_temporary_node_id'] = block.node_id
 
-        nested_children = block.children
+        nested_children = [] if block.type == 'table_row' else block.children
+        if block.type == 'table':
+            nested_children = []
+            for row_index, (row, cells) in enumerate(zip(block.children, table_grid(block))):
+                normalized_row = row.model_copy(deep=True)
+                normalized_row.children = [
+                    cell or WriterBlock(
+                        node_id=f'{row.node_id}-covered-{row_index}-{cell_index}',
+                        type='table_cell', stage=row.stage,
+                    )
+                    for cell_index, cell in enumerate(cells)
+                ]
+                nested_children.append(normalized_row)
         if nested_children and block.type != 'heading':
             output[block_type]['children'] = self._ir_blocks_to_raw(
                 nested_children,
@@ -259,10 +421,12 @@ class NotionWriterAdapter(WriterAdapterBase):
         # A value changed away from raw_block is an explicit IR edit.  Notion's
         # provider field wins when both representations were edited differently.
         if provider_has_language and provider_language != raw_language:
-            return provider_language or 'plain text'
-        if ir_language and ir_language != raw_language:
-            return ir_language
-        return provider_language or ir_language or raw_language or 'plain text'
+            language = provider_language
+        elif ir_language and ir_language != raw_language:
+            language = ir_language
+        else:
+            language = provider_language or ir_language or raw_language
+        return language if language in _WRITABLE_CODE_LANGUAGES else 'plain text'
 
     @staticmethod
     def _attach_image_media(output: NativeBlock, block: WriterBlock,
@@ -276,33 +440,25 @@ class NotionWriterAdapter(WriterAdapterBase):
                 raise ValueError('A Notion image requires exactly one media_asset reference.')
             asset_id = str(references[0]['id'])
             asset = media_library.assets.get(asset_id) if media_library else None
-            if asset is None or not asset.local_path or not Path(asset.local_path).is_file():
+            local_path = Path(asset.local_path) if asset and asset.local_path else None
+            if asset is None or (not asset.uri and (local_path is None or not local_path.is_file())):
                 raise ValueError(f'Image media asset {asset_id!r} is unavailable.')
             image = output.setdefault('image', {})
             for field in ('external', 'file', 'file_upload', 'type'):
                 image.pop(field, None)
-            output['_media'] = {
-                'media_asset_id': asset_id,
-                'local_path': asset.local_path,
-                'file_name': Path(asset.local_path).name,
-            }
+            if asset.uri:
+                image.update(type='external', external={'url': asset.uri})
+            media = {'media_asset_id': asset_id}
+            if asset.uri:
+                media['uri'] = asset.uri
+            if local_path is not None and local_path.is_file():
+                media.update(local_path=str(local_path), file_name=local_path.name)
+            output['_media'] = media
 
     @staticmethod
     def _raw_payload(block: WriterBlock) -> NativeBlock:
         raw = block.provider_payload.get('raw_block')
         return deepcopy(raw) if isinstance(raw, dict) else {}
-
-    @staticmethod
-    def _writable_raw_block(raw: NativeBlock, block_type: str) -> NativeBlock:
-        output = {
-            key: deepcopy(value)
-            for key, value in raw.items()
-            if key not in _READ_ONLY_BLOCK_FIELDS
-        }
-        output['object'] = 'block'
-        output['type'] = block_type
-        output.setdefault(block_type, {})
-        return output
 
     @staticmethod
     def _notion_type_for_ir(block: WriterBlock, original_type: str) -> str:
@@ -326,7 +482,7 @@ class NotionWriterAdapter(WriterAdapterBase):
         output: List[Dict[str, Any]] = []
         for span in spans:
             style = span.style
-            rich_type = style.get('notion:rich_text_type', 'text')
+            rich_type = 'equation' if style.get('math_source') else style.get('notion:rich_text_type', 'text')
             annotations = {
                 notion_style: style.get(writer_style) is True
                 for notion_style, writer_style in _ANNOTATION_STYLES.items()
@@ -336,7 +492,9 @@ class NotionWriterAdapter(WriterAdapterBase):
                 'type': rich_type,
                 'annotations': annotations,
             }
-            if rich_type in {'mention', 'equation'}:
+            if rich_type == 'equation':
+                item['equation'] = {'expression': strip_math_delimiters(span.text)}
+            elif rich_type == 'mention':
                 preserved = style.get(f'notion:{rich_type}')
                 if not isinstance(preserved, dict):
                     raise ValueError(f'Notion {rich_type} span is missing its native payload.')
@@ -356,10 +514,14 @@ class NotionWriterAdapter(WriterAdapterBase):
                         raise ValueError('Notion internal reference requires a target node ID.')
                     link_payload['_target_node_id'] = target_node_id
                 item['type'] = 'text'
-                item['text'] = {
-                    'content': span.text,
-                    'link': link_payload,
-                }
+                for start in range(0, max(1, len(span.text)), 2000):
+                    text_item = deepcopy(item)
+                    text_item['text'] = {
+                        'content': span.text[start:start + 2000],
+                        'link': deepcopy(link_payload),
+                    }
+                    output.append(text_item)
+                continue
             output.append(item)
         return output
 
@@ -371,7 +533,12 @@ class NotionWriterAdapter(WriterAdapterBase):
         page = cls._canonical_notion_id(document_id) or document_id.replace('-', '')
         return f'https://www.notion.so/{page}#{fragment}'
 
-    def patch_to_operation(  # noqa: C901
+    def patch_to_operation(
+        self, patch: PatchHunk, document: WriterDocument, media_assets: Any = None,
+    ) -> NativePatchOperation:
+        return self._table_patch_to_operation(patch, document, media_assets)
+
+    def _patch_to_operation(  # noqa: C901
             self, patch: PatchHunk, document: WriterDocument,
             media_assets: Any = None) -> NativePatchOperation:
         if not isinstance(patch, PatchHunk):
@@ -394,6 +561,26 @@ class NotionWriterAdapter(WriterAdapterBase):
             raise ValueError(f'patch target node does not exist: {patch.target_node_id!r}.')
         if patch.block is None:
             raise ValueError('update patch must provide block.')
+        if current.type == 'table_cell':
+            if patch.block.type != 'table_cell' or patch.block.children:
+                raise ValueError('Notion table cell updates must keep the table_cell structure.')
+            _, row, _ = self._block_location(document, current.node_id)
+            if row is None or row.type != 'table_row':
+                raise ValueError('Notion table cell is missing its table_row parent.')
+            desired_row = row.model_copy(deep=True)
+            desired_cell = desired_row.children[next(
+                index for index, cell in enumerate(row.children)
+                if cell.node_id == current.node_id
+            )]
+            for field in WRITER_BLOCK_MUTABLE_FIELDS:
+                setattr(desired_cell, field, deepcopy(getattr(patch.block, field)))
+            raw = self._native_update_block(desired_row, document)
+            raw.get('table_row', {}).pop('children', None)
+            block_id = row.provider_binding.get('block_id')
+            if not isinstance(block_id, str) or not block_id:
+                raise ValueError('Notion table row is missing its block_id binding.')
+            return NativePatchOperation(
+                operation='update', params={'block_id': block_id, 'block': raw})
         if current.type == 'image' \
                 and patch.meta.get('source') == 'system_numbering' \
                 and patch.meta.get('update_scope') == 'caption':
@@ -487,25 +674,23 @@ class NotionWriterAdapter(WriterAdapterBase):
                 block.node_id = previous.node_id
                 block.references = deepcopy(previous.references)
         if operation is not None and operation.operation in {'create', 'move'}:
-            relations = operation_result.get('block_id_relations') \
+            bindings = operation_result.get('node_id_bindings') \
                 if isinstance(operation_result, dict) else None
-            if not isinstance(relations, list) or not relations:
-                raise ValueError('create operation did not return Notion block ID relations.')
+            if not isinstance(bindings, dict) or not bindings:
+                raise ValueError(
+                    f'{operation.operation} operation did not return Notion node ID bindings.')
             refreshed_by_block_id = {
                 self._canonical_notion_id(block.provider_binding.get('block_id')): block
                 for block in refreshed_document.iter_blocks()
                 if isinstance(block.provider_binding.get('block_id'), str)
             }
             created_by_node_id: Dict[str, WriterBlock] = {}
-            for relation in relations:
-                if not isinstance(relation, dict):
-                    continue
-                temporary_id = relation.get('temporary_block_id')
-                created_id = self._canonical_notion_id(relation.get('block_id'))
+            for node_id, provider_id in bindings.items():
+                created_id = self._canonical_notion_id(provider_id)
                 created = refreshed_by_block_id.get(created_id)
-                if isinstance(temporary_id, str) and created is not None:
-                    created.node_id = temporary_id
-                    created_by_node_id[temporary_id] = created
+                if isinstance(node_id, str) and created is not None:
+                    created.node_id = node_id
+                    created_by_node_id[node_id] = created
             desired_root = None
             if patch is not None:
                 desired_root = patch.block if patch.block is not None \
@@ -518,6 +703,7 @@ class NotionWriterAdapter(WriterAdapterBase):
                     desired = desired_by_id.get(node_id)
                     if desired is not None:
                         created.references = deepcopy(desired.references)
+        refreshed_document = self._restore_table_state(previous_document, refreshed_document)
         return WriterDocument.model_validate(refreshed_document.model_dump())
 
     def _native_update_block(
@@ -627,26 +813,17 @@ class NotionWriterAdapter(WriterAdapterBase):
         if not isinstance(target_parent_block_id, str) or not target_parent_block_id:
             raise ValueError('Notion move target parent is missing its block_id binding.')
 
-        blocks_by_node_id = {block.node_id: block for block in document.iter_blocks()}
-        document_id = str(document.provider_binding.get('document_id') or '')
-        document_uri = str(document.provider_binding.get('uri') or '')
-
-        def resolve_internal_ref(span: WriterSpan) -> Optional[str]:
-            link = span.style.get('link')
-            if not isinstance(link, dict) or link.get('type') != 'internal_ref':
-                return None
-            target_node_id = link.get('target_node_id')
-            target = blocks_by_node_id.get(target_node_id)
-            if target is None:
-                raise ValueError(
-                    f'internal reference target does not exist: {target_node_id!r}.')
-            target_id = target.provider_binding.get('block_id') or document_id
-            return self._notion_block_url(document_uri, document_id, str(target_id))
+        resolve_internal_ref = self._move_link_resolver(document)
 
         media_library = None if media_assets is None \
             else MediaAssetLibrary.model_validate(media_assets)
+        moved_source = source.model_copy(deep=True)
+        for table in moved_source.iter_blocks():
+            if self._caption_binding(table).get('block_id'):
+                caption = self._bound_caption_block(table)
+                table.content, table.spans = caption.content, caption.spans
         native = self._ir_block_to_raw(
-            source.model_copy(deep=True),
+            moved_source,
             resolve_internal_ref,
             media_library=media_library,
             track_internal_refs=True,
@@ -852,6 +1029,8 @@ class NotionWriterAdapter(WriterAdapterBase):
             spans = cls._rich_text_to_spans(rich_text)
             if spans:
                 return ''.join(span.text for span in spans), spans
+        if block_type == 'equation':
+            return '$$\n' + str(payload.get('expression') or '') + '\n$$', []
         if block_type == 'link_preview':
             url = payload.get('url')
             if isinstance(url, str):
@@ -946,6 +1125,24 @@ class NotionWriterAdapter(WriterAdapterBase):
                 target = targets.get(cls._canonical_notion_id(match.group(1))) if match else None
                 if target is not None:
                     span.style['link'] = {'type': 'internal_ref', 'target_node_id': target.node_id}
+
+    def _move_link_resolver(self, document):
+        blocks_by_node_id = {block.node_id: block for block in document.iter_blocks()}
+        document_id = str(document.provider_binding.get('document_id') or '')
+        document_uri = str(document.provider_binding.get('uri') or '')
+
+        def resolve_internal_ref(span: WriterSpan) -> Optional[str]:
+            link = span.style.get('link')
+            if not isinstance(link, dict) or link.get('type') != 'internal_ref':
+                return None
+            target_node_id = link.get('target_node_id')
+            target = blocks_by_node_id.get(target_node_id)
+            if target is None:
+                raise ValueError(
+                    f'internal reference target does not exist: {target_node_id!r}.')
+            target_id = target.provider_binding.get('block_id') or document_id
+            return self._notion_block_url(document_uri, document_id, str(target_id))
+        return resolve_internal_ref
 
 
 __all__ = ['NotionWriterAdapter']

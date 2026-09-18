@@ -5,7 +5,7 @@ from typing import Dict, Literal
 import pytest
 
 from lazyllm.tools.agent import ToolExecutionError
-from lazyllm.tools.agent.toolsManager import ToolManager
+from lazyllm.tools.agent.toolsManager import ToolManager, fc_register
 from lazyllm.tools.git import GitLab, LocalGit
 from lazyllm.tools.git.review.poster import _submit_review
 
@@ -99,6 +99,13 @@ def translated_permission_failure(resource: str):
         raise ToolExecutionError('Resource does not exist.')
     except ToolExecutionError:
         raise PermissionError(f'access denied: {resource}') from None
+
+
+for _tool in (
+    typed_search, nested_search, permission_tool, timeout_tool, business_status,
+    typed_domain_failure, typed_policy_failure, flexible_search, translated_permission_failure,
+):
+    fc_register(host_file='NONE')(_tool)
 
 
 def _call(name, arguments):
@@ -275,6 +282,7 @@ def test_typed_policy_failure_is_wrapped():
 def test_git_sdk_and_tool_manager_share_typed_failure_contract():
     backend = LocalGit()
 
+    @fc_register(host_file='NONE')
     def add_issue_comment(number: int, body: str):
         '''Add an issue comment through the Git SDK.
 

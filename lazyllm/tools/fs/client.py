@@ -14,6 +14,9 @@ _FEISHU_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:feishu\.cn|larksuite\.com)/
 _FEISHU_WIKI_PATH_PREFIXES = ('~link/', '~node/', '~docx/', '~doc/')
 _NOTION_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:notion\.so|notion\.site|notion\.com)/', re.IGNORECASE)
 _NOTION_LINK_PATH_PREFIXES = ('~link/', '~page/', '~database/', '~data_source/', '~block/')
+_GITHUB_BARE_URL_RE = re.compile(
+    r'^https?://(?:www\.)?github\.com/[^/]+/[^/]+/(?:blob|wiki)/', re.IGNORECASE,
+)
 _DOCUMENT_ROUTES = {
     'feishu': {
         'bare_url_re': _FEISHU_BARE_URL_RE,
@@ -81,6 +84,12 @@ class _FSRouter:
         path = clean_document_ref(path)
         if path.lower().startswith('file:'):
             return 'file', None, _local_path_from_file_uri(path)
+        if _GITHUB_BARE_URL_RE.match(path):
+            parsed = urlsplit(path)
+            parts = [part for part in parsed.path.split('/') if part]
+            protocol = 'githubwiki' if len(parts) > 2 and parts[2].lower() == 'wiki' \
+                else 'githubrepo'
+            return protocol, None, path
         bare_protocol = _match_bare_document_url(path)
         if bare_protocol:
             return bare_protocol, 'dynamic', LinkDocumentFSBase.to_link_path(path)

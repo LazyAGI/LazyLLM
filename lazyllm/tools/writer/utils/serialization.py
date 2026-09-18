@@ -22,6 +22,8 @@ from ..numbering import (
     parse_markdown_heading_numbering_config,
     strip_markdown_heading_numbering_config,
 )
+from .markdown_inline import parse_markdown_inline
+from .markdown_ids import markdown_anchor_ids, next_markdown_node_id
 
 
 class MarkdownSelectionError(ValueError):
@@ -58,6 +60,20 @@ def strip_caption_numbering(value: str) -> str:
     return text[match.end():].strip() if match else text
 
 
+def strip_math_delimiters(content: str) -> str:
+    '''Return a math expression without common Markdown/LaTeX delimiters.'''
+    value = content.strip()
+    for left, right in (
+        ('$$', '$$'),
+        ('\\[', '\\]'),
+        ('\\(', '\\)'),
+        ('$', '$'),
+    ):
+        if value.startswith(left) and value.endswith(right):
+            return value[len(left):-len(right)].strip()
+    return value
+
+
 def to_prompt_json(value: Any) -> str:
     def default(obj: Any) -> Any:
         if hasattr(obj, 'model_dump'):
@@ -67,13 +83,22 @@ def to_prompt_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2, default=default)
 
 
-def locate_markdown_paragraph(markdown: str, selected_text: str) -> str:
+def locate_markdown_paragraph(
+    markdown: str,
+    selected_text: str,
+    *,
+    heading_path: Optional[List[str]] = None,
+    occurrence: int = 1,
+) -> str:
     '''Return the unique source paragraph containing rendered selected text.'''
     selected = _normalize_markdown_text(selected_text)
     if not selected:
         raise MarkdownSelectionError(
             'SELECTION_UNSUPPORTED', 'selected_text must not be empty.',
         )
+    if heading_path:
+        start, end = markdown_section_range(markdown, heading_path, occurrence)
+        markdown = markdown[start:end]
     parser = mistune.create_markdown(renderer='ast', plugins=['table'])
     matches: List[str] = []
     for block in _markdown_source_blocks(markdown):
@@ -112,6 +137,19 @@ def validate_markdown_paragraph(markdown: str) -> str:
             'The generated Markdown must contain exactly one paragraph.',
         )
     return candidate
+
+
+def markdown_image_sources(markdown: str) -> set[str]:
+    sources: set[str] = set()
+    pending = list(mistune.create_markdown(renderer='ast', plugins=['table'])(markdown))
+    while pending:
+        token = pending.pop()
+        if token.get('type') == 'image':
+            sources.add(str((token.get('attrs') or {}).get('url') or ''))
+        elif token.get('type') in {'block_html', 'inline_html'}:
+            sources.update(image.source for image in find_markdown_images(token.get('raw') or ''))
+        pending.extend(token.get('children') or [])
+    return sources
 
 
 def _markdown_source_blocks(markdown: str) -> List[str]:
@@ -255,46 +293,81 @@ def apply_markdown_outline_instructions(
     return f'{value}\n' if trailing_newline else value
 
 
-def parse_markdown_sections(markdown: str) -> List[tuple[int, List[str], int, str]]:
-    sections: List[tuple[int, List[str], int, str]] = []
-    heading_path: List[str] = []
-    occurrences: dict[tuple[str, ...], int] = {}
-    current: Optional[tuple[int, List[str], int, List[str]]] = None
-    fence: Optional[str] = None
+def _markdown_fence_marker(line: str, fence: Optional[str]) -> Optional[str]:
+    if fence is not None:
+        closing = r' {0,3}' + re.escape(fence[0]) + '{' + str(len(fence)) + r',}[ \t]*'
+        return None if re.fullmatch(closing, line) else fence
+    match = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$', line)
+    if match and (match.group(1)[0] != '`' or '`' not in match.group(2)):
+        return match.group(1)
+    return None
 
-    for line in markdown.splitlines():
-        fence_match = re.match(r'^\s*(```+|~~~+)', line)
-        if fence_match:
-            marker = fence_match.group(1)[0]
-            if fence is None:
-                fence = marker
-            elif fence == marker:
-                fence = None
-            if current is not None:
-                current[3].append(line)
+
+def _markdown_heading_ranges(markdown: str) -> List[tuple[int, int, int, List[str], int]]:
+    headings: List[tuple[int, int, int, List[str], int]] = []
+    stack: List[tuple[int, str]] = []
+    occurrences: dict[tuple[str, ...], int] = {}
+    fence: Optional[str] = None
+    anchor_start: Optional[int] = None
+    offset = 0
+    for raw_line in markdown.splitlines(keepends=True):
+        start = offset
+        offset += len(raw_line)
+        line = raw_line.rstrip('\r\n')
+        previous_fence = fence
+        fence = _markdown_fence_marker(line, fence)
+        if previous_fence is not None or fence is not None:
+            anchor_start = None
             continue
-        if fence is not None:
-            if current is not None:
-                current[3].append(line)
+        if re.fullmatch(
+            r'''[ \t]*<a\b[^>]*\bid\s*=\s*["'][^"']+["'][^>]*(?:/\s*>|>\s*</a\s*>)[ \t]*''',
+            line, re.IGNORECASE,
+        ):
+            anchor_start = start if anchor_start is None else anchor_start
             continue
-        match = re.match(r'^(#{1,6})\s+(.+?)\s*$', line)
+        match = re.match(r'^ {0,3}(#{1,6})(?:[ \t]+|$)(.*?)[ \t]*$', line)
         if not match:
-            if current is not None and not MARKDOWN_OUTLINE_INSTRUCTION_RE.match(line):
-                current[3].append(line)
+            if line.strip():
+                anchor_start = None
             continue
-        if current is not None:
-            sections.append((current[0], current[1], current[2], '\n'.join(current[3]).strip()))
         level = len(match.group(1))
-        title = match.group(2)
-        heading_path = heading_path[:level - 1]
-        heading_path.append(title)
+        title = re.sub(r'(?:^|[ \t]+)#+[ \t]*$', '', match.group(2))
+        while stack and stack[-1][0] >= level:
+            stack.pop()
+        stack.append((level, title))
+        heading_path = [item[1] for item in stack]
         path_key = tuple(heading_path)
         occurrence = occurrences.get(path_key, 0) + 1
         occurrences[path_key] = occurrence
-        current = (level, list(heading_path), occurrence, [])
+        headings.append((start if anchor_start is None else anchor_start, offset, level, heading_path, occurrence))
+        anchor_start = None
+    return headings
 
-    if current is not None:
-        sections.append((current[0], current[1], current[2], '\n'.join(current[3]).strip()))
+
+def markdown_section_range(markdown: str, heading_path: List[str], occurrence: int = 1) -> tuple[int, int]:
+    headings = _markdown_heading_ranges(markdown)
+    for index, (start, _, level, path, current_occurrence) in enumerate(headings):
+        if path != heading_path or current_occurrence != occurrence:
+            continue
+        end = next((item[0] for item in headings[index + 1:] if item[2] <= level), len(markdown))
+        return start, end
+    raise ValueError('content_ref is absent from Markdown document.')
+
+
+def parse_markdown_sections(markdown: str) -> List[tuple[int, List[str], int, str]]:
+    sections: List[tuple[int, List[str], int, str]] = []
+    headings = _markdown_heading_ranges(markdown)
+    for index, (_, body_start, level, path, occurrence) in enumerate(headings):
+        end = headings[index + 1][0] if index + 1 < len(headings) else len(markdown)
+        body_lines: List[str] = []
+        fence: Optional[str] = None
+        for line in markdown[body_start:end].splitlines():
+            if fence is None and MARKDOWN_OUTLINE_INSTRUCTION_RE.match(line):
+                continue
+            fence = _markdown_fence_marker(line, fence)
+            body_lines.append(line)
+        body = '\n'.join(body_lines).strip()
+        sections.append((level, path, occurrence, body))
     return sections
 
 
@@ -316,6 +389,42 @@ def get_markdown_outline_targets(
     return title, targets
 
 
+def _split_markdown_image_paragraph(token: Dict[str, Any]) -> List[Dict[str, Any]]:
+    children = token.get('children') or []
+    if token.get('type') != 'paragraph' or not any(child.get('type') == 'image' for child in children):
+        return [token]
+
+    parts: List[Dict[str, Any]] = []
+    pending: List[Dict[str, Any]] = []
+
+    def emit(items: List[Dict[str, Any]]) -> None:
+        part = {**token, 'children': items}
+        if _markdown_token_text(part).strip():
+            parts.append(part)
+
+    for child in children:
+        if child.get('type') != 'image':
+            pending.append(child)
+            continue
+        # An inline anchor immediately before an image belongs to that image,
+        # even when earlier text shares the same Markdown paragraph.
+        anchor_start = len(pending)
+        while anchor_start and (
+            pending[anchor_start - 1].get('type') in {'inline_html', 'softbreak', 'linebreak'}
+            or (pending[anchor_start - 1].get('type') == 'text'
+                and not str(pending[anchor_start - 1].get('raw') or '').strip())
+        ):
+            anchor_start -= 1
+        suffix = pending[anchor_start:]
+        if not MARKDOWN_ANCHOR_RE.search(''.join(_markdown_token_text(item) for item in suffix)):
+            anchor_start = len(pending)
+        emit(pending[:anchor_start])
+        emit([*pending[anchor_start:], child])
+        pending = []
+    emit(pending)
+    return parts
+
+
 def parse_document_markdown(  # noqa: C901
     markdown: str,
     document_id: str,
@@ -327,7 +436,7 @@ def parse_document_markdown(  # noqa: C901
     outline_instructions = parse_markdown_outline_instructions(markdown or '')
     visible_markdown = _strip_markdown_outline_instructions(markdown or '')
     heading_numbering = parse_markdown_heading_numbering_config(visible_markdown)
-    tokens = mistune.create_markdown(renderer='ast', plugins=['table'])(
+    tokens = mistune.create_markdown(renderer='ast', plugins=['table', 'math'])(
         strip_markdown_heading_numbering_config(visible_markdown),
     )
     outline_ids: Dict[str, List[str]] = defaultdict(list)
@@ -336,6 +445,8 @@ def parse_document_markdown(  # noqa: C901
             if block.type == 'heading' and block.content.strip():
                 outline_ids[block.content.strip()].append(block.node_id)
 
+    anchor_ids = markdown_anchor_ids(tokens)
+    reserved_ids = anchor_ids | {block.node_id for block in outline.iter_blocks()} if outline else anchor_ids
     used_ids = set()
     sequence = 0
     pending_anchor_ids: List[tuple[str, Dict[str, Any]]] = []
@@ -346,15 +457,10 @@ def parse_document_markdown(  # noqa: C901
             candidates = outline_ids.get(title.strip()) or []
             while candidates:
                 candidate = candidates.pop(0)
-                if candidate not in used_ids:
+                if candidate not in used_ids and candidate not in anchor_ids:
                     used_ids.add(candidate)
                     return candidate
-        sequence += 1
-        candidate = f'{document_id}-{kind}-{sequence}'
-        while candidate in used_ids:
-            sequence += 1
-            candidate = f'{document_id}-{kind}-{sequence}'
-        used_ids.add(candidate)
+        candidate, sequence = next_markdown_node_id(document_id, kind, sequence, reserved_ids, used_ids)
         return candidate
 
     def normalize_anchor_target(raw: str) -> str:
@@ -386,9 +492,15 @@ def parse_document_markdown(  # noqa: C901
         else:
             blocks.append(block)
 
-    for token in tokens:
+    for token in (part for item in tokens for part in _split_markdown_image_paragraph(item)):
         token_type = token.get('type')
         if token_type == 'blank_line':
+            continue
+        if token_type == 'block_math':
+            append_block(WriterBlock(
+                node_id=take_pending_node_id('math'), type='math',
+                content='$$\n' + token['raw'] + '\n$$', stage=stage, editable=False,
+            ))
             continue
         if token_type == 'heading':
             level = int((token.get('attrs') or {}).get('level') or 1)
@@ -397,9 +509,11 @@ def parse_document_markdown(  # noqa: C901
                 title = content or title
                 continue
             node_id, anchor_numbering = take_pending_anchor('heading', content)
+            spans = _markdown_spans_from_token(token)
             block = WriterBlock(
                 node_id=node_id, type='heading',
                 content=content, stage=stage,
+                spans=spans if any(span.style.get('math_source') for span in spans) else [],
                 numbering={
                     'level': max(level - 1, 1),
                     **anchor_numbering,
@@ -418,11 +532,47 @@ def parse_document_markdown(  # noqa: C901
             for item in token.get('children') or []:
                 content = _markdown_token_text(item).strip()
                 if content:
+                    spans = _markdown_spans_from_token(item)
                     append_block(WriterBlock(
                         node_id=next_id('list-item'), type='list_item',
                         content=content, stage=stage,
+                        spans=spans if any(span.style.get('math_source') for span in spans) else [],
                         numbering={'ordered': ordered},
                     ))
+            continue
+
+        if token_type == 'table':
+            rows: List[WriterBlock] = []
+            for section in token.get('children') or []:
+                header = section.get('type') == 'table_head'
+                row_tokens = (
+                    [section] if header else list(section.get('children') or [])
+                )
+                for row_token in row_tokens:
+                    cells: List[WriterBlock] = []
+                    for cell_token in row_token.get('children') or []:
+                        rich = parse_markdown_inline(cell_token.get('children') or [])
+                        align = str((cell_token.get('attrs') or {}).get('align') or '')
+                        cells.append(WriterBlock(
+                            node_id=next_id('table-cell'),
+                            type='table_cell',
+                            content=rich.content,
+                            spans=rich.spans,
+                            references=rich.references,
+                            stage=stage,
+                            numbering={
+                                'header': header,
+                                **({'align': align} if align else {}),
+                            },
+                        ))
+                    rows.append(WriterBlock(
+                        node_id=next_id('table-row'), type='table_row',
+                        children=cells, stage=stage,
+                    ))
+            append_block(WriterBlock(
+                node_id=take_pending_node_id('table'), type='table',
+                children=rows, stage=stage,
+            ))
             continue
 
         if token_type == 'paragraph':
@@ -539,7 +689,9 @@ def parse_document_markdown(  # noqa: C901
             type=block_type,
             content=content.strip(),
             stage=stage,
-            spans=_markdown_spans_from_token(token) if block_type in {'table', 'code'} else [],
+            spans=_markdown_spans_from_token(token) if block_type in {'code', 'quote'} else [],
+            provider_payload={'code_language': str((token.get('attrs') or {}).get('info') or '').split(' ')[0]}
+            if block_type == 'code' else {},
         )
         append_block(block)
 
@@ -582,6 +734,8 @@ def parse_document_markdown(  # noqa: C901
 
 def _markdown_token_text(token: Dict[str, Any]) -> str:
     token_type = token.get('type')
+    if token_type == 'inline_math':
+        return '$' + str(token.get('raw') or '') + '$'
     if token_type in {'text', 'codespan'}:
         return str(token.get('raw') or '')
     if token_type == 'image':
@@ -604,7 +758,11 @@ def _markdown_spans_from_token(token: Dict[str, Any]) -> List[WriterSpan]:
 
     def walk(node: Dict[str, Any]) -> None:
         node_type = node.get('type')
-        if node_type in {'text', 'codespan'}:
+        if node_type == 'inline_math':
+            spans.append(WriterSpan(text='$' + str(node.get('raw') or '') + '$',
+                                    style={'math_source': True}))
+            return
+        if node_type in {'text', 'codespan', 'inline_html'}:
             text = str(node.get('raw') or '')
             if text:
                 spans.append(WriterSpan(text=text))
@@ -638,11 +796,6 @@ def _markdown_spans_from_token(token: Dict[str, Any]) -> List[WriterSpan]:
             alt = ''.join(_markdown_token_text(child) for child in node.get('children') or [])
             spans.append(WriterSpan(text=f'![{alt}]({attrs.get("url") or ""})'))
             return
-        if node_type == 'inline_html':
-            text = str(node.get('raw') or '')
-            if text:
-                spans.append(WriterSpan(text=text))
-            return
         for child in node.get('children') or []:
             walk(child)
 
@@ -653,28 +806,9 @@ def _markdown_spans_from_token(token: Dict[str, Any]) -> List[WriterSpan]:
 def _markdown_block_content(token: Dict[str, Any]) -> tuple[str, str]:
     token_type = token.get('type')
     if token_type == 'block_code':
-        info = str((token.get('attrs') or {}).get('info') or '').strip()
-        return f'```{info}\n{str(token.get("raw") or "").rstrip()}\n```', 'code'
+        return str(token.get('raw') or '').rstrip(), 'code'
     if token_type == 'block_quote':
-        content = _markdown_token_text(token).strip()
-        return '\n'.join(f'> {line}' for line in content.splitlines()), 'quote'
-    if token_type == 'table':
-        rows = []
-        for row in token.get('children') or []:
-            if row.get('type') == 'table_body':
-                rows.extend(row.get('children') or [])
-            else:
-                rows.append(row)
-        table_rows = [
-            [_markdown_token_text(cell).strip() for cell in row.get('children') or []]
-            for row in rows
-        ]
-        if not table_rows:
-            return '', 'paragraph'
-        lines = [f'| {" | ".join(table_rows[0])} |']
-        lines.append(f'| {" | ".join("---" for _ in table_rows[0])} |')
-        lines.extend(f'| {" | ".join(row)} |' for row in table_rows[1:])
-        return '\n'.join(lines), 'table'
+        return _markdown_token_text(token).strip(), 'quote'
     if token_type == 'thematic_break':
         return '---', 'divider'
     return _markdown_token_text(token), 'paragraph'
