@@ -12,6 +12,7 @@ from lazyllm import config, LOG, ModuleBase
 from lazyllm.thirdparty import fsspec
 from .missing_env import collect_missing_env_hints, format_missing_env_message
 from .toolError import ToolExecutionError
+from .toolsManager import fc_register
 
 DEFAULT_SKILLS_DIR = os.path.join(config['home'], 'skills')
 os.makedirs(DEFAULT_SKILLS_DIR, exist_ok=True)
@@ -664,7 +665,7 @@ class SkillManager(ModuleBase):
         )
 
     def run_script(self, name: str, rel_path: str, args: Optional[List[str]] = None,
-                   allow_unsafe: bool = False, cwd: Optional[str] = None) -> Dict[str, str]:
+                   cwd: Optional[str] = None) -> Dict[str, str]:
         info, error = self._get_visible_skill_info(name)
         if error:
             self._raise_skill_lookup_error(name, error)
@@ -704,7 +705,6 @@ class SkillManager(ModuleBase):
                 rel_path=normalized_rel_path,
                 args=args,
                 cwd=os.path.relpath(run_cwd, os.path.realpath(os.path.abspath(base))),
-                allow_unsafe=allow_unsafe,
                 env=script_env,
             )
             return self._normalize_script_result(result, info)
@@ -723,6 +723,7 @@ class SkillManager(ModuleBase):
         return [self._build_get_skill_tool(), self._build_read_reference_tool(), self._build_run_script_tool()]
 
     def _build_get_skill_tool(self):
+        @fc_register(host_file='NONE', tool_source='skill')
         def get_skill(name: str, allow_large: bool = False) -> dict:
             '''Get the full usage for a skill (SKILL.md).
 
@@ -734,6 +735,7 @@ class SkillManager(ModuleBase):
         return get_skill
 
     def _build_read_reference_tool(self):
+        @fc_register(host_file='NONE', tool_source='skill')
         def read_reference(name: str, rel_path: str, **kwargs) -> dict:
             '''Read a reference file within a skill directory.
 
@@ -745,19 +747,18 @@ class SkillManager(ModuleBase):
         return read_reference
 
     def _build_run_script_tool(self):
+        @fc_register(host_file='OPAQUE', exclusive=True, tool_source='skill')
         def run_script(name: str, rel_path: str, args: Optional[List[str]] = None,
-                       allow_unsafe: bool = False, cwd: Optional[str] = None) -> dict:
+                       cwd: Optional[str] = None) -> dict:
             '''Run a script within a skill directory.
 
             Args:
                 name (str): Skill name.
                 rel_path (str): Relative script path inside the skill directory.
                 args (list[str], optional): Script arguments.
-                allow_unsafe (bool, optional): Allow execution. Defaults to False.
                 cwd (str, optional): Working directory.
             '''
-            return self.run_script(name=name, rel_path=rel_path, args=args,
-                                   allow_unsafe=allow_unsafe, cwd=cwd)
+            return self.run_script(name=name, rel_path=rel_path, args=args, cwd=cwd)
         return run_script
 
     def _format_skills_list(self, names: List[str]) -> str:

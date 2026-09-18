@@ -124,13 +124,13 @@ def save_artifact_json(
     extra_meta: Optional[Dict[str, Any]] = None,
 ) -> str:
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(path, 'w', encoding='utf-8') as fh:
+    with open(path, 'wb') as fh:
         fh.write(serialize_artifact_json(
             obj,
             schema_name=schema_name,
             created_by=created_by,
             extra_meta=extra_meta,
-        ))
+        ).encode('utf-8'))
 
     return os.path.abspath(path)
 
@@ -142,8 +142,8 @@ def load_artifact_json(
     expected_schema_name: Optional[str] = None,
     validate_schema: bool = True,
 ) -> Any:
-    with open(path, 'r', encoding='utf-8') as fh:
-        content = fh.read()
+    with open(path, 'rb') as fh:
+        content = fh.read().decode('utf-8')
     try:
         return deserialize_artifact_json(
             content,

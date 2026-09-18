@@ -12,7 +12,7 @@ def _create_sandbox():
     return _sandbox
 
 
-@fc_register('tool', execute_in_sandbox=False)
+@fc_register('tool', execute_in_sandbox=False, host_file='OPAQUE')
 def code_interpreter(code: str, language: str = 'python') -> str:
     '''
     Interpret the code and return the code interpreter result (include stdout, stderr, returncode, etc.).

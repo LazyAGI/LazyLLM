@@ -1,4 +1,6 @@
+from lazyllm.tools.agent.tool_runtime import host_file_access
 import json
+from pathlib import Path
 import threading
 import time
 
@@ -6,15 +8,15 @@ import lazyllm
 import pytest
 
 from lazyllm.flow.flow import FlowException
-from lazyllm.tools import ToolManager, fc_register
+from lazyllm.tools import HostFileIntent, ToolManager, fc_register
 from lazyllm.tools.agent.file_tool import (
-    delete_file,
-    list_dir,
-    make_dir,
-    move_file,
-    read_file,
-    search_in_files,
-    write_file,
+    remove,
+    ls,
+    mkdir,
+    move,
+    read,
+    grep,
+    write,
 )
 
 
@@ -36,7 +38,7 @@ def test_runtime_metadata_is_preserved_and_hidden_from_schema():
     class Toolkit:
         __public_apis__ = ['read']
 
-        @fc_register(read_keys=lambda args: ('file', args['path']))
+        @fc_register(read_keys=lambda args: ('file', args['path']), host_file='NONE')
         def read(self, path: str):
             '''Read a path.
 
@@ -60,6 +62,7 @@ def test_runtime_metadata_is_preserved_and_hidden_from_schema():
         'tool',
         execute_in_sandbox=False,
         write_keys=lambda args: ('file', args['path']),
+        host_file='NONE',
     )(registered)
     try:
         manager = ToolManager([Toolkit(), registered_name])
@@ -70,12 +73,20 @@ def test_runtime_metadata_is_preserved_and_hidden_from_schema():
         assert 'runtime_metadata' not in schema
 
         builtin_manager = ToolManager([
-            read_file, list_dir, search_in_files, make_dir, write_file, delete_file, move_file,
+            read, ls, grep, mkdir, write, remove, move,
         ])
         assert all(
-            tool.runtime_metadata.read_keys is not None or tool.runtime_metadata.write_keys is not None
+            tool.runtime_metadata.read_keys is None and tool.runtime_metadata.write_keys is None
             for tool in builtin_manager.all_tools
         )
+        prepared = builtin_manager.prepare_tool_calls([
+            _tool_call('read', {'path': '/tmp/tool-runtime/read'}),
+            _tool_call('write', {'path': '/tmp/tool-runtime/write', 'content': 'x'}),
+        ])
+        assert prepared[0].host_files == (HostFileIntent(str(Path('/tmp/tool-runtime/read').resolve()), 'read'),)
+        assert prepared[0].access == host_file_access(prepared[0].host_files)
+        assert prepared[1].host_files == (HostFileIntent(str(Path('/tmp/tool-runtime/write').resolve()), 'write'),)
+        assert prepared[1].access == host_file_access(prepared[1].host_files)
     finally:
         lazyllm.tool.remove(registered_name)
 
@@ -108,7 +119,7 @@ def test_dynamic_file_keys_control_parallelism(
                 self.active -= 1
             return path
 
-        @fc_register(read_keys=lambda args: ('file', args['path']))
+        @fc_register(read_keys=lambda args: ('file', args['path']), host_file='NONE')
         def read(self, path: str):
             '''Read a path.
 
@@ -117,7 +128,7 @@ def test_dynamic_file_keys_control_parallelism(
             '''
             return self._run(path)
 
-        @fc_register(write_keys=lambda args: ('file', args['path']))
+        @fc_register(write_keys=lambda args: ('file', args['path']), host_file='NONE')
         def write(self, path: str):
             '''Write a path.
 
@@ -152,7 +163,7 @@ def test_ordered_segments_exclusive_barrier_and_result_order():
                 self.events.append(f'{label}:end')
             return label
 
-        @fc_register(write_keys=lambda args: ('file', args['path']))
+        @fc_register(write_keys=lambda args: ('file', args['path']), host_file='NONE')
         def write(self, path: str, label: str, delay: float = 0.01):
             '''Write a path.
 
@@ -163,7 +174,7 @@ def test_ordered_segments_exclusive_barrier_and_result_order():
             '''
             return self._run(label, delay)
 
-        @fc_register(exclusive=True)
+        @fc_register(exclusive=True, host_file='NONE')
         def exclusive(self, label: str):
             '''Run exclusively.
 
@@ -172,6 +183,7 @@ def test_ordered_segments_exclusive_barrier_and_result_order():
             '''
             return self._run(label)
 
+        @fc_register(host_file='NONE')
         def plain(self, label: str):
             '''Run without resource declarations.
 
@@ -198,7 +210,7 @@ def test_ordered_segments_exclusive_barrier_and_result_order():
 def test_tool_failure_does_not_stop_later_conflicting_calls():
     events = []
 
-    @fc_register(write_keys=lambda args: ('file', args['path']))
+    @fc_register(write_keys=lambda args: ('file', args['path']), host_file='NONE')
     def mutate(path: str, label: str, fail: bool = False):
         '''Mutate a path.
 
@@ -225,7 +237,7 @@ def test_tool_failure_does_not_stop_later_conflicting_calls():
 
 
 def test_sandbox_failures_attempt_all_calls_and_rethrow_first_exception():
-    @fc_register(write_keys=lambda args: ('file', args['path']))
+    @fc_register(write_keys=lambda args: ('file', args['path']), host_file='NONE')
     def sandbox_tool(path: str):
         '''Process a path.
 
@@ -257,7 +269,7 @@ def test_sandbox_failures_attempt_all_calls_and_rethrow_first_exception():
 
 
 def test_runtime_key_resolution_failure_falls_back_to_exclusive_execution():
-    @fc_register(read_keys=lambda _args: (_ for _ in ()).throw(RuntimeError('bad key')))
+    @fc_register(read_keys=lambda _args: (_ for _ in ()).throw(RuntimeError('bad key')), host_file='NONE')
     def broken(value: str):
         '''Return a value.
 

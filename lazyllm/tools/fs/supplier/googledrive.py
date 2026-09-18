@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional, Union, Tuple
 
 import lazyllm
+from lazyllm.tools.agent.toolsManager import fc_register
 from lazyllm import config
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
@@ -171,6 +172,7 @@ class GoogleDriveFS(LazyLLMFSBase):
         data = self._get(url, params=params)
         return self._item_to_entry(data)
 
+    @fc_register(host_file='NONE')
     def search(
         self,
         keywords: Union[str, List[str]],
@@ -196,6 +198,7 @@ class GoogleDriveFS(LazyLLMFSBase):
             )
         ]
 
+    @fc_register(host_file='NONE')
     def find(
         self,
         pattern: str,
@@ -229,6 +232,7 @@ class GoogleDriveFS(LazyLLMFSBase):
                     break
         return matches
 
+    @fc_register(host_file='NONE')
     def read(self, path: str) -> str:
         return super().read(path)
 
@@ -240,6 +244,7 @@ class GoogleDriveFS(LazyLLMFSBase):
             return self._export_document(metadata['name'], mime_type)
         return super().read_bytes(path)
 
+    @fc_register(host_file='NONE')
     def read_file(self, path: str) -> str:
         return super().read_file(path)
 
