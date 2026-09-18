@@ -140,7 +140,7 @@ ftfy = {version = "==6.3.1", optional = true}
 imageio = {version = "==2.37.0", optional = true}
 imageio-ffmpeg = {version = "==0.6.0", optional = true}
 volcengine-python-sdk = {version = ">=4.0.6", extras = ["ark"], optional = true}
-dashscope = {version = ">=1.23.6", optional = true}
+dashscope = {version = ">=1.25.7", optional = true}
 zhipuai = {version = ">=2.1.5.20250708", optional = true}
 opensearch-py = {version = ">=3.0.0", optional = true}
 elasticsearch = {version = "<7.17.12", optional = true}

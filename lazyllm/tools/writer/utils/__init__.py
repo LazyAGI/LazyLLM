@@ -19,6 +19,7 @@ from .serialization import (
     parse_markdown_outline_instructions,
     strip_caption_numbering,
     strip_heading_numbering,
+    strip_math_delimiters,
     to_prompt_json,
     validate_markdown_paragraph,
 )
@@ -34,6 +35,8 @@ from .conversion import (
     writer_document_to_markdown,
 )
 from .request_constraints import parse_writer_request_constraints
+from .editing import set_document_editable
+from .tables import table_grid, validate_table, validate_writer_tables
 
 __all__ = [
     'SCHEMA_VERSION',
@@ -66,4 +69,9 @@ __all__ = [
     'strip_heading_numbering',
     'strip_caption_numbering',
     'parse_writer_request_constraints',
+    'set_document_editable',
+    'strip_math_delimiters',
+    'table_grid',
+    'validate_table',
+    'validate_writer_tables',
 ]

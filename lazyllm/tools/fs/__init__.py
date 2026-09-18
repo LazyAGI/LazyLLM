@@ -11,6 +11,7 @@ from .supplier.yuque import YuqueFS
 from .supplier.ones import OnesFS
 from .supplier.s3 import S3FS
 from .supplier.obsidian import ObsidianFS
+from .supplier.github import GitHubRepoFS, GitHubWikiFS
 
 
 __all__ = [
@@ -30,4 +31,6 @@ __all__ = [
     'OnesFS',
     'S3FS',
     'ObsidianFS',
+    'GitHubRepoFS',
+    'GitHubWikiFS',
 ]

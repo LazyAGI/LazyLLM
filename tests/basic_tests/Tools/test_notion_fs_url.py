@@ -752,12 +752,21 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
 
         def patch(url, **kwargs):
             if url.endswith('/children'):
-                created_id = next(created_ids)
-                source = kwargs['json']['children'][0]
-                created = {**source, 'id': created_id, 'has_children': False}
-                visible.append(created)
-                events.append(('create', created_id, kwargs['json']))
-                return _append_response(created)
+                created = []
+                for source in kwargs['json']['children']:
+                    created_id = next(created_ids)
+                    item = {**source, 'id': created_id, 'has_children': False}
+                    visible.append(item)
+                    created.append(item)
+                events.append(('create', [item['id'] for item in created], kwargs['json']))
+                return {
+                    'object': 'list',
+                    'type': 'block',
+                    'block': {},
+                    'results': [{**item, 'object': 'block'} for item in created],
+                    'next_cursor': None,
+                    'has_more': False,
+                }
             events.append(('update', url.rsplit('/', 1)[-1], kwargs['json']))
             return {}
 
@@ -797,9 +806,11 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
         fs.replace_doc_blocks(PAGE_ID, blocks)
 
         self.assertEqual([event[0] for event in events], [
-            'create', 'create', 'update', 'delete',
+            'create', 'update', 'delete',
         ])
-        update = events[2]
+        self.assertEqual(events[0][1], [new_target, new_source])
+        self.assertEqual(len(events[0][2]['children']), 2)
+        update = events[1]
         self.assertEqual(update[1], new_source)
         link = update[2]['paragraph']['rich_text'][0]['text']['link']
         self.assertEqual(

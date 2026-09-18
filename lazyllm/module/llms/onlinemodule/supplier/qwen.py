@@ -626,7 +626,18 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
                          return_trace=return_trace, base_url=base_url, **kwargs)
 
     def _call_sync_text2image(self, call_params):
-        task_response = dashscope.MultiModalConversation.call(**call_params)
+        if self._uses_image_generation(call_params.get('model')):
+            size = call_params.get('image_size') or call_params.get('size')
+            n = call_params.get('batch_size') or call_params.get('n')
+            task_response = dashscope.aigc.image_generation.ImageGeneration.call(
+                model=call_params['model'], api_key=call_params.get('api_key'),
+                messages=call_params['messages'], negative_prompt=call_params.get('negative_prompt'),
+                n=n, size=size.replace('x', '*') if size else None,
+                prompt_extend=call_params.get('prompt_extend'),
+                **({'seed': call_params['seed']} if 'seed' in call_params else {}),
+            )
+        else:
+            task_response = dashscope.MultiModalConversation.call(**call_params)
         if task_response.status_code != HTTPStatus.OK:
             raise RuntimeError(
                 f'Failed to create image synthesis task, '
@@ -680,9 +691,14 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
             return []
 
     @staticmethod
-    def _uses_multimodal_generation(model_name: Optional[str]) -> bool:
+    def _uses_image_generation(model_name: Optional[str]) -> bool:
+        models = dashscope.aigc.image_generation.ImageGeneration.Models
+        return (model_name or '').strip().lower() in vars(models).values()
+
+    @classmethod
+    def _uses_multimodal_generation(cls, model_name: Optional[str]) -> bool:
         name = (model_name or '').strip().lower()
-        return name.startswith('qwen-image')
+        return name.startswith('qwen-image') or cls._uses_image_generation(name)
 
     def _forward(self, input: str = None, files: List[str] = None, negative_prompt: str = None, n: int = 1,
                  prompt_extend: bool = True, size: str = '1024*1024', seed: int = None,
@@ -728,14 +744,15 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
             'negative_prompt': negative_prompt,
             'n': n,
             'prompt_extend': prompt_extend,
-            'size': size,
             **kwargs
         }
+        call_params['size'] = size.replace('x', '*')
         if self._api_key: call_params['api_key'] = self._api_key
         if seed: call_params['seed'] = seed
         if has_ref_image or self._uses_multimodal_generation(model):
             call_params['messages'] = messages
-            call_params['result_format'] = call_params.get('result_format') or 'message'
+            if not self._uses_image_generation(model):
+                call_params['result_format'] = call_params.get('result_format') or 'message'
             response = self._call_sync_text2image(call_params)
             image_urls = self._extract_sync_image_urls(response)
         else:

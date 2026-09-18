@@ -7,9 +7,11 @@ from lazyllm.tools.writer.numbering import (
     build_numbering_view_from_ir,
     build_numbering_view_from_markdown,
     compute_numbering,
+    dematerialize_ir,
     dematerialize_markdown,
     ensure_markdown_heading_anchors,
     format_target_number,
+    materialize_ir,
     materialize_markdown,
 )
 from lazyllm.tools.writer.utils.conversion import (
@@ -26,6 +28,71 @@ def _numbering(markdown: str):
 def _materialize(markdown: str) -> str:
     view = build_numbering_view_from_markdown(markdown)
     return materialize_markdown(markdown, view, compute_numbering(view))
+
+
+@pytest.mark.parametrize('parse', [
+    writer_document_from_markdown,
+    lambda source: parse_document_markdown(source, 'document'),
+])
+def test_markdown_tables_use_structured_ir(parse):
+    source = '| 指标 | 数量 |\n| :--- | ---: |\n| DAU | 100 |'
+
+    table = parse(source).blocks[0]
+
+    assert table.type == 'table'
+    assert table.content == ''
+    assert [row.type for row in table.children] == ['table_row', 'table_row']
+    assert [cell.content for cell in table.children[0].children] == ['指标', '数量']
+    assert [cell.type for cell in table.children[1].children] == [
+        'table_cell', 'table_cell',
+    ]
+    assert table.children[0].children[0].numbering == {
+        'header': True, 'align': 'left',
+    }
+    assert table.children[0].children[1].numbering == {
+        'header': True, 'align': 'right',
+    }
+    assert table.children[1].children[1].content == '100'
+    assert '| DAU | 100 |' in render_document_markdown(parse(source))
+
+
+def test_markdown_table_entries_preserve_the_same_rich_semantics():
+    source = '| 字段 | 值 |\n| :--- | ---: |\n| **粗体** | [A\\|B](https://example.com) |'
+    first = writer_document_from_markdown(source).blocks[0]
+    second = parse_document_markdown(source, 'document').blocks[0]
+
+    def semantics(block):
+        return {
+            'type': block.type,
+            'content': block.content,
+            'spans': [span.model_dump() for span in block.spans],
+            'numbering': block.numbering,
+            'children': [semantics(child) for child in block.children],
+        }
+
+    assert semantics(first) == semantics(second)
+    rendered = render_document_markdown(writer_document_from_markdown(source))
+    assert '**粗体**' in rendered
+    assert '[A\\|B](https://example.com)' in rendered
+
+
+def test_table_numbering_changes_only_the_caption():
+    table = WriterBlock(
+        node_id='table', type='table', content='Metrics', children=[WriterBlock(
+            node_id='row', type='table_row', children=[WriterBlock(
+                node_id='cell', type='table_cell', content='DAU',
+            )],
+        )],
+    )
+    document = WriterDocument(document_id='doc', blocks=[table])
+    numbering = compute_numbering(build_numbering_view_from_ir(document))
+
+    numbered = materialize_ir(document, numbering)
+    restored = dematerialize_ir(numbered, numbering)
+
+    assert numbered.blocks[0].content == '表1 Metrics'
+    assert numbered.blocks[0].children[0].children[0].content == 'DAU'
+    assert restored == document
 
 
 def test_markdown_style_restart_and_unordered_heading_round_trip():

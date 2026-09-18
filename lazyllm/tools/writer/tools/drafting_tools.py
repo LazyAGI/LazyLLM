@@ -302,8 +302,12 @@ class WriterDraftingTools(WriterToolBase):
             ),
             finalize=lambda block: self._save_ir_draft_section(
                 self._normalize_draft_block(
-                    self._attach_section_media(
-                        block, instruction, visual_plan, media_assets,
+                    self._restore_rewrite_images(
+                        self._attach_section_media(
+                            block, instruction, visual_plan, media_assets,
+                        ),
+                        instruction,
+                        media_assets,
                     ),
                     instruction,
                 ),
@@ -342,7 +346,53 @@ class WriterDraftingTools(WriterToolBase):
             instruction,
         )
         block = self._condense_ir_section_if_needed(block, instruction)
+        block = self._normalize_draft_block(
+            self._restore_rewrite_images(block, instruction, media_assets),
+            instruction,
+        )
         return self._save_ir_draft_section(block, result_extra, media_assets)
+
+    def _restore_rewrite_images(
+        self,
+        draft_block: WriterBlock,
+        instruction: SectionInstruction,
+        media_assets: Any,
+    ) -> WriterBlock:
+        if not instruction.meta.get('rewrite'):
+            return draft_block
+        source_images = instruction.meta.get('source_images') or []
+        if not isinstance(source_images, list):
+            return draft_block
+        library = self._unified_optional_model(media_assets, MediaAssetLibrary)
+        asset_by_uri = {
+            str(asset.uri).strip(): asset_id
+            for asset_id, asset in (library.assets.items() if library else [])
+            if str(asset.uri or '').strip()
+        }
+        existing_ids = {block.node_id for block in draft_block.iter_blocks()}
+        for raw_image in source_images:
+            if not isinstance(raw_image, dict):
+                continue
+            image = WriterBlock.model_validate(raw_image)
+            if image.type != 'image' or image.node_id in existing_ids:
+                continue
+            image_url = next(
+                (
+                    str(ref.get('url') or '').strip()
+                    for ref in image.references
+                    if ref.get('type') == 'wechat_image' and ref.get('url')
+                ),
+                '',
+            )
+            asset_id = asset_by_uri.get(image_url)
+            if asset_id:
+                image.references = [
+                    *image.references,
+                    {'type': 'media_asset', 'id': asset_id},
+                ]
+            draft_block.children.append(image)
+            existing_ids.add(image.node_id)
+        return draft_block
 
     @staticmethod
     def _short_representation(plan: ShortWritingPlan) -> str:
