@@ -32,6 +32,7 @@ TOOL_AUTH_REGISTRY: Dict[str, str] = {
     'yuque': 'dynamic_fs_auth',
     'ones': 'dynamic_fs_auth',
     's3': 'dynamic_fs_auth',
+    'github': 'dynamic_fs_auth',
     # ── Search / API-key tools (SearchBase) ──────────────────────────────
     'bing': 'dynamic_tool_auth',
     'google': 'dynamic_tool_auth',
@@ -43,6 +44,7 @@ TOOL_AUTH_REGISTRY: Dict[str, str] = {
     'google_books': 'dynamic_tool_auth',
     'stackoverflow': 'dynamic_tool_auth',
     'sciverse': 'dynamic_tool_auth',
+    'wechat': 'dynamic_tool_auth',
 }
 
 # Default config key for tools not listed in TOOL_AUTH_REGISTRY.

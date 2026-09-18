@@ -7,16 +7,22 @@ from typing import Any, List, Optional, Tuple
 
 from lazyllm import LOG
 
-from .base import WriterProviderBase
+from .base import (
+    WriterProviderBase,
+    WriterProviderCapabilities,
+    WriterProviderDocument,
+    WriterProviderRevisionError,
+    WriterProviderWriteMode,
+)
 from ..adapter.base import NativePatchOperation, WriterAdapterBase
 from ..adapter.notion import NotionWriterAdapter
 from ..data_models.multimodal import MediaAssetLibrary
 from ..data_models.revision import PatchHunk, PatchResult, PatchSet
 from ..data_models.task import TargetDocument
 from ..data_models.writer_ir import WriterDocument, WriterStage
-from ..numbering import build_numbering_view_from_ir, compute_numbering, materialize_ir
-from ..tools.revision_tools import apply_patch_to_ir
-from ..utils import parse_document_markdown
+from ..numbering import build_numbering_view_from_ir, compute_numbering, format_target_number, materialize_ir
+from ..tools.revision_tools import apply_patch_to_ir, apply_persisted_patch_hunk
+from ..utils import strip_caption_numbering
 
 
 _NOTION_URL_RE = re.compile(
@@ -29,6 +35,15 @@ class NotionWriterProvider(WriterProviderBase):
     '''Orchestrate structured Notion page IO through NotionFS and Writer IR.'''
 
     provider = 'notion'
+    capabilities = WriterProviderCapabilities(
+        load=True,
+        create=True,
+        replace=True,
+        append=True,
+        patch=True,
+        revision_check=True,
+        media=True,
+    )
 
     @classmethod
     def matches(cls, locator: str) -> bool:
@@ -46,6 +61,7 @@ class NotionWriterProvider(WriterProviderBase):
         target: TargetDocument,
         *,
         stage: WriterStage = 'final',
+        previous_document: Optional[WriterDocument] = None,
     ) -> dict:
         protocol, real_path, fs, adapter, locator, document_id = \
             self._resolve_document_target(target)
@@ -61,6 +77,8 @@ class NotionWriterProvider(WriterProviderBase):
             uri=locator,
             revision=revision,
         )
+        if previous_document is not None:
+            document = adapter.merge_refreshed_document(previous_document, document)
         document.metadata.update({
             'block_count': len(raw_blocks),
             'source': target.model_dump(),
@@ -121,23 +139,40 @@ class NotionWriterProvider(WriterProviderBase):
             },
         )
 
-    def replace_document(
+    def _convert_native_document(
         self,
         content: WriterDocument | str,
-        target: TargetDocument,
         *,
+        target: TargetDocument | None = None,
         media_assets: MediaAssetLibrary | None = None,
-    ) -> dict:
-        return self._write_document(content, target, media_assets=media_assets, mode='replace')
-
-    def append_document(
-        self,
-        content: WriterDocument | str,
-        target: TargetDocument,
-        *,
-        media_assets: MediaAssetLibrary | None = None,
-    ) -> dict:
-        return self._write_document(content, target, media_assets=media_assets, mode='append')
+    ) -> WriterProviderDocument:
+        source_document = self._writer_document(content, media_assets)
+        document = source_document.model_copy(deep=True)
+        if target is not None:
+            if target.adapter and target.adapter != self.provider:
+                raise ValueError(
+                    f'target adapter {target.adapter!r} does not match provider {self.provider!r}.')
+            document.provider_binding = {
+                **document.provider_binding,
+                'provider': self.provider,
+                'document_id': str(target.doc_id or ''),
+                'uri': str(target.uri or ''),
+            }
+        adapter = self._writer_adapter()
+        numbering = compute_numbering(build_numbering_view_from_ir(document))
+        document = materialize_ir(document, numbering)
+        native_blocks = adapter.ir_to_blocks(document, media_assets=media_assets)
+        return WriterProviderDocument(
+            provider=self.provider,
+            format='notion_blocks',
+            content=self._copyable_media_content(native_blocks, media_assets),
+            source_document=source_document,
+            media_references={
+                asset_id: str(asset.uri or asset.local_path or '')
+                for asset_id, asset in (media_assets.assets.items() if media_assets else [])
+                if asset.uri or asset.local_path
+            },
+        )
 
     def apply_patch_to_document(
         self,
@@ -164,15 +199,32 @@ class NotionWriterProvider(WriterProviderBase):
         baseline = self._document_metadata(fs, real_path)
         current_revision = str(baseline.get('last_edited_time') or '') or None
         if source_document.revision and current_revision != source_document.revision:
-            raise RuntimeError(
-                f'Notion document changed since it was loaded: expected '
-                f'{source_document.revision!r}, got {current_revision!r}.')
+            raise WriterProviderRevisionError(
+                self.provider, source_document.revision, current_revision,
+            )
 
         persisted = source_document
         applied_hunks: List[str] = []
-        for hunk in patch_set.hunks:
+        pending_rows: dict[str, NativePatchOperation] = {}
+        pending_hunk_ids: List[str] = []
+
+        for source_hunk in patch_set.hunks:
+            current = persisted.block_by_id(source_hunk.target_node_id)
+            is_cell_update = source_hunk.modify_type == 'update' and current is not None \
+                and current.type == 'table_cell'
+            if not is_cell_update:
+                self._flush_cell_updates(fs, document_id, pending_rows, pending_hunk_ids, applied_hunks)
+            hunk = self._materialize_table_caption_hunk(
+                source_hunk, final_numbering)
             operation = adapter.patch_to_operation(
                 hunk, persisted, media_assets=media_assets)
+            if is_cell_update:
+                # Each row payload includes earlier edits from this uninterrupted cell run.
+                pending_rows[operation.params['block_id']] = operation
+                pending_hunk_ids.append(hunk.hunk_id or hunk.target_node_id)
+                persisted = self._apply_operation_result_locally(
+                    persisted, hunk, operation, {}, media_assets=media_assets)
+                continue
             try:
                 result = self._execute_native_operation(fs, document_id, operation)
             except Exception as exc:
@@ -186,12 +238,10 @@ class NotionWriterProvider(WriterProviderBase):
                     f'{operation.params.get("block_id") or "unknown"!r} '
                     f'at revision {persisted.revision!r}: {exc}') from exc
             applied_hunks.append(hunk.hunk_id or hunk.target_node_id)
-            refreshed = self._read_persisted_document(
-                fs=fs, adapter=adapter, real_path=real_path,
-                document_id=document_id, source_document=persisted)
-            persisted = adapter.merge_refreshed_document(
-                persisted, refreshed, patch=hunk, operation=operation,
-                operation_result=result)
+            persisted = self._apply_operation_result_locally(
+                persisted, hunk, operation, result, media_assets=media_assets)
+
+        self._flush_cell_updates(fs, document_id, pending_rows, pending_hunk_ids, applied_hunks)
 
         title_updated = patch_set.new_title is not None \
             and patch_set.new_title != source_document.title
@@ -200,35 +250,15 @@ class NotionWriterProvider(WriterProviderBase):
             if not callable(update_title):
                 raise TypeError(f'{type(fs).__name__} does not support update_page_title().')
             update_title(document_id, patch_set.new_title)
-            persisted = self._read_persisted_document(
-                fs=fs, adapter=adapter, real_path=real_path,
-                document_id=document_id,
-                source_document=persisted.model_copy(update={'title': patch_set.new_title}),
-            )
+            persisted = persisted.model_copy(update={'title': patch_set.new_title})
 
-        for sync_hunk in self._numbering_sync_hunks(numbered_document, persisted):
-            operation = adapter.patch_to_operation(
-                sync_hunk, persisted, media_assets=media_assets)
-            try:
-                sync_result = self._execute_native_operation(fs, document_id, operation)
-            except Exception as exc:
-                LOG.error(
-                    'Notion numbering sync failed: hunk_id=%s block_id=%s error=%s',
-                    sync_hunk.hunk_id,
-                    operation.params.get('block_id'),
-                    exc,
-                )
-                raise RuntimeError(
-                    f'provider numbering sync failed for block '
-                    f'{operation.params.get("block_id") or "unknown"!r}: {exc}'
-                ) from exc
-            applied_hunks.append(sync_hunk.hunk_id or sync_hunk.target_node_id)
-            refreshed = self._read_persisted_document(
-                fs=fs, adapter=adapter, real_path=real_path,
-                document_id=document_id, source_document=persisted)
-            persisted = adapter.merge_refreshed_document(
-                persisted, refreshed, patch=sync_hunk, operation=operation,
-                operation_result=sync_result)
+        persisted = self._sync_numbering(
+            numbered_document, persisted, adapter, fs, document_id, media_assets, applied_hunks)
+
+        refreshed = self._read_persisted_document(
+            fs=fs, adapter=adapter, real_path=real_path,
+            document_id=document_id, source_document=persisted)
+        persisted = adapter.merge_refreshed_document(persisted, refreshed)
         result = PatchResult(
             patch_id=patch_set.patch_id,
             success=True,
@@ -248,6 +278,76 @@ class NotionWriterProvider(WriterProviderBase):
             'provider': self.provider,
             'document_id': document_id,
         }
+
+    @staticmethod
+    def _apply_operation_result_locally(
+        document: WriterDocument,
+        patch: PatchHunk,
+        operation: NativePatchOperation,
+        operation_result: Any,
+        *,
+        media_assets: MediaAssetLibrary | None,
+    ) -> WriterDocument:
+        '''Advance Writer IR without rereading the entire Notion page.'''
+        updated = apply_persisted_patch_hunk(document, patch)
+
+        if operation.operation not in {'create', 'move'}:
+            NotionWriterAdapter._update_local_caption(updated, patch)
+            return updated
+
+        bindings = operation_result.get('node_id_bindings') \
+            if isinstance(operation_result, dict) else None
+        if not isinstance(bindings, dict) or not bindings:
+            raise ValueError(
+                f'{operation.operation} operation did not return Notion node ID bindings.')
+
+        native_by_node_id = NotionWriterProvider._collect_native_nodes(operation)
+        relation_map = bindings
+        if any(not isinstance(relation_map.get(node_id), str) or not relation_map[node_id]
+               for node_id in native_by_node_id):
+            raise ValueError('Notion operation returned incomplete block ID relations.')
+        physical_ids = [relation_map[node_id] for node_id in native_by_node_id]
+        if len(physical_ids) != len(set(physical_ids)):
+            raise ValueError('Notion operation returned duplicate block IDs.')
+        NotionWriterProvider._bind_created_nodes(updated, bindings, native_by_node_id)
+        root = updated.block_by_id(patch.target_node_id)
+        if root is not None:
+            parent_key = 'target_parent_block_id' if operation.operation == 'move' else 'parent_block_id'
+
+            def bind_parents(block: Any, parent_id: str) -> None:
+                block_id = block.provider_binding.get('block_id')
+                if block_id:
+                    block.provider_binding['parent_block_id'] = parent_id
+                caption_binding = NotionWriterAdapter._caption_binding(block)
+                if caption_binding:
+                    caption_binding['parent_block_id'] = parent_id
+                for child in block.children:
+                    bind_parents(child, block_id or parent_id)
+
+            bind_parents(root, operation.params[parent_key])
+        NotionWriterAdapter._update_local_caption(updated, patch)
+        return WriterDocument.model_validate(updated.model_dump())
+
+    @staticmethod
+    def _materialize_table_caption_hunk(
+        hunk: PatchHunk,
+        numbering: dict[str, Any],
+    ) -> PatchHunk:
+        if hunk.block is None:
+            return hunk
+        hunk = hunk.model_copy(deep=True)
+        for item in hunk.block.iter_blocks():
+            if item.type != 'table' or not item.content.strip():
+                continue
+            entry = numbering.get(item.node_id)
+            if entry is None:
+                continue
+            item.content = (
+                f'{format_target_number(entry)} '
+                f'{strip_caption_numbering(item.content)}'
+            ).strip()
+            item.spans = []
+        return hunk
 
     @classmethod
     def _numbering_sync_hunks(
@@ -314,49 +414,73 @@ class NotionWriterProvider(WriterProviderBase):
                 values.append(text['content'])
         return ''.join(values)
 
-    def _write_document(
+    def write_document(
         self,
-        content: WriterDocument | str,
+        converted: WriterProviderDocument,
         target: TargetDocument,
         *,
-        media_assets: MediaAssetLibrary | None,
-        mode: str,
+        media_assets: MediaAssetLibrary | None = None,
+        mode: WriterProviderWriteMode = 'replace',
     ) -> dict:
-        source_document = content if isinstance(content, WriterDocument) else None
-        protocol, _, fs, adapter, locator, document_id = \
+        if converted.provider != self.provider or converted.format != 'notion_blocks':
+            raise ValueError('Notion write_document requires converted Notion blocks.')
+        source_document = converted.source_document.model_copy(deep=True)
+        protocol, real_path, fs, _, locator, document_id = \
             self._resolve_document_target(target, source_document=source_document)
-        document = source_document.model_copy(deep=True) if source_document else \
-            parse_document_markdown(
-            content,
-            document_id=adapter.make_document_id(document_id),
-            stage='final',
-            media_assets=media_assets,
-        )
-        document.provider_binding = {
-            **(document.provider_binding or {}),
+        if source_document.revision is not None:
+            current_revision = str(
+                self._document_metadata(fs, real_path).get('last_edited_time') or '',
+            ) or None
+            if current_revision != source_document.revision:
+                raise WriterProviderRevisionError(
+                    self.provider, source_document.revision, current_revision,
+                )
+        source_document.provider_binding = {
+            **source_document.provider_binding,
             'provider': protocol,
             'document_id': document_id,
             'uri': locator,
         }
-        self._validate_available_images(document, media_assets, adapter)
-        numbering = compute_numbering(build_numbering_view_from_ir(document))
-        document = materialize_ir(document, numbering)
-        native_blocks = adapter.ir_to_blocks(document, media_assets=media_assets)
-        if document.title:
+        converted_content = self._writer_adapter().materialize_internal_links(
+            converted.content, document_uri=locator, document_id=document_id,
+        )
+        native_blocks = self._writable_media_content(converted_content, media_assets)
+        if not isinstance(native_blocks, list):
+            raise TypeError('Converted Notion content must be a block list.')
+        if source_document.title:
             update_title = getattr(fs, 'update_page_title', None)
             if not callable(update_title):
                 raise TypeError(f'{type(fs).__name__} does not support update_page_title().')
-            update_title(document_id, document.title)
+            update_title(document_id, source_document.title)
         method_name = 'replace_doc_blocks' if mode == 'replace' else 'write_doc_blocks'
         write_blocks = getattr(fs, method_name, None)
         if not callable(write_blocks):
             raise TypeError(f'{type(fs).__name__} does not support {method_name}().')
+        relations: List[dict[str, str]] = []
         if native_blocks:
-            write_blocks(document_id, native_blocks)
+            written_blocks = write_blocks(
+                document_id, native_blocks, block_id_relations=relations)
         warnings: List[str] = []
         if not native_blocks:
             warnings.append('Document has no publishable blocks.')
+        persisted_result = {}
+        if relations:
+            adapter = self._writer_adapter()
+            refreshed = adapter.blocks_to_ir(
+                written_blocks, external_document_id=document_id, stage='final',
+                title=source_document.title or target.title or '', uri=locator,
+            )
+            refreshed.metadata.update({'block_count': len(written_blocks), 'source': target.model_dump()})
+            metadata = self._document_metadata(fs, real_path)
+            refreshed.title = str(metadata.get('title') or refreshed.title)
+            refreshed.revision = str(metadata.get('last_edited_time') or '') or None
+            refreshed.metadata['provider_metadata'] = metadata
+            persisted_result = {
+                'representation': 'ir',
+                'persisted_document': adapter.bind_written_document(source_document, relations, refreshed),
+            }
         return {
+            **persisted_result,
             'doc_id': document_id,
             'adapter': protocol,
             'locator': locator,
@@ -405,7 +529,35 @@ class NotionWriterProvider(WriterProviderBase):
         method = getattr(fs, method_name, None)
         if not callable(method):
             raise TypeError(f'{type(fs).__name__} does not support {method_name}().')
-        return method(document_id=document_id, **operation.params)
+        params = dict(operation.params)
+        caption_operation = params.pop('_caption_operation', None)
+        result = method(document_id=document_id, **params)
+        temporary_bindings = result.pop('block_id_relations', None)
+        if temporary_bindings is not None:
+            result['node_id_bindings'] = {
+                relation['temporary_block_id']: relation['block_id']
+                for relation in temporary_bindings
+                if isinstance(relation, dict)
+                and isinstance(relation.get('temporary_block_id'), str)
+                and relation.get('temporary_block_id')
+                and isinstance(relation.get('block_id'), str)
+                and relation.get('block_id')
+            }
+        if caption_operation is not None:
+            try:
+                extra = NotionWriterProvider._execute_native_operation(fs, document_id, caption_operation)
+            except Exception as exc:
+                raise RuntimeError(
+                    'Notion operation partially applied: caption operation failed; reload the document.'
+                ) from exc
+            result = {
+                **result,
+                'node_id_bindings': {
+                    **(result.get('node_id_bindings') or {}),
+                    **(extra.get('node_id_bindings') or {}),
+                },
+            }
+        return result
 
     @classmethod
     def _read_persisted_document(
@@ -497,6 +649,104 @@ class NotionWriterProvider(WriterProviderBase):
             asset = media_assets.assets.get(references[0]) if media_assets else None
             if asset is None or not asset.local_path or not Path(asset.local_path).is_file():
                 raise ValueError(f'Image block {block.node_id!r} media is unavailable.')
+
+    def _flush_cell_updates(self, fs, document_id, pending_rows, pending_hunk_ids, applied_hunks) -> None:
+        for operation in pending_rows.values():
+            try:
+                self._execute_native_operation(fs, document_id, operation)
+            except Exception as exc:
+                raise RuntimeError(
+                    f'Notion cell batch failed for row {operation.params["block_id"]!r} '
+                    f'and hunks {pending_hunk_ids!r}; earlier rows may have been applied.'
+                ) from exc
+        applied_hunks.extend(pending_hunk_ids)
+        pending_rows.clear()
+        pending_hunk_ids.clear()
+
+    @staticmethod
+    def _collect_native_nodes(operation):
+        native_by_node_id: dict[str, dict[str, Any]] = {}
+
+        def collect_native(value: Any) -> None:
+            if isinstance(value, list):
+                for item in value:
+                    collect_native(item)
+                return
+            if not isinstance(value, dict):
+                return
+            temporary_id = value.get('_temporary_node_id')
+            if isinstance(temporary_id, str) and temporary_id:
+                native_by_node_id[temporary_id] = value
+            for item in value.values():
+                collect_native(item)
+
+        collect_native(operation.params.get('blocks'))
+        collect_native(operation.params.get('block'))
+        caption_operation = operation.params.get('_caption_operation')
+        if caption_operation is not None:
+            collect_native(caption_operation.params.get('block'))
+        return native_by_node_id
+
+    @staticmethod
+    def _bind_created_nodes(updated, bindings, native_by_node_id) -> None:
+        for node_id, block_id in bindings.items():
+            if not isinstance(node_id, str) or not node_id \
+                    or not isinstance(block_id, str) or not block_id:
+                continue
+            block = updated.block_by_id(node_id)
+            if block is None:
+                if node_id.endswith('::caption'):
+                    root = updated.block_by_id(node_id[:-9])
+                    if root is not None and root.type == 'table':
+                        root.provider_payload['table_caption'] = {
+                            'provider_binding': {
+                                'provider': 'notion',
+                                'block_id': block_id,
+                            },
+                            'raw_block': deepcopy(native_by_node_id.get(node_id) or {}),
+                        }
+                    continue
+                raise ValueError(
+                    f'Notion returned a block relation for unknown node {node_id!r}.')
+            block.provider_binding = {
+                **block.provider_binding,
+                'provider': 'notion',
+                'block_id': block_id,
+            }
+            native = native_by_node_id.get(node_id)
+            if native is not None:
+                raw = deepcopy(native)
+                raw.pop('_temporary_node_id', None)
+                raw.pop('_media', None)
+                raw['object'] = 'block'
+                raw['id'] = block_id
+                block.provider_payload = {
+                    **block.provider_payload,
+                    'raw_block': raw,
+                }
+
+    def _sync_numbering(self, numbered_document, persisted, adapter, fs, document_id, media_assets, applied_hunks):
+        for sync_hunk in self._numbering_sync_hunks(numbered_document, persisted):
+            operation = adapter.patch_to_operation(
+                sync_hunk, persisted, media_assets=media_assets)
+            try:
+                sync_result = self._execute_native_operation(fs, document_id, operation)
+            except Exception as exc:
+                LOG.error(
+                    'Notion numbering sync failed: hunk_id=%s block_id=%s error=%s',
+                    sync_hunk.hunk_id,
+                    operation.params.get('block_id'),
+                    exc,
+                )
+                raise RuntimeError(
+                    f'provider numbering sync failed for block '
+                    f'{operation.params.get("block_id") or "unknown"!r}: {exc}'
+                ) from exc
+            applied_hunks.append(sync_hunk.hunk_id or sync_hunk.target_node_id)
+            persisted = self._apply_operation_result_locally(
+                persisted, sync_hunk, operation, sync_result,
+                media_assets=media_assets)
+        return persisted
 
 
 __all__ = ['NotionWriterProvider']

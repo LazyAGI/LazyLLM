@@ -7,6 +7,7 @@ import pytest
 
 from lazyllm.tools.fs.supplier.feishu import FeishuFS
 from lazyllm.tools.writer.data_models import (
+    InputResource,
     MediaAssetLibrary,
     WriterBlock,
     WriterDocument,
@@ -18,6 +19,10 @@ from lazyllm.tools.writer.utils import load_artifact_json
 
 _PNG_BYTES = base64.b64decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+)
+_SVG_BYTES = (
+    b'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="12">'
+    b'<rect width="24" height="12"/></svg>'
 )
 
 
@@ -46,8 +51,75 @@ def test_collect_available_media_downloads_markdown_images(tmp_path):
     download.assert_called_once_with('https://cdn.example.com/original.png')
     assert asset.uri == 'https://cdn.example.com/original.png'
     assert asset.meta['origin'] == 'markdown'
+    assert asset.meta['source_reference'] == 'https://cdn.example.com/original.png'
     assert Path(asset.local_path).is_file()
     assert any(resource.get('uri') == asset.uri for resource in resources)
+    assert result['metadata']['warnings'] == []
+
+
+def test_collect_available_media_materializes_provider_image_with_source_metadata(
+    tmp_path,
+):
+    tool = WriterMultimodalTools(artifact_store=str(tmp_path / 'media-store'))
+    task = WritingTask(
+        task_id='task-provider-svg',
+        query='复用 GitHub SVG',
+        task_type='write',
+        inputs=[InputResource(
+            resource_id='github-svg',
+            resource_type='image',
+            uri='githubrepo:/acme/docs/assets/diagram.svg?ref=main',
+            mime_type='image/svg+xml',
+            title='diagram.svg',
+            meta={
+                'provider': 'github',
+                'referenced_from': 'githubrepo:/acme/docs/guide.md?ref=main',
+                'source_reference': 'assets/diagram.svg',
+            },
+        )],
+    )
+
+    with patch('lazyllm.tools.fs.client.FS.read_bytes', return_value=_SVG_BYTES):
+        result = tool.collect_available_media(task=task)
+
+    library = load_artifact_json(result['artifact_path'], MediaAssetLibrary)
+    asset = next(iter(library.assets.values()))
+    assert Path(asset.local_path).suffix == '.svg'
+    assert asset.meta['mime_type'] == 'image/svg+xml'
+    assert asset.meta['provider'] == 'github'
+    assert asset.meta['referenced_from'].endswith('/guide.md?ref=main')
+    assert asset.meta['source_reference'] == 'assets/diagram.svg'
+
+
+def test_collect_available_media_materializes_obsidian_file_resource(tmp_path):
+    image = tmp_path / 'diagram.png'
+    image.write_bytes(_PNG_BYTES)
+    tool = WriterMultimodalTools(artifact_store=str(tmp_path / 'media-store'))
+    task = WritingTask(
+        task_id='task-obsidian-file',
+        query='复用 Obsidian 原图',
+        task_type='write',
+        inputs=[InputResource(
+            resource_id='obsidian-image-0000',
+            resource_type='image',
+            uri=image.as_uri(),
+            title=image.name,
+            meta={
+                'provider': 'obsidian',
+                'origin': 'markdown',
+                'source_reference': 'diagram.png',
+            },
+        )],
+    )
+
+    result = tool.collect_available_media(task=task)
+
+    library = load_artifact_json(result['artifact_path'], MediaAssetLibrary)
+    asset = next(iter(library.assets.values()))
+    assert asset.uri == image.as_uri()
+    assert asset.meta['provider'] == 'obsidian'
+    assert asset.meta['source_reference'] == 'diagram.png'
+    assert Path(asset.local_path).is_file()
     assert result['metadata']['warnings'] == []
 
 
@@ -129,12 +201,50 @@ def test_collect_available_media_downloads_feishu_source_images(tmp_path):
         result = tool.collect_available_media(task=task, source_document=source)
 
     library = load_artifact_json(result['artifact_path'], MediaAssetLibrary)
+    resources = load_artifact_json(
+        result['metadata']['artifact_paths']['profile_input_resources'],
+        validate_schema=False,
+    )
     asset = next(iter(library.assets.values()))
     fs.download_media.assert_called_once_with('media-token-1')
     assert asset.caption == '产品原图'
     assert asset.meta['provider_block_id'] == 'block-1'
     assert asset.meta['origin'] == 'source_document'
     assert 'provider_media_token' not in asset.meta
+    assert 'provider_media_token' not in resources[0]['meta']
+    assert Path(asset.local_path).is_file()
+    assert result['metadata']['warnings'] == []
+
+
+def test_collect_available_media_downloads_wechat_source_images(tmp_path):
+    source = WriterDocument(
+        document_id='wechat-draft-1',
+        stage='final',
+        provider_binding={'provider': 'wechat', 'document_id': 'draft-1'},
+        blocks=[WriterBlock(
+            node_id='image-1',
+            type='image',
+            content='公众号原图',
+            stage='final',
+            references=[{
+                'type': 'wechat_image',
+                'url': 'https://mmbiz.qpic.cn/source.png',
+            }],
+            editable=False,
+        )],
+    )
+    tool = WriterMultimodalTools(artifact_store=str(tmp_path / 'media-store'))
+    task = WritingTask(task_id='task-wechat', query='复用公众号原图', task_type='write')
+
+    with patch.object(tool, '_download_external_image', return_value=_PNG_BYTES) as download:
+        result = tool.collect_available_media(task=task, source_document=source)
+
+    library = load_artifact_json(result['artifact_path'], MediaAssetLibrary)
+    asset = next(iter(library.assets.values()))
+    download.assert_called_once_with('https://mmbiz.qpic.cn/source.png')
+    assert asset.caption == '公众号原图'
+    assert asset.meta['provider_block_id'] == 'image-1'
+    assert asset.meta['origin'] == 'source_document'
     assert Path(asset.local_path).is_file()
     assert result['metadata']['warnings'] == []
 
