@@ -146,7 +146,10 @@ def test_group_document_and_member_explanations():
     assert result['matched_members'] == [{'name': 'find_mail',
                                          'description': 'Search email messages by subject.'}]
     retrieval.load(['find_mail'], [])
-    assert retrieval.search('subject', 5, 'short')[0]['matched_members'] == []
+    assert retrieval.search('subject', 5, 'short') == []
+    assert retrieval.search('correspondence', 5, 'short')[0]['matched_members'] == []
+    retrieval.load([], ['find_mail'])
+    assert retrieval.search('subject', 5, 'short')[0]['matched_members'][0]['name'] == 'find_mail'
     retrieval.load(['Mail'], [])
     assert retrieval.search('correspondence', 5, 'short') == []
 
@@ -170,7 +173,7 @@ def test_nested_group_description_and_provider_refresh():
     assert {d['function']['name'] for d in tool.tools_description} == {'search_tools', 'load_tools', 'read_mail'}
 
 
-def test_member_summary_cap_and_partial_load_preserve_group_rank():
+def test_member_summary_cap_and_partial_load():
     def member(name):
         def search(query: str) -> str:
             '''Search messages.
@@ -189,8 +192,9 @@ def test_member_summary_cap_and_partial_load_preserve_group_rank():
     assert [r['name'] for r in before[0]['matched_members']] == ['A_0', 'A_1', 'A_2']
     retrieval.load(['A_0'], [])
     after = retrieval.search('messages', 5, 'short')
-    assert [r['name'] for r in after] == ['A', 'B']
-    assert [r['name'] for r in after[0]['matched_members']] == ['A_1', 'A_2', 'A_3']
+    assert {r['name'] for r in after} == {'A', 'B'}
+    remaining = next(r for r in after if r['name'] == 'A')
+    assert [r['name'] for r in remaining['matched_members']] == ['A_1', 'A_2', 'A_3']
 
 
 def test_disabled_retrieval_gateway_still_activates():
@@ -201,3 +205,41 @@ def test_disabled_retrieval_gateway_still_activates():
     result = tool([{'id': 'gateway', 'function': {'name': 'get_Mail_methods', 'arguments': '{}'}}])
     assert result[0]['ok'] is True
     assert {d['function']['name'] for d in tool.tools_description} == {'find_mail', 'read_mail'}
+
+
+def test_dynamic_groups_only_expand_available_atomic_members():
+    tool = ToolManager([find_mail, read_mail])
+    retrieval = tool.enable_tool_retrieval(
+        required=[], groups=set(), group_members={'mcp:server-id': ['find_mail', 'read_mail', 'revoked']},
+        group_descriptions={'mcp:server-id': 'Mailbox service.'},
+        estimate_tokens=len, threshold_tokens=100)
+    assert retrieval.search('mailbox', 5, 'long')[0]['name'] == 'mcp:server-id'
+    retrieval.load(['find_mail'], [])
+    assert retrieval.search('subject', 5, 'short') == []
+    assert retrieval.load(['mcp:server-id'], [])['loaded'] == ['find_mail', 'read_mail']
+    assert retrieval.search('mailbox', 5, 'short') == []
+    assert set(tool.tools_info) == {'find_mail', 'read_mail', 'search_tools', 'load_tools'}
+    with pytest.raises(ToolExecutionError):
+        retrieval.load(['revoked'], [])
+
+
+def test_load_validation_preserves_local_state_and_skill_dependencies():
+    def validate(definitions):
+        if any(d['function']['name'] == 'read_mail' for d in definitions):
+            raise ToolExecutionError('fixed context exceeds limit')
+
+    tool, retrieval = manager(validate_load=validate)
+    retrieval.initialize()
+    retrieval.load(['find_mail'], [])
+    before = retrieval.descriptions()
+    with pytest.raises(ToolExecutionError, match='fixed context'):
+        retrieval.load(['read_mail'], ['find_mail'])
+    assert retrieval.descriptions() == before
+    with pytest.raises(ToolExecutionError, match='fixed context'):
+        retrieval.load_skill('mail', ['read_mail'])
+    assert retrieval._read()['skills'] == {}
+    assert retrieval.descriptions() == before
+    _, mandatory = manager(required=['read_mail'], validate_load=validate)
+    with pytest.raises(ToolExecutionError, match='fixed context'):
+        mandatory.initialize()
+    assert mandatory._read() == {}

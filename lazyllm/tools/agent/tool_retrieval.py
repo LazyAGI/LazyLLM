@@ -12,10 +12,13 @@ from .tool_runtime import _set_tool_runtime_metadata
 
 class ToolRetrieval:
     def __init__(self, manager, *, required, groups, estimate_tokens, threshold_tokens,
-                 state_store=None, skill_dependencies=None, group_descriptions=None):
+                 state_store=None, skill_dependencies=None, group_descriptions=None,
+                 group_members=None, validate_load=None):
         self.manager = manager
         self.required = tuple(required)
-        self.groups = set(groups)
+        self.group_members = {name: tuple(members) for name, members in (group_members or {}).items()}
+        self.groups = set(groups) | self.group_members.keys()
+        self.validate_load = validate_load
         self.group_descriptions = dict(group_descriptions or {})
         self.estimate_tokens = estimate_tokens
         self.threshold_tokens = threshold_tokens
@@ -28,7 +31,15 @@ class ToolRetrieval:
         self._member_indexes = {}
 
     def catalog(self):
-        return self.manager.atomic_tool_catalog()
+        catalog = self.manager.atomic_tool_catalog()
+        for group, members in self.group_members.items():
+            for name in members:
+                if name in catalog:
+                    entry = catalog[name]
+                    catalog[name] = {**entry, 'groups': (*entry['groups'], group),
+                                     'group_descriptions': {**entry['group_descriptions'],
+                                                            group: self.group_descriptions.get(group, '')}}
+        return catalog
 
     def _expand(self, names, catalog):
         result = []
@@ -66,11 +77,17 @@ class ToolRetrieval:
     def _read(self):
         return self.state_store.read() if self.state_store else self._local_state()
 
-    def _commit(self, update):
+    def _commit(self, update, catalog):
+        def validated_update(raw):
+            state = update(raw)
+            if self.validate_load is not None:
+                self.validate_load([catalog[name]['schema'] for name in state['loaded']])
+            return state
+
         if self.state_store:
-            return self.state_store.update(update)
+            return self.state_store.update(validated_update)
         holder = self._local_state()
-        state = update(copy.deepcopy(holder))
+        state = validated_update(copy.deepcopy(holder))
         holder.clear()
         holder.update(state)
         return state
@@ -78,7 +95,7 @@ class ToolRetrieval:
     def initialize(self):
         with self._lock:
             catalog = self.catalog()
-            self._commit(lambda raw: self._reconcile(raw, catalog)[0])
+            self._commit(lambda raw: self._reconcile(raw, catalog)[0], catalog)
 
     def descriptions(self):
         with self._lock:
@@ -136,9 +153,11 @@ class ToolRetrieval:
     def _summary(description):
         return docstring_parser.parse(description or '').short_description or description or ''
 
-    def _candidates(self, catalog):
+    def _candidates(self, catalog, loaded):
         candidates = {}
         for name, entry in catalog.items():
+            if name in loaded:
+                continue
             group = next((g for g in reversed(entry['groups']) if g in self.groups), None)
             candidate = group or name
             if candidate not in candidates:
@@ -173,7 +192,7 @@ class ToolRetrieval:
             catalog = self.catalog()
             state, _ = self._reconcile(self._read(), catalog)
             loaded = set(state['loaded'])
-            candidates = self._candidates(catalog)
+            candidates = self._candidates(catalog, loaded)
             if not candidates:
                 return []
             names = list(candidates)
@@ -185,7 +204,7 @@ class ToolRetrieval:
                 self._member_indexes.clear()
             scores = self._scores(self._index, self._vocab, query)
             ranked = sorted(((name, float(score)) for name, score in zip(names, scores)
-                             if score > 0 and not loaded.issuperset(candidates[name]['members'])),
+                             if score > 0),
                             key=lambda item: (-item[1], item[0]))[:limit]
             results = []
             for name, _ in ranked:
@@ -215,7 +234,7 @@ class ToolRetrieval:
                 state['loaded'] = list(dict.fromkeys([*state['loaded'], *added]))
                 return state
 
-            state = self._commit(update)
+            state = self._commit(update, catalog)
             return {'status': 'ok', 'loaded': added, 'unloaded': sorted(removed), **self.usage(state, catalog)}
 
     def _resolve_dependencies(self, declarations, catalog):
@@ -244,7 +263,7 @@ class ToolRetrieval:
                 state['loaded'] = list(dict.fromkeys([*state['loaded'], *names]))
                 return state
 
-            state = self._commit(update)
+            state = self._commit(update, catalog)
             return {'loaded': names, 'unavailable': errors, **self.usage(state, catalog)}
 
     def tools(self):
@@ -264,6 +283,9 @@ class ToolRetrieval:
         def load_tools(tool_names: Optional[list[str]] = None,
                        unload_tool_names: Optional[list[str]] = None) -> dict:
             '''Atomically load tools/groups and unload optional tools. Use new tools only next model round.
+
+            Grouped tools are usually complementary and intended to work together. Prefer loading the group;
+            load an individual member only when the required capability is clearly limited to that tool.
 
             Args:
                 tool_names (Optional[list[str]]): Exact tool or group names to load.
