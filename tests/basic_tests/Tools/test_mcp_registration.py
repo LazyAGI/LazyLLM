@@ -5,6 +5,7 @@ import pytest
 from types import SimpleNamespace
 
 from lazyllm.tools import get_tool_runtime_metadata
+from lazyllm.tools.agent.tool_runtime import _set_tool_runtime_metadata
 from lazyllm.tools.agent.toolsManager import ToolManager, fc_register
 from lazyllm.tools.mcp import MCPClient
 from lazyllm.tools.mcp.tool_adaptor import generate_lazyllm_tool
@@ -49,6 +50,21 @@ def test_legacy_no_id_and_tuple_registration_keep_names():
     assert catalog['search']['identity'].startswith('temporary:')
     assert len(catalog) == 2
     assert list(ToolManager([legacy]).atomic_tool_catalog()) == ['search']
+
+
+def test_no_id_adapter_allows_host_identity_enrichment():
+    tool = make_tool(name='search.documents')
+    identity = 'mcp:v1:host-security-digest'
+    _set_tool_runtime_metadata(tool, {
+        'tool_source': 'mcp', 'tool_origin': 'server-a', 'tool_identity': identity,
+    })
+    manager = ToolManager([tool])
+    name, entry = next(iter(manager.atomic_tool_catalog().items()))
+    assert name.startswith('search_documents_mcp_')
+    assert entry['origin'] == 'server-a'
+    assert entry['identity'] == identity
+    assert ':search.documents' in manager.tools_info[name]({})
+    assert manager.prepare_tool_calls({'function': {'name': name, 'arguments': {}}})[0].tool_identity == identity
 
 
 def test_registered_local_name_reserves_alias():

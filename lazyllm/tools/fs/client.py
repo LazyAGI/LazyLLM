@@ -79,6 +79,8 @@ class _FSRouter:
 
     def _parse(self, path: str):
         path = clean_document_ref(path)
+        if re.match(r'^[A-Za-z]:[/\\]', path):
+            return 'file', None, path
         if path.lower().startswith('file:'):
             return 'file', None, _local_path_from_file_uri(path)
         bare_protocol = _match_bare_document_url(path)

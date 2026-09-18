@@ -141,6 +141,6 @@ def generate_lazyllm_tool(client, mcp_tool) -> Callable:
     dynamic_lazyllm_func.__signature__ = sig
 
     server_id = getattr(client, 'server_id', '')
-    identity = json.dumps([server_id, tool_name], ensure_ascii=False) if server_id else ''
-    return fc_register(tool_source='mcp', tool_origin=server_id,
-                       tool_identity=identity)(dynamic_lazyllm_func)
+    metadata = {'tool_origin': server_id,
+                'tool_identity': json.dumps([server_id, tool_name], ensure_ascii=False)} if server_id else {}
+    return fc_register(tool_source='mcp', **metadata)(dynamic_lazyllm_func)
