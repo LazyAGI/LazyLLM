@@ -16,6 +16,7 @@ Args:
     args (list[str], optional): Arguments list used for starting a local server, if you want to connect to a remote server, this argument is not needed. (default is [])
     env (dict[str, str], optional): Environment variables dictionary used in tools, for example some api keys. (default is None)
     headers(dict[str, Any], optional): HTTP headers used in http client connection. (default is None)
+    server_id (str, optional): Stable server identity supplied by the host. Enables stable tool identities and collision aliases when tools from multiple servers are registered together. Defaults to an empty string for legacy behavior.
     timeout (float, optional): Timeout for http client connection, in seconds. (default is 5)
     transport (Literal, optional): Transport protocol to use. One of 'auto', 'stdio', 'sse', 'streamable-http'. (default is 'auto')
 
@@ -36,6 +37,7 @@ Args:
     args (list[str], optional): 用于启动本地服务器的参数列表；如果要连接远程服务器，则无需此参数。（默认值为[]）
     env (dict[str, str], optional): 工具中使用的环境变量，例如一些 API 密钥。（默认值为None）
     headers(dict[str, Any], optional): 用于 HTTP 客户端连接的请求头。（默认值为None）
+    server_id (str, optional): Host 提供的稳定服务器标识，用于稳定工具身份和多服务器合并注册时的同名工具别名。默认空字符串，保留旧行为。
     timeout (float, optional): HTTP 客户端连接的超时时间，单位为秒。(默认值为5)
     transport (Literal, optional): 传输协议。可选值为 'auto'、'stdio'、'sse'、'streamable-http'。(默认值为 'auto')
 

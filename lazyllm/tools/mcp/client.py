@@ -18,6 +18,7 @@ class MCPClient(object):
         headers: dict[str, Any] = None,
         timeout: float = 5,
         transport: Literal['auto', 'stdio', 'sse', 'streamable-http'] = 'auto',
+        server_id: str = '',
     ):
         self._command_or_url = command_or_url
         self._args = args or []
@@ -25,6 +26,7 @@ class MCPClient(object):
         self._headers = headers
         self._timeout = timeout
         self._transport = transport
+        self.server_id = server_id
 
     def _resolve_transport(self) -> str:
         if self._transport != 'auto':

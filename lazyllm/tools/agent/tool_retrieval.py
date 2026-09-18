@@ -13,7 +13,13 @@ from .tool_runtime import _set_tool_runtime_metadata
 class ToolRetrieval:
     def __init__(self, manager, *, required, groups, estimate_tokens, threshold_tokens,
                  state_store=None, skill_dependencies=None, group_descriptions=None,
-                 group_members=None, validate_load=None):
+                 group_members=None, validate_load=None, max_search_results=5, matched_member_limit=3):
+        for name, value in (('max_search_results', max_search_results),
+                            ('matched_member_limit', matched_member_limit)):
+            if type(value) is not int or value < 1:
+                raise ValueError(f'{name} must be a positive integer.')
+        self.max_search_results = max_search_results
+        self.matched_member_limit = matched_member_limit
         self.manager = manager
         self.required = tuple(required)
         self.group_members = {name: tuple(members) for name, members in (group_members or {}).items()}
@@ -181,13 +187,15 @@ class ToolRetrieval:
             cached = self._member_indexes[name] = (key, index, vocab)
         scores = self._scores(cached[1], cached[2], query)
         ranked = sorted(((member, float(score)) for (member, _), score in zip(rows, scores) if score > 0),
-                        key=lambda item: (-item[1], item[0]))[:3]
+                        key=lambda item: (-item[1], item[0]))[:self.matched_member_limit]
         return [{'name': member, 'description': self._summary(catalog[member]['schema']['function'].get('description'))}
                 for member, _ in ranked]
 
     def search(self, query, limit, detail):
-        if not query.strip() or not 1 <= limit <= 5 or detail not in ('short', 'long'):
-            raise ToolExecutionError('Use a non-empty query, limit 1..5, and detail short or long.')
+        if (not query.strip() or type(limit) is not int or not 1 <= limit <= self.max_search_results
+                or detail not in ('short', 'long')):
+            raise ToolExecutionError(
+                f'Use a non-empty query, limit 1..{self.max_search_results}, and detail short or long.')
         with self._lock:
             catalog = self.catalog()
             state, _ = self._reconcile(self._read(), catalog)
@@ -267,7 +275,9 @@ class ToolRetrieval:
             return {'loaded': names, 'unavailable': errors, **self.usage(state, catalog)}
 
     def tools(self):
-        def search_tools(query: str, limit: int = 5, detail: Literal['short', 'long'] = 'short') -> list:
+        default_limit = min(5, self.max_search_results)
+
+        def search_tools(query: str, limit: int = default_limit, detail: Literal['short', 'long'] = 'short') -> list:
             '''Find allowed tools or groups without loading schemas. Prefer English capability keywords.
 
             Group member summaries explain matching capabilities, not every member. Load the group
@@ -275,17 +285,17 @@ class ToolRetrieval:
 
             Args:
                 query (str): English tool capability keywords, not a business data query.
-                limit (int): Candidate count, between 1 and 5. Defaults to 5.
+                limit (int): Candidate count, between 1 and {max_search_results}. Defaults to {default_limit}.
                 detail (Literal['short', 'long']): Short summary or full description.
             '''
             return self.search(query, limit, detail)
 
+        search_tools.__doc__ = search_tools.__doc__.format(
+            max_search_results=self.max_search_results, default_limit=default_limit)
+
         def load_tools(tool_names: Optional[list[str]] = None,
                        unload_tool_names: Optional[list[str]] = None) -> dict:
             '''Atomically load tools/groups and unload optional tools. Use new tools only next model round.
-
-            Grouped tools are usually complementary and intended to work together. Prefer loading the group;
-            load an individual member only when the required capability is clearly limited to that tool.
 
             Args:
                 tool_names (Optional[list[str]]): Exact tool or group names to load.

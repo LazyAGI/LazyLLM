@@ -1,5 +1,7 @@
 import ast
 import copy
+import functools
+import hashlib
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 import json as std_json
@@ -806,11 +808,78 @@ def _load_tool_by_name(name: str) -> 'ModuleTool':
     return target()
 
 
+def _resolve_registration_tool(tool):
+    if isinstance(tool, str):
+        return _load_tool_by_name(tool)
+    if isinstance(tool, (tuple, list)) and len(tool) == 2:
+        return (_resolve_registration_tool(tool[0]), tool[1])
+    return tool
+
+
+def _registration_tool_name(tool):
+    if isinstance(tool, ModuleTool):
+        return tool.name
+    if isinstance(tool, tuple) and len(tool) == 2:
+        return _registration_tool_name(tool[0])
+    if isinstance(tool, dict):
+        return str(tool.get('name') or '')
+    return str(getattr(tool, '__name__', '') or '') or tool.__class__.__name__
+
+
+def _mcp_origin(tool):
+    if isinstance(tool, tuple) and len(tool) == 2:
+        tool = tool[0]
+    metadata = _get_tool_runtime_metadata(tool)
+    return metadata.tool_origin if metadata and metadata.tool_source == 'mcp' else ''
+
+
+def _alias_mcp_tool(tool, name):
+    if isinstance(tool, tuple) and len(tool) == 2:
+        return (_alias_mcp_tool(tool[0], name), tool[1])
+
+    # MCP schemas are cached across requests. Wrap rather than rename the cached
+    # callable; wraps preserves its explicit signature, annotations and metadata.
+    @functools.wraps(tool)
+    def invoke(*args, **kwargs):
+        return tool(*args, **kwargs)
+
+    invoke.__name__ = name
+    return invoke
+
+
+def _disambiguate_mcp_tools(tools):
+    servers_by_name = {}
+    for tool in tools:
+        servers_by_name.setdefault(_registration_tool_name(tool), set()).add(_mcp_origin(tool))
+    reserved = set(servers_by_name)
+    aliases = {}
+    for name, servers in sorted(servers_by_name.items()):
+        if len(servers) < 2:
+            continue
+        for server_id in sorted(servers - {''}):
+            digest = hashlib.sha256(f'{server_id}\0{name}'.encode()).hexdigest()[:12]
+            suffix = f'_mcp_{digest}'
+            alias = f'{name[:64 - len(suffix)]}{suffix}'
+            counter = 0
+            while alias in reserved:
+                counter += 1
+                suffix = f'_mcp_{digest}_{counter}'
+                alias = f'{name[:64 - len(suffix)]}{suffix}'
+            aliases[server_id, name] = alias
+            reserved.add(alias)
+    result = []
+    for tool in tools:
+        key = (_mcp_origin(tool), _registration_tool_name(tool))
+        result.append(_alias_mcp_tool(tool, aliases[key]) if key in aliases else tool)
+    return result
+
+
 class ToolManager(ModuleBase):
 
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None):
         super().__init__(return_trace=return_trace)
-        self._tools = [_build_tool_from_element(element) for element in tools]
+        tools = [_resolve_registration_tool(tool) for tool in tools]
+        self._tools = [_build_tool_from_element(element) for element in _disambiguate_mcp_tools(tools)]
         self._format_tools()
         self._tools_desc = self._transform_to_openai_function()
         self._sandbox = sandbox
@@ -840,14 +909,17 @@ class ToolManager(ModuleBase):
                     'schema': description, 'groups': groups, 'group_description': group_description,
                     'group_descriptions': group_descriptions or {},
                     'source': item._runtime_metadata.tool_source,
+                    'origin': item._runtime_metadata.tool_origin,
+                    'identity': item._runtime_metadata.tool_identity,
                 }
         for item in self._tools:
             visit(item)
         return result
 
-    def enable_tool_retrieval(self, **options):
+    def enable_tool_retrieval(self, *, max_search_results=5, matched_member_limit=3, **options):
         from .tool_retrieval import ToolRetrieval
-        self.retrieval = ToolRetrieval(self, **options)
+        self.retrieval = ToolRetrieval(self, max_search_results=max_search_results,
+                                       matched_member_limit=matched_member_limit, **options)
         controls = [_build_tool_from_element(tool) for tool in self.retrieval.tools()]
         self._tools.extend(controls)
         # Keep all leaf callables registered, including temporarily unavailable providers.

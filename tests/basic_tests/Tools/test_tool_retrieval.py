@@ -243,3 +243,35 @@ def test_load_validation_preserves_local_state_and_skill_dependencies():
     with pytest.raises(ToolExecutionError, match='fixed context'):
         mandatory.initialize()
     assert mandatory._read() == {}
+
+
+@pytest.mark.parametrize('max_results,member_limit,default_limit', [(2, 1, 2), (7, 2, 5)])
+def test_configured_search_limits_and_tool_default(max_results, member_limit, default_limit):
+    groups = {f'Mail{index}' for index in range(7)}
+    tool = ToolManager([{'name': name, 'desc': 'Search email messages.', 'prefix': True,
+                         'tools': [find_mail, read_mail]} for name in sorted(groups)])
+    retrieval = tool.enable_tool_retrieval(
+        required=[], groups=groups, estimate_tokens=len, threshold_tokens=100,
+        max_search_results=max_results, matched_member_limit=member_limit)
+    found = retrieval.search('email', max_results, 'short')
+    assert len(found) == max_results
+    assert all(len(item['matched_members']) == member_limit for item in found)
+    search_tools = retrieval.tools()[0]
+    assert len(search_tools('email')) == default_limit
+    registered = tool.tools_info['search_tools']
+    assert registered.params_schema.model_fields['limit'].default == default_limit
+    assert len(registered({'query': 'email'})) == default_limit
+    schema = next(d['function'] for d in tool.tools_description if d['function']['name'] == 'search_tools')
+    assert schema['parameters']['properties']['limit']['description'] == (
+        f'Candidate count, between 1 and {max_results}. Defaults to {default_limit}.')
+    assert 'limit' not in schema['parameters']['required']
+    for invalid_limit in (0, max_results + 1, True, 1.5):
+        with pytest.raises(ToolExecutionError, match=f'limit 1..{max_results}'):
+            retrieval.search('email', invalid_limit, 'short')
+
+
+@pytest.mark.parametrize('option', ['max_search_results', 'matched_member_limit'])
+@pytest.mark.parametrize('value', [0, -1, True, 1.5])
+def test_search_configuration_requires_positive_integers(option, value):
+    with pytest.raises(ValueError, match=option):
+        manager(**{option: value})

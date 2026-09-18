@@ -250,6 +250,8 @@ add_chinese_doc('ToolManager.enable_tool_retrieval', '''\
 保留原子 callable 执行，加载的定义在下一轮模型请求生效。默认不启用。
 
 Args:
+    max_search_results (int): 搜索候选数上限，正整数，默认 5。search_tools.limit 默认取该上限与 5 的较小值。
+    matched_member_limit (int): 每组匹配成员摘要上限，正整数，默认 3。
     **options: 传给 ToolRetrieval 的配置。required 为必需原子工具名；groups 为可检索组；
         estimate_tokens 估算工具定义占用；threshold_tokens 限制模型继续新增工具的软阈值。
         可选 group_members 定义动态组到原子成员的映射，group_descriptions 提供组描述；
@@ -267,6 +269,8 @@ Registers search_tools/load_tools while keeping atomic callable execution. Loade
 callable in the next model round. Retrieval is disabled unless this method is called.
 
 Args:
+    max_search_results (int): Positive candidate limit, default 5. search_tools.limit defaults to min(5, max_search_results).
+    matched_member_limit (int): Positive per-group member summary limit, default 3.
     **options: ToolRetrieval configuration. required lists mandatory atomic names; groups selects
         searchable groups; estimate_tokens estimates schema usage; threshold_tokens sets the soft
         threshold for further model-initiated additions. Optional group_members maps dynamic groups
