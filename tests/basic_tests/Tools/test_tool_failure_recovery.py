@@ -1,6 +1,6 @@
 import json
 from types import SimpleNamespace
-from typing import Dict, Literal
+from typing import Dict, List, Literal, Optional
 
 import pytest
 
@@ -87,6 +87,17 @@ def flexible_search(query: str, **kwargs):
         query (str): Search query.
     '''
     return {'query': query, **kwargs}
+
+
+def run_script(name: str, rel_path: str, args: Optional[List[str]] = None):
+    '''Execute a skill script.
+
+    Args:
+        name (str): Skill name.
+        rel_path (str): Script path.
+        args (list[str], optional): Script arguments.
+    '''
+    return {'name': name, 'rel_path': rel_path, 'args': args}
 
 
 def translated_permission_failure(resource: str):
@@ -220,6 +231,58 @@ def test_repairable_json_is_parsed_before_schema_validation():
         'ok': True,
         'value': {'query': 'LazyLLM', 'limit': 5, 'mode': 'semantic'},
     }
+
+
+def test_run_script_accepts_json_encoded_string_args():
+    manager = ToolManager([run_script])
+
+    result = manager(_call('run_script', {
+        'name': 'valuation-analysis',
+        'rel_path': 'scripts/dcf_calculator.py',
+        'args': json.dumps(['--fcf', '250']),
+    }))[0]
+
+    assert result == {
+        'ok': True,
+        'value': {
+            'name': 'valuation-analysis',
+            'rel_path': 'scripts/dcf_calculator.py',
+            'args': ['--fcf', '250'],
+        },
+    }
+
+
+def test_run_script_keeps_native_list_args():
+    manager = ToolManager([run_script])
+
+    result = manager(_call('run_script', {
+        'name': 'valuation-analysis',
+        'rel_path': 'scripts/dcf_calculator.py',
+        'args': ['--fcf', '250'],
+    }))[0]
+
+    assert result['ok'] is True
+    assert result['value']['args'] == ['--fcf', '250']
+
+
+@pytest.mark.parametrize('encoded_args, expected', [
+    ('--fcf 250', 'invalid JSON string'),
+    ('{"name": "250"}', 'received dict'),
+    ('[1]', 'non-string item at index 0'),
+    ('[["--fcf"]]', 'non-string item at index 0'),
+])
+def test_run_script_rejects_invalid_json_encoded_args(encoded_args, expected):
+    manager = ToolManager([run_script])
+
+    result = manager(_call('run_script', {
+        'name': 'valuation-analysis',
+        'rel_path': 'scripts/dcf_calculator.py',
+        'args': encoded_args,
+    }))[0]
+
+    assert result['ok'] is False
+    assert result['value'].startswith('Invalid arguments: args: expected a JSON array of strings')
+    assert expected in result['value']
 
 
 def test_fixed_schema_forbids_extra_but_kwargs_accepts_it():
