@@ -565,7 +565,11 @@ class SkillManager(ModuleBase):
                 f'Skill {name} is {size} bytes and exceeds the configured '
                 f'{self._max_skill_md_bytes}-byte size limit. Set allow_large=True to read it.'
             )
-        return {'status': 'ok', 'name': name, 'path': skill_md, 'content': content}
+        result = {'status': 'ok', 'name': name, 'path': skill_md, 'content': content}
+        on_load = getattr(self, 'on_skill_loaded', None)
+        if on_load is not None:
+            result['tool_dependencies'] = on_load(info['key'], info.get('allowed-tools'))
+        return result
 
     def read_file(self, name: str, rel_path: str, **kwargs) -> Dict[str, str]:
         info, error = self._get_visible_skill_info(name)

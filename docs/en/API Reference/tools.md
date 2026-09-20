@@ -460,6 +460,8 @@
     members: [call_tool, list_tools, get_tools, aget_tools, deploy]
     exclude-members:
 
+When `MCPClient` receives a stable `server_id`, `ToolManager` always exposes each MCP tool under an alias derived from its original wire name and immutable `[server_id, wire_name]` identity. The alias contains only ASCII letters, digits and underscores, is at most 64 characters, and stays unchanged when other servers or local tools are added, removed or reordered. A changed display name does not affect the alias or remote routing. Even wire names such as `foo.bar` and `foo-bar` on the same server retain distinct identities. Exact final-name collisions raise the existing duplicate-name error. Clients without `server_id` keep legacy naming; saved optional loads using earlier names must be invalidated by the host. Hosts can read the original declaration through `lazyllm.tools.get_tool_runtime_metadata(callable)`, including wrapped callables.
+
 ::: lazyllm.tools.tools.GoogleSearch
     members: forward
 

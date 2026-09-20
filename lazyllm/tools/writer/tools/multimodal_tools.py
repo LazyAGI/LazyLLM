@@ -277,7 +277,7 @@ class WriterMultimodalTools(WriterToolBase):
                 resource,
                 suffix_hint=Path(parsed.path).suffix,
             )
-        if parsed.scheme not in {'', 'file'}:
+        if parsed.scheme not in {'', 'file'} and not os.path.isabs(uri):
             import lazyllm.tools.fs.client as _fs_client
             return self._materialize_image_bytes(
                 _fs_client.FS.read_bytes(uri),
