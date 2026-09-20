@@ -34,12 +34,16 @@ You have access to a skills library that encodes specialized workflows and domai
 
 ### How to Use Skills (Progressive Disclosure)
 You can see the name/description above, but only fetch a skill's full instructions when it's relevant.
+Prefer a specialized skill over a more general one when the task matches the specialized description.
 
 1) **Identify relevance**: If a skill's description matches the task, consider using it.
 2) **Get the skill's full usage**: Call `get_skill` to retrieve the complete workflow.
-3) **Follow the workflow strictly**: After you obtain the full usage,
+3) **Search when the catalog is incomplete**: The list above is a size-limited injection.
+If none of the listed skills match, the user rejects a listed skill, or you suspect a better
+specialized skill exists, call `search_skill` or `discover_skill_by_field` when available, then `get_skill` on the chosen key.
+4) **Follow the workflow strictly**: After you obtain the full usage,
 execute the workflow steps, constraints, and examples in order.
-4) **Adapt workflow to the current task**: Before execution, map the workflow
+5) **Adapt workflow to the current task**: Before execution, map the workflow
 to the user's actual goal, constraints, and available inputs; do not apply
 steps blindly.
 
@@ -54,8 +58,10 @@ says not to trigger on simple requests must not be loaded for those requests.
 
 These two tools have a hard prerequisite and a hard path rule:
 
-**Prerequisite**: You MUST call `get_skill` for the skill first and receive its
-SKILL.md content before you can use `read_reference` or `run_script`.
+**Prerequisite**: The full SKILL.md must already be loaded, either by `get_skill`
+or by the host in the Explicitly Selected Skills context. Directly injected full
+SKILL.md satisfies this prerequisite; do not fetch it again before using
+`read_reference` or `run_script`.
 
 **Path Rule**: The `rel_path` argument MUST be copied verbatim from the SKILL.md
 body. You are FORBIDDEN from fabricating, guessing, or extrapolating paths.
@@ -117,6 +123,7 @@ class SkillManager(ModuleBase):
         self._max_skill_md_bytes = max_skill_md_bytes or config['max_skill_md_bytes']
         self._skills_index: Dict[str, Dict] = {}
         self._skills_selected: List[str] = []
+        self._prompt_skill_keys: Optional[List[str]] = None
         self._skills_index_lock = threading.Lock()
 
     @staticmethod
@@ -456,6 +463,25 @@ class SkillManager(ModuleBase):
             if not info.get('disable-model-invocation')
         ]
 
+    def set_prompt_skills(self, names: Optional[Iterable[str]]) -> None:
+        if names is None:
+            self._prompt_skill_keys = None
+            return
+        self._prompt_skill_keys = self._parse_skills(names)
+
+    def _prompt_catalog_keys(self) -> List[str]:
+        visible = self._visible_skill_keys()
+        if self._prompt_skill_keys is None:
+            return visible
+        resolved = []
+        seen = set()
+        for ref in self._prompt_skill_keys:
+            key, _ = self._resolve_skill_ref(ref, visible)
+            if key and key not in seen:
+                seen.add(key)
+                resolved.append(key)
+        return resolved
+
     def _visible_skills_index(self) -> Dict[str, Dict]:
         return {
             key: self._skills_index[key]
@@ -490,7 +516,7 @@ class SkillManager(ModuleBase):
         return '\n'.join(lines)
 
     def build_prompt(self) -> str:
-        skills_list = self._format_skills_list(self._visible_skill_keys())
+        skills_list = self._format_skills_list(self._prompt_catalog_keys())
         lines = ['**Skills Directory**']
         if self._skills_dir:
             lines.append(self._format_skills_locations())
@@ -499,7 +525,7 @@ class SkillManager(ModuleBase):
 
     def describe_prompt(self) -> List[Dict[str, str]]:
         '''Return model-facing skill prompt parts for context observability.'''
-        visible_keys = self._visible_skill_keys()
+        visible_keys = self._prompt_catalog_keys()
         directory_lines = ['**Skills Directory**']
         if self._skills_dir:
             directory_lines.append(self._format_skills_locations())
@@ -515,11 +541,7 @@ class SkillManager(ModuleBase):
             info = self._skills_index.get(key)
             if not info:
                 continue
-            description = (info.get('description', '') or '')[:1024]
-            content = (
-                f'- {key}: {description} (source: {info.get("source", "file")}, '
-                f'path: {info.get("path")})'
-            )
+            content = self._format_skills_list([key])
             if index < len(visible_keys) - 1:
                 content += '\n'
             parts.append({
@@ -767,10 +789,10 @@ class SkillManager(ModuleBase):
             info = self._skills_index.get(name)
             if info:
                 desc = (info.get('description', '') or '')[:1024]
-                lines.append(
-                    f'- {name}: {desc} (source: {info.get("source", "file")}, '
-                    f'path: {info.get("path")})'
-                )
+                entry = f'- {name}: {desc}'
+                if self._prompt_skill_keys is None:
+                    entry += f' (source: {info.get("source", "file")}, path: {info.get("path")})'
+                lines.append(entry)
         return '\n'.join(lines)
 
     def _format_skills_locations(self) -> str:
