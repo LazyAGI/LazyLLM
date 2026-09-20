@@ -15,6 +15,7 @@ from .tool_runtime import (
     ToolExecutionDisposition,
     ToolExecutionRecord,
     ToolRuntimeMetadata,
+    get_tool_runtime_metadata,
 )
 from .base import (
     LazyLLMAgentBase,
@@ -64,6 +65,7 @@ __all__ = [
     'ToolExecutionBatch',
     'ToolExecutionDisposition',
     'ToolRuntimeMetadata',
+    'get_tool_runtime_metadata',
     'ReactAgent',
     'PlanAndSolveAgent',
     'ReWOOAgent',

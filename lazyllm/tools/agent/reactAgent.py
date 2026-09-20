@@ -1,6 +1,7 @@
 from typing import List, Any, Dict, Optional, Union, Callable
 
 from lazyllm import LOG, globals as lazyllm_globals, locals, loop, once_wrapper
+from lazyllm.components import ChatPrompter
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 
@@ -197,7 +198,13 @@ class ReactAgent(LazyLLMAgentBase):
             f'{obs_text}\n\n'
             f'{_FORCE_SUMMARIZE_MSG}'
         )
-        summarize_llm = self._llm.share(stream=False)
+        validator = getattr(self._tools_manager, 'context_validator', None)
+        if validator is not None:
+            # Keep the fallback request explicit so its complete input is budgeted too.
+            validator({'system_prompt': '', 'tool_definitions': []}, [], summarize_prompt)
+            summarize_llm = self._llm.share(prompt=ChatPrompter(instruction=''), stream=False)
+        else:
+            summarize_llm = self._llm.share(stream=False)
         resp = summarize_llm(summarize_prompt)
         summary = resp if isinstance(resp, str) else (
             resp.get('content', '') if isinstance(resp, dict) else None

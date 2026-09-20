@@ -18,6 +18,7 @@ class MCPClient(object):
         headers: dict[str, Any] = None,
         timeout: float = 5,
         transport: Literal['auto', 'stdio', 'sse', 'streamable-http'] = 'auto',
+        server_id: str = '',
         auth_provider: Optional[Callable[[], Awaitable[dict[str, str]]]] = None,
         auth_recovery: Optional[Callable[[], Awaitable[bool]]] = None,
     ):
@@ -31,6 +32,7 @@ class MCPClient(object):
         self._auth_recovery = auth_recovery
         if (auth_provider or auth_recovery) and self._resolve_transport() != 'streamable-http':
             raise ValueError('MCP auth callbacks require streamable-http transport')
+        self.server_id = server_id
 
     def _resolve_transport(self) -> str:
         if self._transport != 'auto':

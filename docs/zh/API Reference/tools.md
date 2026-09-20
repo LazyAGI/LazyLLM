@@ -452,6 +452,8 @@
     members: [call_tool, list_tools, get_tools, aget_tools, deploy]
     exclude-members:
 
+为 `MCPClient` 提供稳定的 `server_id` 后，`ToolManager` 始终按原始协议工具名和不可变的 `[server_id, wire_name]` 身份生成 MCP 工具别名。别名仅含 ASCII 字母、数字和下划线，长度不超过 64 个字符；增删其他服务或本地工具、调整顺序或修改展示名均不会改变别名和远端路由。同一服务的 `foo.bar` 与 `foo-bar` 也保留不同身份。最终名称完全冲突时，沿用现有重复名称校验报错。不提供 `server_id` 的客户端保持旧命名行为；宿主需使使用旧名称保存的可选加载状态失效。宿主可通过 `lazyllm.tools.get_tool_runtime_metadata(callable)` 读取原始声明，该接口支持包装后的函数。
+
 ::: lazyllm.tools.tools.GoogleSearch
     members: forward
 

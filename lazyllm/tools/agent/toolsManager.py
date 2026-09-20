@@ -1,5 +1,7 @@
 import ast
 import copy
+import functools
+import hashlib
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 import json as std_json
@@ -806,14 +808,112 @@ def _load_tool_by_name(name: str) -> 'ModuleTool':
     return target()
 
 
+def _resolve_registration_tool(tool):
+    if isinstance(tool, str):
+        return _load_tool_by_name(tool)
+    if isinstance(tool, (tuple, list)) and len(tool) == 2:
+        return (_resolve_registration_tool(tool[0]), tool[1])
+    return tool
+
+
+def _alias_mcp_tool(tool, name):
+    if isinstance(tool, tuple) and len(tool) == 2:
+        return (_alias_mcp_tool(tool[0], name), tool[1])
+
+    # MCP schemas are cached across requests. Wrap rather than rename the cached
+    # callable; wraps preserves its explicit signature, annotations and metadata.
+    @functools.wraps(tool)
+    def invoke(*args, **kwargs):
+        return tool(*args, **kwargs)
+
+    invoke.__name__ = name
+    return invoke
+
+
+def _disambiguate_mcp_tools(tools):
+    result = []
+    for tool in tools:
+        target = tool[0] if isinstance(tool, tuple) and len(tool) == 2 else tool
+        metadata = _get_tool_runtime_metadata(target)
+        if metadata and metadata.tool_source == 'mcp' and metadata.tool_origin and metadata.tool_identity:
+            # Identity is opaque; only the adapter knows its encoding.
+            # Always alias: adding/removing other tools must not change saved names.
+            wire_name = getattr(target, '__mcp_tool_name__', None) or 'mcp'
+            prefix = re.sub(r'[^a-zA-Z0-9_]', '_', wire_name)
+            if prefix[:1].isdigit():
+                prefix = '_' + prefix
+            digest = hashlib.sha256(metadata.tool_identity.encode()).hexdigest()[:12]
+            suffix = f'_mcp_{digest}'
+            tool = _alias_mcp_tool(tool, f'{prefix[:64 - len(suffix)]}{suffix}')
+        result.append(tool)
+    # Exact final-name collisions are rejected by the normal duplicate validation.
+    return result
+
+
 class ToolManager(ModuleBase):
 
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None):
         super().__init__(return_trace=return_trace)
-        self._tools = [_build_tool_from_element(element) for element in tools]
+        tools = [_resolve_registration_tool(tool) for tool in tools]
+        self._tools = [_build_tool_from_element(element) for element in _disambiguate_mcp_tools(tools)]
         self._format_tools()
         self._tools_desc = self._transform_to_openai_function()
         self._sandbox = sandbox
+        self.retrieval = None
+        self.context_validator = None
+
+    def atomic_tool_catalog(self):
+        '''Describe allowed leaves with their final public names, independent of exposure.'''
+        result = {}
+
+        def visit(item, groups=(), group_description='', schema=None, group_descriptions=None):
+            if isinstance(item, SkipMixin) and item.should_skip():
+                return
+            if isinstance(item, ToolGroupWrapper):
+                visit(item._inner, groups, group_description, group_descriptions=group_descriptions)
+            elif isinstance(item, ToolGroup):
+                children = list(zip(item._children, item._expanded_descs))
+                if item._pick_first_valid:
+                    children = next(([pair] for pair in children if _child_is_valid(pair[0])), [])
+                for child, description in children:
+                    visit(child, (*groups, item._name), item._desc,
+                          description if isinstance(description, dict) else None,
+                          {**(group_descriptions or {}), item._name: item._desc})
+            elif isinstance(item, ModuleTool):
+                description = schema or _build_tool_desc(item)
+                result[description['function']['name']] = {
+                    'schema': description, 'groups': groups, 'group_description': group_description,
+                    'group_descriptions': group_descriptions or {},
+                    'source': item._runtime_metadata.tool_source,
+                    'origin': item._runtime_metadata.tool_origin,
+                    'identity': item._runtime_metadata.tool_identity,
+                }
+        for item in self._tools:
+            visit(item)
+        return result
+
+    def enable_tool_retrieval(self, *, max_search_results=5, matched_member_limit=3, **options):
+        from .tool_retrieval import ToolRetrieval
+        self.retrieval = ToolRetrieval(self, max_search_results=max_search_results,
+                                       matched_member_limit=matched_member_limit, **options)
+        controls = [_build_tool_from_element(tool) for tool in self.retrieval.tools()]
+        self._tools.extend(controls)
+        # Keep all leaf callables registered, including temporarily unavailable providers.
+
+        def gateways(item):
+            if isinstance(item, ToolGroupWrapper):
+                return gateways(item._inner)
+            if not isinstance(item, ToolGroup):
+                return set()
+            names = {item._gateway_tool.name} if item._gateway_tool else set()
+            return names | {name for child in item._children for name in gateways(child)}
+        for gateway_name in {name for item in self._tools for name in gateways(item)}:
+            self._tool_call.pop(gateway_name, None)
+        for tool in controls:
+            if tool.name in self._tool_call:
+                raise ValueError(f'Duplicate tool name [{tool.name}]')
+            self._tool_call[tool.name] = tool
+        return self.retrieval
 
     @property
     def all_tools(self) -> List[ModuleTool]:
@@ -821,6 +921,8 @@ class ToolManager(ModuleBase):
 
     @property
     def tools_description(self) -> List[Dict]:
+        if self.retrieval is not None:
+            return self.retrieval.descriptions()
         try:
             workspace = lazyllm_locals['_lazyllm_agent'].get('workspace', {})
         except Exception:
@@ -852,6 +954,8 @@ class ToolManager(ModuleBase):
 
     def sync_active_groups(self, input: Any = None, history: Optional[List[Dict[str, Any]]] = None) -> Set[str]:  # noqa C901
         '''Activate lazy Toolkits from registered input rules and structured gateway calls in history.'''
+        if self.retrieval is not None:
+            return set()
         try:
             workspace = lazyllm_locals['_lazyllm_agent'].setdefault('workspace', {})
         except Exception:
@@ -995,6 +1099,8 @@ class ToolManager(ModuleBase):
         if name not in visible_names:
             suggested_tool = _closest_tool_name(name, visible_names)
             message = f'Tool [{name}] was not exposed in this turn.'
+            if self.retrieval is not None:
+                message += ' Use search_tools/load_tools and wait for the next model round before calling it.'
             if suggested_tool:
                 message += f' Did you mean [{suggested_tool}]? Call it explicitly.'
             failure = tool_failure(message)

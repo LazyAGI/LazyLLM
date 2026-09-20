@@ -245,6 +245,45 @@ Args:
 
 ''')
 
+add_chinese_doc('ToolManager.enable_tool_retrieval', '''\
+启用显式工具检索与原子 schema 加载，返回检索控制器。注册 search_tools/load_tools，
+保留原子 callable 执行，加载的定义在下一轮模型请求生效。默认不启用。
+
+Args:
+    max_search_results (int): 搜索候选数上限，正整数，默认 5。search_tools.limit 默认取该上限与 5 的较小值。
+    matched_member_limit (int): 每组匹配成员摘要上限，正整数，默认 3。
+    **options: 传给 ToolRetrieval 的配置。required 为必需原子工具名；groups 为可检索组；
+        estimate_tokens 估算工具定义占用；threshold_tokens 限制模型继续新增工具的软阈值。
+        可选 group_members 定义动态组到原子成员的映射，group_descriptions 提供组描述；
+        state_store 提供 read/update 持久状态事务，skill_dependencies 解析 Skill 依赖。
+        可选 validate_load 接收候选 schema 列表，在初始化、加载及 Skill 依赖的状态提交前校验；
+        抛出异常时不提交状态。Host/Skill 新增不受软阈值限制，但仍接受该校验。
+
+Returns:
+    ToolRetrieval: 支持 initialize、search、load 和 load_skill 的检索控制器。
+''')
+
+add_english_doc('ToolManager.enable_tool_retrieval', '''\
+Enable explicit tool discovery and atomic schema loading, returning the retrieval controller.
+Registers search_tools/load_tools while keeping atomic callable execution. Loaded schemas become
+callable in the next model round. Retrieval is disabled unless this method is called.
+
+Args:
+    max_search_results (int): Positive candidate limit, default 5. search_tools.limit defaults to min(5, max_search_results).
+    matched_member_limit (int): Positive per-group member summary limit, default 3.
+    **options: ToolRetrieval configuration. required lists mandatory atomic names; groups selects
+        searchable groups; estimate_tokens estimates schema usage; threshold_tokens sets the soft
+        threshold for further model-initiated additions. Optional group_members maps dynamic groups
+        to atomic members, and group_descriptions supplies group descriptions. state_store provides
+        read/update state transactions; skill_dependencies resolves Skill dependencies. Optional
+        validate_load receives candidate schemas before initialization, load, or Skill state commits;
+        raising rejects the transaction. Host/Skill additions bypass the soft threshold but still
+        undergo this validation.
+
+Returns:
+    ToolRetrieval: Controller supporting initialize, search, load, and load_skill.
+''')
+
 add_chinese_doc('ToolManager.execute_with_records', '''\
 通过一次参数校验和资源解析准备并执行工具调用，返回按调用顺序排列的结果及包含明确执行状态的
 ``ToolExecutionRecord``。可选的 ``dispatch_selector`` 接收已准备调用的独立检查快照，
