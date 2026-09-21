@@ -4,7 +4,7 @@ import re
 import subprocess
 import tempfile
 import threading
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import yaml
 
@@ -27,6 +27,8 @@ config.add(
 # Filename convention for cloud FS skills (no extension).
 # A node/file whose name starts with this prefix is treated as a skill definition.
 SKILL_PREFIX = 'SKILL'
+DEFAULT_SEARCH_LIMIT = 4
+DISCOVER_FIELDS = frozenset({'field', 'tags', 'aliases', 'keywords', 'name'})
 
 SKILLS_PROMPT = '''
 ## Skills Guide
@@ -104,7 +106,10 @@ _META_REQUIRED_FIELDS = {
 
 class SkillManager(ModuleBase):
     def __init__(self, dir: Optional[str] = None, skills: Optional[Iterable[str]] = None,
-                 max_skill_md_bytes: Optional[int] = None, fs=None, sandbox=None):
+                 max_skill_md_bytes: Optional[int] = None, fs=None, sandbox=None,
+                 prompt_skills: Optional[Iterable[str]] = None,
+                 excluded_skills: Optional[Iterable[str]] = None,
+                 skill_search: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None):
         super().__init__(return_trace=False)
         self._fs = fs or fsspec.implementations.local.LocalFileSystem()
         if sandbox is None:
@@ -114,6 +119,11 @@ class SkillManager(ModuleBase):
         self._skills_dir = self._parse_dirs(dir or config['skills_dir'], fs=fs)
         self._validate_fs_dir_consistency(fs, self._skills_dir)
         self._skills_expected = self._parse_skills(skills)
+        # None keeps the default L1 catalog (all loadable skills). An empty list
+        # hides individual L1 entries; get_skill / scripts still use ``skills``.
+        self._prompt_skills = None if prompt_skills is None else self._parse_skills(prompt_skills)
+        self._excluded_skills = set(self._parse_skills(excluded_skills))
+        self._skill_search = skill_search
         self._max_skill_md_bytes = max_skill_md_bytes or config['max_skill_md_bytes']
         self._skills_index: Dict[str, Dict] = {}
         self._skills_selected: List[str] = []
@@ -456,6 +466,99 @@ class SkillManager(ModuleBase):
             if not info.get('disable-model-invocation')
         ]
 
+    def set_prompt_skills(self, skills: Optional[Iterable[str]] = None) -> None:
+        '''Set the L1 prompt catalog without changing loadable scope.
+
+        ``None`` restores the default catalog. An empty iterable injects no
+        individual L1 entries; ``get_skill`` / ``read_reference`` / ``run_script``
+        still resolve against the loadable ``skills`` list.
+        '''
+        self._prompt_skills = None if skills is None else self._parse_skills(skills)
+
+    def _prompt_skill_keys(self) -> List[str]:
+        visible = [key for key in self._visible_skill_keys() if key not in self._excluded_skills]
+        if self._prompt_skills is None:
+            return visible
+        if not self._prompt_skills:
+            return []
+        resolved: List[str] = []
+        seen = set()
+        for ref in self._prompt_skills:
+            key, _error = self._resolve_skill_ref(ref, visible)
+            if key and key not in seen:
+                seen.add(key)
+                resolved.append(key)
+        return resolved
+
+    def _search_allowed_keys(self) -> set:
+        return {key for key in self._visible_skill_keys() if key not in self._excluded_skills}
+
+    @staticmethod
+    def _search_limit(value) -> int:
+        try:
+            return max(1, min(20, int(value)))
+        except (TypeError, ValueError):
+            return DEFAULT_SEARCH_LIMIT
+
+    def list_prompt_skills(self) -> Dict[str, Any]:
+        skills = self._prompt_skill_keys()
+        return {'status': 'ok', 'count': len(skills), 'skills': skills}
+
+    def search_skill(self, query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> Dict[str, Any]:
+        cleaned = str(query or '').strip()
+        if not cleaned:
+            return {'status': 'error', 'error': 'query is required', 'skills': []}
+        return self._search_skill_catalog({'query': cleaned}, self._search_limit(limit))
+
+    def discover_skill(self, field: str, value, limit: int = DEFAULT_SEARCH_LIMIT) -> Dict[str, Any]:
+        if field not in DISCOVER_FIELDS:
+            return {'status': 'error', 'error': 'unsupported discovery field', 'skills': []}
+        if not isinstance(value, (str, list)) or (
+            isinstance(value, list) and any(not isinstance(item, str) for item in value)
+        ):
+            return {'status': 'error', 'error': 'value must be a string or string array', 'skills': []}
+        values = [value] if isinstance(value, str) else value
+        values = [item.strip() for item in values if item.strip()]
+        if not values:
+            return {'status': 'error', 'error': 'value is required', 'skills': []}
+        return self._search_skill_catalog({'field': field, 'value': values}, self._search_limit(limit))
+
+    def _search_skill_catalog(self, request: Dict[str, Any], limit: int) -> Dict[str, Any]:
+        allowed = self._search_allowed_keys()
+        if not allowed:
+            return {'status': 'ok', 'count': 0, 'skills': []}
+        if self._skill_search is None:
+            return {'status': 'error', 'error': 'skill search is not configured', 'skills': []}
+        payload = dict(request)
+        payload.update({
+            'limit': limit,
+            'exclude': sorted(self._excluded_skills),
+            'allowed_skill_keys': sorted(allowed),
+        })
+        try:
+            result = self._skill_search(payload) or {}
+        except Exception as exc:
+            return {'status': 'error', 'error': str(exc), 'skills': []}
+        if result.get('status') == 'error':
+            return {'status': 'error', 'error': str(result.get('error') or 'skill search failed'), 'skills': []}
+        raw_hits = result.get('skills')
+        hits, seen = [], set()
+        for item in raw_hits or []:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get('skill_key') or '').strip()
+            if key not in allowed or key in seen:
+                continue
+            seen.add(key)
+            hits.append({
+                'skill_key': key,
+                'name': str(item.get('name') or key.rsplit('/', 1)[-1]),
+                'description': str(item.get('description') or '')[:1024],
+            })
+            if len(hits) >= limit:
+                break
+        return {'status': 'ok', 'count': len(hits), 'skills': hits}
+
     def _visible_skills_index(self) -> Dict[str, Dict]:
         return {
             key: self._skills_index[key]
@@ -490,7 +593,10 @@ class SkillManager(ModuleBase):
         return '\n'.join(lines)
 
     def build_prompt(self) -> str:
-        skills_list = self._format_skills_list(self._visible_skill_keys())
+        catalog_keys = self._prompt_skill_keys()
+        skills_list = self._format_skills_list(
+            catalog_keys, include_location=self._prompt_skills is None,
+        )
         lines = ['**Skills Directory**']
         if self._skills_dir:
             lines.append(self._format_skills_locations())
@@ -499,7 +605,7 @@ class SkillManager(ModuleBase):
 
     def describe_prompt(self) -> List[Dict[str, str]]:
         '''Return model-facing skill prompt parts for context observability.'''
-        visible_keys = self._visible_skill_keys()
+        visible_keys = self._prompt_skill_keys()
         directory_lines = ['**Skills Directory**']
         if self._skills_dir:
             directory_lines.append(self._format_skills_locations())
@@ -724,7 +830,63 @@ class SkillManager(ModuleBase):
         return self.read_file(name=name, rel_path=rel_path, **kwargs)
 
     def get_skill_tools(self) -> List:
-        return [self._build_get_skill_tool(), self._build_read_reference_tool(), self._build_run_script_tool()]
+        tools = []
+        if self._skill_search is not None:
+            tools.extend([
+                self._build_list_skills_tool(),
+                self._build_search_skill_tool(),
+                self._build_discover_skill_tool(),
+            ])
+        tools.extend([
+            self._build_get_skill_tool(),
+            self._build_read_reference_tool(),
+            self._build_run_script_tool(),
+        ])
+        return tools
+
+    def _build_list_skills_tool(self):
+        @fc_register(host_file='NONE', tool_source='skill')
+        def list_skills() -> dict:
+            '''List skills currently injected into this turn's catalog.
+
+            This is the short injected set, not the full library. Use search_skill
+            when the user rejects a listed skill or none of the listed skills match.
+            Use get_skill when full instructions are needed.
+            '''
+            return self.list_prompt_skills()
+        return list_skills
+
+    def _build_search_skill_tool(self):
+        @fc_register(host_file='NONE', tool_source='skill')
+        def search_skill(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> dict:
+            '''Search all skills available in this conversation by task or exact name.
+
+            Includes skills already listed in the prompt. Returns candidate names and
+            descriptions; call get_skill to load the chosen skill's full instructions.
+
+            Args:
+                query (str): Task description or skill name.
+                limit (int, optional): Maximum number of candidates. Defaults to 4.
+            '''
+            return self.search_skill(query=query, limit=limit)
+        return search_skill
+
+    def _build_discover_skill_tool(self):
+        @fc_register(host_file='NONE', tool_source='skill')
+        def discover_skill_by_field(field: str, value, limit: int = DEFAULT_SEARCH_LIMIT) -> dict:
+            '''Find available skills by an exact structured field and value.
+
+            Fields: field (domain such as writing), tags, aliases, keywords, name.
+            Use a string or an array of strings. Results contain candidate names and
+            descriptions; call get_skill for the chosen skill's full instructions.
+
+            Args:
+                field (str): Structured field name.
+                value (str | list[str]): Field value or values.
+                limit (int, optional): Maximum number of candidates. Defaults to 4.
+            '''
+            return self.discover_skill(field=field, value=value, limit=limit)
+        return discover_skill_by_field
 
     def _build_get_skill_tool(self):
         @fc_register(host_file='NONE', tool_source='skill')
@@ -765,17 +927,41 @@ class SkillManager(ModuleBase):
             return self.run_script(name=name, rel_path=rel_path, args=args, cwd=cwd)
         return run_script
 
-    def _format_skills_list(self, names: List[str]) -> str:
+    def _format_skills_list(self, names: List[str], *, include_location: bool = True) -> str:
         lines = []
         for name in names:
             info = self._skills_index.get(name)
-            if info:
-                desc = (info.get('description', '') or '')[:1024]
+            if not info:
+                continue
+            desc = (info.get('description', '') or '')[:1024]
+            if include_location:
                 lines.append(
                     f'- {name}: {desc} (source: {info.get("source", "file")}, '
                     f'path: {info.get("path")})'
                 )
+            else:
+                lines.append(f'- {name}: {desc}')
         return '\n'.join(lines)
 
     def _format_skills_locations(self) -> str:
         return '\n'.join(f'- {path}' for path in self._skills_dir)
+
+
+def inherit_skill_scope(
+    loadable: Optional[Iterable[str]] = None,
+    catalog: Optional[Iterable[str]] = None,
+    extra_catalog: Optional[Iterable[str]] = None,
+) -> Tuple[List[str], List[str]]:
+    '''Build child loadable scope and prompt catalog from a parent snapshot.
+
+    The child keeps the parent's loadable/searchable keys. The prompt catalog
+    defaults to the parent's catalog, intersected with loadable keys, then
+    optionally appends extra catalog entries that remain in scope.
+    '''
+    loadable_keys = SkillManager._parse_skills(loadable)
+    allowed = set(loadable_keys)
+    catalog_keys = [key for key in SkillManager._parse_skills(catalog) if key in allowed]
+    for key in SkillManager._parse_skills(extra_catalog):
+        if key in allowed and key not in catalog_keys:
+            catalog_keys.append(key)
+    return loadable_keys, catalog_keys

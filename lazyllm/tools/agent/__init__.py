@@ -31,7 +31,7 @@ from .planAndSolveAgent import PlanAndSolveAgent
 from .rewooAgent import ReWOOAgent
 from .toolsManager import ModuleTool
 from .code_interpreter import code_interpreter
-from .skill_manager import SkillManager
+from .skill_manager import SkillManager, inherit_skill_scope
 from .skill_hub import install_skill
 from .todo_tool import todo_write
 from .file_tool import FileSystemToolkit
@@ -72,6 +72,7 @@ __all__ = [
     'ModuleTool',
     'code_interpreter',
     'SkillManager',
+    'inherit_skill_scope',
     'install_skill',
     'todo_write',
     'ToolExecutionError',

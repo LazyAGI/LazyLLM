@@ -104,6 +104,65 @@ class TestSkills(object):
         assert self._alpha_name in listing
         assert self._beta_name in listing
 
+    def test_prompt_catalog_does_not_limit_loading(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _make_skill(tmp, 'resident', 'resident')
+            _make_skill(tmp, 'on-demand', 'on-demand')
+            manager = SkillManager(dir=tmp, skills=['resident', 'on-demand'], prompt_skills=['resident'])
+            prompt = manager.build_prompt()
+            assert 'resident skill for tests' in prompt
+            assert 'on-demand skill for tests' not in prompt
+            assert 'source:' not in prompt
+            assert 'Test skill' in manager.get_skill('on-demand')['content']
+            assert 'on-demand skill for tests' not in ''.join(
+                part['content'] for part in manager.describe_prompt()
+            )
+            manager.set_prompt_skills([])
+            assert 'resident skill for tests' not in manager.build_prompt()
+            assert 'Test skill' in manager.get_skill('on-demand')['content']
+            manager.set_prompt_skills(None)
+            restored = manager.build_prompt()
+            assert 'resident skill for tests' in restored
+            assert 'on-demand skill for tests' in restored
+            assert 'source:' in restored
+
+    def test_inherit_skill_scope_keeps_loadable_and_filters_catalog(self):
+        from lazyllm.tools.agent.skill_manager import inherit_skill_scope
+        loadable, catalog = inherit_skill_scope(
+            ['design/image', 'research/deep'],
+            ['research/deep', 'missing/gone'],
+            extra_catalog=['design/image'],
+        )
+        assert loadable == ['design/image', 'research/deep']
+        assert catalog == ['research/deep', 'design/image']
+
+    def test_search_tools_use_backend_without_shrinking_loadable_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _make_skill(tmp, 'resident', 'resident')
+            _make_skill(tmp, 'on-demand', 'on-demand')
+            captured = {}
+
+            def backend(request):
+                captured['request'] = request
+                return {'skills': [
+                    {'skill_key': 'on-demand', 'name': 'on-demand', 'description': 'hidden until search'},
+                    {'skill_key': 'denied', 'name': 'denied', 'description': 'out of scope'},
+                ]}
+
+            manager = SkillManager(
+                dir=tmp, skills=['resident', 'on-demand'], prompt_skills=['resident'],
+                excluded_skills=['denied'], skill_search=backend,
+            )
+            assert manager.list_prompt_skills()['skills'] == ['resident']
+            result = manager.search_skill('anything')
+            assert captured['request']['allowed_skill_keys'] == ['on-demand', 'resident']
+            assert result['skills'] == [{
+                'skill_key': 'on-demand', 'name': 'on-demand', 'description': 'hidden until search',
+            }]
+            names = [tool.__name__ for tool in manager.get_skill_tools()]
+            assert names[:3] == ['list_skills', 'search_skill', 'discover_skill_by_field']
+            assert manager.discover_skill('category', 'external')['status'] == 'error'
+
     def test_parse_dirs_local_expands_paths(self):
         parsed = SkillManager._parse_dirs('~/skills')
         assert parsed == [os.path.abspath(os.path.expanduser('~/skills'))]
