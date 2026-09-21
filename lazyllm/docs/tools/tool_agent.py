@@ -1004,6 +1004,66 @@ List available skills under configured directories and return a Markdown string.
 - str: Skill list with name/description/path.
 ''')
 
+add_chinese_doc('SkillManager.list_prompt_skills', '''\
+列出当前 Prompt Catalog 中的技能名称。不会缩小 `get_skill` 的可加载范围。
+
+**Returns:**\n
+- dict: 包含状态、数量与技能名称列表。
+''')
+
+add_english_doc('SkillManager.list_prompt_skills', '''\
+List skill names currently injected into the prompt catalog. This does not shrink `get_skill` loadable scope.
+
+**Returns:**\n
+- dict: Status, count, and skill name list.
+''')
+
+add_chinese_doc('SkillManager.search_skill', '''\
+按任务描述或名称检索当前可加载范围内的技能，返回 L1 候选。
+
+Args:
+    query (str): 任务描述或技能名称。
+    limit (int, optional): 返回条数上限，默认 4。
+
+**Returns:**\n
+- dict: 包含状态与候选技能列表。
+''')
+
+add_english_doc('SkillManager.search_skill', '''\
+Search loadable skills by task description or name and return L1 candidates.
+
+Args:
+    query (str): Task description or skill name.
+    limit (int, optional): Maximum number of candidates. Defaults to 4.
+
+**Returns:**\n
+- dict: Status and candidate skill list.
+''')
+
+add_chinese_doc('SkillManager.discover_skill', '''\
+按结构化字段精确查找当前可加载范围内的技能。
+
+Args:
+    field (str): 字段名，如 field、tags、aliases、keywords、name。
+    value (str | list[str]): 字段值。
+    limit (int, optional): 返回条数上限，默认 4。
+
+**Returns:**\n
+- dict: 包含状态与候选技能列表。
+''')
+
+add_english_doc('SkillManager.discover_skill', '''\
+Find loadable skills by an exact structured field and value.
+
+Args:
+    field (str): Field name, such as field, tags, aliases, keywords, or name.
+    value (str | list[str]): Field value or values.
+    limit (int, optional): Maximum number of candidates. Defaults to 4.
+
+**Returns:**\n
+- dict: Status and candidate skill list.
+''')
+
 add_chinese_doc('SkillManager.build_prompt', '''\
 构建 Skills 引导提示词。
 
