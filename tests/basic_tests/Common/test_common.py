@@ -1,5 +1,7 @@
 import random
+import sys
 import time
+from types import SimpleNamespace
 import pytest
 import threading
 
@@ -10,6 +12,31 @@ from lazyllm.components.formatter import lazyllm_merge_query, encode_query_with_
 
 
 class TestCommon(object):
+
+    def test_uninitialized_logger_close_does_not_load_logger(self, monkeypatch):
+        logger_module = 'lazyllm.common.logger.logger'
+        monkeypatch.delitem(sys.modules, logger_module, raising=False)
+
+        lazyllm.LOG.close()
+
+        assert logger_module not in sys.modules
+
+    def test_initialized_logger_close_is_forwarded(self, monkeypatch):
+        closed = []
+
+        class Logger:
+            def close(self):
+                closed.append(True)
+
+        monkeypatch.setitem(
+            sys.modules,
+            'lazyllm.common.logger.logger',
+            SimpleNamespace(LOG=Logger()),
+        )
+
+        lazyllm.LOG.close()
+
+        assert closed == [True]
 
     def test_common_argsdict(self):
 
