@@ -1019,46 +1019,23 @@ List skill names currently injected into the prompt catalog. This does not shrin
 ''')
 
 add_chinese_doc('SkillManager.search_skill', '''\
-按任务描述或名称检索当前可加载范围内的技能，返回 L1 候选。
+按任务描述检索当前可加载范围内的技能。只进行排序检索，不接受 field / tags 等硬过滤。
 
 Args:
-    query (str): 任务描述或技能名称。
-    limit (int, optional): 返回条数上限，默认 4。
+    query (str): 任务描述或技能名称，优先使用。
+    limit (int, optional): 返回条数上限，默认 5。
 
 **Returns:**\n
 - dict: 包含状态与候选技能列表。
 ''')
 
 add_english_doc('SkillManager.search_skill', '''\
-Search loadable skills by task description or name and return L1 candidates.
+Search loadable skills by task description or name. This is ranked retrieval
+without hard metadata filters.
 
 Args:
-    query (str): Task description or skill name.
-    limit (int, optional): Maximum number of candidates. Defaults to 4.
-
-**Returns:**\n
-- dict: Status and candidate skill list.
-''')
-
-add_chinese_doc('SkillManager.discover_skill', '''\
-按结构化字段精确查找当前可加载范围内的技能。
-
-Args:
-    field (str): 字段名，如 field、tags、aliases、keywords、name。
-    value (str | list[str]): 字段值。
-    limit (int, optional): 返回条数上限，默认 4。
-
-**Returns:**\n
-- dict: 包含状态与候选技能列表。
-''')
-
-add_english_doc('SkillManager.discover_skill', '''\
-Find loadable skills by an exact structured field and value.
-
-Args:
-    field (str): Field name, such as field, tags, aliases, keywords, or name.
-    value (str | list[str]): Field value or values.
-    limit (int, optional): Maximum number of candidates. Defaults to 4.
+    query (str): Task description or skill name. This is the preferred lookup.
+    limit (int, optional): Maximum number of candidates. Defaults to 5.
 
 **Returns:**\n
 - dict: Status and candidate skill list.
@@ -1079,25 +1056,29 @@ Build a skills guide prompt.
 ''')
 
 add_chinese_doc('SkillManager.get_skill', '''\
-读取指定技能的 SKILL.md 全量内容。
+直接解析已启用技能的标识并读取 SKILL.md，不消耗 search_skill 预算。
 
 Args:
-    name (str): 技能名称。
+    name (str): 完整 skill key 或唯一技能名称。
     allow_large (bool): 是否允许读取超过大小限制的文件。
 
 **Returns:**\n
-- dict: 包含状态、路径与内容的结果。
+- dict: 成功时包含路径与内容；失败时 code 为 identifier_not_resolved、
+  skill_not_installed、skill_disabled 或 skill_exists_but_not_visible。
 ''')
 
 add_english_doc('SkillManager.get_skill', '''\
-Load the full SKILL.md content for a skill.
+Resolve an enabled skill directly and load its full SKILL.md without consuming
+the search_skill budget.
 
 Args:
-    name (str): Skill name.
+    name (str): Full skill key or unique skill name.
     allow_large (bool): Whether to allow loading oversized files.
 
 **Returns:**\n
-- dict: Result with status, path, and content.
+- dict: On success, status, path, and content. On failure, one of
+  identifier_not_resolved, skill_not_installed, skill_disabled, or
+  skill_exists_but_not_visible.
 ''')
 
 add_chinese_doc('SkillManager.read_file', '''\

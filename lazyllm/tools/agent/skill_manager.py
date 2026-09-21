@@ -1,9 +1,12 @@
+import json
+import math
 import os
 import posixpath
 import re
 import subprocess
 import tempfile
 import threading
+import unicodedata
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import yaml
@@ -27,74 +30,71 @@ config.add(
 # Filename convention for cloud FS skills (no extension).
 # A node/file whose name starts with this prefix is treated as a skill definition.
 SKILL_PREFIX = 'SKILL'
-DEFAULT_SEARCH_LIMIT = 4
-DISCOVER_FIELDS = frozenset({'field', 'tags', 'aliases', 'keywords', 'name'})
+DEFAULT_SEARCH_LIMIT = 5
+MAX_SEARCH_LIMIT = 20
+MAX_SEARCH_CALLS = 2
+SKILL_TOOL_MODE_FULL = 'full'
+SKILL_TOOL_MODE_DISCOVERY = 'discovery'
+_ASCII_TERM = re.compile(r'[a-z0-9]+')
+_CJK_RUN = re.compile(r'[\u3400-\u9fff\uf900-\ufaff]+')
+_QUERY_STOP = frozenset({
+    'skill', 'skills', 'the', 'and', 'for', 'with', 'from', 'that', 'this',
+    'find', 'search', 'use', 'please', 'help', 'related',
+    '技能', '帮我', '请帮', '一下', '相关', '找个', '找一下',
+})
+_QUERY_EXPAND = {
+    '文章': ('article', 'writing', 'copywriting'),
+    '写文章': ('article', 'writing', 'copywriting'),
+    '写作': ('writing', 'article', 'copywriting'),
+    '文案': ('copywriting', 'writing'),
+    '图片': ('image', 'design', 'poster', 'visual'),
+    '图像': ('image', 'design', 'visual'),
+    '生图': ('image', 'design'),
+    '海报': ('poster', 'image', 'design'),
+    '配图': ('image', 'design', 'visual'),
+    '视觉': ('visual', 'design', 'image'),
+    '论文': ('paper', 'academic', 'research'),
+    '文献': ('paper', 'academic', 'research'),
+    'arxiv': ('paper', 'academic', 'research'),
+    'anki': ('vocabulary', 'flashcard', 'review'),
+}
+_INSTRUCTIONAL_SPLIT = re.compile(
+    r'(按照|步骤包括|包括：|包括:|Follow these|including:)',
+    re.IGNORECASE,
+)
 
 SKILLS_PROMPT = '''
 ## Skills Guide
-You have access to a skills library that encodes specialized workflows and domain knowledge.
+Skill usage:
 
-### How to Use Skills (Progressive Disclosure)
-You can see the name/description above, but only fetch a skill's full instructions when it's relevant.
+1. Do not use skills for simple tasks that do not benefit from
+   specialized instructions, workflows, or resources.
 
-1) **Identify relevance**: If a skill's description matches the task, consider using it.
-2) **Get the skill's full usage**: Call `get_skill` to retrieve the complete workflow.
-3) **Follow the workflow strictly**: After you obtain the full usage,
-execute the workflow steps, constraints, and examples in order.
-4) **Adapt workflow to the current task**: Before execution, map the workflow
-to the user's actual goal, constraints, and available inputs; do not apply
-steps blindly.
+2. If the user explicitly names a skill, call `get_skill` directly.
+   Never call `search_skill` before or after that lookup. If resolution
+   fails, report the exact get_skill error code.
 
-### Skill Selection Restraint
-Do not load a skill merely because it could improve or add structure to the answer.
-For simple questions, normal how-to guidance, and ordinary recommendations, answer directly
-or use the relevant tool without loading a heavyweight workflow. A skill whose own description
-says not to trigger on simple requests must not be loaded for those requests.
+3. If the user asks to search, find, or recommend a skill first
+   (先找 / 先搜索 / 推荐), call `search_skill` even when a catalog
+   entry looks obvious. Catalog descriptions are routing metadata
+   and must not substitute for SKILL.md.
 
-### Reference and Script Tools (Strict Constraint)
-**CRITICAL — Read Before Using `read_reference` or `run_script`:**
+4. Call `search_skill` once with a task query. It performs ranked
+   retrieval and does not accept hard metadata filters.
 
-These two tools have a hard prerequisite and a hard path rule:
+5. After `search_skill`:
+   - if executing the skill, call `get_skill`;
+   - if the user only asked to find/recommend skills, report the
+     candidates without loading them. Do not call `get_skill` just
+     to verify a recommendation.
 
-**Prerequisite**: You MUST call `get_skill` for the skill first and receive its
-SKILL.md content before you can use `read_reference` or `run_script`.
+6. Do not repeatedly search to enumerate the library.
+   A failed search is normally terminal unless the original query
+   was clearly malformed.
+   SkillManagementToolkit creates, installs, edits, or deletes
+   skills. It is never a discovery substitute for `search_skill`.
 
-**Path Rule**: The `rel_path` argument MUST be copied verbatim from the SKILL.md
-body. You are FORBIDDEN from fabricating, guessing, or extrapolating paths.
-Examples of FORBIDDEN path fabrication:
-  - Making up paths like `scripts/create_spring_prose.sh` that do not appear in SKILL.md
-  - Assuming a file exists because "most skills have it" (e.g., `scripts/setup.sh`)
-  - Constructing paths from the skill name (e.g., `scripts/<skill_name>.py`)
-  - Trying common filenames (e.g., `README.md`, `docs/guide.md`) unless explicitly listed
-
-If the SKILL.md does not contain any explicit reference or script path, these
-tools MUST NOT be called for that skill — use your other available tools instead.
-
-- **Reference**: Documentation and guidance files (e.g., design notes,
-  domain rules, templates). Read them with `read_reference` to understand
-  how to execute the workflow correctly.
-- **Script**: Executable helpers provided by the skill. Prefer running these
-  scripts with `run_script` instead of writing new programs from scratch.
-- If a suitable script already exists in the skill, use it first. Only write
-  new code when the existing scripts cannot satisfy the task.
-
-### When Skills Help
-- The user asks for a structured or repeatable process
-- You need specialized domain context or best practices
-- The skill provides a proven workflow for complex tasks
-
-### Script Execution
-Skills may include Python or shell scripts. Prefer `run_script` for scripts explicitly listed by the selected skill.
-
-### Example
-User: "Research the latest developments in quantum computing."
-
-1) See a "web‑research" skill in the list
-2) Call `get_skill` to fetch its full usage
-3) Follow the research workflow (search → organize → synthesize)
-4) Use `read_reference` and `run_script` only if the SKILL.md explicitly names them
-
-Skills improve reliability and consistency. If a skill applies, use it.
+7. Only access resources declared by a loaded skill.
 '''
 
 
@@ -109,7 +109,8 @@ class SkillManager(ModuleBase):
                  max_skill_md_bytes: Optional[int] = None, fs=None, sandbox=None,
                  prompt_skills: Optional[Iterable[str]] = None,
                  excluded_skills: Optional[Iterable[str]] = None,
-                 skill_search: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None):
+                 skill_search: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
+                 skill_tool_mode: str = SKILL_TOOL_MODE_FULL):
         super().__init__(return_trace=False)
         self._fs = fs or fsspec.implementations.local.LocalFileSystem()
         if sandbox is None:
@@ -124,10 +125,17 @@ class SkillManager(ModuleBase):
         self._prompt_skills = None if prompt_skills is None else self._parse_skills(prompt_skills)
         self._excluded_skills = set(self._parse_skills(excluded_skills))
         self._skill_search = skill_search
+        mode = str(skill_tool_mode or SKILL_TOOL_MODE_FULL).strip()
+        self._skill_tool_mode = (
+            SKILL_TOOL_MODE_DISCOVERY if mode == SKILL_TOOL_MODE_DISCOVERY else SKILL_TOOL_MODE_FULL
+        )
         self._max_skill_md_bytes = max_skill_md_bytes or config['max_skill_md_bytes']
         self._skills_index: Dict[str, Dict] = {}
         self._skills_selected: List[str] = []
         self._skills_index_lock = threading.Lock()
+        self._search_count = 0
+        self._searched_signatures: set = set()
+        self._loaded_skills: Dict[str, Dict[str, Any]] = {}
 
     @staticmethod
     def _extract_protocol(path: str) -> Optional[str]:
@@ -429,31 +437,108 @@ class SkillManager(ModuleBase):
                     key for key, info in self._skills_index.items() if not info.get('disable-model-invocation')
                 ]
 
+    @staticmethod
+    def _normalize_skill_ref(ref: str) -> str:
+        name = unicodedata.normalize('NFKC', str(ref or '')).strip()
+        return name.strip('`\'"“”‘’$')
+
+    def _skill_ref_aliases(self, key: str) -> set:
+        info = self._skills_index.get(key) or {}
+        aliases = {
+            key.casefold(),
+            key.rsplit('/', 1)[-1].casefold(),
+            str(info.get('name') or '').strip().casefold(),
+        }
+        return {item for item in aliases if item}
+
+    def _ambiguous_skill_error(self, name: str, matches: List[str]) -> Dict[str, Any]:
+        ordered = sorted(matches)
+        return {
+            'status': 'identifier_not_resolved',
+            'code': 'identifier_not_resolved',
+            'name': name,
+            'matches': ordered,
+            'error': (
+                f'Ambiguous skill name {name!r}; use the full skill key '
+                f'such as {ordered[0]!r}.'
+            ),
+        }
+
     def _resolve_skill_ref(self, ref: str, keys: Iterable[str]) -> Tuple[Optional[str], Optional[Dict]]:
-        name = str(ref or '').strip()
+        name = self._normalize_skill_ref(ref)
         if not name:
-            return None, {'status': 'missing', 'name': name}
-        key_list = list(keys)
-        if name in key_list:
-            return name, None
-        matches = [
-            key for key in key_list
-            if self._skills_index[key].get('name') == name
-            or key.rsplit('/', 1)[-1] == name
-        ]
-        if not matches:
-            return None, {'status': 'missing', 'name': name}
-        if len(matches) > 1:
             return None, {
-                'status': 'ambiguous',
+                'status': 'identifier_not_resolved',
+                'code': 'identifier_not_resolved',
                 'name': name,
-                'matches': sorted(matches),
-                'error': (
-                    f'Ambiguous skill name {name!r}; use the full skill key '
-                    f'such as {sorted(matches)[0]!r}.'
-                ),
+                'error': 'Skill identifier is empty.',
             }
+        key_list = [key for key in keys if not self._skills_index or key in self._skills_index]
+        folded = name.casefold()
+        exact = [key for key in key_list if key == name or key.casefold() == folded]
+        if len(exact) == 1:
+            return exact[0], None
+        if len(exact) > 1:
+            return None, self._ambiguous_skill_error(name, exact)
+        if '/' in name:
+            return None, {
+                'status': 'skill_not_installed',
+                'code': 'skill_not_installed',
+                'name': name,
+                'error': f'Skill {name!r} is not installed.',
+            }
+        matches = []
+        for key in key_list:
+            aliases = self._skill_ref_aliases(key)
+            if folded in aliases:
+                matches.append(key)
+        if not matches:
+            return None, {
+                'status': 'skill_not_installed',
+                'code': 'skill_not_installed',
+                'name': name,
+                'error': f'Skill {name!r} is not installed.',
+            }
+        if len(matches) > 1:
+            return None, self._ambiguous_skill_error(name, matches)
         return matches[0], None
+
+    def _resolve_loadable_skill(
+        self, ref: str,
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        self._load_skills_index()
+        loadable = [
+            key for key in self._visible_skill_keys()
+            if key not in self._excluded_skills
+            and not (self._skills_index.get(key) or {}).get('disable-model-invocation')
+        ]
+        key, loadable_error = self._resolve_skill_ref(ref, loadable)
+        if key:
+            return self._skills_index.get(key), None
+        if loadable_error and loadable_error.get('code') == 'identifier_not_resolved':
+            return None, loadable_error
+
+        installed_key, installed_error = self._resolve_skill_ref(ref, self._skills_index.keys())
+        if installed_error:
+            return None, installed_error
+        info = self._skills_index.get(installed_key)
+        if installed_key in self._excluded_skills or info.get('disable-model-invocation'):
+            return None, {
+                'status': 'skill_exists_but_not_visible',
+                'code': 'skill_exists_but_not_visible',
+                'name': self._normalize_skill_ref(ref),
+                'skill_key': installed_key,
+                'error': f'Skill {installed_key!r} exists but is not visible in this context.',
+            }
+        if self._skills_expected and installed_key not in self._skills_selected:
+            return None, {
+                'status': 'skill_disabled',
+                'code': 'skill_disabled',
+                'name': self._normalize_skill_ref(ref),
+                'skill_key': installed_key,
+                'error': f'Skill {installed_key!r} is installed but disabled.',
+            }
+        return info, None
 
     def _visible_skill_keys(self) -> List[str]:
         self._load_skills_index()
@@ -496,52 +581,84 @@ class SkillManager(ModuleBase):
     @staticmethod
     def _search_limit(value) -> int:
         try:
-            return max(1, min(20, int(value)))
+            return max(1, min(MAX_SEARCH_LIMIT, int(value)))
         except (TypeError, ValueError):
             return DEFAULT_SEARCH_LIMIT
+
+    def _search_signature(self, query: str) -> str:
+        return json.dumps({'query': query}, sort_keys=True, ensure_ascii=True)
 
     def list_prompt_skills(self) -> Dict[str, Any]:
         skills = self._prompt_skill_keys()
         return {'status': 'ok', 'count': len(skills), 'skills': skills}
 
-    def search_skill(self, query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> Dict[str, Any]:
+    def search_skill(
+        self,
+        query: str,
+        limit: int = DEFAULT_SEARCH_LIMIT,
+        *,
+        enforce_budget: bool = True,
+    ) -> Dict[str, Any]:
         cleaned = str(query or '').strip()
         if not cleaned:
-            return {'status': 'error', 'error': 'query is required', 'skills': []}
-        return self._search_skill_catalog({'query': cleaned}, self._search_limit(limit))
+            return {'status': 'error', 'error': 'query is required', 'hits': [], 'retry': False}
+        signature = self._search_signature(cleaned)
+        if enforce_budget and signature in self._searched_signatures:
+            return {
+                'status': 'error',
+                'error': 'duplicate_search',
+                'hits': [],
+                'retry': False,
+            }
+        if enforce_budget and self._search_count >= MAX_SEARCH_CALLS:
+            return {
+                'status': 'error',
+                'error': 'retrieval_budget_exhausted',
+                'hits': [],
+                'retry': False,
+            }
+        result = self._search_skill_catalog(
+            {'query': cleaned},
+            self._search_limit(limit),
+        )
+        if enforce_budget and result.get('status') != 'error':
+            self._searched_signatures.add(signature)
+            self._search_count += 1
+        return result
 
-    def discover_skill(self, field: str, value, limit: int = DEFAULT_SEARCH_LIMIT) -> Dict[str, Any]:
-        if field not in DISCOVER_FIELDS:
-            return {'status': 'error', 'error': 'unsupported discovery field', 'skills': []}
-        if not isinstance(value, (str, list)) or (
-            isinstance(value, list) and any(not isinstance(item, str) for item in value)
-        ):
-            return {'status': 'error', 'error': 'value must be a string or string array', 'skills': []}
-        values = [value] if isinstance(value, str) else value
-        values = [item.strip() for item in values if item.strip()]
-        if not values:
-            return {'status': 'error', 'error': 'value is required', 'skills': []}
-        return self._search_skill_catalog({'field': field, 'value': values}, self._search_limit(limit))
-
-    def _search_skill_catalog(self, request: Dict[str, Any], limit: int) -> Dict[str, Any]:
+    def _search_skill_catalog(
+        self,
+        request: Dict[str, Any],
+        limit: int,
+    ) -> Dict[str, Any]:
         allowed = self._search_allowed_keys()
+        empty = {
+            'status': 'ok',
+            'query': request.get('query', ''),
+            'hits': [],
+            'scope': 'full_skill_library',
+            'has_more': False,
+        }
         if not allowed:
-            return {'status': 'ok', 'count': 0, 'skills': []}
-        if self._skill_search is None:
-            return {'status': 'error', 'error': 'skill search is not configured', 'skills': []}
+            return empty
         payload = dict(request)
         payload.update({
-            'limit': limit,
+            'limit': min(limit + 1, MAX_SEARCH_LIMIT + 1),
             'exclude': sorted(self._excluded_skills),
             'allowed_skill_keys': sorted(allowed),
         })
+        search = self._skill_search or self._local_skill_search
         try:
-            result = self._skill_search(payload) or {}
+            result = search(payload) or {}
         except Exception as exc:
-            return {'status': 'error', 'error': str(exc), 'skills': []}
+            return {'status': 'error', 'error': str(exc), 'hits': []}
         if result.get('status') == 'error':
-            return {'status': 'error', 'error': str(result.get('error') or 'skill search failed'), 'skills': []}
-        raw_hits = result.get('skills')
+            return {
+                'status': 'error',
+                'error': str(result.get('error') or 'skill search failed'),
+                'hits': [],
+            }
+        raw_hits = result.get('skills') or result.get('hits')
         hits, seen = [], set()
         for item in raw_hits or []:
             if not isinstance(item, dict):
@@ -550,14 +667,196 @@ class SkillManager(ModuleBase):
             if key not in allowed or key in seen:
                 continue
             seen.add(key)
+            description = self._routing_description_text(str(item.get('description') or ''), key)
             hits.append({
                 'skill_key': key,
                 'name': str(item.get('name') or key.rsplit('/', 1)[-1]),
-                'description': str(item.get('description') or '')[:1024],
+                'description': description,
+                'match_reason': str(item.get('match_reason') or description),
             })
-            if len(hits) >= limit:
-                break
-        return {'status': 'ok', 'count': len(hits), 'skills': hits}
+        has_more = len(hits) > limit
+        hits = hits[:limit]
+        return {
+            'status': 'ok',
+            'scope': 'full_skill_library',
+            'query': str(request.get('query') or ''),
+            'hits': hits,
+            'has_more': has_more,
+        }
+
+    def _local_skill_search(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        self._load_skills_index()
+        query = str(payload.get('query') or '').strip()
+        allowed = set(payload.get('allowed_skill_keys') or [])
+        exclude = set(payload.get('exclude') or [])
+        candidates = []
+        for key in allowed:
+            if key in exclude:
+                continue
+            info = self._skills_index.get(key) or {}
+            candidates.append((key, info, self._search_fields(key, info)))
+        q_norm = self._normalize_search_text(query)
+        literals, expansions = self._query_terms(query)
+        n = max(1, len(candidates))
+        df: Dict[str, int] = {}
+        for _key, _info, fields in candidates:
+            blob = ' '.join(fields.values())
+            seen = set()
+            for term in (*literals, *expansions):
+                if term in seen:
+                    continue
+                if self._term_in_text(term, blob):
+                    df[term] = df.get(term, 0) + 1
+                    seen.add(term)
+        scored = []
+        for key, info, fields in candidates:
+            score, reason, coverage = self._score_skill_query(
+                key, info, fields, q_norm, literals, expansions, df, n,
+            )
+            if score <= 0:
+                continue
+            scored.append((score, coverage, {
+                'skill_key': key,
+                'name': info.get('name') or key.rsplit('/', 1)[-1],
+                'description': self._routing_description(info),
+                'match_reason': reason,
+            }))
+        scored.sort(key=lambda row: (-row[0], -row[1], row[2]['skill_key']))
+        try:
+            requested = int(payload.get('limit'))
+        except (TypeError, ValueError):
+            requested = DEFAULT_SEARCH_LIMIT
+        # Allow one extra hit so search_skill can set has_more at MAX_SEARCH_LIMIT.
+        limit = max(1, min(MAX_SEARCH_LIMIT + 1, requested))
+        return {'status': 'ok', 'hits': [item for _s, _c, item in scored[:limit]]}
+
+    @staticmethod
+    def _normalize_search_text(text: Any) -> str:
+        return unicodedata.normalize('NFKC', str(text or '')).casefold()
+
+    @classmethod
+    def _join_meta_values(cls, value: Any) -> str:
+        if value is None:
+            return ''
+        if isinstance(value, list):
+            return ' '.join(cls._normalize_search_text(item) for item in value if str(item).strip())
+        return cls._normalize_search_text(value)
+
+    @classmethod
+    def _search_fields(cls, key: str, info: Dict[str, Any]) -> Dict[str, str]:
+        meta = info.get('raw_meta') or {}
+        field = str(meta.get('field') or (key.split('/', 1)[0] if '/' in key else ''))
+        return {
+            'key': cls._normalize_search_text(key.replace('/', ' ').replace('-', ' ').replace('_', ' ')),
+            'name': cls._normalize_search_text(info.get('name') or ''),
+            'aliases': ' '.join(filter(None, [
+                cls._join_meta_values(meta.get('aliases')),
+                cls._join_meta_values(meta.get('keywords')),
+                cls._join_meta_values(meta.get('tags')),
+            ])),
+            'when': cls._normalize_search_text(meta.get('when_to_use') or ''),
+            'description': cls._normalize_search_text(info.get('description') or ''),
+            'field': cls._normalize_search_text(field),
+        }
+
+    @classmethod
+    def _query_terms(cls, query: str) -> Tuple[List[str], List[str]]:
+        q = cls._normalize_search_text(query)
+        literals: List[str] = []
+        expansions: List[str] = []
+
+        def add_literal(term: str) -> None:
+            cleaned = term.strip()
+            if cleaned and cleaned not in _QUERY_STOP and cleaned not in literals:
+                literals.append(cleaned)
+
+        def add_expansion(term: str) -> None:
+            cleaned = cls._normalize_search_text(term)
+            if cleaned and cleaned not in _QUERY_STOP and cleaned not in expansions:
+                expansions.append(cleaned)
+
+        for token in _ASCII_TERM.findall(q):
+            if len(token) < 2:
+                continue
+            add_literal(token)
+        for run in _CJK_RUN.findall(q):
+            if run in _QUERY_STOP:
+                continue
+            if len(run) >= 2:
+                for index in range(len(run) - 1):
+                    add_literal(run[index:index + 2])
+            if len(run) >= 3:
+                for index in range(len(run) - 2):
+                    add_literal(run[index:index + 3])
+            elif run:
+                add_literal(run)
+        for source, targets in _QUERY_EXPAND.items():
+            if source in q:
+                for target in targets:
+                    add_expansion(target)
+        return literals, expansions
+
+    @staticmethod
+    def _term_in_text(term: str, text: str) -> bool:
+        if not term or not text:
+            return False
+        if term.isascii():
+            return re.search(rf'(^|[^a-z0-9]){re.escape(term)}([^a-z0-9]|$)', text) is not None
+        return term in text
+
+    @classmethod
+    def _score_skill_query(
+        cls,
+        key: str,
+        info: Dict[str, Any],
+        fields: Dict[str, str],
+        q_norm: str,
+        literals: List[str],
+        expansions: List[str],
+        df: Dict[str, int],
+        n: int,
+    ) -> Tuple[float, str, float]:
+        name = cls._normalize_search_text(info.get('name') or '')
+        key_norm = cls._normalize_search_text(key)
+        reason = fields.get('when') or fields.get('description') or name or key
+        if q_norm and q_norm in {key_norm, name}:
+            return 100.0, reason, 1.0
+        weights = {
+            'key': 12.0,
+            'name': 12.0,
+            'aliases': 9.0,
+            'when': 6.0,
+            'description': 4.0,
+            'field': 3.0,
+        }
+        score = 0.0
+        matched_literals = 0
+        if q_norm and len(q_norm) >= 2 and (q_norm in key_norm or q_norm in name):
+            score += 30.0
+        for term in literals:
+            idf = math.log((n + 1) / (df.get(term, 0) + 1)) + 1.0
+            field_weight = max(
+                (weight for field, weight in weights.items() if cls._term_in_text(term, fields.get(field, ''))),
+                default=0.0,
+            )
+            if field_weight:
+                matched_literals += 1
+                score += idf * field_weight
+        for term in expansions:
+            idf = math.log((n + 1) / (df.get(term, 0) + 1)) + 1.0
+            field_weight = max(
+                (weight for field, weight in weights.items() if cls._term_in_text(term, fields.get(field, ''))),
+                default=0.0,
+            )
+            if field_weight:
+                score += idf * field_weight * 0.65
+        coverage = (matched_literals / len(literals)) if literals else 0.0
+        if literals:
+            score += 6.0 * coverage
+        has_signal = bool(literals or expansions) and score > 0
+        if not has_signal:
+            return 0.0, reason, 0.0
+        return score, reason, coverage
 
     def _visible_skills_index(self) -> Dict[str, Dict]:
         return {
@@ -567,11 +866,7 @@ class SkillManager(ModuleBase):
         }
 
     def _get_visible_skill_info(self, name: str) -> Tuple[Optional[Dict], Optional[Dict]]:
-        visible_keys = self._visible_skill_keys()
-        key, error = self._resolve_skill_ref(name, visible_keys)
-        if error:
-            return None, error
-        return self._skills_index.get(key), None
+        return self._resolve_loadable_skill(name)
 
     def list_skill(self) -> str:
         visible_skills = self._visible_skills_index()
@@ -621,7 +916,7 @@ class SkillManager(ModuleBase):
             info = self._skills_index.get(key)
             if not info:
                 continue
-            description = (info.get('description', '') or '')[:1024]
+            description = self._routing_description(info)
             content = (
                 f'- {key}: {description} (source: {info.get("source", "file")}, '
                 f'path: {info.get("path")})'
@@ -648,9 +943,26 @@ class SkillManager(ModuleBase):
     def get_skill(self, name: str, allow_large: bool = False) -> Dict[str, str]:
         info, error = self._get_visible_skill_info(name)
         if error:
-            self._raise_skill_lookup_error(name, error)
+            return {
+                'status': 'error',
+                'code': str(error.get('code') or 'identifier_not_resolved'),
+                'error': str(error.get('error') or 'Skill identifier could not be resolved.'),
+                **({'skill_key': error['skill_key']} if error.get('skill_key') else {}),
+                **({'matches': error['matches']} if error.get('matches') else {}),
+                'retry': False,
+            }
         if not info:
-            raise ToolExecutionError(f'Skill not found: {name}')
+            return {
+                'status': 'error',
+                'code': 'skill_not_installed',
+                'error': f'Skill {name!r} is not installed.',
+                'retry': False,
+            }
+        cached = self._loaded_skills.get(info['key'])
+        if cached:
+            result = dict(cached)
+            result['already_loaded'] = True
+            return result
         skill_md = info['skill_md']
         size = self._fs_getsize(skill_md)
         if size is not None and size > self._max_skill_md_bytes and not allow_large:
@@ -671,10 +983,26 @@ class SkillManager(ModuleBase):
                 f'Skill {name} is {size} bytes and exceeds the configured '
                 f'{self._max_skill_md_bytes}-byte size limit. Set allow_large=True to read it.'
             )
-        result = {'status': 'ok', 'name': name, 'path': skill_md, 'content': content}
+        resources = self._collect_skill_resources(info, content)
+        result = {
+            'status': 'ok',
+            'name': name,
+            'skill_key': info['key'],
+            'version': 'latest',
+            'path': skill_md,
+            'content': content,
+            'resources': resources,
+        }
         on_load = getattr(self, 'on_skill_loaded', None)
         if on_load is not None:
             result['tool_dependencies'] = on_load(info['key'], info.get('allowed-tools'))
+        self._loaded_skills[info['key']] = {
+            key: result[key]
+            for key in ('status', 'name', 'skill_key', 'version', 'path', 'content', 'resources')
+            if key in result
+        }
+        if 'tool_dependencies' in result:
+            self._loaded_skills[info['key']]['tool_dependencies'] = result['tool_dependencies']
         return result
 
     def read_file(self, name: str, rel_path: str, **kwargs) -> Dict[str, str]:
@@ -830,102 +1158,97 @@ class SkillManager(ModuleBase):
         return self.read_file(name=name, rel_path=rel_path, **kwargs)
 
     def get_skill_tools(self) -> List:
-        tools = []
-        if self._skill_search is not None:
-            tools.extend([
-                self._build_list_skills_tool(),
-                self._build_search_skill_tool(),
-                self._build_discover_skill_tool(),
-            ])
-        tools.extend([
+        tools = [
+            self._build_search_skill_tool(),
             self._build_get_skill_tool(),
-            self._build_read_reference_tool(),
-            self._build_run_script_tool(),
-        ])
+        ]
+        if self._skill_tool_mode != SKILL_TOOL_MODE_DISCOVERY:
+            tools.extend([
+                self._build_read_skill_resource_tool(),
+                self._build_run_skill_script_tool(),
+            ])
         return tools
-
-    def _build_list_skills_tool(self):
-        @fc_register(host_file='NONE', tool_source='skill')
-        def list_skills() -> dict:
-            '''List skills currently injected into this turn's catalog.
-
-            This is the short injected set, not the full library. Use search_skill
-            when the user rejects a listed skill or none of the listed skills match.
-            Use get_skill when full instructions are needed.
-            '''
-            return self.list_prompt_skills()
-        return list_skills
 
     def _build_search_skill_tool(self):
         @fc_register(host_file='NONE', tool_source='skill')
-        def search_skill(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> dict:
-            '''Search all skills available in this conversation by task or exact name.
+        def search_skill(
+            query: str,
+            limit: int = DEFAULT_SEARCH_LIMIT,
+        ) -> dict:
+            '''Find a skill for the current task. This is the only skill-lookup tool.
 
-            Includes skills already listed in the prompt. Returns candidate names and
-            descriptions; call get_skill to load the chosen skill's full instructions.
+            If the user asks to search, find, or recommend a skill first, call
+            this tool even when a catalog entry looks obvious. Prefer query
+            only. Describe the user's task in query. Results are ranked
+            candidates, not an exhaustive inventory.
+            Do not repeatedly call this tool to enumerate the skill library.
+            If the user only asked to find or recommend skills, stop after this
+            tool; do not call get_skill just to verify names.
 
             Args:
-                query (str): Task description or skill name.
-                limit (int, optional): Maximum number of candidates. Defaults to 4.
+                query (str): Task description or skill name. Always required;
+                    this is the default and preferred way to search.
+                limit (int, optional): Maximum number of candidates. Defaults to 5.
             '''
             return self.search_skill(query=query, limit=limit)
         return search_skill
 
-    def _build_discover_skill_tool(self):
-        @fc_register(host_file='NONE', tool_source='skill')
-        def discover_skill_by_field(field: str, value, limit: int = DEFAULT_SEARCH_LIMIT) -> dict:
-            '''Find available skills by an exact structured field and value.
-
-            Fields: field (domain such as writing), tags, aliases, keywords, name.
-            Use a string or an array of strings. Results contain candidate names and
-            descriptions; call get_skill for the chosen skill's full instructions.
-
-            Args:
-                field (str): Structured field name.
-                value (str | list[str]): Field value or values.
-                limit (int, optional): Maximum number of candidates. Defaults to 4.
-            '''
-            return self.discover_skill(field=field, value=value, limit=limit)
-        return discover_skill_by_field
-
     def _build_get_skill_tool(self):
         @fc_register(host_file='NONE', tool_source='skill')
         def get_skill(name: str, allow_large: bool = False) -> dict:
-            '''Get the full usage for a skill (SKILL.md).
+            '''Load SKILL.md and the declared resource manifest.
+
+            Catalog descriptions are routing metadata only. Call this before
+            executing a skill or reading its resources.
+            When the user names a skill, call this directly and never fall back
+            to search_skill. Resolution does not consume the search budget.
 
             Args:
-                name (str): Skill name.
+                name (str): Full skill key or unique skill name. Resolution is
+                    direct and never consumes the search_skill budget.
                 allow_large (bool, optional): Allow loading large SKILL.md. Defaults to False.
             '''
             return self.get_skill(name=name, allow_large=allow_large)
         return get_skill
 
-    def _build_read_reference_tool(self):
+    def _build_read_skill_resource_tool(self):
         @fc_register(host_file='NONE', tool_source='skill')
-        def read_reference(name: str, rel_path: str, **kwargs) -> dict:
-            '''Read a reference file within a skill directory.
+        def read_skill_resource(name: str, rel_path: str, **kwargs) -> dict:
+            '''Read a resource declared by a loaded skill.
+
+            The skill must already be loaded with get_skill. rel_path must appear
+            in that skill's resources manifest.
 
             Args:
-                name (str): Skill name.
-                rel_path (str): Relative file path inside the skill directory.
+                name (str): Skill key or unique skill name.
+                rel_path (str): Resource path copied from the loaded skill.
             '''
-            return self.read_reference(name=name, rel_path=rel_path, **kwargs)
-        return read_reference
+            return self._read_loaded_skill_resource(name=name, rel_path=rel_path, **kwargs)
+        return read_skill_resource
 
-    def _build_run_script_tool(self):
+    def _build_run_skill_script_tool(self):
         @fc_register(host_file='OPAQUE', exclusive=True, tool_source='skill')
-        def run_script(name: str, rel_path: str, args: Optional[List[str]] = None,
-                       cwd: Optional[str] = None) -> dict:
-            '''Run a script within a skill directory.
+        def run_skill_script(name: str, rel_path: str, args: Optional[List[str]] = None,
+                             cwd: Optional[str] = None) -> dict:
+            '''Run a script declared by a loaded skill.
+
+            The skill must already be loaded with get_skill. rel_path must appear
+            in that skill's resources manifest and stay under scripts/.
 
             Args:
-                name (str): Skill name.
-                rel_path (str): Relative script path inside the skill directory.
+                name (str): Skill key or unique skill name.
+                rel_path (str): Script path copied from the loaded skill.
                 args (list[str], optional): Script arguments.
                 cwd (str, optional): Working directory.
             '''
-            return self.run_script(name=name, rel_path=rel_path, args=args, cwd=cwd)
-        return run_script
+            return self._run_loaded_skill_script(name=name, rel_path=rel_path, args=args, cwd=cwd)
+        return run_skill_script
+
+    def _build_read_reference_tool(self):
+        return self._build_read_skill_resource_tool()
+
+    def _build_run_script_tool(self):
+        return self._build_run_skill_script_tool()
 
     def _format_skills_list(self, names: List[str], *, include_location: bool = True) -> str:
         lines = []
@@ -933,7 +1256,7 @@ class SkillManager(ModuleBase):
             info = self._skills_index.get(name)
             if not info:
                 continue
-            desc = (info.get('description', '') or '')[:1024]
+            desc = self._routing_description(info)
             if include_location:
                 lines.append(
                     f'- {name}: {desc} (source: {info.get("source", "file")}, '
@@ -945,6 +1268,106 @@ class SkillManager(ModuleBase):
 
     def _format_skills_locations(self) -> str:
         return '\n'.join(f'- {path}' for path in self._skills_dir)
+
+    def _routing_description(self, info: Dict[str, Any]) -> str:
+        meta = info.get('raw_meta') or {}
+        preferred = meta.get('when_to_use') or meta.get('when-to-use') or meta.get('trigger')
+        if preferred:
+            return str(preferred).strip()[:240]
+        description = str(info.get('description') or '')
+        return self._routing_description_text(description, info.get('name') or '')
+
+    @staticmethod
+    def _routing_description_text(description: str, fallback: str = '') -> str:
+        text = (description or '').strip()
+        if not text:
+            return str(fallback or '').strip()[:240]
+        parts = _INSTRUCTIONAL_SPLIT.split(text, maxsplit=1)
+        cut = parts[0].split('\n', 1)[0].strip(' ，,;；')
+        if len(parts) == 1 and len(cut) < 12:
+            cut = text.split('\n', 1)[0].strip()
+        return cut[:240]
+
+    def _collect_skill_resources(self, info: Dict[str, Any], content: str) -> List[str]:
+        resources: List[str] = []
+        seen = set()
+
+        def add(rel_path: str) -> None:
+            try:
+                normalized = self._normalize_skill_rel_path(rel_path)
+            except ValueError:
+                return
+            if normalized not in seen:
+                seen.add(normalized)
+                resources.append(normalized)
+
+        for folder in ('references', 'scripts'):
+            self._walk_skill_folder(info['path'], folder, add)
+        for match in re.findall(r'(?:references|scripts)/[A-Za-z0-9._/-]+', content or ''):
+            add(match.rstrip('.,);]}`"\''))
+        return resources
+
+    def _walk_skill_folder(self, base: str, folder: str, add) -> None:
+        stack = [(self._fs_join(base, folder), folder)]
+        while stack:
+            current, prefix = stack.pop()
+            for entry in self._fs_listdir(current):
+                name = ''
+                is_dir = False
+                if isinstance(entry, dict):
+                    name = str(entry.get('name') or '').rstrip('/')
+                    name = name.rsplit('/', 1)[-1]
+                    is_dir = bool(entry.get('type') == 'directory' or entry.get('isdir'))
+                else:
+                    name = str(entry).rstrip('/').rsplit('/', 1)[-1]
+                if not name or name in ('.', '..'):
+                    continue
+                rel = f'{prefix}/{name}'
+                if is_dir:
+                    stack.append((self._fs_join(current, name), rel))
+                    continue
+                add(rel)
+
+    def _loaded_skill_guard(self, name: str, rel_path: str) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+        info, error = self._get_visible_skill_info(name)
+        if error:
+            self._raise_skill_lookup_error(name, error)
+        if not info:
+            return None, {'status': 'error', 'error': 'Skill not found', 'retry': False}
+        loaded = self._loaded_skills.get(info['key'])
+        if not loaded:
+            return None, {'status': 'error', 'error': 'skill_not_loaded', 'retry': False}
+        try:
+            normalized = self._normalize_skill_rel_path(rel_path)
+        except ValueError as exc:
+            return None, {'status': 'error', 'error': str(exc), 'retry': False}
+        declared = set(loaded.get('resources') or [])
+        if normalized not in declared:
+            return None, {
+                'status': 'error',
+                'error': 'resource_not_declared',
+                'rel_path': normalized,
+                'retry': False,
+            }
+        return normalized, None
+
+    def _read_loaded_skill_resource(self, name: str, rel_path: str, **kwargs) -> Dict[str, Any]:
+        normalized, error = self._loaded_skill_guard(name, rel_path)
+        if error:
+            return error
+        return self.read_file(name=name, rel_path=normalized, **kwargs)
+
+    def _run_loaded_skill_script(
+        self,
+        name: str,
+        rel_path: str,
+        args: Optional[List[str]] = None,
+        cwd: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        normalized, error = self._loaded_skill_guard(name, rel_path)
+        if error:
+            return error
+        return self.run_script(name=name, rel_path=normalized, args=args, cwd=cwd)
 
 
 def inherit_skill_scope(
