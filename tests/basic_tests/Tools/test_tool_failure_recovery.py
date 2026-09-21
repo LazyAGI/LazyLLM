@@ -1,10 +1,11 @@
 import json
 from types import SimpleNamespace
-from typing import Dict, List, Literal, Optional
+from typing import Dict, Literal
 
 import pytest
 
 from lazyllm.tools.agent import ToolExecutionError
+from lazyllm.tools.agent.skill_manager import SkillManager
 from lazyllm.tools.agent.toolsManager import ToolManager, fc_register
 from lazyllm.tools.git import GitLab, LocalGit
 from lazyllm.tools.git.review.poster import _submit_review
@@ -89,15 +90,13 @@ def flexible_search(query: str, **kwargs):
     return {'query': query, **kwargs}
 
 
-def run_script(name: str, rel_path: str, args: Optional[List[str]] = None):
-    '''Execute a skill script.
+def run_script(args: str):
+    '''Return custom tool arguments unchanged.
 
     Args:
-        name (str): Skill name.
-        rel_path (str): Script path.
-        args (list[str], optional): Script arguments.
+        args (str): Custom tool arguments.
     '''
-    return {'name': name, 'rel_path': rel_path, 'args': args}
+    return args
 
 
 def translated_permission_failure(resource: str):
@@ -125,6 +124,14 @@ def _call(name, arguments):
         'type': 'function',
         'function': {'name': name, 'arguments': json.dumps(arguments)},
     }
+
+
+def _skill_run_script():
+    skill_manager = SkillManager.__new__(SkillManager)
+    skill_manager.run_script = lambda **kwargs: {
+        key: value for key, value in kwargs.items() if value is not None
+    }
+    return skill_manager._build_run_script_tool()
 
 
 def test_unknown_tool_precedes_argument_validation_and_suggests_visible_tool():
@@ -234,7 +241,7 @@ def test_repairable_json_is_parsed_before_schema_validation():
 
 
 def test_run_script_accepts_json_encoded_string_args():
-    manager = ToolManager([run_script])
+    manager = ToolManager([_skill_run_script()])
 
     result = manager(_call('run_script', {
         'name': 'valuation-analysis',
@@ -242,18 +249,15 @@ def test_run_script_accepts_json_encoded_string_args():
         'args': json.dumps(['--fcf', '250']),
     }))[0]
 
-    assert result == {
-        'ok': True,
-        'value': {
-            'name': 'valuation-analysis',
-            'rel_path': 'scripts/dcf_calculator.py',
-            'args': ['--fcf', '250'],
-        },
-    }
+    assert result == {'ok': True, 'value': {
+        'name': 'valuation-analysis',
+        'rel_path': 'scripts/dcf_calculator.py',
+        'args': ['--fcf', '250'],
+    }}
 
 
 def test_run_script_keeps_native_list_args():
-    manager = ToolManager([run_script])
+    manager = ToolManager([_skill_run_script()])
 
     result = manager(_call('run_script', {
         'name': 'valuation-analysis',
@@ -272,7 +276,7 @@ def test_run_script_keeps_native_list_args():
     ('[["--fcf"]]', 'non-string item at index 0'),
 ])
 def test_run_script_rejects_invalid_json_encoded_args(encoded_args, expected):
-    manager = ToolManager([run_script])
+    manager = ToolManager([_skill_run_script()])
 
     result = manager(_call('run_script', {
         'name': 'valuation-analysis',
@@ -283,6 +287,13 @@ def test_run_script_rejects_invalid_json_encoded_args(encoded_args, expected):
     assert result['ok'] is False
     assert result['value'].startswith('Invalid arguments: args: expected a JSON array of strings')
     assert expected in result['value']
+
+
+@pytest.mark.parametrize('args', ['--fcf 250', json.dumps(['--fcf', '250'])])
+def test_custom_run_script_string_args_are_not_normalized(args):
+    result = ToolManager([run_script])(_call('run_script', {'args': args}))[0]
+
+    assert result == {'ok': True, 'value': args}
 
 
 def test_fixed_schema_forbids_extra_but_kwargs_accepts_it():
