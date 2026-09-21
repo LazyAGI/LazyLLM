@@ -9,6 +9,8 @@ import io
 
 import requests
 
+from .limits import _bounded_request
+
 from lazyllm import thirdparty, globals
 from lazyllm.common import (
     AuthStrategy, BearerTokenStrategy, Credential, CredentialMixin, KeyAuthError,
@@ -320,7 +322,7 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
         raise NotImplementedError(f'{self.__class__.__name__}._upload_data is not implemented')
 
     def _http_execute(self, method: str, url: str, **kwargs) -> requests.Response:
-        resp = self._session.request(method, url, **kwargs)
+        resp = _bounded_request(self._session, method, url, **kwargs)
         if self._is_key_auth_error(resp):
             raise KeyAuthError(f'{resp.status_code} for {url}')
         if not resp.ok:

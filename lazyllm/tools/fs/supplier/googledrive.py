@@ -438,26 +438,49 @@ class GoogleDriveFS(LazyLLMFSBase):
             parsed = default
         return max(1, min(parsed, maximum))
 
-    def _iter_files(self, query: str, drive_id: str = '', max_items: int = 1000) -> Iterator[Dict[str, Any]]:
+    def list_page(self, folder_id: str = '', query: str = '', query_mode: str = 'name',
+                  drive_id: str = '', page_size: int = 100, page_token: str = '') -> Dict[str, Any]:
+        if query_mode not in {'name', 'full_text'}:
+            raise ValueError('query_mode must be name or full_text')
+        if isinstance(page_size, bool) or not isinstance(page_size, int) or not 1 <= page_size <= 1000:
+            raise ValueError('page_size must be between 1 and 1000')
+        for value in (folder_id, drive_id):
+            if value and not re.fullmatch(r'[A-Za-z0-9_-]+', value):
+                raise ValueError('Invalid Google Drive folder or drive ID')
+        terms = ['trashed = false']
+        if folder_id:
+            terms.append(f"'{self._escape_query_literal(folder_id)}' in parents")
+        if query := query.strip():
+            field = 'name' if query_mode == 'name' else 'fullText'
+            terms.append(f"{field} contains '{self._escape_query_literal(query)}'")
+        data = self._files_page(' and '.join(terms), drive_id, page_size, page_token)
+        return {
+            'items': [self._item_to_entry(item) for item in data.get('files', [])],
+            'next_page_token': data.get('nextPageToken') or '',
+            'incomplete_search': bool(data.get('incompleteSearch')),
+        }
+
+    def _files_page(self, query: str, drive_id: str, page_size: int, page_token: str) -> Dict[str, Any]:
         params: Dict[str, Any] = {
             'q': query,
             'spaces': 'drive',
             'fields': _LIST_FIELDS,
-            'pageSize': min(max_items, 1000),
+            'pageSize': page_size,
             'orderBy': 'modifiedTime desc',
             'includeItemsFromAllDrives': 'true',
             'supportsAllDrives': 'true',
         }
         if drive_id:
             params.update({'corpora': 'drive', 'driveId': drive_id})
+        if page_token:
+            params['pageToken'] = page_token
+        return self._get(f'{self._base_url}/files', params=params)
 
+    def _iter_files(self, query: str, drive_id: str = '', max_items: int = 1000) -> Iterator[Dict[str, Any]]:
         seen = 0
         page_token = ''
         while seen < max_items:
-            params['pageSize'] = min(max_items - seen, 1000)
-            if page_token:
-                params['pageToken'] = page_token
-            data = self._get(f'{self._base_url}/files', params=params)
+            data = self._files_page(query, drive_id, min(max_items - seen, 1000), page_token)
             if data.get('incompleteSearch'):
                 lazyllm.LOG.warning(
                     'Google Drive files.list returned incompleteSearch=true; '
