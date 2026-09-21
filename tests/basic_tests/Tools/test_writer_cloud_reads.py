@@ -121,6 +121,7 @@ def test_structured_cloud_loads_return_title_body_and_target(monkeypatch, tmp_pa
     if provider_name == 'feishu':
         locator = 'https://example.feishu.cn/docx/doc-1'
         fs.get_document_id.return_value = 'doc-1'
+        fs.get_document_metadata.return_value = {'title': '项目方案', 'revision_id': 1}
         fs.get_doc_blocks.return_value = [
             {'block_id': 'doc-1', 'block_type': 1, 'children': ['p-1'],
              'page': {'elements': [{'text_run': {'content': '项目方案'}}]}},

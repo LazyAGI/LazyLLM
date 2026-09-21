@@ -2,6 +2,7 @@
 from .base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile
 from .watchdog import CloudFsWatchdog
 from .client import FS, dynamic_fs_config
+from .limits import fs_read_limits, FSReadLimitError
 from .supplier.feishu import FeishuFS, FeishuWikiFS
 from .supplier.confluence import ConfluenceFS
 from .supplier.notion import NotionFS
@@ -21,6 +22,8 @@ __all__ = [
     'CloudFsWatchdog',
     'FS',
     'dynamic_fs_config',
+    'fs_read_limits',
+    'FSReadLimitError',
     'FeishuFS',
     'FeishuWikiFS',
     'ConfluenceFS',
