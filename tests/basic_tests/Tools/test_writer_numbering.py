@@ -121,6 +121,71 @@ def test_markdown_style_restart_and_unordered_heading_round_trip():
     assert dematerialize_markdown(materialized, numbering) == source
 
 
+def test_unordered_parent_preserves_ordered_child_hierarchy():
+    source = '\n'.join([
+        '# 标题',
+        '<a id="block-parent" numbering="mode=unordered"></a>',
+        '## 无序父标题',
+        '<a id="block-first"></a>',
+        '### 子标题一',
+        '<a id="block-second"></a>',
+        '### 子标题二',
+    ])
+
+    numbering = _numbering(source)
+
+    assert [
+        format_target_number(numbering[node_id])
+        for node_id in ('parent', 'first', 'second')
+    ] == ['', '1.1.', '1.2.']
+    materialized = _materialize(source)
+    assert '## 无序父标题' in materialized
+    assert '### 1.1. 子标题一' in materialized
+    assert '### 1.2. 子标题二' in materialized
+
+    document = WriterDocument(document_id='document', blocks=[
+        WriterBlock(
+            node_id='parent', type='heading', content='无序父标题',
+            numbering={'level': 1, 'mode': 'unordered'},
+        ),
+        WriterBlock(
+            node_id='first', type='heading', content='子标题一',
+            numbering={'level': 2},
+        ),
+        WriterBlock(
+            node_id='second', type='heading', content='子标题二',
+            numbering={'level': 2},
+        ),
+    ])
+    ir_numbering = compute_numbering(build_numbering_view_from_ir(document))
+
+    assert [block.content for block in materialize_ir(document, ir_numbering).blocks] == [
+        '无序父标题', '1.1. 子标题一', '1.2. 子标题二',
+    ]
+
+
+def test_unordered_parent_continues_previous_child_numbering():
+    document = WriterDocument(document_id='document', blocks=[
+        WriterBlock(node_id='chapter', type='heading', numbering={'level': 1}),
+        WriterBlock(node_id='first', type='heading', numbering={'level': 2}),
+        WriterBlock(node_id='second', type='heading', numbering={'level': 2}),
+        WriterBlock(
+            node_id='bridge', type='heading',
+            numbering={'level': 1, 'mode': 'unordered'},
+        ),
+        WriterBlock(node_id='third', type='heading', numbering={'level': 2}),
+        WriterBlock(node_id='fourth', type='heading', numbering={'level': 2}),
+        WriterBlock(node_id='fifth', type='heading', numbering={'level': 2}),
+    ])
+
+    numbering = compute_numbering(build_numbering_view_from_ir(document))
+
+    assert [
+        format_target_number(numbering[node_id])
+        for node_id in ('chapter', 'first', 'second', 'bridge', 'third', 'fourth', 'fifth')
+    ] == ['1.', '1.1.', '1.2.', '', '1.3.', '1.4.', '1.5.']
+
+
 def test_markdown_dematerialization_survives_new_editor_anchor_ids():
     base = '\n'.join([
         '# 标题',

@@ -488,19 +488,23 @@ def compute_numbering(view: NumberingView) -> NumberingMap:
             mode = target.mode or 'ordered'
             style = None if mode == 'unordered' else view.ordered_style
 
-            if level <= len(counters):
+            if mode == 'ordered' and level <= len(counters):
                 counters = counters[:level]
             if mode == 'ordered':
                 if target.restart:
-                    counters = counters[:level - 1] + [0]
-                    counters.extend([0] * (level - len(counters)))
+                    counters = counters[:level - 1]
+                    counters.extend([1] * (level - 1 - len(counters)))
+                    counters.append(0)
                 else:
-                    counters.extend([0] * (level - len(counters)))
+                    missing = level - len(counters)
+                    if missing:
+                        counters.extend([1] * (missing - 1))
+                        counters.append(0)
                 counters[-1] += 1
                 number_parts = tuple(counters)
-                previous_level = level
             else:
                 number_parts = ()
+            previous_level = level
         else:
             float_counters[target.kind] += 1
             number_parts = (float_counters[target.kind],)
