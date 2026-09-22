@@ -760,41 +760,48 @@ class SkillManager(ModuleBase):
         }
 
     @classmethod
+    def _remember_term(cls, terms: List[str], term: str, *, normalize: bool = False) -> None:
+        cleaned = cls._normalize_search_text(term) if normalize else term.strip()
+        if cleaned and cleaned not in _QUERY_STOP and cleaned not in terms:
+            terms.append(cleaned)
+
+    @classmethod
+    def _append_cjk_literals(cls, literals: List[str], run: str) -> None:
+        if not run or run in _QUERY_STOP:
+            return
+        if len(run) < 2:
+            cls._remember_term(literals, run)
+            return
+        for size in (2, 3):
+            if len(run) < size:
+                continue
+            for index in range(len(run) - size + 1):
+                cls._remember_term(literals, run[index:index + size])
+
+    @classmethod
+    def _literal_terms(cls, query: str) -> List[str]:
+        literals: List[str] = []
+        for token in _ASCII_TERM.findall(query):
+            if len(token) >= 2:
+                cls._remember_term(literals, token)
+        for run in _CJK_RUN.findall(query):
+            cls._append_cjk_literals(literals, run)
+        return literals
+
+    @classmethod
+    def _expansion_terms(cls, query: str) -> List[str]:
+        expansions: List[str] = []
+        for source, targets in _QUERY_EXPAND.items():
+            if source not in query:
+                continue
+            for target in targets:
+                cls._remember_term(expansions, target, normalize=True)
+        return expansions
+
+    @classmethod
     def _query_terms(cls, query: str) -> Tuple[List[str], List[str]]:
         q = cls._normalize_search_text(query)
-        literals: List[str] = []
-        expansions: List[str] = []
-
-        def add_literal(term: str) -> None:
-            cleaned = term.strip()
-            if cleaned and cleaned not in _QUERY_STOP and cleaned not in literals:
-                literals.append(cleaned)
-
-        def add_expansion(term: str) -> None:
-            cleaned = cls._normalize_search_text(term)
-            if cleaned and cleaned not in _QUERY_STOP and cleaned not in expansions:
-                expansions.append(cleaned)
-
-        for token in _ASCII_TERM.findall(q):
-            if len(token) < 2:
-                continue
-            add_literal(token)
-        for run in _CJK_RUN.findall(q):
-            if run in _QUERY_STOP:
-                continue
-            if len(run) >= 2:
-                for index in range(len(run) - 1):
-                    add_literal(run[index:index + 2])
-            if len(run) >= 3:
-                for index in range(len(run) - 2):
-                    add_literal(run[index:index + 3])
-            elif run:
-                add_literal(run)
-        for source, targets in _QUERY_EXPAND.items():
-            if source in q:
-                for target in targets:
-                    add_expansion(target)
-        return literals, expansions
+        return cls._literal_terms(q), cls._expansion_terms(q)
 
     @staticmethod
     def _term_in_text(term: str, text: str) -> bool:
