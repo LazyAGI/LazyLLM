@@ -488,6 +488,8 @@ locator kind per reference. Return valid JSON only.
         modify_plan: Any,
         context: Any,
         media_assets: Any = None,
+        *,
+        prompt: Optional[str] = None,
     ) -> dict:
         source_doc = self._unified_model(document, WriterDocument)
         plan = self._unified_model(modify_plan, ModifyPlan)
@@ -500,7 +502,7 @@ locator kind per reference. Return valid JSON only.
             meta={'source': 'generate_patch_set'},
         )
         if plan.instructions or plan.title_instruction:
-            prompt = GENERATE_PATCH_SET_PROMPT.format(
+            prompt = prompt if prompt is not None else GENERATE_PATCH_SET_PROMPT.format(
                 document_json=to_prompt_json(self._visible_document(source_doc)),
                 modify_plan_json=to_prompt_json(plan),
                 context_json=to_prompt_json(writing_context),
