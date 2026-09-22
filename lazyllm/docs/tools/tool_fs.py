@@ -47,6 +47,20 @@ Notion document link usage:
     - Do not use generic URL fetching first for private Notion pages; clearly report when the integration is not connected, unauthorized, or lacks access.'''
 
 # LazyLLMFSBase
+_add_fs_chinese('fs_read_limits', '''按执行上下文限制云端读取，默认总时限 20 秒、响应解压后累计 16 MiB、256 次 HTTP 请求。
+仅在 with 范围启用；退出恢复原上下文，其他 FS 调用不受影响。限制范围内响应流式计数、禁止重定向，单次连接/读取等待最多 5 秒。
+字节数/请求数超限抛 FSReadLimitError，时限超限抛 TimeoutError。不能强制中断 CPU 解析，硬取消由调用方管理。''')
+_add_fs_english('fs_read_limits', '''Context-local cloud read limits: 20 seconds, 16 MiB of decoded response bytes and 256 HTTP requests by default.
+Enabled only inside the with block; existing calls outside it are unchanged. Responses are counted while streaming, redirects rejected, and connect/read waits capped at five seconds.
+Raises FSReadLimitError for byte/request overflow and TimeoutError for deadline expiry. CPU parsing requires caller-owned hard cancellation.''')
+_add_fs_chinese('FSReadLimitError', '云端读取超过字节数/请求次数限制或遇到受限重定向。')
+_add_fs_english('FSReadLimitError', 'Cloud reads exceeded byte/request limits or encountered a restricted redirect.')
+_add_fs_chinese('GoogleDriveFS.list_page', '''查询一页文件/目录。folder_id 限定直接子项；query 可为空，query_mode 为 name 或 full_text；drive_id 限定共享盘。
+page_size 为 1–1000，page_token 传前页的 next_page_token。返回 items、next_page_token、incomplete_search；空页也可能有下一页。
+结果保留文件 ID、父目录、类型和原文链接。不代替用户授权校验，不改变现有 ls/search 返回。''')
+_add_fs_english('GoogleDriveFS.list_page', '''Fetch one files/folders page. folder_id limits direct children; query may be empty; query_mode is name or full_text; drive_id scopes a shared drive.
+page_size is 1–1000; page_token accepts the previous next_page_token. Returns items, next_page_token and incomplete_search; empty pages can have a continuation.
+Preserves IDs, parents, types and source URLs. Caller owns authorization. Existing ls/search contracts remain unchanged.''')
 _add_fs_chinese('LazyLLMFSBase', '''\
 云文件系统统一基类，继承 fsspec.AbstractFileSystem，借助 registry 注册各平台实现。混入 CredentialMixin 提供统一的 token 生命周期管理。
 子类需实现：_setup_auth、ls、info、_open、_download_range、_upload_data 等；可选实现 rm_file、mkdir。
