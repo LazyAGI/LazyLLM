@@ -167,6 +167,8 @@ class WriterPlanningTools(WriterToolBase):
         if not isinstance(document, WriterDocument):
             raise TypeError('Outline completion requires Markdown or WriterDocument.')
 
+        # Give the completion model final character budgets, not relative weights.
+        self._ensure_outline_fields(document, writing_task)
         prompt = COMPLETE_OUTLINE_INSTRUCTIONS_PROMPT.format(
             task_json=to_prompt_json(writing_task),
             context_json=to_prompt_json(writing_context),
@@ -179,14 +181,37 @@ class WriterPlanningTools(WriterToolBase):
             if block.type != 'heading' or candidate is None or candidate.type != 'heading' \
                     or candidate.content != block.content:
                 continue
-            if block.target_chars is None:
-                block.target_chars = candidate.target_chars
+            if candidate.outline_description.strip():
+                block.outline_description = ' '.join(candidate.outline_description.split())
             if not block.context_relations:
                 block.context_relations = candidate.context_relations
             if not block.subtasks:
-                block.subtasks = candidate.subtasks
+                block.subtasks = [item.model_copy(update={
+                    'status': 'pending', 'result_summary': '', 'retry_count': 0,
+                    'result_references': [], 'tools_used': [],
+                }) for item in candidate.subtasks]
+            else:
+                retained_ids = {item.subtask_id for item in candidate.subtasks}
+                # Completion may remove unnecessary, unstarted work, never execution history.
+                block.subtasks = [item for item in block.subtasks if (
+                    item.subtask_id in retained_ids or item.status != 'pending'
+                    or item.retry_count or item.result_summary or item.result_references or item.tools_used
+                )]
 
         self._ensure_outline_fields(document, writing_task)
+        for block in document.iter_blocks():
+            if block.type != 'heading':
+                continue
+            description = block.outline_description.strip()
+            # Keep fluent model prose, but never save a description without its allocated budget.
+            normalized = re.sub(r'(?<=\d)[,，](?=\d)', '', description)
+            if re.search(rf'(?<![\d.]){block.target_chars}\s*(?:字|characters?\b)', normalized, re.IGNORECASE):
+                continue
+            chinese = bool(re.search(r'[\u4e00-\u9fff]', description or block.content))
+            budget = f'（约{block.target_chars}字）' if chinese else f' (about {block.target_chars} characters)'
+            ending = description[-1:] if description.endswith(('。', '.', '!', '?', '！', '？')) else ''
+            body = description[:-1] if ending else description
+            block.outline_description = f'{body}{budget}{ending}'.strip()
         if is_markdown:
             completed = apply_markdown_outline_instructions(source, document)
             path = self._write_markdown_artifact('outline.md', completed)
@@ -954,7 +979,6 @@ class WriterPlanningTools(WriterToolBase):
                     'subtask_id': subtask.subtask_id
                     or f'{block.node_id}-subtask-{index}',
                     'node_id': block.node_id,
-                    'status': 'pending',
                 })
                 for index, subtask in enumerate(block.subtasks, start=1)
                 if subtask.question.strip()

@@ -280,6 +280,7 @@ def apply_markdown_outline_instructions(
             continue
         payload = {
             'node_id': block.node_id,
+            **({'outline_description': block.outline_description} if block.outline_description else {}),
             'target_chars': block.target_chars,
             'context_relations': [item.model_dump() for item in block.context_relations],
             'subtasks': [item.model_dump() for item in block.subtasks],
@@ -715,6 +716,9 @@ def parse_document_markdown(  # noqa: C901
         payload = outline_instructions.get(block.node_id)
         if block.type != 'heading' or not payload:
             continue
+        description = payload.get('outline_description')
+        if isinstance(description, str):
+            block.outline_description = ' '.join(description.split())
         target_chars = payload.get('target_chars')
         if isinstance(target_chars, int) and not isinstance(target_chars, bool) \
                 and target_chars > 0:
