@@ -486,6 +486,33 @@ def stat(path: str) -> dict:
             'size': info.st_size, 'mtime_ns': info.st_mtime_ns}
 
 
+def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
+             root: Optional[str] = None, **kwargs) -> dict:
+    '''Compatibility alias for chat workspace.list_dir.'''
+    if not recursive:
+        return ls(path=path, root=root)
+    _check_root(path, root)
+    base = _resolve_path(path)
+    entries = []
+    for current, dirnames, filenames in os.walk(base):
+        rel = os.path.relpath(current, base)
+        depth = 0 if rel == '.' else rel.count(os.sep) + 1
+        if depth >= max_depth:
+            dirnames[:] = []
+        for name in filenames:
+            entries.append(name if rel == '.' else os.path.join(rel, name))
+    return {'status': 'ok', 'path': base, 'entries': sorted(entries)}
+
+
+def write_file(path: str, content: str, mode: str = 'overwrite', encoding: str = 'utf-8',
+               root: Optional[str] = None, create_parents: bool = True, **kwargs) -> dict:
+    '''Compatibility alias for chat workspace write_file.'''
+    return write(
+        path=path, content=content, mode=mode, encoding=encoding,
+        root=root, create_parents=create_parents,
+    )
+
+
 class FileSystemToolkit(ToolGroup):
     '''Common host filesystem tools, available immediately with short names.'''
 
