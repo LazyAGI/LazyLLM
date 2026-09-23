@@ -1,7 +1,9 @@
+import functools
 import json
 
 import pytest
 
+import lazyllm
 from lazyllm import barrier, diverter, graph, ifs, loop, parallel, pipeline, switch, warp
 from lazyllm.tracing.semantics import SemanticType
 
@@ -156,6 +158,65 @@ def test_loop_tracing(exporter):
         'increment', 'stop_at_three', 'increment', 'stop_at_three', 'increment', 'stop_at_three']
     assert all(s.parent.span_id == loop_span.context.span_id for s in child_spans)
     assert loop_span.attributes.get('lazyllm.loop.actual_iterations') == 3
+
+
+class IsOne:
+    def __call__(self, value): return value == 1
+
+
+def test_switch_partial_and_callable_object_tracing(exporter):
+    def equals(target, value): return value == target
+
+    flow = switch(IsOne(), add_one, functools.partial(equals, 2), double)
+    assert flow(2) == 4
+
+    spans = exporter.get_finished_spans()
+    assert [s.name for s in spans] == ['IsOne', 'partial', 'double', 'Switch']
+    assert all(s.parent.span_id == spans[-1].context.span_id for s in spans[:-1])
+
+
+def test_switch_class_condition_tracing(exporter):
+    flow = switch(bool, add_one)
+    assert flow(1) == 2
+    assert flow(0) is None
+
+    names = [s.name for s in exporter.get_finished_spans()]
+    assert names == ['bool', 'add_one', 'Switch', 'bool', 'Switch']
+
+
+def test_switch_condition_attrs_match_config(exporter):
+    def is_1(value): return value == 1
+
+    flow = switch(is_1, add_one, 'x', double)
+    assert flow(1) == 2
+
+    switch_span = exporter.get_finished_spans()[-1]
+    conditions = json.loads(switch_span.attributes.get('lazyllm.entity.config.conditions'))
+    assert conditions == [str(is_1), 'x']
+    assert switch_span.attributes.get('lazyllm.matched.condition') == str(is_1)
+
+
+class Counter(lazyllm.ModuleBase):
+    def forward(self, value): return value + 1
+
+
+def test_loop_module_body_and_stop_condition_tracing(exporter):
+    counter = Counter()
+    flow = loop(counter, stop_condition=counter, count=3)
+    assert flow(0) == 1
+
+    names = [s.name for s in exporter.get_finished_spans()]
+    assert names == ['Counter', 'Counter', 'Loop']
+
+
+def test_loop_partial_stop_condition_tracing(exporter):
+    def at_least(target, value): return value >= target
+
+    flow = loop(add_one, stop_condition=functools.partial(at_least, 2), count=5)
+    assert flow(0) == 2
+
+    names = [s.name for s in exporter.get_finished_spans()]
+    assert names == ['add_one', 'partial', 'add_one', 'partial', 'Loop']
 
 
 def test_diverter_tracing(exporter):

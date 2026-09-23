@@ -196,7 +196,7 @@ Langfuse 实测结果：
 - 关键节点包括 `Pipeline`、`retriever`、`llm`、`<lambda>` 以及文档读取相关的 `TxtReader`
 - 其中 `llm` 的 observation type 为 `GENERATION`，模型名为 `SenseNova-V6-5-Pro`
 - `retriever` 的 observation type 为 `RETRIEVER`
-- 控制流 Trace 顺序为 `condition → branch → Switch/IFS` 以及 `item → stop_condition → Loop`；作为这些回调的普通函数会生成子 span
+- 控制流 Trace 顺序为 `condition → branch → Switch/IFS` 以及 `item → stop_condition → Loop`；作为这些回调的可调用对象（函数、`functools.partial`、带 `__call__` 的对象）会生成子 span，Module 仍只保留自身的一个 span
 
 页面中的字段和链路结构如何进一步阅读，可参考 `2.6 Langfuse 页面介绍`。
 

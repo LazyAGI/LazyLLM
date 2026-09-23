@@ -203,6 +203,11 @@ class TestFlow(object):
         assert lp(0) == 3
         assert stop_calls == [1, 2, 3]
 
+    def test_control_callback_class(self):
+        assert loop(lambda x: x + 1, stop_condition=bool, count=3)(0) == 1
+        assert switch(bool, lambda x: x + 1)(1) == 2
+        assert switch(bool, lambda x: x + 1)(0) is None
+
     def test_ifs(self, capfd):
 
         assert ifs(is_1, t3, t1)(1) == 1
