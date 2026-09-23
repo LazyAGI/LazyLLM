@@ -16,6 +16,7 @@ from lazyllm.tools.writer.utils import (
     ToolResult,
     load_artifact_json,
     save_artifact_json,
+    set_document_editable,
 )
 
 
@@ -99,6 +100,25 @@ def test_writer_document_iter_blocks_and_block_by_id_traverse_depth_first():
 
     assert [block.node_id for block in document.iter_blocks()] == ['section-1', 'block-1']
     assert document.block_by_id('block-1') is document.blocks[0].children[0]
+
+
+def test_set_document_editable_preserves_opaque_block_protection():
+    document = WriterDocument(
+        document_id='document-opaque',
+        stage='draft',
+        blocks=[
+            WriterBlock(node_id='paragraph', type='paragraph', editable=False),
+            WriterBlock(node_id='opaque', type='wechat_opaque', editable=True),
+        ],
+    )
+
+    editable = set_document_editable(document, stage='final')
+
+    assert editable.ui_editable is True
+    assert editable.stage == 'final'
+    assert editable.blocks[0].editable is True
+    assert editable.blocks[1].editable is False
+    assert all(block.stage == 'final' for block in editable.blocks)
 
 
 def test_artifact_envelope_fields():

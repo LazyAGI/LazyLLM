@@ -1399,6 +1399,12 @@ class WriterPlanningTools(WriterToolBase):
                             child.type for block in blocks for child in block.children
                         ],
                     },
+                    'source_images': [
+                        image.model_dump(exclude_defaults=True)
+                        for source_block in blocks
+                        for image in source_block.iter_blocks()
+                        if image.type == 'image'
+                    ],
                 }
                 for index, blocks in enumerate(grouped_blocks, start=1)
             ]
@@ -1486,6 +1492,11 @@ class WriterPlanningTools(WriterToolBase):
                     if str(section.get('content') or '').strip()
                 ),
                 'source_format': [section.get('format') or {} for section in selected_sections],
+                'source_images': [
+                    image
+                    for section in selected_sections
+                    for image in section.get('source_images') or []
+                ],
             })
             if representation == 'markdown':
                 instruction.meta['outline_heading_level'] = 2

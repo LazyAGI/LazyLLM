@@ -554,7 +554,8 @@ def _trace_context(old_ctx: LazyTraceContext, trace_config: Dict[str, Any]) -> L
         if trace_config.get(key) is not None:
             data[key] = trace_config[key]
     data['request_tags'] = trace_config.get('request_tags') or []
-    data['module_trace'] = trace_config.get('module_trace')
+    if 'module_trace' in trace_config:
+        data['module_trace'] = trace_config['module_trace']
     if 'debug_capture_payload' in trace_config:
         data['debug_capture_payload'] = trace_config['debug_capture_payload']
     data['enabled'] = True
@@ -650,8 +651,8 @@ def _wrap_generator_with_trace(result, stream_ctx: LazyTraceContext, stream_trac
 def _run_with_trace(func, args, kwargs, trace_config):
     old_ctx = get_trace_context()
     old_trace = _current_trace.get()
-    set_trace_context(_trace_context(old_ctx, trace_config))
-    span = _callable_span(func, args, kwargs, trace_config.get('module_trace'))
+    ctx = set_trace_context(_trace_context(old_ctx, trace_config))
+    span = _callable_span(func, args, kwargs, ctx.module_trace)
 
     try:
         result = func(*args, **kwargs)

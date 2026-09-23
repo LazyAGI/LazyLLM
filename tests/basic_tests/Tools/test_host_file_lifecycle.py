@@ -290,9 +290,10 @@ def test_skill_tools_have_explicit_capabilities(tmp_path):
     manager = ToolManager(SkillManager(dir=str(tmp_path)).get_skill_tools())
     declarations = {tool.name: tool.runtime_metadata.host_file_access for tool in manager.all_tools}
     assert declarations == {
+        'search_skill': HostFileAccess.NONE,
         'get_skill': HostFileAccess.NONE,
-        'read_reference': HostFileAccess.NONE,
-        'run_script': HostFileAccess.OPAQUE,
+        'read_skill_resource': HostFileAccess.NONE,
+        'run_skill_script': HostFileAccess.OPAQUE,
     }
 
 

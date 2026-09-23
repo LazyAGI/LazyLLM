@@ -51,6 +51,15 @@ class ModifyPlan(BaseModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
+class MarkdownModifyInstruction(ModifyInstruction):
+    target_scope: Literal['section', 'paragraph', 'fragment'] = 'fragment'
+    locator_text: Optional[str] = None
+
+
+class MarkdownModifyPlan(ModifyPlan):
+    instructions: List[MarkdownModifyInstruction] = Field(default_factory=list)
+
+
 class RevisionBlockContent(BaseModel):
     type: Optional[str] = None
     content: Optional[str] = None
@@ -148,6 +157,15 @@ class StringReplace(BaseModel):
         if self.old_string == self.new_string:
             raise ValueError('old_string and new_string must differ')
         return self
+
+
+class MarkdownRevisionContent(BaseModel):
+    new_string: str = Field(min_length=1)
+
+
+class MarkdownRevisionBatch(BaseModel):
+    contents: Dict[str, MarkdownRevisionContent] = Field(default_factory=dict)
+    replacements: Dict[str, List[StringReplace]] = Field(default_factory=dict)
 
 
 class StringReplaceSet(ArtifactModel):
