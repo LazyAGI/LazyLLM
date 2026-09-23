@@ -94,7 +94,8 @@ class FunctionCall(ModuleBase):
                  round_limit: Optional[int] = None,
                  history_compactor: Optional[Callable[..., Any]] = None,
                  runtime_observer: Optional[Callable[..., Any]] = None,
-                 model_context_provider: Optional[Callable[[], Optional[str]]] = None):
+                 model_context_provider: Optional[Callable[[], Optional[str]]] = None,
+                 before_model_request: Optional[Callable[[], None]] = None):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
@@ -113,6 +114,7 @@ class FunctionCall(ModuleBase):
         self._round_limit = round_limit
         self._runtime_observer = runtime_observer
         self._model_context_provider = model_context_provider
+        self._before_model_request = before_model_request
         prompt = _prompt or FC_PROMPT
         self._system_prompt = prompt
         self._prompter = ChatPrompter(
@@ -344,6 +346,15 @@ class FunctionCall(ModuleBase):
         return {'input': compacted_current}
 
     def _build_history(self, input: Union[str, dict, list]):
+        prepare = getattr(self, '_before_model_request', None)
+        if prepare is not None:
+            if not callable(prepare) or inspect.iscoroutinefunction(prepare):
+                raise TypeError('before_model_request must be a synchronous callable returning None')
+            result = prepare()
+            if inspect.iscoroutine(result):
+                result.close()
+            if result is not None:
+                raise TypeError('before_model_request must return None')
         self._get_current_tools(refresh=True)
         workspace = locals['_lazyllm_agent']['workspace']
         history_idx = len(workspace.setdefault('history', []))
@@ -377,10 +388,16 @@ class FunctionCall(ModuleBase):
             workspace=workspace,
             remaining_rounds=remaining_rounds,
         )
+        notices = self._consume_model_context()
         if compacted_prior:
             locals['chat_history'][self._llm._module_id] = compacted_prior
         else:
             locals['chat_history'].pop(self._llm._module_id, None)
+        if notices:
+            current = [{'role': 'user', 'content': current_input}, *notices]
+            self._validate_context(compacted_prior + current)
+            self._notify_history_ready(workspace, current_round, compacted_prior + current)
+            return {'input': current}
         self._validate_context(compacted_prior, current_input)
         self._notify_history_ready(workspace, current_round, compacted_prior)
         return input

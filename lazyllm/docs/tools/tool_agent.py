@@ -766,6 +766,8 @@ FunctionCall是单轮工具调用类。当LLM自身信息不足以回答用户�
 若不需工具调用，则直接返回LLM输出结果，输出为字符串类型。
 
 Args:
+    before_model_request (Optional[Callable[[], None]]): 工具快照、历史压缩及预算校验前的同步准备回调。
+        异常阻止本次请求，不增加轮次，不在上下文预览或强制总结时执行。拒绝异步回调和非 None 返回值。
     llm (ModuleBase): 使用的LLM实例，支持TrainableModule或OnlineChatModule。
     tools (List[Union[str, Callable]]): LLM可调用的工具名称或Callable对象列表。
     return_trace (Optional[bool]): 是否返回调用轨迹，默认为False。
@@ -781,12 +783,15 @@ If the LLM output requires tool calls, the tools are invoked and the combined re
 If no tool calls are needed, the LLM output is returned directly as a string.
 
 Args:
+    before_model_request (Optional[Callable[[], None]]): Synchronous host preparation before the tool snapshot,
+        history compaction and validation. Exceptions abort preparation. Does not create extra rounds or run during
+        context previews or forced summaries. Async callbacks and non-None return values are rejected.
     llm (ModuleBase): The LLM instance to use, which can be either a TrainableModule or OnlineChatModule.
     tools (List[Union[str, Callable]]): A list of tool names or callable objects that the LLM can use.
     return_trace (Optional[bool]): Whether to return the invocation trace, defaults to False.
     stream (Optional[bool]): Whether to enable streaming output, defaults to False.
     _prompt (Optional[str]): Custom prompt for function call, defaults to automatic selection based on llm type.
-    model_context_provider (Optional[Callable]): Returns one ephemeral internal context string after a tool batch. The
+    model_context_provider (Optional[Callable]): Returns one ephemeral internal context string for each normal model request. The
         string is appended after history compaction and is not stored in public conversation history.
 
 Note: Tools in `tools` must include a `__doc__` attribute and describe their purpose and parameters according to the [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings).
@@ -1202,6 +1207,8 @@ add_chinese_doc('ReactAgent', '''\
 ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
 
 Args:
+    before_model_request (Optional[Callable[[], None]]): 工具快照、历史压缩及预算校验前的同步准备回调。
+        异常阻止本次请求，不增加轮次，不在上下文预览或强制总结时执行。拒绝异步回调和非 None 返回值。
     llm: 大语言模型实例，用于生成推理和工具调用决策
     tools (List): 可用工具列表，每个元素支持以下几种形式：
 
@@ -1243,6 +1250,9 @@ add_english_doc('ReactAgent', '''\
 ReactAgent follows the `Thought->Action->Observation->Thought...->Finish` loop to solve user tasks step by step through LLM reasoning and tool calls, then delivers a final answer.
 
 Args:
+    before_model_request (Optional[Callable[[], None]]): Synchronous host preparation before the tool snapshot,
+        history compaction and validation. Exceptions abort preparation. Does not create extra rounds or run during
+        context previews or forced summaries. Async callbacks and non-None return values are rejected.
     llm: The large language model instance used for reasoning and tool-call decisions.
     tools (List): List of available tools. Each element can be one of the following:
 

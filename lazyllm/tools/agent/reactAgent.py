@@ -89,7 +89,8 @@ class ReactAgent(LazyLLMAgentBase):
                  prompt_skills: Optional[Iterable[str]] = None,
                  excluded_skills: Optional[Iterable[str]] = None,
                  skill_search: Optional[Callable] = None,
-                 skill_tool_mode: str = 'full'):
+                 skill_tool_mode: str = 'full',
+                 before_model_request: Optional[Callable[[], None]] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
                          desc=desc, workspace=workspace, sandbox=sandbox, fs=fs, skills_dir=skills_dir,
@@ -108,6 +109,7 @@ class ReactAgent(LazyLLMAgentBase):
         self._history_compactor = history_compactor
         self._runtime_observer = runtime_observer
         self._model_context_provider = model_context_provider
+        self._before_model_request = before_model_request
         self._extra_stop_condition = extra_stop_condition
         self._on_max_retries = on_max_retries
         self._stop_tools: set = set()
@@ -148,7 +150,8 @@ class ReactAgent(LazyLLMAgentBase):
                           stop_tools=list(self._stop_tools) if self._stop_tools else None,
                           round_limit=self._max_retries + 1,
                           runtime_observer=self._runtime_observer,
-                          model_context_provider=self._model_context_provider)
+                          model_context_provider=self._model_context_provider,
+                          before_model_request=getattr(self, '_before_model_request', None))
         agent = loop(
             fc,
             stop_condition=self._stop,

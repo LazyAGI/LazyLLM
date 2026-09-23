@@ -21,6 +21,13 @@ def tool_failure(
 class ToolExecutionError(HandledException):
     needs_approval = False
     missing_env = ()
+    blocker = None
+
+    @classmethod
+    def not_ready(cls, blocker: Dict[str, Any]) -> 'ToolExecutionError':
+        error = cls(str(blocker.get('message') or 'Tool configuration required.'))
+        error.blocker = dict(blocker)
+        return error
 
     @classmethod
     def approval_required(cls, message: str) -> 'ToolExecutionError':
@@ -59,6 +66,8 @@ def exception_failure(tool_name: str, error: Exception) -> Dict[str, Any]:
 
     typed_error = next((item for item in causes if isinstance(item, ToolExecutionError)), None)
     if typed_error is not None:
+        if typed_error.blocker is not None:
+            return {'ok': False, 'value': typed_error.blocker, 'needs_configuration': True}
         return tool_failure(
             str(typed_error) or type(typed_error).__name__,
             needs_approval=typed_error.needs_approval,
