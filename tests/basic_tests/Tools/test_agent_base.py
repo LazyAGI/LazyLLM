@@ -48,20 +48,30 @@ class TestLazyLLMAgentBase(object):
 
     def test_skills_only_add_skill_tools_when_builtin_tools_disabled(self, monkeypatch):
         monkeypatch.setattr(SkillManager, 'get_skill_tools', lambda self: [
+            self._build_search_skill_tool(),
             self._build_get_skill_tool(),
-            self._build_read_reference_tool(),
-            self._build_run_script_tool(),
+            self._build_read_skill_resource_tool(),
+            self._build_run_skill_script_tool(),
         ])
         agent = _DummyAgent(skills=['demo-skill'], enable_builtin_tools=False)
         assert agent._skill_manager is not None
         assert agent._builtin_tool_names == set()
-        assert agent._skill_tool_names == {'get_skill', 'read_reference', 'run_script'}
+        assert agent._skill_tool_names == {
+            'search_skill', 'get_skill', 'read_skill_resource', 'run_skill_script',
+        }
         assert all(not (isinstance(tool, str) and tool.startswith('builtin_tools.')) for tool in agent._tools)
         assert all(
             tool.execute_in_sandbox is False
             for tool in agent._tools_manager.all_tools
             if tool.name in agent._skill_tool_names
         )
+
+    def test_discovery_mode_exposes_search_and_get_only(self, tmp_path):
+        agent = _DummyAgent(
+            skills=True, enable_builtin_tools=False, skills_dir=str(tmp_path),
+            skill_tool_mode='discovery', prompt_skills=[],
+        )
+        assert agent._skill_tool_names == {'search_skill', 'get_skill'}
 
     def test_agent_sandbox_auto_creates_sandbox(self, monkeypatch):
         sentinel = object()
@@ -86,9 +96,11 @@ class TestLazyLLMAgentBase(object):
             enable_builtin_tools=False,
         )
 
+        loaded = agent._skill_manager.get_skill('demo-skill')
+        assert 'scripts/check.py' in loaded['resources']
         call = {
             'function': {
-                'name': 'run_script',
+                'name': 'run_skill_script',
                 'arguments': json.dumps({
                     'name': 'demo-skill',
                     'rel_path': 'scripts/check.py',
