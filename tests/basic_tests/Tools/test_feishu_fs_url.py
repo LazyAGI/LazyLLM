@@ -388,6 +388,9 @@ class TestFeishuWikiOnlineSearch(unittest.TestCase):
         fs = object.__new__(FeishuWikiFS)
         fs._space_id = space_id
         fs._base_url = 'https://open.feishu.cn/open-apis'
+        from lazyllm.common import Credential
+        fs._credential = Credential(kind='dynamic', secret_key={})
+        fs.ensure_token = MagicMock()
         return fs
 
     def test_search_treats_direct_dynamic_space_as_configured_space(self):
@@ -405,14 +408,14 @@ class TestFeishuWikiOnlineSearch(unittest.TestCase):
 
         with patch('lazyllm.tools.fs.supplier.feishu.lazyllm_globals') as mock_globals:
             mock_globals.config = {'feishu_wiki_space_id': 'wikcnFromGlobals'}
-            results = fs.search('Project')
+            results = fs.search('Project', source_type='wiki')
 
-        self.assertEqual(results[0]['title'], 'Project Plan')
+        self.assertEqual(results['results'][0]['title'], 'Project Plan')
         url = fs._post.call_args[0][0]
-        self.assertTrue(url.endswith('/wiki/v2/nodes/search'))
+        self.assertTrue(url.endswith('/wiki/v1/nodes/search'))
         self.assertEqual(fs._post.call_args.kwargs['json']['space_id'], 'wikcnFromGlobals')
 
-    def test_search_without_space_uses_official_all_wiki_endpoint(self):
+    def test_search_without_space_uses_combined_endpoint(self):
         fs = self._make_wiki_fs('')
         fs._post = MagicMock(return_value={'data': {'items': []}})
 
@@ -420,8 +423,10 @@ class TestFeishuWikiOnlineSearch(unittest.TestCase):
             mock_globals.config = {'feishu_wiki_space_id': None}
             fs.search(['Project', 'Plan'])
 
-        self.assertEqual(fs._post.call_args.kwargs['json'], {'query': 'Project Plan'})
-        self.assertEqual(fs._post.call_args.kwargs['params']['page_size'], 20)
+        self.assertEqual(fs._post.call_args.kwargs['json'], {
+            'query': 'Project Plan', 'page_size': 20, 'doc_filter': {}, 'wiki_filter': {},
+        })
+        self.assertTrue(fs._post.call_args.args[0].endswith('/search/v2/doc_wiki/search'))
 
     def test_search_treats_null_data_as_empty_results(self):
         fs = self._make_wiki_fs('')
@@ -431,7 +436,53 @@ class TestFeishuWikiOnlineSearch(unittest.TestCase):
             mock_globals.config = {'feishu_wiki_space_id': None}
             results = fs.search('Project')
 
-        self.assertEqual(results, [])
+        self.assertEqual(results['results'], [])
+        self.assertFalse(results['has_more'])
+
+    def test_source_filters_and_pagination(self):
+        for source_type, keys in [('all', {'doc_filter', 'wiki_filter'}),
+                                  ('document', {'doc_filter'}), ('wiki', {'wiki_filter'})]:
+            with self.subTest(source_type=source_type):
+                fs = self._make_wiki_fs('')
+                hits = [{'result_meta': {'url': 'https://example.feishu.cn/docx/token', 'token': 'token'}}]
+                fs._post = MagicMock(return_value={'data': {
+                    'res_units': hits, 'has_more': True, 'page_token': 'next',
+                }})
+                with patch('lazyllm.tools.fs.supplier.feishu.lazyllm_globals') as globals_mock:
+                    globals_mock.config = {'feishu_wiki_space_id': None}
+                    result = fs.search('plan', source_type=source_type, page_token='previous')
+                payload = fs._post.call_args.kwargs['json']
+                self.assertEqual({k for k in payload if k.endswith('_filter')}, keys)
+                self.assertEqual(payload['page_token'], 'previous')
+                self.assertEqual(result['results'], hits)
+                self.assertEqual(result['page_token'], 'next')
+                self.assertTrue(result['has_more'])
+
+    def test_all_ignores_configured_space_and_explicit_scope_narrows(self):
+        fs = self._make_wiki_fs('configured')
+        fs._post = MagicMock(return_value={'data': {'items': [{'node_id': 'node', 'url': 'url'}]}})
+        fs.search('plan')
+        self.assertTrue(fs._post.call_args.args[0].endswith('/search/v2/doc_wiki/search'))
+        result = fs.search('plan', space_id='explicit', node_id='parent', page_token='next')
+        self.assertEqual(result['source_type'], 'wiki')
+        self.assertEqual(result['scope'], {'space_id': 'explicit', 'node_id': 'parent'})
+        self.assertEqual(result['results'][0]['node_token'], 'node')
+        self.assertEqual(fs._post.call_args.kwargs['params'], {'page_size': 20, 'page_token': 'next'})
+
+    def test_invalid_scope_and_provider_failure_are_not_empty_success(self):
+        fs = self._make_wiki_fs('configured')
+        fs._post = MagicMock(return_value={'code': 999, 'msg': 'denied'})
+        for options in ({'source_type': 'drive'}, {'source_type': 'document', 'space_id': 'space'},
+                        {'node_id': 'node'}, {'page_size': 21}, {'page_size': True}):
+            with self.assertRaises(ValueError):
+                fs.search('plan', **options)
+        fs._post.assert_not_called()
+        with self.assertRaisesRegex(RuntimeError, '999'):
+            fs.search('plan')
+        from lazyllm.common import Credential
+        fs._credential = Credential(kind='app_credentials', secret_key={})
+        with self.assertRaisesRegex(ValueError, 'OAuth'):
+            fs.search('plan')
 
     def test_find_uses_explicit_space_for_tree_listing(self):
         fs = self._make_wiki_fs('')
@@ -529,6 +580,17 @@ class TestFeishuToolRegistration(unittest.TestCase):
         init_session()
         lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
         load_fs_docs_only(FeishuWikiFS.search)
+
+    def test_search_schema_is_shared_by_drive_and_wiki_suppliers(self):
+        for space_id, name in [('', 'FeishuFS'), ('dynamic', 'FeishuWikiFS')]:
+            fs = FeishuFS(space_id=space_id, dynamic_auth=True)
+            manager = ToolManager([(fs, lambda _instance: 'user-token')])
+            manager._tool_call[f'get_{name}_methods']({})
+            descriptions = {item['function']['name']: item['function'] for item in manager.tools_description}
+            schema = descriptions[f'{name}_search']['parameters']['properties']
+            self.assertIn('source_type', schema)
+            self.assertIn('page_token', schema)
+            self.assertFalse(any(key.endswith('_search_documents') for key in descriptions))
 
     def test_document_flow_tools_are_registered(self):
         fs = FeishuFS(space_id='dynamic', dynamic_auth=True)
