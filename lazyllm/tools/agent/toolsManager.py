@@ -1050,7 +1050,7 @@ class ToolManager(ModuleBase):
         if not entry:
             LOG.error(f'cannot find tool named [{tool_name}]')
             return None, None
-        if tool_name == 'run_script' and self._is_skill_run_script_tool(entry):
+        if tool_name in ('run_script', 'run_skill_script') and self._is_skill_run_script_tool(entry):
             tool_arguments, normalization_failure = self._normalize_run_script_args(tool_arguments)
             if normalization_failure is not None:
                 return None, normalization_failure
