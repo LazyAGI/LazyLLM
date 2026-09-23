@@ -205,7 +205,7 @@ class DocumentProcessor(ModuleBase):
 
         def _is_callback_due(self, finished_task: Dict[str, Any]) -> bool:
             finished_at = self._normalize_queue_datetime(finished_task.get('finished_at'))
-            return finished_at is None or finished_at <= datetime.now()
+            return finished_at is None or finished_at <= datetime.now(finished_at.tzinfo)
 
         @staticmethod
         def _load_task_context(finished_task: Dict[str, Any]) -> Dict[str, Any]:
@@ -875,6 +875,7 @@ class DocumentProcessor(ModuleBase):
                 limit=limit,
                 return_total=True,
                 sort_by_number=True,
+                include_embeddings=False,
             )
             return {
                 'items': [self._format_chunk_item(segment) for segment in segments],

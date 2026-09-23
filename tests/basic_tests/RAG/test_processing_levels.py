@@ -7,7 +7,7 @@ from lazyllm.tools.rag.doc_service.base import ReparseRequest, UploadRequest, Ad
 from lazyllm.tools.rag.parsing_service.base import AddDocRequest, FileInfo
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 from lazyllm.tools.rag.parsing_service.impl import _Processor
-from lazyllm.tools.rag.store import LAZY_ROOT_NAME, MapStore
+from lazyllm.tools.rag.store import LAZY_ROOT_NAME, MapStore, HybridStore
 from lazyllm.tools.rag.store.document_store import _DocumentStore
 
 
@@ -212,6 +212,51 @@ def test_embedding_failure_keeps_segments_and_successful_vectors():
     assert calls.count('bad') == 2
     completed = {node.uid: node for node in processor.store.get_nodes(group='chunks')}
     assert completed['bad'].embedding['dense'] == [1.0, 2.0]
+
+
+@pytest.mark.parametrize('fail_embedding', [False, True])
+def test_hybrid_embedding_does_not_rewrite_durable_segments(fail_embedding):
+    segments, vectors = MapStore(), MapStore()
+
+    def embed(text):
+        if fail_embedding and text == 'bad':
+            raise ValueError('cannot embed')
+        return [1.0, 2.0]
+
+    store = _DocumentStore(store=HybridStore(segments, vectors), embed={'dense': embed},
+                           group_embed_keys={'chunks': {'dense'}})
+    store.activate_group('chunks')
+    nodes = [DocNode(uid=text, text=text, group='chunks',
+                     global_metadata={RAG_DOC_ID: 'doc-1', RAG_KB_ID: 'kb-1'}) for text in ('good', 'bad')]
+    with patch.object(segments, 'upsert', wraps=segments.upsert) as writes:
+        if fail_embedding:
+            with pytest.raises(ValueError, match='cannot embed'):
+                store.update_nodes(nodes)
+        else:
+            store.update_nodes(nodes)
+        assert writes.call_count == 1
+    stored = {node.uid: node for node in store.get_nodes(group='chunks')}
+    assert set(stored) == {'good', 'bad'}
+    assert stored['good'].embedding['dense'] == [1.0, 2.0]
+    assert ('dense' in stored['bad'].embedding) is not fail_embedding
+
+
+def test_hybrid_vector_write_failure_keeps_segments_and_copy_still_writes_both():
+    segments, vectors = MapStore(), MapStore()
+    store = _DocumentStore(store=HybridStore(segments, vectors), embed={'dense': lambda text: [1.0, 2.0]},
+                           group_embed_keys={'chunks': {'dense'}})
+    store.activate_group('chunks')
+    node = DocNode(uid='node', text='text', group='chunks',
+                   global_metadata={RAG_DOC_ID: 'doc-1', RAG_KB_ID: 'kb-1'})
+    with patch.object(vectors, 'upsert', return_value=False):
+        with pytest.raises(RuntimeError, match='Failed to upsert segments'):
+            store.update_nodes([node])
+    assert store.get_nodes(group='chunks')[0].text == 'text'
+    with patch.object(segments, 'upsert', wraps=segments.upsert) as segment_writes:
+        with patch.object(vectors, 'upsert', wraps=vectors.upsert) as vector_writes:
+            store.update_nodes([node], copy=True)
+    assert segment_writes.call_count == vector_writes.call_count == 1
+    assert store.get_nodes(group='chunks')[0].embedding['dense'] == [1.0, 2.0]
 
 
 def test_failed_parent_branch_is_skipped_but_successful_branch_reaches_children():

@@ -217,9 +217,12 @@ class _DocumentStore(object):
     def is_group_empty(self, group: str) -> bool:
         return not self.seg_impl.get(self._gen_collection_name(group), {}, limit=10)
 
-    def _upsert_segments(self, group: str, segments: List[dict]) -> None:
+    def _upsert_segments(self, group: str, segments: List[dict], vectors_only: bool = False) -> None:
         collection_name = self._gen_collection_name(group)
-        if not self.vector_initialized_impl.upsert(collection_name, segments):
+        store = self.vector_initialized_impl
+        if vectors_only and isinstance(store, HybridStore):
+            store = store.vector_store
+        if not store.upsert(collection_name, segments):
             raise RuntimeError(f'[_DocumentStore] Failed to upsert segments for group {group}')
 
     def _upsert_segment_data(self, group: str, segments: List[dict]) -> None:
@@ -254,6 +257,7 @@ class _DocumentStore(object):
                 for i in range(0, len(segments), INSERT_BATCH_SIZE):
                     upsert = self._upsert_segments if copy else self._upsert_segment_data
                     upsert(group, segments[i:i + INSERT_BATCH_SIZE])
+            LOG.info(f'[BENCHMARK] phase=segment_store elapsed={time.time() - _t_store:.3f}s nodes={len(nodes)}')
             embedding_error = None
             if self._embed and self.vector_initialized_impl.need_embedding and not copy and nodes_to_embed:
                 _t_emb = time.time()
@@ -261,6 +265,9 @@ class _DocumentStore(object):
                     parallel_do_embedding(self._embed, [], nodes_to_embed, self._group_embed_keys)
                 except Exception as exc:
                     embedding_error = exc
+                LOG.info(f'[BENCHMARK] phase=embed elapsed={time.time() - _t_emb:.3f}s '
+                         f'nodes={len(nodes_to_embed)}')
+                _t_vector = time.time()
                 embedded_segments = defaultdict(list)
                 for node in nodes_to_embed:
                     keys = self._group_embed_keys.get(node._group) if self._group_embed_keys else self._embed.keys()
@@ -270,9 +277,10 @@ class _DocumentStore(object):
                         embedded_segments[node._group].append(self._serialize_node(node))
                 for group, segments in embedded_segments.items():
                     for i in range(0, len(segments), INSERT_BATCH_SIZE):
-                        self._upsert_segments(group, segments[i:i + INSERT_BATCH_SIZE])
-                LOG.info(f'[BENCHMARK] phase=embed elapsed={time.time() - _t_emb:.3f}s '
-                         f'nodes={len(nodes_to_embed)}')
+                        # Text and FTS were persisted before the model call.
+                        self._upsert_segments(group, segments[i:i + INSERT_BATCH_SIZE], vectors_only=True)
+                LOG.info(f'[BENCHMARK] phase=vector_store elapsed={time.time() - _t_vector:.3f}s '
+                         f'nodes={sum(len(segments) for segments in embedded_segments.values())}')
             # update indices
             for index in self._indices.values():
                 index.update([node for node in nodes if not node.is_null_node])
@@ -350,7 +358,8 @@ class _DocumentStore(object):
                      group: Optional[str] = None, kb_id: Optional[str] = None,
                      limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
                      numbers: Optional[Set] = None, sort_by_number: bool = False,
-                     include_null: bool = False, **kwargs) -> Union[List[dict], Tuple[List[dict], int]]:
+                     include_null: bool = False, include_embeddings: bool = True,
+                     **kwargs) -> Union[List[dict], Tuple[List[dict], int]]:
         # get a set of segments by uids
         # get the segments of the whole file -- doc ids only
         # get the segments of a certain group for one file -- doc ids and group (kb_id is optional)
@@ -361,8 +370,11 @@ class _DocumentStore(object):
             limit, offset = self._normalize_pagination(limit, offset)
             criteria = self._build_get_criteria(uids, doc_ids, kb_id, numbers, kwargs.get('parent'))
             groups = self._resolve_groups(group)
+            store = self.vector_initialized_impl if include_embeddings else self.seg_impl
+            if not include_embeddings and isinstance(store, HybridStore):
+                store = store.segment_store
             if self._can_use_native_segment_pagination(groups, sort_by_number):
-                result = self.seg_impl.get(
+                result = store.get(
                     self._gen_collection_name(groups[0]),
                     criteria,
                     limit=limit,
@@ -387,7 +399,7 @@ class _DocumentStore(object):
                 if not self.is_group_active(group):
                     LOG.warning(f'[_DocumentStore] Group {group} is not active, skip')
                     continue
-                segments.extend(self.seg_impl.get(self._gen_collection_name(group), criteria, **kwargs))
+                segments.extend(store.get(self._gen_collection_name(group), criteria, **kwargs))
             if not include_null:
                 segments = [segment for segment in segments
                             if not segment.get('meta', {}).get('_lazyllm_null_node')]

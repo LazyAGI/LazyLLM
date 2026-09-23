@@ -390,7 +390,10 @@ class _Processor:
                         uids=[node.uid for node in ref_nodes], group=ref_path[-1], kb_id=kb_id)
                     if len({node.uid for node in stored_refs}) != len({node.uid for node in ref_nodes}):
                         continue
+                transform_start = time.perf_counter()
                 children = transform.batch_forward([parent], group_name, ref_path=ref_path)
+                LOG.info(f'[BENCHMARK] phase=transform group={group_name} nodes={len(children)} '
+                         f'elapsed={time.perf_counter() - transform_start:.3f}s')
                 if not children:
                     digest = hashlib.sha1(
                         f'{kb_id}:{parent.uid}:{group_name}:{signature}:null'.encode()).hexdigest()

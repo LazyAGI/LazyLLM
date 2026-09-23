@@ -98,8 +98,12 @@ class SQLiteStore(LazyLLMStoreBase):
                 for i in range(0, len(data), INSERT_BATCH_SIZE):
                     batch = data[i:i + INSERT_BATCH_SIZE]
                     cur.executemany(sql, [self._serialize_row(item) for item in batch])
-                    cur.executemany(f'DELETE FROM "{collection_name}_fts" WHERE uid = ?',
-                                    [(item['uid'],) for item in batch])
+                    # FTS uid is UNINDEXED: one delete per node scans the whole
+                    # collection repeatedly. Bound the scans and SQL parameters.
+                    for j in range(0, len(batch), self._DELETE_CHUNK):
+                        uids = [item['uid'] for item in batch[j:j + self._DELETE_CHUNK]]
+                        ph = ','.join('?' for _ in uids)
+                        cur.execute(f'DELETE FROM "{collection_name}_fts" WHERE uid IN ({ph})', uids)
                     cur.executemany(f'INSERT INTO "{collection_name}_fts"(uid, content) VALUES (?, ?)',
                                     [(item['uid'], self._fts_content(item)) for item in batch])
                 conn.commit()
