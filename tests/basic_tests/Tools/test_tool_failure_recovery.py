@@ -321,6 +321,7 @@ def test_run_skill_script_rejects_invalid_json_encoded_args(tmp_path, encoded_ar
     assert result['ok'] is False
     assert result['value'].startswith('Invalid arguments: args: expected a JSON array of strings')
     assert expected in result['value']
+    assert 'Example: {"args":["--query","test"]}.' in result['value']
     assert calls == []
 
 

@@ -1013,6 +1013,14 @@ class ToolManager(ModuleBase):
             and (value_schema.get('items') or {}).get('type') == 'string'
 
     @staticmethod
+    def _run_script_args_failure(received: str):
+        message = (
+            'Invalid arguments: args: expected a JSON array of strings, '
+            f'received {received}.'
+        )
+        return tool_failure(message + ' Example: {"args":["--query","test"]}.')
+
+    @staticmethod
     def _normalize_run_script_args(tool_arguments: Dict[str, Any]):
         if 'args' not in tool_arguments or not isinstance(tool_arguments['args'], str):
             return tool_arguments, None
@@ -1020,26 +1028,17 @@ class ToolManager(ModuleBase):
         try:
             parsed_args = std_json.loads(tool_arguments['args'])
         except (TypeError, ValueError):
-            return None, tool_failure(
-                'Invalid arguments: args: expected a JSON array of strings, '
-                'received an invalid JSON string.'
-            )
+            return None, ToolManager._run_script_args_failure('an invalid JSON string')
 
         if not isinstance(parsed_args, list):
-            return None, tool_failure(
-                'Invalid arguments: args: expected a JSON array of strings, '
-                f'received {type(parsed_args).__name__}.'
-            )
+            return None, ToolManager._run_script_args_failure(type(parsed_args).__name__)
 
         invalid_index = next(
             (index for index, item in enumerate(parsed_args) if not isinstance(item, str)),
             None,
         )
         if invalid_index is not None:
-            return None, tool_failure(
-                'Invalid arguments: args: expected a JSON array of strings, '
-                f'received a non-string item at index {invalid_index}.'
-            )
+            return None, ToolManager._run_script_args_failure(f'a non-string item at index {invalid_index}')
 
         normalized = dict(tool_arguments)
         normalized['args'] = parsed_args
