@@ -717,7 +717,8 @@ class SkillManager(ModuleBase):
                 temp_dir.cleanup()
 
     def read_reference(self, name: str, rel_path: str, **kwargs) -> Dict[str, str]:
-        return self.read_file(name=name, rel_path=rel_path, **kwargs)
+        result = self.read_file(name=name, rel_path=rel_path, **kwargs)
+        return {**result, 'name': name, 'rel_path': self._normalize_skill_rel_path(rel_path)}
 
     def get_skill_tools(self) -> List:
         return [self._build_get_skill_tool(), self._build_read_reference_tool(), self._build_run_script_tool()]
@@ -726,9 +727,7 @@ class SkillManager(ModuleBase):
         def get_skill(name: str, allow_large: bool = False) -> dict:
             '''Get the full usage for a skill (SKILL.md).
 
-            After a successful load the runtime pins the skill as AUTHORITATIVE
-            context. The tool result is a locator (name/path/hash), not a
-            compactable body. Follow the pinned skill, not a head/tail excerpt.
+            Returns the skill content and source path.
 
             Args:
                 name (str): Skill name.
@@ -741,9 +740,7 @@ class SkillManager(ModuleBase):
         def read_reference(name: str, rel_path: str, **kwargs) -> dict:
             '''Read a reference file within a skill directory.
 
-            The tool result is a file locator (name/path/hash). Read further
-            ranges from that path; do not expect the full body to stay in
-            compacted history.
+            Returns the reference content and source location.
 
             Args:
                 name (str): Skill name.

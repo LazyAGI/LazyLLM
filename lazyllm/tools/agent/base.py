@@ -83,15 +83,6 @@ def strip_tool_observations(history: List[Dict[str, Any]]) -> List[Dict[str, Any
 
 def _model_facing_prefix(system_prompt: str, tools_manager: Any, skill_manager: Any = None) -> Dict[str, Any]:
     skills_prompt = skill_manager.build_prompt() if skill_manager else ''
-    pinned = ''
-    try:
-        cfg = lazyllm.globals.get('agentic_config') or {}
-        if isinstance(cfg, dict):
-            pinned = str(cfg.get('pinned_skill_prompt') or '').strip()
-    except Exception:
-        pinned = ''
-    if pinned:
-        system_prompt = f'{system_prompt}\n\n{pinned}' if str(system_prompt or '').strip() else pinned
     return {
         'system_prompt': system_prompt,
         'tool_definitions': tools_manager.tools_description,

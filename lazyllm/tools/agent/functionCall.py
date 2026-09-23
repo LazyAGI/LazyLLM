@@ -3,6 +3,7 @@ from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import LOG, globals as lazyllm_globals, pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable, Optional
+from .history import describe_tool_turns
 from .base import (
     LazyLLMAgentBase,
     TOOL_OBSERVATION_KEY,
@@ -207,6 +208,7 @@ class FunctionCall(ModuleBase):
             'prefix': prefix,
             'current_input': current_input,
             'current_round_messages': current,
+            'tool_turns': describe_tool_turns(prior_history, current),
         }
         if self._model_context_provider is not None:
             kwargs['reserved_runtime_context_tokens'] = _MODEL_CONTEXT_RESERVED_TOKENS
@@ -224,6 +226,8 @@ class FunctionCall(ModuleBase):
                 accepts_kwargs or 'remaining_rounds' in signature.parameters
             ):
                 kwargs['remaining_rounds'] = remaining_rounds
+            if not accepts_kwargs and 'tool_turns' not in signature.parameters:
+                kwargs.pop('tool_turns', None)
             if not accepts_kwargs and 'current_round_messages' not in signature.parameters:
                 kwargs.pop('current_round_messages', None)
             if not accepts_kwargs and 'current_input' not in signature.parameters:

@@ -3058,3 +3058,34 @@ add_toolsmgr_example('ToolGroupWrapper.get_activation_path', '''\
 >>> wrapper.get_activation_path('other')
 set()
 ''')
+
+add_agent_chinese_doc('ToolCallTurn', '''\
+完整工具调用轮次的不可变范围，由 describe_tool_turns 生成。
+start（包含）、stop（不包含）及 result_indexes 均索引 prior_history + current_round_messages。
+current=True 表示该轮至少一条结果位于 current_round_messages；即使调用或其他结果位于 prior_history，
+压缩器也必须保护整轮，不可删除调用或结果。result_indexes 可用于将正文替换为可恢复的引用。
+''')
+
+add_agent_english_doc('ToolCallTurn', '''\
+Immutable complete tool-call range produced by describe_tool_turns.
+start (inclusive), stop (exclusive), and result_indexes index prior_history + current_round_messages.
+current=True means at least one result belongs to current_round_messages. Protect the entire turn from deletion,
+even when its call or other results belong to prior_history. Result bodies may be replaced with recoverable references.
+''')
+
+add_agent_chinese_doc('describe_tool_turns', '''\
+识别 prior + current 中完整、连续且 ID 一一匹配的工具调用/结果轮次，返回 ToolCallTurn 元组。
+重复/缺失 ID、被其他消息打断或未完成的轮次不返回，不能作为可删除单元。
+函数不修改消息。独立压缩器调用方可使用此函数；FunctionCall 通过可选 tool_turns 关键字提供相同契约。
+支持该关键字或 **kwargs 的 history_compactor 会收到它；旧回调签名保持兼容。
+回调仍返回 (projected_prior, projected_current)，保持当前消息属于 current 的分界，避免重复附加工具结果。
+''')
+
+add_agent_english_doc('describe_tool_turns', '''\
+Return a tuple of ToolCallTurn ranges for complete, contiguous, uniquely paired tool calls/results in prior + current.
+Incomplete, interrupted, missing-ID or duplicate-ID turns are omitted and must not be treated as removable units.
+Messages are not mutated. Standalone compactor callers may use this helper; FunctionCall supplies the same contract
+through the optional tool_turns keyword to history_compactor callbacks accepting it or **kwargs. Older signatures
+remain supported. Callbacks still return (projected_prior, projected_current), preserving the current-message boundary
+to avoid appending tool results twice.
+''')
