@@ -441,6 +441,11 @@ class WriterDraftingTools(WriterToolBase):
             for asset_id, asset in (library.assets.items() if library else [])
             if str(asset.uri or '').strip()
         }
+        asset_by_provider_block_id = {
+            str(asset.meta.get('provider_block_id')).strip(): asset_id
+            for asset_id, asset in (library.assets.items() if library else [])
+            if str(asset.meta.get('provider_block_id') or '').strip()
+        }
         existing_ids = {block.node_id for block in draft_block.iter_blocks()}
         for raw_image in source_images:
             if not isinstance(raw_image, dict):
@@ -456,10 +461,19 @@ class WriterDraftingTools(WriterToolBase):
                 ),
                 '',
             )
-            asset_id = asset_by_uri.get(image_url)
+            provider_block_id = str(
+                image.provider_binding.get('block_id') or image.node_id,
+            ).strip()
+            asset_id = (
+                asset_by_uri.get(image_url)
+                or asset_by_provider_block_id.get(provider_block_id)
+            )
             if asset_id:
                 image.references = [
-                    *image.references,
+                    *(
+                        reference for reference in image.references
+                        if reference.get('type') != 'media_asset'
+                    ),
                     {'type': 'media_asset', 'id': asset_id},
                 ]
             draft_block.children.append(image)
@@ -946,6 +960,17 @@ class WriterDraftingTools(WriterToolBase):
             if need.content_ref.node_id == section_id
         ]
         needs_by_id = {need.need_id: need for need in needs}
+        allowed_image_ids = set(needs_by_id)
+
+        def remove_unplanned_images(block: WriterBlock) -> None:
+            block.children = [
+                child for child in block.children
+                if child.type != 'image' or child.node_id in allowed_image_ids
+            ]
+            for child in block.children:
+                remove_unplanned_images(child)
+
+        remove_unplanned_images(draft_block)
         block_by_id = {block.node_id: block for block in draft_block.iter_blocks()}
         for item in instruction.meta.get('cross_references') or []:
             if not item.get('must_create') or item.get('kind') != 'image':

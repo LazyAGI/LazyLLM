@@ -431,7 +431,8 @@ class TestObsidianWriterProvider:
     def test_new_media_image_still_copies_into_the_vault(self, tmp_path):
         provider = ObsidianWriterProvider()
         note = _note(tmp_path)
-        workspace_image = tmp_path / 'generated.png'
+        workspace_image = tmp_path / 'Application Support' / 'generated.png'
+        workspace_image.parent.mkdir()
         workspace_image.write_bytes(b'generated')
         media_assets = MediaAssetLibrary(
             library_id='media-library-test',
@@ -448,7 +449,7 @@ class TestObsidianWriterProvider:
         fs.copy_attachment.return_value = 'assets/lazymind/generated.png'
 
         restored = provider._from_writer_markdown(
-            f'![Generated]({workspace_image})\n',
+            f'![Generated](<{workspace_image}>)\n',
             {},
             note,
             fs,
@@ -456,6 +457,38 @@ class TestObsidianWriterProvider:
         )
 
         assert restored == '![[assets/lazymind/generated.png]]\n'
+        fs.copy_attachment.assert_called_once_with(note, workspace_image)
+
+    def test_new_media_image_with_encoded_space_path_still_copies_into_the_vault(self, tmp_path):
+        provider = ObsidianWriterProvider()
+        note = _note(tmp_path)
+        workspace_image = tmp_path / 'Application Support' / 'encoded.png'
+        workspace_image.parent.mkdir()
+        workspace_image.write_bytes(b'encoded')
+        media_assets = MediaAssetLibrary(
+            library_id='media-library-test',
+            assets={
+                'asset-encoded-test': MediaAsset(
+                    media_asset_id='asset-encoded-test',
+                    asset_type='image',
+                    source_type='image_generation',
+                    local_path=str(workspace_image),
+                ),
+            },
+        )
+        fs = MagicMock()
+        fs.copy_attachment.return_value = 'assets/lazymind/encoded.png'
+        encoded = str(workspace_image).replace(' ', '%20')
+
+        restored = provider._from_writer_markdown(
+            f'![Encoded]({encoded})\n',
+            {},
+            note,
+            fs,
+            media_assets,
+        )
+
+        assert restored == '![[assets/lazymind/encoded.png]]\n'
         fs.copy_attachment.assert_called_once_with(note, workspace_image)
 
     def test_unregistered_local_image_is_not_copied_into_the_vault(self, tmp_path):

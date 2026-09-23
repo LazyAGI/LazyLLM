@@ -3,6 +3,7 @@ import json
 import re
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
+from urllib.parse import unquote, urlparse
 
 from lazyllm.thirdparty import mistune
 
@@ -63,6 +64,19 @@ _NUMBERED_CAPTION_RE = re.compile(
     r'^\s*(?:图|表|代码)\s*\d+(?:\.\d+)*\s*[：:.\s]?\s*'
 )
 _INTERNAL_LINK_URL_RE = re.compile(r'^#(?:block-)?[A-Za-z0-9_.:-]+$')
+
+
+def _media_reference_variants(value: Any) -> set[str]:
+    raw = str(value or '').strip()
+    if not raw:
+        return set()
+
+    lowered = raw.lower()
+    if lowered.startswith(('http://', 'https://')):
+        return {raw}
+    if lowered.startswith('file://'):
+        return {raw, unquote(urlparse(raw).path)}
+    return {raw, unquote(raw)}
 
 
 def strip_heading_numbering(value: str) -> str:
@@ -623,7 +637,10 @@ def parse_document_markdown(  # noqa: C901
                 asset_id = next(
                     (
                         key for key, asset in (media_assets.assets if media_assets else {}).items()
-                        if image.source in {str(asset.local_path or ''), str(asset.uri or '')}
+                        if _media_reference_variants(image.source) & (
+                            _media_reference_variants(asset.local_path)
+                            | _media_reference_variants(asset.uri)
+                        )
                     ),
                     '',
                 )
@@ -657,7 +674,10 @@ def parse_document_markdown(  # noqa: C901
                 asset_id = next(
                     (
                         key for key, asset in (media_assets.assets if media_assets else {}).items()
-                        if url in {str(asset.local_path or ''), str(asset.uri or '')}
+                        if _media_reference_variants(url) & (
+                            _media_reference_variants(asset.local_path)
+                            | _media_reference_variants(asset.uri)
+                        )
                     ),
                     '',
                 )

@@ -32,7 +32,6 @@ _WRITER_SYSTEM_ANCHOR_LINE_RE = re.compile(
     r'^[ \t]*<a\s+id=(["\'])block-[^"\']+\1(?:[ \t]+[^>]*)?[ \t]*(?:/>|>[ \t]*</a>)[ \t]*(?:\r?\n|$)',
     re.MULTILINE,
 )
-_MARKDOWN_IMAGE_RE = re.compile(r'!\[([^\]]*)\]\(([^)\s]+)(?:\s+["\'][^)]*["\'])?\)')
 _LOCAL_MARKDOWN_IMAGE_RE = re.compile(
     r'!\[(?P<alt>[^\]]*)\]\((?P<target><[^>\n]+>|[^)\s]+)(?:\s+["\'][^)]*["\'])?\)'
 )
@@ -364,7 +363,7 @@ class ObsidianWriterProvider(WriterProviderBase):
         }
 
         def replacement(match: re.Match[str]) -> str:
-            uri = match.group(2)
+            uri = match.group('target')
             reference = uri[1:-1].strip() if uri.startswith('<') and uri.endswith('>') else uri
             media_uri = f'https:{reference}' if reference.startswith('//') else reference
             original_external = external_images.get(media_uri)
@@ -380,12 +379,12 @@ class ObsidianWriterProvider(WriterProviderBase):
             original = self._bridged_image_raw(uri, images, assets)
             if original is not None:
                 return original
-            source = self._asset_path(uri, assets)
+            source = self._asset_path(reference, assets)
             if source is None:
                 return match.group(0)
             return f'![[{fs.copy_attachment(note, source)}]]'
 
-        return _MARKDOWN_IMAGE_RE.sub(replacement, content)
+        return _LOCAL_MARKDOWN_IMAGE_RE.sub(replacement, content)
 
     @staticmethod
     def _bridged_image_raw(
@@ -422,9 +421,18 @@ class ObsidianWriterProvider(WriterProviderBase):
 
     @staticmethod
     def _asset_path(uri: str, assets: list[Any]) -> Path | None:
+        raw = str(uri or '').strip()
+        lowered = raw.lower()
+        if lowered.startswith(('http://', 'https://')):
+            candidates = {raw}
+        elif lowered.startswith('file://'):
+            candidates = {raw, unquote(urlparse(raw).path)}
+        else:
+            candidates = {raw, unquote(raw)}
+
         for asset in assets:
             values = {str(asset.uri or ''), str(asset.local_path or '')}
-            if uri not in values:
+            if candidates.isdisjoint(values):
                 continue
             local = Path(str(asset.local_path or ''))
             if local.is_file():

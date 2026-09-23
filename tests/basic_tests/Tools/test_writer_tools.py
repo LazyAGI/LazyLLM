@@ -16,6 +16,8 @@ from lazyllm.tools.writer.data_models import (
     ContextRelation,
     DocumentFact,
     DocumentSummary,
+    MediaAsset,
+    MediaAssetLibrary,
     MaterialStyle,
     ResourceProfile,
     VisualInstruction,
@@ -57,6 +59,124 @@ from lazyllm.tools.writer.utils import (
     parse_markdown_outline_instructions,
     save_artifact_json,
 )
+
+
+def test_restore_rewrite_feishu_image_uses_materialized_provider_asset(tmp_path):
+    tool = WriterDraftingTools()
+    draft = WriterBlock(
+        node_id='rewrite-section-1',
+        type='heading',
+        content='重写章节',
+        stage='draft',
+        children=[],
+    )
+    source_image = WriterBlock(
+        node_id='source-image-1',
+        type='image',
+        content='飞书原图',
+        stage='final',
+        provider_binding={'provider': 'feishu', 'block_id': 'feishu-block-1'},
+    )
+    instruction = SectionInstruction(
+        instruction_id='rewrite-instruction-1',
+        content_ref=ContentRef(node_id='rewrite-section-1'),
+        section_title='重写章节',
+        section_goal='保留原图',
+        meta={
+            'rewrite': True,
+            'source_images': [source_image.model_dump(exclude_defaults=True)],
+        },
+    )
+    image_path = tmp_path / 'source.png'
+    image_path.write_bytes(b'image')
+    library = MediaAssetLibrary(
+        library_id='media-library-1',
+        assets={
+            'asset-source-1': MediaAsset(
+                media_asset_id='asset-source-1',
+                asset_type='image',
+                source_type='input_resource',
+                local_path=str(image_path),
+                meta={'provider': 'feishu', 'provider_block_id': 'feishu-block-1'},
+            ),
+        },
+    )
+
+    restored = tool._restore_rewrite_images(draft, instruction, library)
+
+    assert len(restored.children) == 1
+    assert restored.children[0].node_id == 'source-image-1'
+    assert restored.children[0].references == [
+        {'type': 'media_asset', 'id': 'asset-source-1'},
+    ]
+
+
+def test_attach_section_media_discards_unplanned_model_image():
+    tool = WriterDraftingTools()
+    draft = WriterBlock(
+        node_id='rewrite-section-1',
+        type='heading',
+        content='重写章节',
+        stage='draft',
+        children=[
+            WriterBlock(
+                node_id='invented-image',
+                type='image',
+                content='模型擅自生成的图片',
+                stage='draft',
+                references=[{
+                    'type': 'media_asset',
+                    'id': 'feishu-image-provider-block-1',
+                }],
+            ),
+            WriterBlock(
+                node_id='paragraph-1',
+                type='paragraph',
+                content='正文',
+                stage='draft',
+            ),
+            WriterBlock(
+                node_id='planned-image',
+                type='image',
+                content='计划内图片',
+                stage='draft',
+                references=[{'type': 'media_asset', 'id': 'asset-planned'}],
+            ),
+        ],
+    )
+    instruction = SectionInstruction(
+        instruction_id='rewrite-instruction-1',
+        content_ref=ContentRef(node_id='rewrite-section-1'),
+        section_title='重写章节',
+        section_goal='润色正文',
+    )
+
+    attached = tool._attach_section_media(
+        draft,
+        instruction,
+        VisualPlan(instructions=[VisualInstruction(
+            need_id='planned-image',
+            content_ref=ContentRef(node_id='rewrite-section-1'),
+            visual_type='image',
+            purpose='保留计划内图片',
+        )]),
+        MediaAssetLibrary(
+            library_id='media-library-1',
+            assets={
+                'asset-planned': MediaAsset(
+                    media_asset_id='asset-planned',
+                    asset_type='image',
+                    source_type='input_resource',
+                ),
+            },
+            visual_need_asset_ids={'planned-image': ['asset-planned']},
+        ),
+    )
+
+    assert [child.node_id for child in attached.children] == [
+        'paragraph-1',
+        'planned-image',
+    ]
 
 
 class _StreamingTextLLM(ModuleBase):
