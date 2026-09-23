@@ -522,7 +522,7 @@ Output semantics:
   retained inline formatting and concatenate to the block content.
 - A create contains all new sibling blocks in final document order. Children represent
   genuine document hierarchy.
-- Delete and move instructions have empty content lists because their result is structural.
+- Omit delete and move instructions from changes; the program executes these structural operations.
 - new_title represents title_instruction when the plan includes a title revision.
 - Headings use type="heading" with numbering.level; inline formatting uses spans.
 - Tables use table children of type table_row, whose children are table_cell blocks. Update one cell by targeting its

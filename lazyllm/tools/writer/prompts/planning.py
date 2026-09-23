@@ -32,6 +32,8 @@ Requirements:
   Image needs are planned by the visual plan step; the outline must stay pure text structure.
 - Do not emit Markdown image syntax, HTML image tags, image paths, or image placeholders.
   The visual plan and media resolver exclusively own image selection and placement.
+- Generate all outline descriptions, context relations and necessary subtasks in this response.
+  There is no second model pass to complete this generated outline.
 - Keep the outline concise but concrete enough to guide drafting.
 - Immediately after every H2-H6 heading, output exactly one single-line hidden sidecar:
   <!-- writer:outline {{"node_id":"","target_chars":3,"outline_description":"","context_relations":[],"subtasks":[]}} -->
@@ -47,7 +49,7 @@ Requirements:
 - For every heading, set outline_description to ONE concise, fluent sentence in the document's
   language, describing what this section will cover and relevant context relations.
   Naturally incorporate any genuine subtask as work still to do, rather than quoting a task list.
-  Do not claim pending work has completed. The completion step will incorporate the final length;
+  Do not claim pending work has completed. The system will incorporate the final length;
   target_chars at this generation step is still a relative weight. Treat unresolved facts as things to
   investigate, never as confirmed conclusions. Do not use lists, tables, field labels such as
   "字数", "子任务", "Length", or "Subtasks", task type names, or character counts. Do not repeat
@@ -102,6 +104,8 @@ GENERATE_OUTLINE_PROMPT = '''Generate a writing outline from the given writing t
 
 Requirements:
 - Return a WriterDocument object with stage="outline".
+- Generate all descriptions, context relations and necessary subtasks now; there is no second
+  model pass to complete this generated outline.
 - Set document_id to the exact document_id below.
 - Generate at least 3 top-level blocks unless the task asks for a short document or
   explicitly asks for fewer.
@@ -138,7 +142,7 @@ Requirements:
 - For every heading, set outline_description to ONE concise, fluent sentence in the document's
   language, describing what this section will cover and relevant context relations.
   Naturally incorporate any genuine subtask as work still to do, rather than quoting a task list.
-  Do not claim pending work has completed. The completion step will incorporate the final length;
+  Do not claim pending work has completed. The system will incorporate the final length;
   target_chars at this generation step is still a relative weight. Treat unresolved facts as things to
   investigate, never as confirmed conclusions. Do not use lists, tables, field labels such as
   "字数", "子任务", "Length", or "Subtasks", task type names, or character counts. Do not repeat

@@ -1046,7 +1046,7 @@ def test_outline_char_budgets_are_recursive_and_reach_markdown_instructions():
     ]
 
 
-def test_generate_markdown_section_instructions_synthesizes_missing_sections():
+def test_generate_markdown_section_instructions_converts_every_outline_section():
     context = WritingContext(context_id='ctx-markdown-instruction-fallback')
     task = WritingTask(
         task_id='task-markdown-instruction-fallback',
@@ -1058,16 +1058,9 @@ def test_generate_markdown_section_instructions_synthesizes_missing_sections():
         '## 旧日来信\n\n### 发现信件\n\n'
         '## 深渊真相\n\n### 接近真相\n'
     )
-    partial = SectionInstructionList(instructions=[SectionInstruction(
-        instruction_id='instruction-1',
-        content_ref=ContentRef(heading_path=['深渊', '旧日来信']),
-        section_title='旧日来信', section_goal='介绍故事开端。',
-        meta={'target_chars': 1},
-    )])
-
     with tempfile.TemporaryDirectory() as d:
         tool = WriterPlanningTools(artifact_store=d)
-        with patch.object(tool, '_call_llm_structured', return_value=partial):
+        with patch.object(tool, '_call_llm_structured', side_effect=AssertionError('planning must not call the model')):
             result = tool.generate_section_instructions(
                 outline=outline, context=context, task=task,
             )
@@ -1076,13 +1069,10 @@ def test_generate_markdown_section_instructions_synthesizes_missing_sections():
         )
 
     assert [item.section_title for item in instructions.instructions] == ['旧日来信', '深渊真相']
-    assert instructions.instructions[0].section_goal == '介绍故事开端。'
-    assert instructions.instructions[1].meta['synthesized'] is True
+    assert instructions.instructions[0].required_points == ['发现信件']
+    assert instructions.meta['source'] == 'outline'
     assert instructions.instructions[1].required_points == ['接近真相']
     assert sum(item.meta['target_chars'] for item in instructions.instructions) == 2000
-    assert instructions.meta['synthesized_instruction_refs'] == [{
-        'heading_path': ['深渊', '深渊真相'], 'occurrence': 1,
-    }]
 
 
 def test_markdown_section_instructions_use_persisted_outline_node_ids_and_fields():
@@ -1263,8 +1253,9 @@ def test_short_section_instructions_scope_image_directives_to_visual_section():
     introduction, body = instructions.instructions
     assert any('必须使用提供的图片' in item for item in introduction.fact_constraints)
     assert all('必须使用提供的图片' not in item for item in body.fact_constraints)
-    assert all(any('灯塔编号为 LM-2048' in item for item in section.fact_constraints)
+    assert all(not any('灯塔编号为 LM-2048' in item for item in section.fact_constraints)
                for section in instructions.instructions)
+    assert context.facts[1].value == '灯塔编号为 LM-2048'
 
 
 def test_generate_rewrite_section_instructions_ir_uses_existing_meta_for_source_refs():

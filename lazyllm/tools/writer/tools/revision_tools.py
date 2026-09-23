@@ -308,15 +308,25 @@ class WriterRevisionTools(WriterToolBase):
             if not candidates:
                 raise ValueError('selection.content_refs contains no valid content references.')
 
-        prompt_template = LOCATE_REVISION_TARGET_MARKDOWN_PROMPT if is_markdown else LOCATE_REVISION_TARGET_PROMPT
-        prompt = prompt_template.format(
-            task_json=to_prompt_json(writing_task),
-            document_content=to_prompt_json(candidates),
-        )
-        try:
-            locate_result = self._call_llm_structured(prompt, LocateResult)
-        except (ModuleExecutionError, ValueError):
-            retry_prompt = RETRY_LOCATE_REVISION_TARGET_MARKDOWN_PROMPT if is_markdown else '''
+        if user_selection and user_selection.content_refs and writing_task.scope == 'selection' \
+                and not (user_selection.text or user_selection.anchor_start or user_selection.anchor_end):
+            if len(candidates) != len(selected_refs):
+                raise ValueError('selection.content_refs contains stale or invalid content references.')
+            locate_result = LocateResult(
+                target_title=False,
+                targets=[LocatedContent(content_ref=candidate['content_ref']) for candidate in candidates],
+                meta={'source': 'explicit_selection'},
+            )
+        else:
+            prompt_template = LOCATE_REVISION_TARGET_MARKDOWN_PROMPT if is_markdown else LOCATE_REVISION_TARGET_PROMPT
+            prompt = prompt_template.format(
+                task_json=to_prompt_json(writing_task),
+                document_content=to_prompt_json(candidates),
+            )
+            try:
+                locate_result = self._call_llm_structured(prompt, LocateResult)
+            except (ModuleExecutionError, ValueError):
+                retry_prompt = RETRY_LOCATE_REVISION_TARGET_MARKDOWN_PROMPT if is_markdown else '''
 
 Your previous response could not be parsed.
 Return valid JSON only.
@@ -324,10 +334,10 @@ For Writer IR, every content_ref must be exactly:
 {"node_id": "<node_id copied from a candidate>"}
 node_id must be a string. Do not include heading_path or nest objects inside node_id.
 '''
-            locate_result = self._call_llm_structured(
-                prompt + retry_prompt,
-                LocateResult,
-            )
+                locate_result = self._call_llm_structured(
+                    prompt + retry_prompt,
+                    LocateResult,
+                )
         candidate_refs = {
             self._content_ref_key(candidate['content_ref'])
             for candidate in candidates
@@ -507,7 +517,12 @@ locator kind per reference. Return valid JSON only.
                 modify_plan_json=to_prompt_json(plan),
                 context_json=to_prompt_json(writing_context),
             )
-            generated = self._call_llm_structured(prompt, GeneratedRevision)
+            content_instructions = [item for item in plan.instructions
+                                    if item.modify_type in {'create', 'update'}]
+            generated = (
+                self._call_llm_structured(prompt, GeneratedRevision)
+                if content_instructions or plan.title_instruction else GeneratedRevision()
+            )
             patch_set = self._compile_generated_revision(
                 source_doc,
                 plan,
@@ -568,7 +583,8 @@ locator kind per reference. Return valid JSON only.
             if len(plan.instructions) == 1 and plan.instructions[0].modify_type == 'move' \
                     and not plan.title_instruction:
                 replace_set = self._generate_markdown_move_replacements(source, plan, writing_context)
-            elif any(instr.target_scope != 'fragment' and instr.modify_type in {'delete', 'update'}
+            elif any(instr.modify_type == 'delete'
+                     or (instr.target_scope != 'fragment' and instr.modify_type == 'update')
                      for instr in plan.instructions):
                 replace_set = self._generate_scoped_markdown_replacements(source, plan, writing_context)
             else:
@@ -757,7 +773,9 @@ locator kind per reference. Return valid JSON only.
                         for index, instruction in enumerate(plan.instructions, start=1)}
         located: Dict[str, str] = {}
         for key, instruction in instructions.items():
-            if instruction.target_scope != 'fragment' and instruction.modify_type in {'delete', 'update'}:
+            if instruction.modify_type == 'delete' or (
+                instruction.target_scope != 'fragment' and instruction.modify_type == 'update'
+            ):
                 try:
                     old_string = self._locate_markdown_instruction(source, instruction)
                     if old_string:
@@ -898,7 +916,8 @@ locator kind per reference. Return valid JSON only.
             self._apply_generated_instruction(
                 revised,
                 instruction,
-                generated.changes[instruction.instruction_id],
+                generated.changes[instruction.instruction_id]
+                if instruction.modify_type in {'create', 'update'} else [],
                 media_assets=media_assets,
             )
         patch = self._diff_documents(document, revised, media_assets=media_assets)

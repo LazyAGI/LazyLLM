@@ -322,7 +322,7 @@ class WriterToolBase(ModuleBase):
                     finish_span(span)
         raise RuntimeError('Structured Writer call exhausted without a result.')
 
-    def _call_llm_text(self, prompt: str, stream_output: Any = False) -> str:
+    def _call_llm_text(self, prompt: str, stream_output: Any = False, **generation_params: Any) -> str:
         if self.llm is None:
             raise ValueError('llm is not set')
         model = self.llm
@@ -335,7 +335,7 @@ class WriterToolBase(ModuleBase):
                 model = model.share()
         elif stream_output:
             raise TypeError('llm must support share(stream=...) for text streaming.')
-        response = model(prompt)
+        response = model(prompt, **generation_params)
         text = response if isinstance(response, str) else str(response)
         return self._strip_leading_think_blocks(text)
 

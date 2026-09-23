@@ -27,6 +27,7 @@ Requirements:
   section_instruction.meta.max_chars is a hard prose limit when present.
 - The length limit takes precedence over exhaustive source coverage or prose expansion.
 - Respect required_points, fact_constraints, style_constraints, and relation_constraints.
+- Global facts and style in Writing context apply even when not repeated in the section instruction.
 - Sections may be drafted independently and in parallel. Treat document-global point of view,
   tense, narrative voice, character identity, and naming constraints as strict. Do not invent a
   proper name for an unnamed protagonist. If multiple POV options remain without an explicit
@@ -98,6 +99,7 @@ Requirements:
 - The length limit takes precedence over exhaustive source coverage or prose expansion.
 - Write headings without visible numbering; the system renders numbers.
 - Respect required_points, fact_constraints, style_constraints, and relation_constraints.
+- Global facts and style in Writing context apply even when not repeated in the section instruction.
 - Sections may be drafted independently and in parallel. Treat document-global point of view,
   tense, narrative voice, character identity, and naming constraints as strict. Do not invent a
   proper name for an unnamed protagonist. If multiple POV options remain without an explicit
@@ -274,4 +276,32 @@ Short writing plan:
 
 Draft WriterDocument:
 {draft_document_json}
+'''
+
+
+GENERATE_WHOLE_DOCUMENT_MARKDOWN_PROMPT = '''Write the complete final document in one response.
+Return Markdown only, without analysis, think tags, outer fences, or planning commentary.
+Use exactly one H1 title. Use the outline as writing guidance; the prose may omit
+subheadings or adjust heading presentation. Do not add visible heading numbers. With no supplied chapter plan,
+follow the user's requested presentation; do not invent a separate outline step.
+When structure_mode is flat, use only the H1 title and prose, without chapter headings.
+Develop the actual prose for every chapter, with consistent characters, facts, perspective,
+and transitions. Never print instruction fields or outline descriptions as instructions.
+The length limits apply to the entire document, including all chapters, not to each chapter.
+Use only the supplied visual placeholders at their requested positions; never invent image
+URLs or repeat an image. Copy each supplied visual's markdown field verbatim at its requested
+position. Its URL already contains the real image identifier; do not replace that identifier.
+Keep factual sources and locked facts intact.
+
+Task:
+{task_json}
+
+Necessary context:
+{context_json}
+
+Chapter instructions (if any):
+{instructions_json}
+
+Visuals:
+{visuals_json}
 '''
