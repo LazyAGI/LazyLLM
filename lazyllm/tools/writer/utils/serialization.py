@@ -3,6 +3,7 @@ import json
 import re
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
+from urllib.parse import unquote, urlparse
 
 from lazyllm.thirdparty import mistune
 
@@ -26,6 +27,25 @@ from .markdown_inline import parse_markdown_inline
 from .markdown_ids import markdown_anchor_ids, next_markdown_node_id
 
 
+CALLOUT_MARKER_RE = re.compile(r'^\[!([\w-]+)\]([+-]?)(?:[ \t]+([^\n]*))?(?:\n|$)')
+
+
+def slice_spans_from(spans: List[WriterSpan], start: int) -> List[WriterSpan]:
+    sliced: List[WriterSpan] = []
+    offset = 0
+    for span in spans:
+        end = offset + len(span.text)
+        if end <= start:
+            offset = end
+            continue
+        if offset < start:
+            sliced.append(span.model_copy(update={'text': span.text[start - offset:]}))
+        else:
+            sliced.append(span)
+        offset = end
+    return sliced
+
+
 class MarkdownSelectionError(ValueError):
     def __init__(self, code: str, message: str, **details: Any):  # noqa: B042
         super().__init__(message)
@@ -44,6 +64,19 @@ _NUMBERED_CAPTION_RE = re.compile(
     r'^\s*(?:图|表|代码)\s*\d+(?:\.\d+)*\s*[：:.\s]?\s*'
 )
 _INTERNAL_LINK_URL_RE = re.compile(r'^#(?:block-)?[A-Za-z0-9_.:-]+$')
+
+
+def _media_reference_variants(value: Any) -> set[str]:
+    raw = str(value or '').strip()
+    if not raw:
+        return set()
+
+    lowered = raw.lower()
+    if lowered.startswith(('http://', 'https://')):
+        return {raw}
+    if lowered.startswith('file://'):
+        return {raw, unquote(urlparse(raw).path)}
+    return {raw, unquote(raw)}
 
 
 def strip_heading_numbering(value: str) -> str:
@@ -191,8 +224,9 @@ def _markdown_visible_text(token: Dict[str, Any]) -> str:
 
 
 MARKDOWN_OUTLINE_INSTRUCTION_RE = re.compile(
-    r'^\s*<!--\s*writer:outline\s+(\{.*\})\s*-->\s*$'
+    r'^\s*<!--\s*writer:outline\s+(\{.*\})\s*(?:-->)?\s*$'
 )
+MARKDOWN_OUTLINE_INSTRUCTION_PREFIX_RE = re.compile(r'^\s*<!--\s*writer:outline\b')
 
 
 def parse_markdown_outline_instructions(markdown: str) -> Dict[str, Dict[str, Any]]:
@@ -237,7 +271,7 @@ def _strip_markdown_outline_instructions(markdown: str) -> str:
     trailing_newline = markdown.endswith('\n')
     value = '\n'.join(
         line for line in markdown.splitlines()
-        if not MARKDOWN_OUTLINE_INSTRUCTION_RE.match(line)
+        if not MARKDOWN_OUTLINE_INSTRUCTION_PREFIX_RE.match(line)
     )
     return f'{value}\n' if trailing_newline else value
 
@@ -280,6 +314,7 @@ def apply_markdown_outline_instructions(
             continue
         payload = {
             'node_id': block.node_id,
+            **({'outline_description': block.outline_description} if block.outline_description else {}),
             'target_chars': block.target_chars,
             'context_relations': [item.model_dump() for item in block.context_relations],
             'subtasks': [item.model_dump() for item in block.subtasks],
@@ -603,7 +638,10 @@ def parse_document_markdown(  # noqa: C901
                 asset_id = next(
                     (
                         key for key, asset in (media_assets.assets if media_assets else {}).items()
-                        if image.source in {str(asset.local_path or ''), str(asset.uri or '')}
+                        if _media_reference_variants(image.source) & (
+                            _media_reference_variants(asset.local_path)
+                            | _media_reference_variants(asset.uri)
+                        )
                     ),
                     '',
                 )
@@ -637,7 +675,10 @@ def parse_document_markdown(  # noqa: C901
                 asset_id = next(
                     (
                         key for key, asset in (media_assets.assets if media_assets else {}).items()
-                        if url in {str(asset.local_path or ''), str(asset.uri or '')}
+                        if _media_reference_variants(url) & (
+                            _media_reference_variants(asset.local_path)
+                            | _media_reference_variants(asset.uri)
+                        )
                     ),
                     '',
                 )
@@ -681,6 +722,21 @@ def parse_document_markdown(  # noqa: C901
             append_block(block)
             continue
 
+        if token_type == 'block_quote':
+            callout = _parse_callout_quote(token)
+            if callout is not None:
+                content, spans, numbering = callout
+                stripped = content.strip()
+                append_block(WriterBlock(
+                    node_id=take_pending_node_id('callout'),
+                    type='callout',
+                    content=stripped,
+                    spans=spans if content == stripped else [],
+                    numbering=numbering,
+                    stage=stage,
+                ))
+                continue
+
         content, block_type = _markdown_block_content(token)
         if not content.strip():
             continue
@@ -715,6 +771,9 @@ def parse_document_markdown(  # noqa: C901
         payload = outline_instructions.get(block.node_id)
         if block.type != 'heading' or not payload:
             continue
+        description = payload.get('outline_description')
+        if isinstance(description, str):
+            block.outline_description = ' '.join(description.split())
         target_chars = payload.get('target_chars')
         if isinstance(target_chars, int) and not isinstance(target_chars, bool) \
                 and target_chars > 0:
@@ -801,6 +860,27 @@ def _markdown_spans_from_token(token: Dict[str, Any]) -> List[WriterSpan]:
 
     walk(token)
     return spans
+
+
+def _parse_callout_quote(
+    token: Dict[str, Any],
+) -> Optional[tuple[str, List[WriterSpan], Dict[str, Any]]]:
+    text = _markdown_token_text(token)
+    match = CALLOUT_MARKER_RE.match(text)
+    if match is None:
+        return None
+    title_start = match.start(3) if match.group(3) is not None else match.end()
+    spans = _markdown_spans_from_token(token)
+    aligned = ''.join(span.text for span in spans) == text
+    return (
+        text[title_start:],
+        slice_spans_from(spans, title_start) if aligned else [],
+        {
+            'callout_kind': str(match.group(1)),
+            'callout_fold': str(match.group(2) or ''),
+            'callout_titled': match.group(3) is not None,
+        },
+    )
 
 
 def _markdown_block_content(token: Dict[str, Any]) -> tuple[str, str]:

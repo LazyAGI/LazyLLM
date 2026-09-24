@@ -16,6 +16,8 @@ from lazyllm.tools.writer.data_models import (
     ContextRelation,
     DocumentFact,
     DocumentSummary,
+    MediaAsset,
+    MediaAssetLibrary,
     MaterialStyle,
     ResourceProfile,
     VisualInstruction,
@@ -57,6 +59,124 @@ from lazyllm.tools.writer.utils import (
     parse_markdown_outline_instructions,
     save_artifact_json,
 )
+
+
+def test_restore_rewrite_feishu_image_uses_materialized_provider_asset(tmp_path):
+    tool = WriterDraftingTools()
+    draft = WriterBlock(
+        node_id='rewrite-section-1',
+        type='heading',
+        content='重写章节',
+        stage='draft',
+        children=[],
+    )
+    source_image = WriterBlock(
+        node_id='source-image-1',
+        type='image',
+        content='飞书原图',
+        stage='final',
+        provider_binding={'provider': 'feishu', 'block_id': 'feishu-block-1'},
+    )
+    instruction = SectionInstruction(
+        instruction_id='rewrite-instruction-1',
+        content_ref=ContentRef(node_id='rewrite-section-1'),
+        section_title='重写章节',
+        section_goal='保留原图',
+        meta={
+            'rewrite': True,
+            'source_images': [source_image.model_dump(exclude_defaults=True)],
+        },
+    )
+    image_path = tmp_path / 'source.png'
+    image_path.write_bytes(b'image')
+    library = MediaAssetLibrary(
+        library_id='media-library-1',
+        assets={
+            'asset-source-1': MediaAsset(
+                media_asset_id='asset-source-1',
+                asset_type='image',
+                source_type='input_resource',
+                local_path=str(image_path),
+                meta={'provider': 'feishu', 'provider_block_id': 'feishu-block-1'},
+            ),
+        },
+    )
+
+    restored = tool._restore_rewrite_images(draft, instruction, library)
+
+    assert len(restored.children) == 1
+    assert restored.children[0].node_id == 'source-image-1'
+    assert restored.children[0].references == [
+        {'type': 'media_asset', 'id': 'asset-source-1'},
+    ]
+
+
+def test_attach_section_media_discards_unplanned_model_image():
+    tool = WriterDraftingTools()
+    draft = WriterBlock(
+        node_id='rewrite-section-1',
+        type='heading',
+        content='重写章节',
+        stage='draft',
+        children=[
+            WriterBlock(
+                node_id='invented-image',
+                type='image',
+                content='模型擅自生成的图片',
+                stage='draft',
+                references=[{
+                    'type': 'media_asset',
+                    'id': 'feishu-image-provider-block-1',
+                }],
+            ),
+            WriterBlock(
+                node_id='paragraph-1',
+                type='paragraph',
+                content='正文',
+                stage='draft',
+            ),
+            WriterBlock(
+                node_id='planned-image',
+                type='image',
+                content='计划内图片',
+                stage='draft',
+                references=[{'type': 'media_asset', 'id': 'asset-planned'}],
+            ),
+        ],
+    )
+    instruction = SectionInstruction(
+        instruction_id='rewrite-instruction-1',
+        content_ref=ContentRef(node_id='rewrite-section-1'),
+        section_title='重写章节',
+        section_goal='润色正文',
+    )
+
+    attached = tool._attach_section_media(
+        draft,
+        instruction,
+        VisualPlan(instructions=[VisualInstruction(
+            need_id='planned-image',
+            content_ref=ContentRef(node_id='rewrite-section-1'),
+            visual_type='image',
+            purpose='保留计划内图片',
+        )]),
+        MediaAssetLibrary(
+            library_id='media-library-1',
+            assets={
+                'asset-planned': MediaAsset(
+                    media_asset_id='asset-planned',
+                    asset_type='image',
+                    source_type='input_resource',
+                ),
+            },
+            visual_need_asset_ids={'planned-image': ['asset-planned']},
+        ),
+    )
+
+    assert [child.node_id for child in attached.children] == [
+        'paragraph-1',
+        'planned-image',
+    ]
 
 
 class _StreamingTextLLM(ModuleBase):
@@ -119,6 +239,7 @@ def test_markdown_outline_instruction_sidecars_round_trip_as_outline_fields():
         '<a id="block-sec-1"></a>',
         '## 系统设计',
         '<!-- writer:outline {"node_id":"sec-1","target_chars":900,'
+        '"outline_description":"本节介绍系统设计并核实行业数据。",'
         '"context_relations":[{"target_node_id":"intro","relation":"continuity",'
         '"guidance":"承接背景"}],"subtasks":[{"subtask_id":"st-1",'
         '"node_id":"sec-1","question":"补充行业数据","subtask_type":"retrieve",'
@@ -128,6 +249,7 @@ def test_markdown_outline_instruction_sidecars_round_trip_as_outline_fields():
     document = parse_document_markdown(markdown, document_id='outline-md', stage='outline')
     section = document.block_by_id('sec-1')
     assert section is not None
+    assert section.outline_description == '本节介绍系统设计并核实行业数据。'
     assert section.target_chars == 900
     assert section.context_relations[0].guidance == '承接背景'
     assert section.subtasks[0].question == '补充行业数据'
@@ -135,8 +257,35 @@ def test_markdown_outline_instruction_sidecars_round_trip_as_outline_fields():
     section.target_chars = 1000
     restored = apply_markdown_outline_instructions(markdown, document)
     fields = parse_markdown_outline_instructions(restored)['sec-1']
+    assert fields['outline_description'] == section.outline_description
+    assert fields['subtasks'][0]['question'] == '补充行业数据'
     assert fields['target_chars'] == 1000
     assert restored.count('writer:outline') == 1
+
+
+def test_markdown_outline_instruction_sidecars_recover_or_discard_malformed_lines():
+    markdown = '\n'.join([
+        '# 方案',
+        '<a id="block-sec-1"></a>',
+        '## 系统设计',
+        '<!-- writer:outline {"node_id":"","target_chars":900,'
+        '"outline_description":"本节介绍系统设计。","context_relations":[],"subtasks":[]}',
+        '<a id="block-sec-2"></a>',
+        '## 实施计划',
+        '<!-- writer:outline {"node_id":"","target_chars":800,'
+        '"outline_description":"说明"实施"计划。","context_relations":[],"subtasks":[]}',
+    ])
+
+    document = parse_document_markdown(markdown, document_id='outline-md', stage='outline')
+    assert [block.content for block in document.blocks] == ['系统设计', '实施计划']
+    assert document.blocks[0].outline_description == '本节介绍系统设计。'
+    assert document.blocks[1].outline_description == ''
+
+    restored = apply_markdown_outline_instructions(markdown, document)
+    sidecars = [line for line in restored.splitlines() if 'writer:outline' in line]
+    assert len(sidecars) == 2
+    assert all(line.endswith(' -->') for line in sidecars)
+    assert set(parse_markdown_outline_instructions(restored)) == {'sec-1', 'sec-2'}
 
 
 def test_complete_user_markdown_outline_adds_anchors_and_instruction_sidecars():
@@ -147,6 +296,7 @@ def test_complete_user_markdown_outline_adds_anchors_and_instruction_sidecars():
     )
     section = proposed.blocks[0]
     section.target_chars = 800
+    section.outline_description = '本节介绍系统设计，并比较两种方案。'
     section.subtasks = [WritingSubTask(
         subtask_id='st-1', node_id=section.node_id,
         question='比较两种方案', subtask_type='reason',
@@ -167,6 +317,10 @@ def test_complete_user_markdown_outline_adds_anchors_and_instruction_sidecars():
     assert '<a id="block-sec-001"></a>\n## 系统设计' in completed
     assert 'writer:outline' in completed
     assert '比较两种方案' in completed
+    restored = parse_document_markdown(completed, document_id='restored', stage='outline')
+    assert restored.blocks[0].outline_description == (
+        f'{section.outline_description[:-1]}（约{restored.blocks[0].target_chars}字）。'
+    )
 
 
 def test_structured_response_selects_one_schema_valid_candidate():
@@ -1037,7 +1191,7 @@ def test_outline_char_budgets_are_recursive_and_reach_markdown_instructions():
     ]
 
 
-def test_generate_markdown_section_instructions_synthesizes_missing_sections():
+def test_generate_markdown_section_instructions_converts_every_outline_section():
     context = WritingContext(context_id='ctx-markdown-instruction-fallback')
     task = WritingTask(
         task_id='task-markdown-instruction-fallback',
@@ -1049,16 +1203,9 @@ def test_generate_markdown_section_instructions_synthesizes_missing_sections():
         '## 旧日来信\n\n### 发现信件\n\n'
         '## 深渊真相\n\n### 接近真相\n'
     )
-    partial = SectionInstructionList(instructions=[SectionInstruction(
-        instruction_id='instruction-1',
-        content_ref=ContentRef(heading_path=['深渊', '旧日来信']),
-        section_title='旧日来信', section_goal='介绍故事开端。',
-        meta={'target_chars': 1},
-    )])
-
     with tempfile.TemporaryDirectory() as d:
         tool = WriterPlanningTools(artifact_store=d)
-        with patch.object(tool, '_call_llm_structured', return_value=partial):
+        with patch.object(tool, '_call_llm_structured', side_effect=AssertionError('planning must not call the model')):
             result = tool.generate_section_instructions(
                 outline=outline, context=context, task=task,
             )
@@ -1067,13 +1214,10 @@ def test_generate_markdown_section_instructions_synthesizes_missing_sections():
         )
 
     assert [item.section_title for item in instructions.instructions] == ['旧日来信', '深渊真相']
-    assert instructions.instructions[0].section_goal == '介绍故事开端。'
-    assert instructions.instructions[1].meta['synthesized'] is True
+    assert instructions.instructions[0].required_points == ['发现信件']
+    assert instructions.meta['source'] == 'outline'
     assert instructions.instructions[1].required_points == ['接近真相']
     assert sum(item.meta['target_chars'] for item in instructions.instructions) == 2000
-    assert instructions.meta['synthesized_instruction_refs'] == [{
-        'heading_path': ['深渊', '深渊真相'], 'occurrence': 1,
-    }]
 
 
 def test_markdown_section_instructions_use_persisted_outline_node_ids_and_fields():
@@ -1254,8 +1398,9 @@ def test_short_section_instructions_scope_image_directives_to_visual_section():
     introduction, body = instructions.instructions
     assert any('必须使用提供的图片' in item for item in introduction.fact_constraints)
     assert all('必须使用提供的图片' not in item for item in body.fact_constraints)
-    assert all(any('灯塔编号为 LM-2048' in item for item in section.fact_constraints)
+    assert all(not any('灯塔编号为 LM-2048' in item for item in section.fact_constraints)
                for section in instructions.instructions)
+    assert context.facts[1].value == '灯塔编号为 LM-2048'
 
 
 def test_generate_rewrite_section_instructions_ir_uses_existing_meta_for_source_refs():
@@ -2157,3 +2302,108 @@ def test_write_to_document_fs_failure():
                         content=_make_final_writer_document('# Should survive'),
                         target_document={'uri': 'feishu:///fail.md', 'adapter': 'feishu'},
                     )
+
+
+@pytest.mark.parametrize('markdown', [False, True])
+def test_outline_completion_refreshes_description_without_replacing_subtask_state(markdown):
+    source = WriterDocument(document_id='outline', stage='outline', blocks=[WriterBlock(
+        node_id='sec-1', type='heading', content='部署方案',
+        outline_description='旧的说明。', target_chars=800,
+        subtasks=[WritingSubTask(
+            subtask_id='q-1', node_id='sec-1', question='部署成本是多少？',
+            subtask_type='retrieve', status='completed', result_summary='已核实成本',
+        )],
+    )])
+    proposed = deepcopy(source)
+    proposed.blocks[0].outline_description = '本节介绍部署方案，并结合已核实的成本说明资源需求。'
+    proposed.blocks[0].subtasks[0].status = 'pending'
+    proposed.blocks[0].subtasks[0].result_summary = ''
+    original = source.blocks[0].subtasks[0].model_dump()
+    value = apply_markdown_outline_instructions(
+        '# 方案\n<a id="block-sec-1"></a>\n## 部署方案\n', source,
+    ) if markdown else source
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterPlanningTools(artifact_store=directory)
+        with patch.object(tool, '_call_llm_structured', return_value=proposed):
+            result = tool._complete_outline_instructions(
+                value, WritingTask(task_id='task', query='调整部署说明', task_type='write'),
+                WritingContext(context_id='ctx'),
+            )
+        restored = parse_document_markdown(
+            Path(result['artifact_path']).read_text(), document_id='outline', stage='outline',
+        ) if markdown else load_artifact_json(result['artifact_path'], WriterDocument)
+    assert restored.blocks[0].outline_description == '本节介绍部署方案，并结合已核实的成本说明资源需求（约800字）。'
+    assert restored.blocks[0].subtasks[0].model_dump() == original
+
+
+@pytest.mark.parametrize('markdown', [False, True])
+def test_outline_completion_uses_final_budget_and_prunes_only_unstarted_work(markdown):
+    source = WriterDocument(document_id='outline', stage='outline', blocks=[WriterBlock(
+        node_id='sec-1', type='heading', content='深渊的召唤', target_chars=1,
+        subtasks=[
+            WritingSubTask(subtask_id='genre', node_id='sec-1', question='常见深海恐怖意象？',
+                           subtask_type='retrieve'),
+            WritingSubTask(subtask_id='facts', node_id='sec-1', question='用户要求核实的历史日期？',
+                           subtask_type='retrieve'),
+            WritingSubTask(subtask_id='old', node_id='sec-1', question='先前的查证？',
+                           subtask_type='retrieve', status='failed', retry_count=1,
+                           tools_used=['sciverse_search'], result_summary='ReadTimeout'),
+        ],
+    )])
+    original_failed = source.blocks[0].subtasks[2].model_dump()
+    proposed = deepcopy(source)
+    proposed.blocks[0].target_chars = 999  # Model changes may not override allocated budgets.
+    proposed.blocks[0].outline_description = '用约1200字营造深海氛围，动笔前核实历史日期。'
+    proposed.blocks[0].subtasks = [proposed.blocks[0].subtasks[1]]
+    value = apply_markdown_outline_instructions(
+        '# 小说\n<a id="block-sec-1"></a>\n## 深渊的召唤\n', source,
+    ) if markdown else source
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterPlanningTools(artifact_store=directory)
+        with patch.object(tool, '_call_llm_structured', return_value=proposed) as llm:
+            result = tool._complete_outline_instructions(
+                value, WritingTask(query='写一篇小说，并核实历史日期', task_type='write',
+                                   constraints={'target_chars': 1200}),
+                WritingContext(context_id='ctx'),
+            )
+        assert '"target_chars": 1200' in llm.call_args.args[0]
+        restored = parse_document_markdown(
+            Path(result['artifact_path']).read_text(), document_id='outline', stage='outline',
+        ) if markdown else load_artifact_json(result['artifact_path'], WriterDocument)
+    block = restored.blocks[0]
+    assert block.target_chars == 1200
+    assert block.outline_description == proposed.blocks[0].outline_description
+    assert [item.subtask_id for item in block.subtasks] == ['facts', 'old']
+    assert block.subtasks[1].model_dump() == original_failed
+
+
+@pytest.mark.parametrize('markdown', [False, True])
+@pytest.mark.parametrize('description, expected', [
+    ('描写渔村的异象。', '描写渔村的异象（约1200字）。'),
+    ('用约1200字描写渔村的异象。', '用约1200字描写渔村的异象。'),
+    ('Use about 1,200 characters to introduce the village.',
+     'Use about 1,200 characters to introduce the village.'),
+    ('Introduce the village.', 'Introduce the village (about 1200 characters).'),
+])
+def test_outline_completion_guards_missing_budget_without_extra_llm_calls(markdown, description, expected):
+    source = WriterDocument(document_id='outline', stage='outline', blocks=[WriterBlock(
+        node_id='sec-1', type='heading', content='Village', target_chars=1200,
+        outline_description=description,
+    )])
+    value = apply_markdown_outline_instructions(
+        '# Story\n<a id="block-sec-1"></a>\n## Village\n', source,
+    ) if markdown else source
+    with tempfile.TemporaryDirectory() as directory:
+        tool = WriterPlanningTools(artifact_store=directory)
+        with patch.object(tool, '_call_llm_structured', return_value=deepcopy(source)) as llm:
+            result = tool._complete_outline_instructions(
+                value, WritingTask(query='Write a story', task_type='write',
+                                   constraints={'target_chars': 1200}),
+                WritingContext(context_id='ctx'),
+            )
+        llm.assert_called_once()
+        restored = parse_document_markdown(
+            Path(result['artifact_path']).read_text(), document_id='outline', stage='outline',
+        ) if markdown else load_artifact_json(result['artifact_path'], WriterDocument)
+    assert restored.blocks[0].outline_description == expected
+    assert restored.blocks[0].target_chars == 1200

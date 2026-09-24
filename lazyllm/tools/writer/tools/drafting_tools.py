@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Dict, List, Optional
 
@@ -9,14 +10,16 @@ from ..data_models.context import WritingContext
 from ..data_models.multimodal import MediaAssetLibrary, VisualPlan
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterSpan
-from ..data_models.planning import SectionInstruction, ShortWritingPlan
+from ..data_models.planning import SectionInstruction, SectionInstructionList, ShortWritingPlan
 from ..numbering import (
     MARKDOWN_ANCHOR_RE,
+    _is_table_header,
     build_numbering_view_from_ir,
     build_numbering_view_from_markdown,
     compute_numbering,
     ensure_markdown_heading_anchors,
 )
+from ..prompts.drafting import GENERATE_WHOLE_DOCUMENT_MARKDOWN_PROMPT
 from ..prompts import (
     CONDENSE_DRAFT_SECTION_MARKDOWN_PROMPT,
     CONDENSE_DRAFT_SECTION_PROMPT,
@@ -35,6 +38,7 @@ from ..utils import (
     to_prompt_json,
     writer_document_to_markdown,
 )
+
 
 class WriterDraftingTools(WriterToolBase):
     __public_apis__ = [
@@ -113,6 +117,75 @@ class WriterDraftingTools(WriterToolBase):
         body = self._condense_short_markdown_if_needed(body, writing_task, plan)
         return self._finalize_short_markdown_document(
             body, writing_task, plan, writing_context, short_visuals,
+        )
+
+    def stream_whole_document(
+        self, task: Any, context: Any, instructions: Any = None,
+        visual_plan: Any = None, media_assets: Any = None,
+        *, idle_timeout: Optional[float] = None,
+    ) -> DraftMarkdownStream:
+        writing_task = self._unified_model(task, WritingTask)
+        writing_context = self._unified_model(context, WritingContext)
+        plan = self._unified_model(instructions, SectionInstructionList) if instructions else SectionInstructionList()
+        context_data = writing_context.model_dump(exclude_defaults=True)
+        for key in ('context_id', 'doc_id', 'query', 'meta'):
+            context_data.pop(key, None)
+        if (context_data.get('document_summary') or {}).get('summary') == writing_task.query:
+            context_data['document_summary'].pop('summary', None)
+        chapter_inputs = []
+        for instruction in plan.instructions:
+            local = self._draft_prompt_inputs(writing_task, instruction, writing_context)
+            data = json.loads(local['section_instruction_json'])
+            if data.get('expected_blocks') == data.get('required_points'):
+                data.pop('expected_blocks', None)
+            chapter_inputs.append(data)
+        visuals = self._short_document_visuals(visual_plan, media_assets, allow_sections=True)
+        for visual in visuals:
+            caption = re.sub(r'[\[\]\r\n]+', ' ', visual['purpose']).strip() or '图'
+            visual['markdown'] = f"![{caption}](media-placeholder://{visual['need_id']})"
+        prompt = GENERATE_WHOLE_DOCUMENT_MARKDOWN_PROMPT.format(
+            task_json=to_prompt_json({
+                'query': writing_task.query, 'constraints': writing_task.constraints,
+                'output': writing_task.output, 'target_document': writing_task.target_document,
+            }),
+            context_json=to_prompt_json(context_data),
+            instructions_json=to_prompt_json(chapter_inputs),
+            visuals_json=to_prompt_json(visuals),
+        )
+
+        def finalize(body: str) -> dict:
+            if not body.strip():
+                raise ValueError('Whole document generation returned no content.')
+            sections = parse_markdown_sections(body)
+            if not sections or sections[0][0] != 1 or sum(level == 1 for level, *_ in sections) != 1:
+                raise ValueError('Whole document requires exactly one H1 title.')
+            if writing_task.constraints.get('structure_mode') == 'flat' and len(sections) != 1:
+                raise ValueError('Flat document must not contain chapter headings.')
+            if not any(section[3].strip() for section in sections):
+                raise ValueError('Whole document returned headings without prose.')
+            # Repair only a unique missing-image association; never guess between images.
+            planned = {visual['need_id'] for visual in visuals}
+            markers = list(self._MARKDOWN_MEDIA_PLACEHOLDER_RE.finditer(body))
+            missing = planned - {match.group(1) for match in markers}
+            unknown = [match for match in markers if match.group(1) not in planned]
+            if len(missing) == len(unknown) == 1:
+                start, end = unknown[0].span(1)
+                body = body[:start] + next(iter(missing)) + body[end:]
+            path = self._write_markdown_artifact('draft_document.md', body.rstrip() + '\n')
+            return make_markdown_tool_result(
+                path=path, step_name='generate_whole_document', artifact_key='draft_document',
+                summary='Generated the complete document in one call.',
+                counts={'characters': len(body), 'sections': sum(section[0] == 2 for section in sections)},
+                extra={'generation_mode': 'whole', 'representation': 'markdown'},
+            ).model_dump()
+
+        return DraftMarkdownStream(
+            call=lambda sink: self._call_llm_text(
+                prompt, stream_output={'_stream_sink': sink}, max_tokens=32768,
+            ),
+            finalize=finalize, prefix='',
+            idle_timeout=resolve_stream_idle_timeout(self.llm, idle_timeout),
+            label='Whole document Markdown',
         )
 
     def stream_short_document(
@@ -369,6 +442,11 @@ class WriterDraftingTools(WriterToolBase):
             for asset_id, asset in (library.assets.items() if library else [])
             if str(asset.uri or '').strip()
         }
+        asset_by_provider_block_id = {
+            str(asset.meta.get('provider_block_id')).strip(): asset_id
+            for asset_id, asset in (library.assets.items() if library else [])
+            if str(asset.meta.get('provider_block_id') or '').strip()
+        }
         existing_ids = {block.node_id for block in draft_block.iter_blocks()}
         for raw_image in source_images:
             if not isinstance(raw_image, dict):
@@ -384,10 +462,19 @@ class WriterDraftingTools(WriterToolBase):
                 ),
                 '',
             )
-            asset_id = asset_by_uri.get(image_url)
+            provider_block_id = str(
+                image.provider_binding.get('block_id') or image.node_id,
+            ).strip()
+            asset_id = (
+                asset_by_uri.get(image_url)
+                or asset_by_provider_block_id.get(provider_block_id)
+            )
             if asset_id:
                 image.references = [
-                    *image.references,
+                    *(
+                        reference for reference in image.references
+                        if reference.get('type') != 'media_asset'
+                    ),
                     {'type': 'media_asset', 'id': asset_id},
                 ]
             draft_block.children.append(image)
@@ -426,13 +513,14 @@ class WriterDraftingTools(WriterToolBase):
         self,
         visual_plan: Any,
         media_assets: Any,
+        *, allow_sections: bool = False,
     ) -> List[Dict[str, Any]]:
         plan = self._unified_optional_model(visual_plan, VisualPlan) or VisualPlan()
         library = self._unified_optional_model(media_assets, MediaAssetLibrary)
         visuals: List[Dict[str, Any]] = []
         for need in plan.instructions:
             ref = need.content_ref
-            if not ref.document_root or ref.node_id or ref.heading_path or ref.placeholder_id:
+            if not allow_sections and (not ref.document_root or ref.node_id or ref.heading_path or ref.placeholder_id):
                 raise ValueError('Short visual plan must target only content_ref.document_root.')
             asset_ids = [
                 asset_id for asset_id in (
@@ -450,6 +538,7 @@ class WriterDraftingTools(WriterToolBase):
                 'purpose': need.purpose,
                 'required': need.required,
                 'placement_hint': str(need.meta.get('placement_hint') or ''),
+                **({'content_ref': ref.model_dump(exclude_defaults=True)} if allow_sections else {}),
                 'asset_ids': asset_ids,
                 'assets': [
                     {
@@ -596,13 +685,14 @@ class WriterDraftingTools(WriterToolBase):
         self,
         visual_plan: Any,
         media_assets: Any,
+        *, allow_sections: bool = False,
     ) -> List[Dict[str, Any]]:
         plan = self._unified_optional_model(visual_plan, VisualPlan) or VisualPlan()
         library = self._unified_optional_model(media_assets, MediaAssetLibrary)
         visuals: List[Dict[str, Any]] = []
         for need in plan.instructions:
             ref = need.content_ref
-            if not ref.document_root or ref.node_id or ref.heading_path or ref.placeholder_id:
+            if not allow_sections and (not ref.document_root or ref.node_id or ref.heading_path or ref.placeholder_id):
                 raise ValueError('Short visual plan must target only content_ref.document_root.')
             asset_ids = library.visual_need_asset_ids.get(need.need_id, []) if library else []
             resolved = [asset_id for asset_id in asset_ids if asset_id in library.assets] if library else []
@@ -616,6 +706,7 @@ class WriterDraftingTools(WriterToolBase):
                 'purpose': need.purpose,
                 'required': need.required,
                 'placement_hint': str(need.meta.get('placement_hint') or ''),
+                **({'content_ref': ref.model_dump(exclude_defaults=True)} if allow_sections else {}),
             })
         return visuals
 
@@ -707,7 +798,7 @@ class WriterDraftingTools(WriterToolBase):
             purpose = re.sub(r'[\[\]\r\n]+', ' ', purpose).strip() or '图'
             lines.insert(
                 insertion_index + offset,
-                f'\n![{purpose}](media-placeholder://{need_id})',
+                f'\n![{purpose}](media-placeholder://{need_id})\n',
             )
         return '\n'.join(lines).strip()
 
@@ -733,6 +824,34 @@ class WriterDraftingTools(WriterToolBase):
             lines.append(line)
         return '\n'.join(lines).strip()
 
+    @staticmethod
+    def _draft_prompt_inputs(task: WritingTask, instruction: SectionInstruction,
+                             context: WritingContext) -> dict:
+        '''Remove exact duplicates only; preserve each request's global context.'''
+        context_data = context.model_dump(exclude_defaults=True)
+        if context.query == task.query:
+            context_data.pop('query', None)
+        instruction_data = instruction.model_dump(exclude_defaults=True)
+        shared_facts = {f'{fact.key}: {fact.value}' for fact in context.facts
+                        if not fact.applies_to or instruction.content_ref in fact.applies_to}
+        shared_style = set()
+        if context.style_profile is not None:
+            style = context.style_profile
+            shared_style.update(f'{key}: {value}' for key, value in (
+                ('tone', style.tone), ('formality', style.formality), ('audience', style.audience),
+            ) if value)
+            shared_style.update(style.notes)
+        for key, shared in (('fact_constraints', shared_facts), ('style_constraints', shared_style)):
+            if key in instruction_data:
+                instruction_data[key] = list(dict.fromkeys(
+                    value for value in instruction_data[key] if value not in shared
+                ))
+        return {
+            'task_json': to_prompt_json(task),
+            'section_instruction_json': to_prompt_json(instruction_data),
+            'context_json': to_prompt_json(context_data),
+        }
+
     def _ir_draft_prompt(
         self,
         task: WritingTask,
@@ -751,9 +870,7 @@ class WriterDraftingTools(WriterToolBase):
             instruction, resolved_visual_plan, media_library,
         )
         return GENERATE_DRAFT_SECTION_PROMPT.format(
-            task_json=to_prompt_json(task),
-            section_instruction_json=to_prompt_json(instruction),
-            context_json=to_prompt_json(context),
+            **self._draft_prompt_inputs(task, instruction, context),
             previous_blocks_json=to_prompt_json(previous_data),
             section_media_json=to_prompt_json(section_media),
         )
@@ -844,6 +961,17 @@ class WriterDraftingTools(WriterToolBase):
             if need.content_ref.node_id == section_id
         ]
         needs_by_id = {need.need_id: need for need in needs}
+        allowed_image_ids = set(needs_by_id)
+
+        def remove_unplanned_images(block: WriterBlock) -> None:
+            block.children = [
+                child for child in block.children
+                if child.type != 'image' or child.node_id in allowed_image_ids
+            ]
+            for child in block.children:
+                remove_unplanned_images(child)
+
+        remove_unplanned_images(draft_block)
         block_by_id = {block.node_id: block for block in draft_block.iter_blocks()}
         for item in instruction.meta.get('cross_references') or []:
             if not item.get('must_create') or item.get('kind') != 'image':
@@ -915,9 +1043,7 @@ class WriterDraftingTools(WriterToolBase):
     ) -> str:
         previous_markdown = self._unified_previous_markdown(previous_blocks)
         return GENERATE_DRAFT_SECTION_MARKDOWN_PROMPT.format(
-            task_json=to_prompt_json(task),
-            section_instruction_json=to_prompt_json(instruction),
-            context_json=to_prompt_json(context),
+            **self._draft_prompt_inputs(task, instruction, context),
             previous_markdown=previous_markdown or '(none)',
         )
 
@@ -1554,7 +1680,7 @@ class WriterDraftingTools(WriterToolBase):
                     insertions.append((
                         reference_lines[target] + 1,
                         f'\n<a id="block-{target}"></a>\n'
-                        f'![{caption}](media-placeholder://{target})',
+                        f'![{caption}](media-placeholder://{target})\n',
                     ))
                     continue
                 if f'block-{target}' not in found_anchors:
@@ -1587,6 +1713,7 @@ class WriterDraftingTools(WriterToolBase):
         paragraph_end: int | None = None
         first_content: int | None = None
         fence: str | None = None
+        in_table = False
         for index, line in enumerate(lines):
             fence_match = re.match(r'^\s*(```+|~~~+)', line)
             if fence_match:
@@ -1600,11 +1727,20 @@ class WriterDraftingTools(WriterToolBase):
                 continue
             stripped = line.strip()
             if not stripped:
+                in_table = False
                 if paragraph_end is not None:
                     return paragraph_end
                 continue
             if first_content is None:
                 first_content = index
+            if _is_table_header(lines, index):
+                if paragraph_end is not None:
+                    return paragraph_end
+                in_table = True
+            if in_table:
+                if '|' in stripped:
+                    continue
+                in_table = False
             if stripped.startswith('#') or cls._MARKDOWN_ANCHOR_RE.fullmatch(stripped):
                 if paragraph_end is not None:
                     return paragraph_end
@@ -1613,7 +1749,9 @@ class WriterDraftingTools(WriterToolBase):
         if paragraph_end is not None:
             return paragraph_end
         if first_content is not None:
-            return first_content
+            # A table-only section needs a separate paragraph for appended references.
+            lines.extend(['', ''])
+            return len(lines) - 1
         raise ValueError('Markdown draft section body must not be empty.')
 
     @staticmethod

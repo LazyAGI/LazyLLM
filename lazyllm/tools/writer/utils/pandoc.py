@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from contextlib import ExitStack
 from dataclasses import dataclass
 from functools import lru_cache
@@ -17,6 +18,7 @@ from .serialization import strip_heading_numbering
 
 
 PANDOC_PATH_ENV = 'LAZYMIND_PANDOC_PATH'
+RUNTIME_ROOT_ENV = 'LAZYMIND_RUNTIME_ROOT'
 PANDOC_REQUIRED_VERSION = '3.11'
 # LazyMind Markdown is GFM with tables, strikeout, task lists, footnotes,
 # dollar-delimited math, autolinks, emoji, and raw HTML parsing. YAML metadata
@@ -200,6 +202,19 @@ def resolve_pandoc_path(
 def _diagnostic(value: object) -> str:
     text = str(value or '').strip()
     return text if len(text) <= _MAX_DIAGNOSTIC_CHARS else text[:_MAX_DIAGNOSTIC_CHARS] + '...'
+
+
+def _pandoc_working_directory(
+    *, environ: Optional[Mapping[str, str]] = None,
+) -> str:
+    '''Use a stable directory outside replaceable application bundles.'''
+    environment = os.environ if environ is None else environ
+    runtime_root = str(environment.get(RUNTIME_ROOT_ENV) or '').strip()
+    if runtime_root:
+        candidate = Path(runtime_root).expanduser()
+        if candidate.is_absolute() and candidate.is_dir():
+            return str(candidate)
+    return tempfile.gettempdir()
 
 
 def _numbered_object_caption(line: str) -> tuple[Optional[str], Optional[str]]:
@@ -543,6 +558,7 @@ def _check_pandoc_version_cached(
             timeout=timeout_seconds,
             shell=False,
             check=False,
+            cwd=_pandoc_working_directory(),
         )
     except subprocess.TimeoutExpired as exc:
         raise PandocError(
@@ -661,6 +677,7 @@ def run_pandoc(
             timeout=timeout_seconds,
             shell=False,
             check=False,
+            cwd=_pandoc_working_directory(),
         )
     except subprocess.TimeoutExpired as exc:
         raise PandocError(

@@ -53,7 +53,7 @@ class OnlineChatModule(_DynamicSourceRouterMixin, LLMBase, metaclass=_ChatModule
         type = cls._resolve_type_name(type, model, options=[LLMType.LLM, LLMType.CHAT, LLMType.VLM])
         return getattr(lazyllm.online.chat, source)(
             base_url=url, model=model, stream=stream, return_trace=return_trace,
-            api_key=api_key, skip_auth=skip_auth, type=type, timeout=timeout, **kwargs)
+            api_key=api_key, skip_auth=skip_auth, type=type, static_params=static_params, timeout=timeout, **kwargs)
 
     def __init__(self, model: str = None, source: str = None, url: str = None, stream: bool = True,
                  return_trace: bool = False, skip_auth: bool = False, type: Optional[str] = None,

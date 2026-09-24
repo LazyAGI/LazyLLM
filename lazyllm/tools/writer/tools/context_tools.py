@@ -49,6 +49,7 @@ class WriterContextTools(WriterToolBase):
             query=writing_task.query,
             meta={
                 'source': 'create_writing_context',
+                'document_summary_kind': 'summary' if self.llm is not None else 'excerpt',
             },
         )
 
@@ -96,6 +97,9 @@ class WriterContextTools(WriterToolBase):
         content_kind: Optional[str] = None
         for artifact in artifacts:
             raw = self._unified_context_content(artifact)
+            writing_context.meta.update({
+                'document_summary_kind': 'summary' if self.llm is not None else 'excerpt',
+            })
 
             if isinstance(raw, str):
                 summary = self._ensure_document_summary(writing_context, raw)

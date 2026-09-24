@@ -49,6 +49,14 @@ _WECHAT_TABLE_CELL_STYLE = {
     'background-color': '#ffffff', 'border': '1px solid #222222',
     'padding': '6px 8px', 'vertical-align': 'top', 'word-break': 'break-word',
 }
+_WECHAT_CALLOUT_STYLE = {
+    'background-color': '#f7f8fa', 'border-left': '3px solid #98a2b3',
+    'border-radius': '3px', 'color': '#344054', 'font-size': '15px',
+    'line-height': '1.8', 'margin': '16px 0', 'padding': '10px 14px',
+}
+_WECHAT_CALLOUT_TITLE_STYLE = {
+    'color': '#1d2939', 'font-weight': '700', 'margin': '0 0 6px',
+}
 
 _WECHAT_SAFE_IMAGE_ATTRIBUTES = frozenset({
     'alt', 'align', 'class', 'height', 'id', 'src', 'style', 'title', 'width',
@@ -962,10 +970,20 @@ class WeChatWriterAdapter(WriterAdapterBase):
             caption_attr = f' style="{escape(caption_style, quote=True)}"' if caption_style else ''
             caption = f'<p{caption_attr}>{caption_text}</p>' if caption_text else ''
             return f'{caption}{self._render_table(block)}'
-        if block.type in {'quote', 'callout'}:
+        if block.type == 'callout':
+            style = _style_text(_WECHAT_CALLOUT_STYLE)
+            style_attr = f' style="{escape(style, quote=True)}"' if style else ''
+            title_style = _style_text(_WECHAT_CALLOUT_TITLE_STYLE)
+            title_attr = f' style="{escape(title_style, quote=True)}"' if title_style else ''
+            head, _, tail = body.partition('\n')
+            head_html = f'<p{title_attr}><strong>{head}</strong></p>' if head else ''
+            tail_html = tail.replace('\n', '<br />') if tail else ''
+            return f'<section{style_attr}>{head_html}{tail_html}{children}</section>'
+        if block.type == 'quote':
             style = _style_text(template.quote_style())
             style_attr = f' style="{escape(style, quote=True)}"' if style else ''
-            return f'<blockquote{style_attr}>{body}</blockquote>{children}'
+            br_body = body.replace('\n', '<br />')
+            return f'<blockquote{style_attr}>{br_body}</blockquote>{children}'
         if block.type in {'code', 'code_block'}:
             language = str(getattr(block, 'language', '') or '').strip()
             code_class = f' class="language-{escape(language, quote=True)}"' if language else ''

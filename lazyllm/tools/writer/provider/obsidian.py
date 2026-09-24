@@ -23,6 +23,14 @@ from .base import (
 from ..data_models.multimodal import MediaAssetLibrary
 from ..data_models.task import InputResource, TargetDocument
 from ..data_models.writer_ir import WriterDocument, WriterStage
+from ..numbering import (
+    build_numbering_view_from_markdown,
+    compute_numbering,
+    dematerialize_markdown,
+    ensure_markdown_heading_anchors,
+    materialize_markdown,
+    parse_markdown_anchor_numbering,
+)
 from ..utils import writer_document_to_markdown
 
 
@@ -32,10 +40,13 @@ _WRITER_SYSTEM_ANCHOR_LINE_RE = re.compile(
     r'^[ \t]*<a\s+id=(["\'])block-[^"\']+\1(?:[ \t]+[^>]*)?[ \t]*(?:/>|>[ \t]*</a>)[ \t]*(?:\r?\n|$)',
     re.MULTILINE,
 )
-_MARKDOWN_IMAGE_RE = re.compile(r'!\[([^\]]*)\]\(([^)\s]+)(?:\s+["\'][^)]*["\'])?\)')
 _LOCAL_MARKDOWN_IMAGE_RE = re.compile(
     r'!\[(?P<alt>[^\]]*)\]\((?P<target><[^>\n]+>|[^)\s]+)(?:\s+["\'][^)]*["\'])?\)'
 )
+
+
+def _preserve_trailing_linebreaks(source: str, transformed: str) -> str:
+    return transformed.rstrip('\r\n') + source[len(source.rstrip('\r\n')):]
 
 
 class ObsidianWriterProvider(WriterProviderBase):
@@ -71,8 +82,21 @@ class ObsidianWriterProvider(WriterProviderBase):
             markdown = self._serialize_writer_document(content, media_assets)
             source_document = content.model_copy(deep=True)
         elif isinstance(content, str):
-            markdown = content
-            source_document = self._writer_document(markdown, media_assets)
+            canonical_markdown = _preserve_trailing_linebreaks(
+                content,
+                ensure_markdown_heading_anchors(
+                    dematerialize_markdown(
+                        content,
+                        allow_escaped_prefix=True,
+                    ),
+                ),
+            )
+            source_document = self._writer_document(canonical_markdown, media_assets)
+            view = build_numbering_view_from_markdown(canonical_markdown)
+            markdown = _preserve_trailing_linebreaks(
+                canonical_markdown,
+                materialize_markdown(canonical_markdown, view, compute_numbering(view)),
+            )
         else:
             raise TypeError('Obsidian Writer Provider accepts Markdown or WriterDocument content.')
         return WriterProviderDocument(
@@ -103,7 +127,13 @@ class ObsidianWriterProvider(WriterProviderBase):
         )
         return {
             **result,
-            'persisted_document': converted.content,
+            'persisted_document': _preserve_trailing_linebreaks(
+                converted.content,
+                dematerialize_markdown(
+                    converted.content,
+                    allow_escaped_prefix=True,
+                ),
+            ),
             'representation': 'markdown',
             'published_link': '',
         }
@@ -274,13 +304,23 @@ class ObsidianWriterProvider(WriterProviderBase):
         if matched:
             frontmatter = matched.group(0)
             content = content[matched.end():]
+        raw_content = content
         bridge: Dict[str, Any] = {
-            'source_hash': self._hash(frontmatter + content),
+            'source_hash': self._hash(frontmatter + raw_content),
             'frontmatter': frontmatter,
             'images': {},
             'external_images': {},
             'warnings': [],
         }
+        content = _preserve_trailing_linebreaks(
+            raw_content,
+            ensure_markdown_heading_anchors(
+                dematerialize_markdown(
+                    raw_content,
+                    allow_escaped_prefix=True,
+                ),
+            ),
+        )
         images: Dict[str, Dict[str, Any]] = bridge['images']
         external_images: Dict[str, str] = bridge['external_images']
         warnings: List[str] = bridge['warnings']
@@ -334,7 +374,11 @@ class ObsidianWriterProvider(WriterProviderBase):
         media_assets: MediaAssetLibrary | None,
     ) -> str:
         content = self._restore_images(content, bridge, note, fs, media_assets)
-        content = _WRITER_SYSTEM_ANCHOR_LINE_RE.sub('', content)
+        # Non-default heading modes must survive reopening the note without its bridge state.
+        content = _WRITER_SYSTEM_ANCHOR_LINE_RE.sub(
+            lambda match: match.group(0) if parse_markdown_anchor_numbering(match.group(0)) else '',
+            content,
+        )
         frontmatter = str(bridge.get('frontmatter') or '')
         if not content.endswith('\n'):
             content += '\n'
@@ -364,7 +408,7 @@ class ObsidianWriterProvider(WriterProviderBase):
         }
 
         def replacement(match: re.Match[str]) -> str:
-            uri = match.group(2)
+            uri = match.group('target')
             reference = uri[1:-1].strip() if uri.startswith('<') and uri.endswith('>') else uri
             media_uri = f'https:{reference}' if reference.startswith('//') else reference
             original_external = external_images.get(media_uri)
@@ -380,12 +424,12 @@ class ObsidianWriterProvider(WriterProviderBase):
             original = self._bridged_image_raw(uri, images, assets)
             if original is not None:
                 return original
-            source = self._asset_path(uri, assets)
+            source = self._asset_path(reference, assets)
             if source is None:
                 return match.group(0)
             return f'![[{fs.copy_attachment(note, source)}]]'
 
-        return _MARKDOWN_IMAGE_RE.sub(replacement, content)
+        return _LOCAL_MARKDOWN_IMAGE_RE.sub(replacement, content)
 
     @staticmethod
     def _bridged_image_raw(
@@ -422,9 +466,18 @@ class ObsidianWriterProvider(WriterProviderBase):
 
     @staticmethod
     def _asset_path(uri: str, assets: list[Any]) -> Path | None:
+        raw = str(uri or '').strip()
+        lowered = raw.lower()
+        if lowered.startswith(('http://', 'https://')):
+            candidates = {raw}
+        elif lowered.startswith('file://'):
+            candidates = {raw, unquote(urlparse(raw).path)}
+        else:
+            candidates = {raw, unquote(raw)}
+
         for asset in assets:
             values = {str(asset.uri or ''), str(asset.local_path or '')}
-            if uri not in values:
+            if candidates.isdisjoint(values):
                 continue
             local = Path(str(asset.local_path or ''))
             if local.is_file():

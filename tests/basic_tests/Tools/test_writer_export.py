@@ -173,8 +173,12 @@ def test_copy_removes_editor_anchors_and_extra_paragraph_spacing(output_format):
     assert '<a ' not in result
     assert '#block-' not in result
     assert 'block-sec-' not in result
-    assert '\n\n' not in result
-    assert all(line.strip() for line in result.splitlines())
+    if output_format == 'markdown':
+        assert '码头上空无一人。\n\n不，不完全如此。' in result
+        assert '\n\n\n' not in result
+    else:
+        assert '\n\n' not in result
+        assert all(line.strip() for line in result.splitlines())
     assert '章节见后续内容。' in result
     assert '码头上空无一人。' in result
 
@@ -186,7 +190,8 @@ def test_markdown_copy_cleans_ir_anchors_without_changing_source():
     ])
     before = document.model_dump()
     result = WriterProviderBase.convert_common_document(document, output_format='markdown').content
-    assert '<a ' not in result and '\n\n' not in result
+    assert '<a ' not in result
+    assert '章节\n\n正文' in result
     assert '章节' in result and '正文' in result
     assert document.model_dump() == before
 

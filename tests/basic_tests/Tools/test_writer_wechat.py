@@ -21,6 +21,7 @@ from lazyllm.tools.writer.provider.wechat import (
 from lazyllm.tools.writer.provider import WriterProviderRevisionError, match_writer_provider
 from lazyllm.tools.writer.templates.wechat import get_wechat_template, list_wechat_templates
 from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
+from lazyllm.tools.writer.utils import writer_document_to_markdown
 from lazyllm.tools.writer.utils.artifact import deserialize_artifact_json
 from lazyllm.tools.writer.utils.serialization import parse_document_markdown
 
@@ -661,3 +662,31 @@ def test_wechat_resource_tools_read_patch_and_persist(monkeypatch, tmp_path: Pat
     assert '<p>修改后的内容</p>' in calls['update'][2]['content']
     assert '<section data-raw="1"><custom-card /></section>' in calls['update'][2]['content']
     assert persisted.provider_binding['document_id'] == 'media-resource'
+
+
+def test_wechat_callout_renders_without_marker_and_round_trips():
+    source = (
+        '> [!note] 注意事项\n'
+        '> 这里是正文内容。\n'
+        '\n'
+        '> [!tip]-\n'
+        '> 无标题正文\n'
+        '\n'
+        '> 普通引用\n'
+        '> 多行\n'
+    )
+    document = parse_document_markdown(source, document_id='callout-document', stage='final')
+    callout, untitled, quote = document.blocks
+    assert callout.type == 'callout'
+    assert callout.numbering['callout_kind'] == 'note'
+    assert callout.numbering['callout_titled'] is True
+    assert callout.content == '注意事项\n这里是正文内容。'
+    assert untitled.numbering['callout_titled'] is False
+    assert quote.type == 'quote'
+
+    html = WeChatWriterAdapter().document_to_html(document, template='clean')
+    assert '[!note]' not in html and '[!tip]' not in html
+    assert '<strong>注意事项</strong>' in html
+    assert '<blockquote' in html and '普通引用<br />多行' in html
+
+    assert writer_document_to_markdown(document) == source
