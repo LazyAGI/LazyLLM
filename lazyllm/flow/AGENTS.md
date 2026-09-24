@@ -230,6 +230,8 @@ def _make_step_item(self, v):
 
 `builtins.isinstance` is monkey-patched so that `isinstance(_FuncWrap(f), type(f))` returns `True`, preserving type transparency.
 
+Switch callable conditions and Loop `stop_condition` are wrapped the same way even though they are not `_items`.
+
 ---
 
 ## Extension Conventions

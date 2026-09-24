@@ -113,6 +113,13 @@ class FlowBase(SessionConfigableBase, metaclass=_MetaBind):
             return _FuncWrap(v)
         return v
 
+    def _wrap_control_callback(self, v):
+        if not callable(v): return v
+        if isinstance(v, bind) and v._wraps_plain_callable():
+            register_hooks(v, resolve_builtin_hooks(v))
+            return v
+        return v if hasattr(v, '_hooks') else _FuncWrap(v)
+
     def _add(self, k, v):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
         item = self._make_step_item(v)
@@ -374,7 +381,7 @@ class Pipeline(LazyLLMFlowsBase):
 
     @_stop_condition.setter
     def _stop_condition(self, cond):
-        self._stop_condition_var = cond
+        self._stop_condition_var = self._wrap_control_callback(cond)
 
     @property
     def _judge_on_full_input(self):
@@ -625,6 +632,7 @@ class Switch(LazyLLMFlowsBase):
         else:
             self.conds, items = list(args[0::2]), args[1::2]
         super().__init__(*items, post_action=post_action)
+        self._cond_callbacks = [self._wrap_control_callback(cond) for cond in self.conds]
         self._judge_on_full_input = judge_on_full_input
         self._set_conversion(conversion)
 
@@ -641,8 +649,8 @@ class Switch(LazyLLMFlowsBase):
         if self._conversion:
             exp = self._conversion(*exp) if isinstance(exp, package) else self._conversion(exp)
 
-        for idx, cond in enumerate(self.conds):
-            if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or (
+        for idx, (cond, callback) in enumerate(zip(self.conds, self._cond_callbacks)):
+            if (callable(callback) and self.invoke(callback, exp) is True) or (exp == cond) or (
                     exp == package((cond,))) or cond == 'default':
                 alias = self._item_names[idx] if self._item_names and idx < len(self._item_names) else None
                 actual = getattr(self._items[idx], '__name__', None) or type(self._items[idx]).__name__
@@ -671,6 +679,7 @@ class Switch(LazyLLMFlowsBase):
 
     def _add_case(self, case, func):
         self.conds.append(case)
+        self._cond_callbacks.append(self._wrap_control_callback(case))
         self._add(None, func)
 
 

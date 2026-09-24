@@ -67,7 +67,7 @@ def _module_class_names(module_class):
     if module_class is None:
         return ()
     if isinstance(module_class, type):
-        return tuple(cls.__name__ for cls in module_class.mro())
+        return tuple(cls.__name__ for cls in module_class.__mro__)
     return (str(module_class),)
 
 
