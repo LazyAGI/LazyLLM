@@ -112,6 +112,31 @@ def test_provider_contract_separates_conversion_from_writing():
     assert target.meta['github_writer_code_fences'][0]['language'] == 'mermaid'
 
 
+def test_feishu_conversion_binds_local_image_with_encoded_space_path(tmp_path):
+    image = tmp_path / 'Application Support' / 'generated.jpg'
+    image.parent.mkdir()
+    image.write_bytes(b'image')
+    media_assets = MediaAssetLibrary(
+        library_id='media-library-test',
+        assets={
+            'asset-1': MediaAsset(
+                media_asset_id='asset-1',
+                asset_type='image',
+                source_type='image_generation',
+                local_path=str(image),
+            ),
+        },
+    )
+
+    converted = FeishuWriterProvider().convert_document(
+        f'![Generated](<{image}>)',
+        target=TargetDocument(adapter='feishu', doc_id='document-1'),
+        media_assets=media_assets,
+    )
+
+    assert converted.format == 'feishu_blocks'
+
+
 def test_wechat_conversion_is_pure_and_keeps_copyable_image_url(monkeypatch):
     provider = WeChatWriterProvider()
     monkeypatch.setattr(

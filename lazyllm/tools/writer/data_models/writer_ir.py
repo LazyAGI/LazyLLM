@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 WriterStage = Literal['outline', 'draft', 'final']
@@ -37,12 +37,17 @@ class WritingSubTask(BaseModel):
     subtask_id: str
     node_id: str
     question: str
-    subtask_type: Literal['retrieve', 'extract', 'reason']
+    subtask_type: Literal['retrieve', 'reason']
     status: Literal['pending', 'running', 'completed', 'retrying', 'failed'] = 'pending'
     result_summary: str = ''
     retry_count: int = Field(default=0, ge=0)
     result_references: List[Dict[str, Any]] = Field(default_factory=list)
     tools_used: List[str] = Field(default_factory=list)
+
+    @field_validator('subtask_type', mode='before')
+    @classmethod
+    def normalize_legacy_subtask_type(cls, value: Any) -> Any:
+        return 'reason' if value == 'extract' else value
 
 
 class WriterSpan(BaseModel):
@@ -61,6 +66,7 @@ class WriterBlock(BaseModel):
     # identifiers belong in provider_binding (for example provider_binding.block_id).
     node_id: str
     type: str
+    outline_description: str = ''
     target_chars: Optional[int] = Field(default=None, gt=0)
     context_relations: List[ContextRelation] = Field(default_factory=list)
     subtasks: List[WritingSubTask] = Field(default_factory=list)

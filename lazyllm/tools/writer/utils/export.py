@@ -52,6 +52,9 @@ def _copyable_markdown(markdown: str) -> str:
         cleaned = ''.join(parts)
         if cleaned.strip():
             lines.append(cleaned)
+        elif lines and lines[-1].strip():
+            # Blank lines separate Markdown blocks, including tables and images.
+            lines.append('')
     return '\n'.join(lines).strip() + '\n'
 
 

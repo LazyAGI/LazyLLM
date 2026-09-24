@@ -57,10 +57,14 @@ class WriterMultimodalTools(WriterToolBase):
             resource.model_copy(deep=True)
             for resource in [*writing_task.inputs, *self._unified_models(input_resources, InputResource)]
         ]
+        # This flag belongs to the current collection policy, not a previous attempt.
+        for resource in resources:
+            resource.meta.pop('source_image_preserved', None)
         library = MediaAssetLibrary(library_id=f'media-library-{writing_task.task_id or "task"}')
         visual_policy = writing_task.constraints.get('visual_policy')
         if isinstance(visual_policy, dict) and visual_policy:
             library.meta['visual_policy'] = dict(visual_policy)
+        analyze_source_images = library.meta.get('visual_policy', {}).get('analyze_source_images', True)
         warnings: List[str] = []
         pre_materialized_resource_ids: set[str] = set()
 
@@ -79,6 +83,8 @@ class WriterMultimodalTools(WriterToolBase):
                     document_media, document_warnings = self._materialize_document_images(document)
                     warnings.extend(document_warnings)
                     for resource, asset in document_media:
+                        if not analyze_source_images:
+                            resource.meta['source_image_preserved'] = True
                         self._register_asset(resource, asset, library, warnings)
                         if resource.resource_id:
                             pre_materialized_resource_ids.add(resource.resource_id)
@@ -89,6 +95,11 @@ class WriterMultimodalTools(WriterToolBase):
         for resource in resources:
             if resource.resource_id in pre_materialized_resource_ids or not self._is_image_resource(resource):
                 continue
+            if not analyze_source_images and (
+                resource.meta.get('origin') in {'markdown', 'source_document'}
+                or resource.meta.get('referenced_from')
+            ):
+                resource.meta['source_image_preserved'] = True
             label = resource.resource_id or resource.title or resource.uri or 'image resource'
             try:
                 asset = self._materialize_input_resource(resource)
@@ -373,7 +384,8 @@ class WriterMultimodalTools(WriterToolBase):
     ) -> MediaAsset:
         label = resource.resource_id or resource.title or resource.uri or 'image resource'
         asset = library.assets.setdefault(asset.media_asset_id, asset)
-        if asset.meta.get('semantic_status') != 'ready' and self.llm is not None:
+        if (asset.meta.get('semantic_status') != 'ready' and self.llm is not None
+                and not resource.meta.get('source_image_preserved')):
             try:
                 asset.summary = self._describe_image(asset.local_path or '')
                 asset.meta.update(summary_source='vision_model', semantic_status='ready')

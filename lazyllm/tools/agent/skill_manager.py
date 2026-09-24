@@ -1162,7 +1162,8 @@ class SkillManager(ModuleBase):
                 temp_dir.cleanup()
 
     def read_reference(self, name: str, rel_path: str, **kwargs) -> Dict[str, str]:
-        return self.read_file(name=name, rel_path=rel_path, **kwargs)
+        result = self.read_file(name=name, rel_path=rel_path, **kwargs)
+        return {**result, 'name': name, 'rel_path': self._normalize_skill_rel_path(rel_path)}
 
     def get_skill_tools(self) -> List:
         tools = [
@@ -1209,6 +1210,7 @@ class SkillManager(ModuleBase):
             executing a skill or reading its resources.
             When the user names a skill, call this directly and never fall back
             to search_skill. Resolution does not consume the search budget.
+            Returns the skill content, declared resources and source path.
 
             Args:
                 name (str): Full skill key or unique skill name. Resolution is
@@ -1225,6 +1227,8 @@ class SkillManager(ModuleBase):
 
             The skill must already be loaded with get_skill. rel_path must appear
             in that skill's resources manifest.
+
+            Returns the reference content and source location.
 
             Args:
                 name (str): Skill key or unique skill name.
@@ -1362,7 +1366,7 @@ class SkillManager(ModuleBase):
         normalized, error = self._loaded_skill_guard(name, rel_path)
         if error:
             return error
-        return self.read_file(name=name, rel_path=normalized, **kwargs)
+        return self.read_reference(name=name, rel_path=normalized, **kwargs)
 
     def _run_loaded_skill_script(
         self,
