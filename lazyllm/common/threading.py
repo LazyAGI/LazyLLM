@@ -43,7 +43,7 @@ class Thread(threading.Thread):
     def work(self, prehook, target, args, **kw):
         try:
             result = self._call(prehook, target, args, **kw)
-        except BaseException as error:
+        except BaseException as error:  # noqa: B036 - get_result re-raises on the consuming thread.
             self.q.put((False, error))
         else:
             self.q.put((True, result))

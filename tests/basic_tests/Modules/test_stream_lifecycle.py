@@ -235,7 +235,7 @@ def test_writer_waits_and_raises_cancellation_in_producer(failure):
                     if failure == 'consume':
                         stream._queue.put({'delta': 'bad'})
                     list(stream)
-            except BaseException as error:
+            except BaseException as error:  # noqa: B036 - Assert worker failures on the test thread below.
                 errors.append(error)
             finally:
                 consumer_done.set()

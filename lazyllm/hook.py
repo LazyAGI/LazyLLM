@@ -249,7 +249,7 @@ def hook_execution(  # noqa: C901
             # normal application exception by map_exception.
             try:
                 run_hooks(hook_objs, 'on_error', e)
-            except BaseException:
+            except BaseException:  # noqa: B036 - Preserve the original cancellation re-raised below.
                 LOG.warning('Hook on_error phase failed', exc_info=True)
             raise
         else:

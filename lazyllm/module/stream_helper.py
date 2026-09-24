@@ -70,7 +70,7 @@ class StreamCallHelper:
         if self._on_cancel is not None:
             try:
                 self._on_cancel()
-            except BaseException as error:
+            except BaseException as error:  # noqa: B036 - A failing callback must not skip producer cleanup.
                 lazyllm.LOG.warning(f'Stream cancellation callback failed: {error!r}')
 
     def close(self) -> None:
