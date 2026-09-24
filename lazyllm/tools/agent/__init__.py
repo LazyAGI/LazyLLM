@@ -1,3 +1,4 @@
+from .history import ToolCallTurn, describe_tool_turns
 from .functionCall import FunctionCall, FunctionCallAgent
 from .toolsManager import fc_register, register, ToolManager
 from .tool_runtime import (
@@ -38,6 +39,8 @@ from .file_tool import FileSystemToolkit
 from .toolError import ToolExecutionError
 
 __all__ = [
+    'ToolCallTurn',
+    'describe_tool_turns',
     'TOOL_OBSERVATION_KEY',
     'TOOL_OBSERVATION_VERSION',
     'attachable_tool_observation',
