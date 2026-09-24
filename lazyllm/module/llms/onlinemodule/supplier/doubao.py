@@ -1,4 +1,5 @@
 import time
+from urllib.parse import quote
 import lazyllm
 from typing import Dict, List, Union, Optional
 from lazyllm.components.utils.downloader.model_downloader import LLMType
@@ -10,8 +11,39 @@ from ..base import (
 import requests
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
-from lazyllm.thirdparty import volcenginesdkarkruntime
 from lazyllm import LOG
+
+
+def _ark_request(method, url, headers, *, payload=None, timeout=60):
+    # Do not retry creation requests: an interrupted response may already have
+    # created a billable task. Keep provider errors available to the caller.
+    with requests.request(method, url, headers=headers, json=payload, timeout=timeout) as response:
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            try:
+                error = response.json().get('error', {})
+            except (ValueError, AttributeError):
+                error = {}
+            if isinstance(error, dict) and error.get('message'):
+                raise requests.HTTPError(
+                    f'Doubao HTTP {response.status_code}: {error.get("code", "")} {error["message"]}',
+                    response=response,
+                ) from exc
+            raise
+        result = response.json()
+        if not isinstance(result, dict):
+            raise ValueError('Doubao returned an invalid JSON response')
+        if result.get('error') and 'status' not in result:
+            raise RuntimeError(f'Doubao request failed: {result["error"]}')
+        return result
+
+
+def _download_generated_file(url):
+    # The model API key must not be forwarded to the output storage host.
+    with requests.get(url, timeout=180) as response:
+        response.raise_for_status()
+        return response.content
 
 
 class DoubaoChat(OnlineChatModuleBase):
@@ -112,16 +144,14 @@ class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase):
 
     def __init__(self, api_key: str = None, model: Optional[str] = None, url: Optional[str] = None,
                  return_trace: bool = False, **kwargs):
-        url = url or 'https://ark.cn-beijing.volces.com/api/v3'
+        url = url or kwargs.pop('base_url', None) or 'https://ark.cn-beijing.volces.com/api/v3'
         resolved_model = model or lazyllm.config['doubao_text2image_model_name'] or DoubaoText2Image.MODEL_NAME
         super().__init__(model=resolved_model, api_key=api_key or self._default_api_key(),
                          return_trace=return_trace, url=url, **kwargs)
 
-    def _ark_client(self, base_url=None):
-        return volcenginesdkarkruntime.Ark(base_url=(base_url or self._base_url), api_key=self._api_key)
-
     def _forward(self, input: str = None, files: List[str] = None, n: int = 1, size: str = '1024x1024', seed: int = -1,
-                 guidance_scale: float = 2.5, watermark: bool = True, model: str = None, url: str = None, **kwargs):
+                 guidance_scale: float = 2.5, watermark: bool = True, model: str = None, url: str = None,
+                 request_timeout: float = 600, **kwargs):
         # kwargs may include LazyLLM framework fields (stream_output / priority); ignore them.
         has_ref_image = files is not None and len(files) > 0
         if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
@@ -152,12 +182,20 @@ class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase):
             if n > 1:
                 api_params['sequential_image_generation'] = 'auto'
                 max_images = min(n, 15)
-                sigo = volcenginesdkarkruntime.types.images.SequentialImageGenerationOptions
-                api_params['sequential_image_generation_options'] = sigo(max_images=max_images)
+                api_params['sequential_image_generation_options'] = {'max_images': max_images}
             else:
                 api_params['sequential_image_generation'] = 'disabled'
-        imagesResponse = self._ark_client(base_url=url).images.generate(**api_params)
-        image_contents = [requests.get(result.url).content for result in imagesResponse.data]
+        result = _ark_request('POST', (url or self._base_url).rstrip('/') + '/images/generations',
+                              self._header, payload=api_params, timeout=request_timeout)
+        images = result.get('data')
+        if not isinstance(images, list) or not images:
+            raise RuntimeError('Doubao image generation returned no images')
+        image_contents = []
+        for image in images:
+            if not isinstance(image, dict) or not image.get('url'):
+                error = image.get('error') if isinstance(image, dict) else image
+                raise RuntimeError(f'Doubao image generation failed: {error}')
+            image_contents.append(_download_generated_file(image['url']))
         return encode_query_with_filepaths(None, bytes_to_file(image_contents))
 
 
@@ -183,13 +221,10 @@ class DoubaoText2Video(LazyLLMOnlineText2VideoModuleBase):
 
     def __init__(self, api_key: str = None, model: Optional[str] = None, url: Optional[str] = None,
                  return_trace: bool = False, **kwargs):
-        url = url or 'https://ark.cn-beijing.volces.com/api/v3'
+        url = url or kwargs.pop('base_url', None) or 'https://ark.cn-beijing.volces.com/api/v3'
         resolved_model = model or lazyllm.config['doubao_text2video_model_name'] or DoubaoText2Video.MODEL_NAME
         super().__init__(model=resolved_model, api_key=api_key or self._default_api_key(),
                          return_trace=return_trace, url=url, **kwargs)
-
-    def _ark_client(self, base_url=None):
-        return volcenginesdkarkruntime.Ark(base_url=(base_url or self._base_url), api_key=self._api_key)
 
     def _build_content(self, input: str, files: List[str] = None, image_roles: List[str] = None,
                        resolution: str = '480p',
@@ -230,8 +265,10 @@ class DoubaoText2Video(LazyLLMOnlineText2VideoModuleBase):
                  resolution: str = '480p',
                  duration: int = 2, ratio: str = '16:9', watermark: bool = True,
                  camerafixed: bool = False, poll_interval: float = 3.0,
-                 model: str = None, url: str = None, **kwargs):
+                 model: str = None, url: str = None, timeout: float = 900, **kwargs):
         # kwargs may include LazyLLM framework fields (stream_output / priority); ignore them.
+        if timeout <= 0 or poll_interval < 0:
+            raise ValueError('timeout must be positive and poll_interval must be non-negative')
         resolved_image_roles = image_roles
         if files and not resolved_image_roles:
             resolved_image_roles = (
@@ -242,7 +279,8 @@ class DoubaoText2Video(LazyLLMOnlineText2VideoModuleBase):
             input=input, files=files, image_roles=resolved_image_roles,
             resolution=resolution, duration=duration,
             ratio=ratio, watermark=watermark, camerafixed=camerafixed)
-        client = self._ark_client(base_url=url)
+        task_url = (url or self._base_url).rstrip('/') + '/contents/generations/tasks'
+        headers = self._header
         selected_model = model or self._model_name
         create_kwargs = dict(
             model=selected_model,
@@ -263,15 +301,22 @@ class DoubaoText2Video(LazyLLMOnlineText2VideoModuleBase):
             and all(role == 'reference_image' for role in resolved_image_roles)
         ):
             create_kwargs['omni_reference_task_type'] = 'auto'
-        create_result = client.content_generation.tasks.create(**create_kwargs)
-        task_id = create_result.id
-        while True:
-            get_result = client.content_generation.tasks.get(task_id=task_id)
-            status = get_result.status
+        deadline = time.monotonic() + timeout
+        create_result = _ark_request('POST', task_url, headers, payload=create_kwargs, timeout=min(60, timeout))
+        task_id = create_result.get('id')
+        if not isinstance(task_id, str) or not task_id:
+            raise RuntimeError('Doubao video task creation returned no task id')
+        while (remaining := deadline - time.monotonic()) > 0:
+            get_result = _ark_request('GET', task_url + '/' + quote(task_id, safe=''), headers,
+                                      timeout=min(60, remaining))
+            status = get_result.get('status')
             if status == 'succeeded':
-                video_url = get_result.content.video_url
-                video_bytes = requests.get(video_url, timeout=180).content
+                video_url = (get_result.get('content') or {}).get('video_url')
+                if not video_url:
+                    raise RuntimeError('Doubao video task succeeded without a video URL')
+                video_bytes = _download_generated_file(video_url)
                 return encode_query_with_filepaths(None, bytes_to_file([video_bytes]))
-            if status == 'failed':
-                raise Exception(f'Doubao text2video failed: {getattr(get_result, "error", None)}')
-            time.sleep(poll_interval)
+            if status not in {'queued', 'running'}:
+                raise RuntimeError(f'Doubao text2video {status}: {get_result.get("error")}')
+            time.sleep(min(poll_interval, max(0, deadline - time.monotonic())))
+        raise TimeoutError(f'Doubao video generation timed out after {timeout} seconds (task {task_id})')

@@ -17,7 +17,6 @@ package_name_map = {
     'faiss': 'faiss-cpu',
     'flash_attn': 'flash-attn',
     'sklearn': 'scikit-learn',
-    'volcenginesdkarkruntime': 'volcengine-python-sdk[ark]',
     'opensearchpy': 'opensearch-py',
     'qdrant_client': 'qdrant-client',
     'memu': 'memu-py',
