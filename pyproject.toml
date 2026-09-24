@@ -74,7 +74,6 @@ markers = [
     "skip_on_linux: mark tests to skip on Linux",
     "skip_on_cpp: mark tests to skip in C++ Build + Python Regression job",
 ]
-order_group_scope = "class"
 
 [tool.poetry.dependencies]
 appdirs = { version = "*", optional = true }

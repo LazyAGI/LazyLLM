@@ -1243,11 +1243,67 @@ class ToolManager(ModuleBase):
     def sandbox(self, sandbox):
         self._sandbox = sandbox
 
+    @staticmethod
+    def _is_skill_run_script_tool(tool: ModuleTool) -> bool:
+        if tool.runtime_metadata.tool_source != 'skill':
+            return False
+
+        schema = tool.params_schema.model_json_schema()
+        args_schema = (schema.get('properties') or {}).get('args')
+        if not isinstance(args_schema, dict):
+            return False
+        variants = args_schema.get('anyOf') or args_schema.get('oneOf') or [args_schema]
+        value_variants = [
+            variant for variant in variants
+            if isinstance(variant, dict) and variant.get('type') != 'null'
+        ]
+        if len(value_variants) != 1:
+            return False
+        value_schema = value_variants[0]
+        return value_schema.get('type') == 'array' \
+            and (value_schema.get('items') or {}).get('type') == 'string'
+
+    @staticmethod
+    def _run_script_args_failure(received: str):
+        message = (
+            'Invalid arguments: args: expected a JSON array of strings, '
+            f'received {received}.'
+        )
+        return tool_failure(message + ' Example: {"args":["--query","test"]}.')
+
+    @staticmethod
+    def _normalize_run_script_args(tool_arguments: Dict[str, Any]):
+        if 'args' not in tool_arguments or not isinstance(tool_arguments['args'], str):
+            return tool_arguments, None
+
+        try:
+            parsed_args = std_json.loads(tool_arguments['args'])
+        except (TypeError, ValueError):
+            return None, ToolManager._run_script_args_failure('an invalid JSON string')
+
+        if not isinstance(parsed_args, list):
+            return None, ToolManager._run_script_args_failure(type(parsed_args).__name__)
+
+        invalid_index = next(
+            (index for index, item in enumerate(parsed_args) if not isinstance(item, str)),
+            None,
+        )
+        if invalid_index is not None:
+            return None, ToolManager._run_script_args_failure(f'a non-string item at index {invalid_index}')
+
+        normalized = dict(tool_arguments)
+        normalized['args'] = parsed_args
+        return normalized, None
+
     def _validate_tool(self, tool_name: str, tool_arguments: Dict[str, Any]):
         entry = self._tool_call.get(tool_name)
         if not entry:
             LOG.error(f'cannot find tool named [{tool_name}]')
             return None, None
+        if tool_name in ('run_script', 'run_skill_script') and self._is_skill_run_script_tool(entry):
+            tool_arguments, normalization_failure = self._normalize_run_script_args(tool_arguments)
+            if normalization_failure is not None:
+                return None, normalization_failure
         try:
             return entry._validate_input(tool_arguments), None
         except ValidationError as error:

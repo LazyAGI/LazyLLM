@@ -5,6 +5,7 @@ from typing import Dict, Literal
 import pytest
 
 from lazyllm.tools.agent import ToolExecutionError
+from lazyllm.tools.agent.skill_manager import SkillManager
 from lazyllm.tools.agent.toolsManager import ToolManager, fc_register
 from lazyllm.tools.git import GitLab, LocalGit
 from lazyllm.tools.git.review.poster import _submit_review
@@ -89,6 +90,25 @@ def flexible_search(query: str, **kwargs):
     return {'query': query, **kwargs}
 
 
+def run_script(args: str):
+    '''Return custom tool arguments unchanged.
+
+    Args:
+        args (str): Custom tool arguments.
+    '''
+    return args
+
+
+@fc_register(host_file='NONE', tool_source='skill')
+def run_skill_script(args: str):
+    '''Return custom tool arguments unchanged.
+
+    Args:
+        args (str): Custom tool arguments.
+    '''
+    return args
+
+
 def translated_permission_failure(resource: str):
     '''Translate a domain failure into a permission failure.
 
@@ -114,6 +134,18 @@ def _call(name, arguments):
         'type': 'function',
         'function': {'name': name, 'arguments': json.dumps(arguments)},
     }
+
+
+def _skill_script_manager(tmp_path):
+    skill_manager = SkillManager(dir=str(tmp_path), sandbox=object())
+    calls = []
+
+    def execute(**kwargs):
+        calls.append(kwargs)
+        return {key: value for key, value in kwargs.items() if value is not None}
+
+    skill_manager._run_loaded_skill_script = execute
+    return ToolManager(skill_manager.get_skill_tools()), calls
 
 
 def test_unknown_tool_precedes_argument_validation_and_suggests_visible_tool():
@@ -220,6 +252,85 @@ def test_repairable_json_is_parsed_before_schema_validation():
         'ok': True,
         'value': {'query': 'LazyLLM', 'limit': 5, 'mode': 'semantic'},
     }
+
+
+def test_run_skill_script_accepts_json_encoded_string_args(tmp_path):
+    manager, calls = _skill_script_manager(tmp_path)
+
+    result = manager(_call('run_skill_script', {
+        'name': 'valuation-analysis',
+        'rel_path': 'scripts/dcf_calculator.py',
+        'args': json.dumps(['--fcf', '250']),
+    }))[0]
+
+    assert result == {'ok': True, 'value': {
+        'name': 'valuation-analysis',
+        'rel_path': 'scripts/dcf_calculator.py',
+        'args': ['--fcf', '250'],
+    }}
+    assert len(calls) == 1
+    assert calls[0]['args'] == ['--fcf', '250']
+
+
+def test_run_skill_script_keeps_native_list_args(tmp_path):
+    manager, calls = _skill_script_manager(tmp_path)
+
+    result = manager(_call('run_skill_script', {
+        'name': 'valuation-analysis',
+        'rel_path': 'scripts/dcf_calculator.py',
+        'args': ['--fcf', '250'],
+    }))[0]
+
+    assert result['ok'] is True
+    assert result['value']['args'] == ['--fcf', '250']
+    assert len(calls) == 1
+    assert calls[0]['args'] == ['--fcf', '250']
+
+
+def test_run_skill_script_passes_shell_metacharacters_as_literal_args(tmp_path):
+    manager, calls = _skill_script_manager(tmp_path)
+    args = ['--name', '$(touch /private/tmp/should-not-exist)', '; echo injected']
+
+    result = manager(_call('run_skill_script', {
+        'name': 'valuation-analysis',
+        'rel_path': 'scripts/dcf_calculator.py',
+        'args': json.dumps(args),
+    }))[0]
+
+    assert result['ok'] is True
+    assert len(calls) == 1
+    assert calls[0]['args'] == args
+
+
+@pytest.mark.parametrize('encoded_args, expected', [
+    ('--fcf 250', 'invalid JSON string'),
+    ('{"name": "250"}', 'received dict'),
+    ('[1]', 'non-string item at index 0'),
+    ('[["--fcf"]]', 'non-string item at index 0'),
+    (json.dumps(json.dumps(['--fcf'])), 'received str'),
+])
+def test_run_skill_script_rejects_invalid_json_encoded_args(tmp_path, encoded_args, expected):
+    manager, calls = _skill_script_manager(tmp_path)
+
+    result = manager(_call('run_skill_script', {
+        'name': 'valuation-analysis',
+        'rel_path': 'scripts/dcf_calculator.py',
+        'args': encoded_args,
+    }))[0]
+
+    assert result['ok'] is False
+    assert result['value'].startswith('Invalid arguments: args: expected a JSON array of strings')
+    assert expected in result['value']
+    assert 'Example: {"args":["--query","test"]}.' in result['value']
+    assert calls == []
+
+
+@pytest.mark.parametrize('custom_tool', [run_script, run_skill_script])
+@pytest.mark.parametrize('args', ['--fcf 250', json.dumps(['--fcf', '250'])])
+def test_custom_script_tool_string_args_are_not_normalized(custom_tool, args):
+    result = ToolManager([custom_tool])(_call(custom_tool.__name__, {'args': args}))[0]
+
+    assert result == {'ok': True, 'value': args}
 
 
 def test_fixed_schema_forbids_extra_but_kwargs_accepts_it():
