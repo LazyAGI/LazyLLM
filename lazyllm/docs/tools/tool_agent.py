@@ -245,6 +245,54 @@ Args:
 
 ''')
 
+add_chinese_doc('ToolManager.prepare_capabilities', '''\
+在加载或执行工具前调用宿主注册的 capability_resolver，检查配置等前置条件。
+没有 resolver 时直接返回；resolver 返回非 None 的阻塞信息时抛出 ToolExecutionError.not_ready。
+本方法不执行工具，也不自行完成授权。
+
+Args:
+    names: 待检查的工具名称序列，传给 resolver 时转换为 tuple。
+    arguments: 可选的已校验调用参数，以关键字参数传给 resolver。
+''')
+
+add_english_doc('ToolManager.prepare_capabilities', '''\
+Invoke the host capability_resolver before loading or executing tools to check configuration prerequisites.
+Return immediately when no resolver is registered. A non-None blocker returned by the resolver raises
+ToolExecutionError.not_ready. This method neither executes tools nor performs authorization itself.
+
+Args:
+    names: Tool names to check, converted to a tuple for the resolver.
+    arguments: Optional validated invocation arguments passed to the resolver as a keyword argument.
+''')
+
+add_chinese_doc('ToolManager.replace_tool_group', '''\
+替换一个已注册的顶层工具组，保持组名称不变，并刷新工具描述和检索状态。
+启用工具检索时，load=True 会加载替换后工具组的成员；否则只协调已有加载状态。
+未启用检索时运行已注册的 tool_load_validator。刷新失败会恢复旧工具组并重新抛出异常。
+
+Args:
+    name: 要替换的已注册工具组名称。
+    definition: 可构造 ToolGroup 的工具定义，新组必须使用相同名称。
+    load: 是否在启用工具检索时加载新组成员，默认 False。
+
+Raises:
+    ValueError: 工具组不存在，或新定义不是同名 ToolGroup。
+''')
+
+add_english_doc('ToolManager.replace_tool_group', '''\
+Replace a registered top-level tool group without changing its name, then refresh tool descriptions and retrieval state.
+With tool retrieval enabled, load=True loads the replacement members; otherwise existing loads are reconciled.
+Without retrieval, invoke the registered tool_load_validator. On refresh failure, restore the previous group and re-raise.
+
+Args:
+    name: Name of the registered group to replace.
+    definition: Tool definition that builds a ToolGroup with the same name.
+    load: Whether to load replacement members when retrieval is enabled. Defaults to False.
+
+Raises:
+    ValueError: The group is unknown or the definition does not build a ToolGroup with the same name.
+''')
+
 add_chinese_doc('ToolManager.enable_tool_retrieval', '''\
 启用显式工具检索与原子 schema 加载，返回检索控制器。注册 search_tools/load_tools，
 保留原子 callable 执行，加载的定义在下一轮模型请求生效。默认不启用。
