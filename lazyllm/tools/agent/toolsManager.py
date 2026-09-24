@@ -17,6 +17,7 @@ from typing import Callable, Any, Union, Optional, get_type_hints, List, Dict, T
 import inspect
 import re
 import time
+import threading
 import uuid
 from pydantic import create_model, BaseModel, ConfigDict, ValidationError
 from lazyllm import LOG, locals as lazyllm_locals
@@ -531,11 +532,17 @@ class ToolGroup(ToolContainer):
             else (_outer_prefix or own_prefix)
         self._children: List[Union['ModuleTool', 'ToolGroup']] = [
             _build_tool_from_element(item, _outer_prefix=effective_prefix) for item in tools]
+        self._outer_prefix = _outer_prefix
+        self._effective_prefix = effective_prefix
         self._precompute_descs(effective_prefix)
         self._gateway_tool: Optional['ModuleTool'] = self.make_gateway_tool() \
             if self._lazy or (pick_first_valid and discoverable) else None
         if self._gateway_desc is None and self._gateway_tool is not None:
             self._gateway_desc = _build_tool_desc(self._gateway_tool)
+
+    @property
+    def name(self):
+        return self._name
 
     def get_flat_tools(self) -> Dict[str, 'ModuleTool']:
         result: Dict[str, ModuleTool] = {}
@@ -610,7 +617,7 @@ class ToolGroup(ToolContainer):
 
     def get_activation_path(self, group_name: str) -> Set[str]:
         if self._name == group_name:
-            return {self._name} if self._lazy else set()
+            return {self._name}
         for child in self._children:
             if not isinstance(child, ToolContainer): continue
             child_path = child.get_activation_path(group_name)
@@ -889,37 +896,205 @@ class ToolManager(ModuleBase):
         self.capability_resolver = None
         self.tool_load_validator = None
         self.group_state_store = None
+        self._refresh_lock = threading.RLock()
 
     def prepare_capabilities(self, names, *, arguments=None):
         if self.capability_resolver is not None:
             blocker = self.capability_resolver(tuple(names), arguments=arguments)
             if blocker is not None:
                 raise ToolExecutionError.not_ready(blocker)
+        for group in self._tool_groups():
+            if group.name in self._unavailable_groups() and set(names) & {group.name, *group.get_flat_tools()}:
+                raise ToolExecutionError.not_ready({'status': 'unavailable', 'service': group.name})
 
-    def replace_tool_group(self, name, definition, *, load=False):
-        replacement = _build_tool_from_element(definition)
-        if not isinstance(replacement, ToolGroup) or replacement._name != name:
+    def _tool_groups(self):
+        def visit(item):
+            if isinstance(item, ToolGroupWrapper):
+                yield from visit(item._inner)
+            elif isinstance(item, ToolGroup):
+                yield item
+                for child in item._children:
+                    yield from visit(child)
+        return [group for item in self._tools for group in visit(item)]
+
+    def _find_tool_group(self, name):
+        groups = [group for group in self._tool_groups() if group.name == name]
+        if len(groups) != 1:
+            raise ValueError(f'Unknown or ambiguous tool group: {name}')
+        return groups[0]
+
+    def _unavailable_groups(self):
+        workspace = lazyllm_locals['_lazyllm_agent'].setdefault('workspace', {})
+        return workspace.setdefault('_unavailable_tool_groups', {}).setdefault(self._module_id, [])
+
+    def get_tool_group_state(self, name):
+        '''Return a credential-free summary of a group, including nested groups.'''
+        group = self._find_tool_group(name)
+        selected = group._selected_provider() if group._pick_first_valid else None
+        provider = selected[0] if selected else group
+        instance = getattr(provider, '_instance', None)
+        available = (name not in self._unavailable_groups() and bool(group._children)
+                     and (not isinstance(group, SkipMixin) or not group.should_skip())
+                     and (not group._pick_first_valid or selected is not None))
+        members = [key for key, entry in self.atomic_tool_catalog().items() if name in entry['groups']]
+        available = available and bool(members)
+        exposed = {item['function']['name'] for item in self.tools_description}
+        return {'name': name, 'available': available,
+                'provider': getattr(instance, 'source_name', None),
+                'platform_ready': instance is not None and (
+                    getattr(instance, '_skip_auth', False) or not getattr(instance, '_dynamic_auth', True)),
+                'loaded': bool(set(members) & exposed) and available,
+                'members': members}
+
+    def _replace_group_definition(self, name, replacement):
+        def visit(item):
+            if isinstance(item, ToolGroupWrapper):
+                result = copy.copy(item)
+                result._inner = visit(item._inner)
+                return result
+            if not isinstance(item, ToolGroup):
+                return item
+            if item.name == name:
+                return replacement
+            result = copy.copy(item)
+            result._children = [visit(child) for child in item._children]
+            result._precompute_descs(result._effective_prefix)
+            if result._gateway_tool is not None:
+                result._gateway_tool = result.make_gateway_tool()
+                result._gateway_desc = _build_tool_desc(result._gateway_tool)
+            return result
+        self._tools = [visit(item) for item in self._tools]
+
+    def refresh_tool_group(self, name, *, definition=None, tool_config=None, load=False, available=True):
+        '''Atomically refresh configuration and exposure; revocation is fail-closed.
+
+        Empty configuration values clear only their named credentials. Runtime failures
+        return a status; invalid definitions and configuration values raise ValueError.
+        A caller restricting permissions must first call with available=False.
+        '''
+        with self._refresh_lock:
+            return self._refresh_tool_group(name, definition=definition, tool_config=tool_config,
+                                            load=load, available=available)
+
+    def _refresh_tool_group(self, name, *, definition, tool_config, load, available, legacy=False):  # noqa: C901
+        # Keep staging, durable commit and rollback in one transaction boundary.
+        from lazyllm.tools.tool_config_inject import TOOL_AUTH_REGISTRY, inject_tool_config
+        group = self._find_tool_group(name)
+        replacement = (_build_tool_from_element(definition, _outer_prefix=group._outer_prefix)
+                       if definition is not None else group)
+        if not isinstance(replacement, ToolGroup) or replacement.name != name:
             raise ValueError('Replacement must preserve the tool group identity')
-        index = next((i for i, item in enumerate(self._tools)
-                      if isinstance(item, ToolGroup) and item._name == name), None)
-        if index is None:
-            raise ValueError(f'Unknown tool group: {name}')
-        previous = self._tools[index]
-        self._tools[index] = replacement
+        if tool_config is not None:
+            if not isinstance(tool_config, dict):
+                raise ValueError('Tool configuration must be a mapping')
+            for key, value in tool_config.items():
+                valid_value = (value is None or isinstance(value, str)
+                               or (isinstance(value, (list, tuple)) and all(isinstance(t, str) for t in value)))
+                if not isinstance(key, str) or not key.strip() or not valid_value:
+                    raise ValueError('Tool configuration must map names to tokens, token lists, or None')
+
+        def instances_in(item):
+            if isinstance(item, ToolGroupWrapper):
+                yield from instances_in(item._inner)
+            elif isinstance(item, ToolGroup):
+                yield getattr(item, '_instance', None)
+                for child in item._children:
+                    yield from instances_in(child)
+        instances = list(instances_in(group))
+        ids = {instance._credential_id for instance in instances
+               if instance is not None and hasattr(instance, '_credential_id')}
+        caches = (lazyllm.globals['key_pool_state'], lazyllm_locals['curr_key'])
+        cleared = {key for key, value in (tool_config or {}).items()
+                   if value is None or (isinstance(value, str) and not value.strip()) or value == [] or value == ()}
+        for key in cleared:
+            canonical = key.lower().strip()
+            bucket = TOOL_AUTH_REGISTRY.get(canonical, 'dynamic_tool_auth')
+            values = dict(lazyllm.globals.config[bucket] or {})
+            values.pop(canonical, None)
+            lazyllm.globals.config[bucket] = values
+        if cleared:
+            for cache in caches:
+                for key in ids:
+                    cache.pop(key, None)
+        unavailable = self._unavailable_groups()
+        if not available or cleared:
+            if name not in unavailable:
+                unavailable.append(name)
+        if not available:
+            # Never let a storage/validation failure re-enable a revoked capability.
+            return {'status': 'unavailable', 'name': name}
+        old_unavailable = list(unavailable)
+        old_tools = self._tools
+        workspace = lazyllm_locals['_lazyllm_agent'].setdefault('workspace', {})
+        old_bindings = dict(workspace.get('_provider_bindings', {}))
+        old_active = list(workspace.get('_active_groups', []))
+        old_auth = {bucket: copy.deepcopy(lazyllm.globals.config[bucket])
+                    for bucket in ('dynamic_tool_auth', 'dynamic_fs_auth')}
+
+        old_caches = [{key: copy.deepcopy(cache[key]) for key in ids if key in cache} for cache in caches]
+        status = 'unavailable'
         try:
+            for cache in caches:
+                for key in ids:
+                    cache.pop(key, None)
+            for key, value in (tool_config or {}).items():
+                if key not in cleared:
+                    inject_tool_config({key: value})
+            if name in unavailable:
+                unavailable.remove(name)
+            if definition is not None:
+                workspace.setdefault('_provider_bindings', {}).pop(name, None)
+                self._replace_group_definition(name, replacement)
             self._format_tools()
             self._tools_desc = self._transform_to_openai_function()
+            if not legacy and not self.get_tool_group_state(name)['available']:
+                status = 'prerequisites_unmet'
+                raise RuntimeError('Tool prerequisites are unmet')
             if self.retrieval is not None:
+                # load performs a single validated state-store update, after all staging.
                 catalog = self.retrieval.catalog()
                 members = [key for key, entry in catalog.items() if name in entry['groups']] if load else []
-                self.retrieval.load(members, [], _prepared=True)
-            elif self.tool_load_validator is not None:
-                self.tool_load_validator(self.tools_description)
-        except Exception:
-            self._tools[index] = previous
+                try:
+                    self.retrieval.load(members, [], _prepared=True)
+                except (ValueError, ToolExecutionError):
+                    status = 'budget_blocked'
+                    raise
+            else:
+                def update(raw):
+                    active = self._activation_paths([*raw.get('loaded', []), *([name] if load else [])])
+                    if self.tool_load_validator is not None:
+                        try:
+                            self.tool_load_validator(self._group_descriptions(active))
+                        except (ValueError, ToolExecutionError):
+                            nonlocal status
+                            status = 'budget_blocked'
+                            raise
+                    return {'skills': {}, **raw, 'loaded': sorted(active)}
+                state = (self.group_state_store.update(update) if self.group_state_store is not None
+                         else update({'loaded': old_active, 'skills': {}}))
+                workspace['_active_groups'] = state['loaded']
+            return {'status': 'ready', 'name': name}
+        except BaseException as exc:
+            self._tools = old_tools
+            unavailable[:] = old_unavailable
+            workspace['_provider_bindings'] = old_bindings
+            workspace['_active_groups'] = old_active
+            for bucket, value in old_auth.items():
+                lazyllm.globals.config[bucket] = value
+            for cache, previous in zip(caches, old_caches):
+                for key in ids:
+                    cache.pop(key, None)
+                cache.update(previous)
             self._format_tools()
             self._tools_desc = self._transform_to_openai_function()
-            raise
+            if legacy or not isinstance(exc, Exception):
+                raise
+            return {'status': status, 'name': name}
+
+    def replace_tool_group(self, name, definition, *, load=False):
+        with self._refresh_lock:
+            self._refresh_tool_group(name, definition=definition, tool_config=None,
+                                     load=load, available=True, legacy=True)
 
     def atomic_tool_catalog(self):
         '''Describe allowed leaves with their final public names, independent of exposure.'''
@@ -931,6 +1106,8 @@ class ToolManager(ModuleBase):
             if isinstance(item, ToolGroupWrapper):
                 visit(item._inner, groups, group_description, group_descriptions=group_descriptions)
             elif isinstance(item, ToolGroup):
+                if item.name in self._unavailable_groups():
+                    return
                 children = list(zip(item._children, item._expanded_descs))
                 if not children and item._discoverable and item._gateway_tool is not None:
                     visit(item._gateway_tool, (*groups, item._name), item._desc,
@@ -994,9 +1171,12 @@ class ToolManager(ModuleBase):
         return self._group_descriptions(active_groups)
 
     def _group_descriptions(self, active_groups):
+        denied = {tool for group in self._tool_groups() if group.name in self._unavailable_groups()
+                  for tool in group.get_flat_tools()}
         return [x for item in self._tools_desc
                 for x in (item.get_description(active_groups=active_groups)
-                          if isinstance(item, ToolContainer) else item() if callable(item) else [item])]
+                          if isinstance(item, ToolContainer) else item() if callable(item) else [item])
+                if x['function']['name'] not in denied]
 
     @property
     def tools_info(self):

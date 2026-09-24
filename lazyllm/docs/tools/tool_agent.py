@@ -266,7 +266,7 @@ Args:
 ''')
 
 add_chinese_doc('ToolManager.replace_tool_group', '''\
-替换一个已注册的顶层工具组，保持组名称不变，并刷新工具描述和检索状态。
+替换一个已注册的顶层或嵌套工具组，保持组名称不变，并刷新工具描述和检索状态。
 启用工具检索时，load=True 会加载替换后工具组的成员；否则只协调已有加载状态。
 未启用检索时运行已注册的 tool_load_validator。刷新失败会恢复旧工具组并重新抛出异常。
 
@@ -280,7 +280,7 @@ Raises:
 ''')
 
 add_english_doc('ToolManager.replace_tool_group', '''\
-Replace a registered top-level tool group without changing its name, then refresh tool descriptions and retrieval state.
+Replace a registered top-level or nested tool group without changing its name, then refresh tool descriptions and retrieval state.
 With tool retrieval enabled, load=True loads the replacement members; otherwise existing loads are reconciled.
 Without retrieval, invoke the registered tool_load_validator. On refresh failure, restore the previous group and re-raise.
 
@@ -291,6 +291,36 @@ Args:
 
 Raises:
     ValueError: The group is unknown or the definition does not build a ToolGroup with the same name.
+''')
+
+add_chinese_doc('ToolManager.get_tool_group_state', '''\
+返回同名唯一工具组的状态摘要：name、available、provider、platform_ready、loaded、members。
+支持嵌套组，成员名使用最终曝光名称；不返回内部对象或凭据。未知或重名组抛出 ValueError。
+''')
+
+add_english_doc('ToolManager.get_tool_group_state', '''\
+Return name, available, provider, platform_ready, loaded and members for a uniquely named group.
+Nested groups are supported; members use final public names. No objects or credentials are exposed.
+Unknown or ambiguous group names raise ValueError.
+''')
+
+add_chinese_doc('ToolManager.refresh_tool_group', '''\
+统一刷新同名工具组的定义、凭据、provider 绑定、目录和加载状态，支持顶层及嵌套组。
+definition=None 保留定义；tool_config 仅更新显式项，None、空白字符串或空列表清除该项。
+load=True 加载成员及必要祖先；默认只协调已有加载状态。先校验预算，再通过状态存储原子提交。
+返回 status 和 name；status 为 ready、prerequisites_unmet、budget_blocked 或 unavailable。
+普通失败保留先前有效状态。权限撤销或白名单缩减时，调用方必须先 available=False 阻止旧工具执行，
+再提交新定义；后续刷新失败不会撤销禁用。非法参数抛出异常。
+''')
+
+add_english_doc('ToolManager.refresh_tool_group', '''\
+Refresh a uniquely named top-level or nested group, its credentials, provider binding, catalog and loading state.
+definition=None retains the definition. tool_config updates explicit keys only; None, blank strings and empty lists
+clear that key. load=True loads members and required ancestors; otherwise reconcile existing loads.
+Validate the budget before the atomic state-store commit. Return name and status: ready, prerequisites_unmet,
+budget_blocked or unavailable. Ordinary failures preserve valid state. For revocation or narrowed permissions,
+call available=False first to block old calls, then refresh the definition; a failed refresh preserves that block.
+Invalid arguments raise exceptions. The compatibility replace_tool_group method continues to re-raise failures.
 ''')
 
 add_chinese_doc('ToolManager.enable_tool_retrieval', '''\
