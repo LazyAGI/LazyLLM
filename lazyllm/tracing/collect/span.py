@@ -31,7 +31,7 @@ class LazySpan:
     capture_payload: bool = False
 
     status: str = 'ok'
-    error: Optional[Exception] = None
+    error: Optional[BaseException] = None
 
     config: Dict[str, Any] = field(default_factory=dict)
     output_attrs: Dict[str, Any] = field(default_factory=dict)

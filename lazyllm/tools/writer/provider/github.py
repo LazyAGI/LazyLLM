@@ -7,7 +7,6 @@ import os
 import posixpath
 import re
 from collections.abc import Callable, Mapping
-from contextvars import copy_context
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote, unquote, urlparse
 
@@ -598,7 +597,7 @@ class GitHubWriterProvider(WriterProviderBase):
         if cache_root is not None and self._target_type(target) == 'repository' and len(references) > 1:
             with ThreadPoolExecutor(max_workers=min(8, len(references))) as executor:
                 futures = [
-                    executor.submit(copy_context().run, collect_resource, raw_url, uri)
+                    executor.submit(collect_resource, raw_url, uri)
                     for raw_url, uri in references
                 ]
                 results = [future.result() for future in futures]

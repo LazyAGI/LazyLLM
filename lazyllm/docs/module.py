@@ -3788,6 +3788,13 @@ Args:
     interval (float): 轮询队列的时间间隔，单位为秒，默认为0.1。
     init_sid (Optional[bool]): 是否在后台任务提交前初始化 ``globals`` 和 ``locals`` 的会话ID，默认为True。
         当调用对象内部已经显式初始化会话ID时，可设置为False，避免覆盖已有会话上下文。
+    on_cancel (Optional[Callable[[], None]]): 消费者提前退出且生产任务仍在运行时，至多调用一次的协作取消回调。
+        回调失败会记录警告，收尾仍等待生产任务退出。正常完成和排队取消不调用回调。
+
+Note:
+    生产线程继承提交方的实际 locals SID 和 ContextVar。提前退出时应显式关闭生成器，或调用
+    ``close()`` / ``await aclose()``；收尾等待真实生产任务结束，不承诺固定取消时限。
+    工作任务的结果和异常仍由 ``future.result()`` 获取。
 ''')
 
 add_english_doc('StreamCallHelper', '''\
@@ -3801,6 +3808,33 @@ Args:
     init_sid (Optional[bool]): Whether to initialize the ``globals`` and ``locals`` session IDs before
         submitting the background task. Defaults to True. Set it to False when the callable initializes
         the session ID itself to avoid overwriting an existing session context.
+    on_cancel (Optional[Callable[[], None]]): Cooperative cancellation callback, invoked at most once when
+        the consumer exits early while the producer is running. Callback failures are logged without skipping
+        the producer join. Normal completion and cancellation before execution do not invoke it.
+
+Note:
+    The producer inherits the submitter's actual locals SID and ContextVars. Explicitly close the generator,
+    call ``close()``, or await ``aclose()`` on early exit. Cleanup waits for the real producer with no fixed
+    cancellation deadline. Retrieve the work result or exception through ``future.result()``.
+''')
+
+add_chinese_doc('StreamCallHelper.close', '''\
+幂等地取消排队任务，或通知运行中的生产任务取消，并同步等待其退出。未启动时为空操作。
+不提取或抛出工作任务的结果和异常；调用 ``future.result()`` 获取。
+''')
+
+add_english_doc('StreamCallHelper.close', '''\
+Idempotently cancel queued work or notify a running producer, then wait synchronously for it to exit.
+Does nothing before submission. Work results and exceptions remain available through ``future.result()``.
+''')
+
+add_chinese_doc('StreamCallHelper.aclose', '''\
+``close()`` 的异步版本，等待期间不阻塞事件循环。重复取消不会提前结束收尾；生产任务退出后重新传播取消。
+''')
+
+add_english_doc('StreamCallHelper.aclose', '''\
+Async version of ``close()`` that keeps the event loop responsive. Repeated cancellation cannot interrupt
+the producer join; cancellation is re-raised after the producer exits.
 ''')
 
 add_chinese_doc('StreamCallHelper.astream', '''\

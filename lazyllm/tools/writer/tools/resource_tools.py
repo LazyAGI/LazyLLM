@@ -1,5 +1,4 @@
 from __future__ import annotations
-from contextvars import copy_context
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import uuid
@@ -126,7 +125,7 @@ class WriterResourceTools(WriterToolBase):
         if self.llm is not None and len(inputs) > 1:
             with ThreadPoolExecutor(max_workers=min(8, len(inputs))) as executor:
                 futures = [
-                    executor.submit(copy_context().run, profile_resource, index, res)
+                    executor.submit(profile_resource, index, res)
                     for index, res in enumerate(inputs)
                 ]
                 profiles = [future.result() for future in futures]

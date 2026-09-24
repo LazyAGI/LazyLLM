@@ -16,6 +16,12 @@ TOOL_OBSERVATION_KEY = '_lazyllm_tool_observation'
 TOOL_OBSERVATION_VERSION = 1
 
 
+def _clear_unfinished_agent_state(agent_state, histories, model_id=None):
+    agent_state.pop('workspace', None)
+    if model_id is not None:
+        histories.pop(model_id, None)
+
+
 def _write_agent_data(tag: str, **kwargs):
     payload = {'tag': tag, **kwargs}
     lazyllm.FileSystemQueue().enqueue(

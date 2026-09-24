@@ -156,6 +156,14 @@ class Globals(metaclass=SingletonABCMeta):
         self.__sid.set(sid)
         return sid
 
+    @contextmanager
+    def _bind_sid(self, sid: str):
+        token = self.__sid.set(sid)
+        try:
+            yield
+        finally:
+            self.__sid.reset(token)
+
     @property
     def _sid(self) -> str:
         try:
@@ -270,6 +278,9 @@ class MemoryGlobals(Globals):
     def clear(self):
         self.__data.pop(self._sid, None)
 
+    def _clear_sid(self, sid: str):
+        self.__data.pop(sid, None)
+
     def _clear_all(self):
         self.__data.clear()
 
@@ -305,6 +316,17 @@ class Locals(MemoryGlobals):
 
     def _init_sid(self, sid: Optional[str] = None):
         return super()._init_sid(sid or f'local_{uuid.uuid4().hex}')
+
+    @contextmanager
+    def _scope(self, sid: Optional[str] = None):
+        owned = sid is None
+        sid = sid if sid is not None else f'local_{uuid.uuid4().hex}'
+        with self._bind_sid(sid):
+            try:
+                yield sid
+            finally:
+                if owned:
+                    self._clear_sid(sid)
 
     def __call__(self):
         return inspect.currentframe().f_back.f_locals

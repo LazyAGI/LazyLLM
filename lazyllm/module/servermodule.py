@@ -137,9 +137,13 @@ class LLMBase(object):
         from .stream_helper import StreamCallHelper
         llm = self.share()
         kwargs.setdefault('stream_output', True)
-        async for item in StreamCallHelper(llm).astream(*args, **kwargs):
-            if item.get('tag', '') in ('text', 'think'):
-                yield item.get('delta', '')
+        stream = StreamCallHelper(llm).astream(*args, **kwargs)
+        try:
+            async for item in stream:
+                if item.get('tag', '') in ('text', 'think'):
+                    yield item.get('delta', '')
+        finally:
+            await stream.aclose()
 
     @property
     def static_params(self) -> StaticParams:
