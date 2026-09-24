@@ -222,12 +222,18 @@ class ToolRetrieval:
                 result = {'name': name, 'type': item['type'],
                           'description': description if detail == 'long' else self._summary(description)}
                 if item['type'] == 'group':
-                    result['matched_members'] = self._matched_members(name, item['members'], catalog, query, loaded)
+                    unknown = any(catalog[member].get('schema_state') == 'unknown' for member in item['members'])
+                    result['matched_members'] = ([] if unknown else
+                                                 self._matched_members(name, item['members'], catalog, query, loaded))
+                    if unknown:
+                        result['schema_state'] = 'unknown'
                 results.append(result)
             return results
 
-    def load(self, tool_names, unload_tool_names):
+    def load(self, tool_names, unload_tool_names, *, _prepared=False):
         with self._lock:
+            if not _prepared:
+                self.manager.prepare_capabilities(tool_names)
             catalog = self.catalog()
             added = self._expand(tool_names, catalog)
             removed = set(self._expand(unload_tool_names, catalog))
@@ -264,6 +270,7 @@ class ToolRetrieval:
         with self._lock:
             catalog = self.catalog()
             names, errors = self._resolve_dependencies(declarations, catalog)
+            self.manager.prepare_capabilities(names)
 
             def update(raw):
                 state, _ = self._reconcile(raw, catalog)

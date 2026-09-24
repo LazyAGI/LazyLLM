@@ -245,6 +245,84 @@ Args:
 
 ''')
 
+add_chinese_doc('ToolManager.prepare_capabilities', '''\
+在加载或执行工具前调用宿主注册的 capability_resolver，检查配置等前置条件。
+没有 resolver 时直接返回；resolver 返回非 None 的阻塞信息时抛出 ToolExecutionError.not_ready。
+本方法不执行工具，也不自行完成授权。
+
+Args:
+    names: 待检查的工具名称序列，传给 resolver 时转换为 tuple。
+    arguments: 可选的已校验调用参数，以关键字参数传给 resolver。
+''')
+
+add_english_doc('ToolManager.prepare_capabilities', '''\
+Invoke the host capability_resolver before loading or executing tools to check configuration prerequisites.
+Return immediately when no resolver is registered. A non-None blocker returned by the resolver raises
+ToolExecutionError.not_ready. This method neither executes tools nor performs authorization itself.
+
+Args:
+    names: Tool names to check, converted to a tuple for the resolver.
+    arguments: Optional validated invocation arguments passed to the resolver as a keyword argument.
+''')
+
+add_chinese_doc('ToolManager.replace_tool_group', '''\
+替换一个已注册的顶层或嵌套工具组，保持组名称不变，并刷新工具描述和检索状态。
+启用工具检索时，load=True 会加载替换后工具组的成员；否则只协调已有加载状态。
+未启用检索时运行已注册的 tool_load_validator。刷新失败会恢复旧工具组并重新抛出异常。
+
+Args:
+    name: 要替换的已注册工具组名称。
+    definition: 可构造 ToolGroup 的工具定义，新组必须使用相同名称。
+    load: 是否在启用工具检索时加载新组成员，默认 False。
+
+Raises:
+    ValueError: 工具组不存在，或新定义不是同名 ToolGroup。
+''')
+
+add_english_doc('ToolManager.replace_tool_group', '''\
+Replace a registered top-level or nested tool group without changing its name, then refresh tool descriptions and retrieval state.
+With tool retrieval enabled, load=True loads the replacement members; otherwise existing loads are reconciled.
+Without retrieval, invoke the registered tool_load_validator. On refresh failure, restore the previous group and re-raise.
+
+Args:
+    name: Name of the registered group to replace.
+    definition: Tool definition that builds a ToolGroup with the same name.
+    load: Whether to load replacement members when retrieval is enabled. Defaults to False.
+
+Raises:
+    ValueError: The group is unknown or the definition does not build a ToolGroup with the same name.
+''')
+
+add_chinese_doc('ToolManager.get_tool_group_state', '''\
+返回同名唯一工具组的状态摘要：name、available、provider、platform_ready、loaded、members。
+支持嵌套组，成员名使用最终曝光名称；不返回内部对象或凭据。未知或重名组抛出 ValueError。
+''')
+
+add_english_doc('ToolManager.get_tool_group_state', '''\
+Return name, available, provider, platform_ready, loaded and members for a uniquely named group.
+Nested groups are supported; members use final public names. No objects or credentials are exposed.
+Unknown or ambiguous group names raise ValueError.
+''')
+
+add_chinese_doc('ToolManager.refresh_tool_group', '''\
+统一刷新同名工具组的定义、凭据、provider 绑定、目录和加载状态，支持顶层及嵌套组。
+definition=None 保留定义；tool_config 仅更新显式项，None、空白字符串或空列表清除该项。
+load=True 加载成员及必要祖先；默认只协调已有加载状态。先校验预算，再通过状态存储原子提交。
+返回 status 和 name；status 为 ready、prerequisites_unmet、budget_blocked 或 unavailable。
+普通失败保留先前有效状态。权限撤销或白名单缩减时，调用方必须先 available=False 阻止旧工具执行，
+再提交新定义；后续刷新失败不会撤销禁用。非法参数抛出异常。
+''')
+
+add_english_doc('ToolManager.refresh_tool_group', '''\
+Refresh a uniquely named top-level or nested group, its credentials, provider binding, catalog and loading state.
+definition=None retains the definition. tool_config updates explicit keys only; None, blank strings and empty lists
+clear that key. load=True loads members and required ancestors; otherwise reconcile existing loads.
+Validate the budget before the atomic state-store commit. Return name and status: ready, prerequisites_unmet,
+budget_blocked or unavailable. Ordinary failures preserve valid state. For revocation or narrowed permissions,
+call available=False first to block old calls, then refresh the definition; a failed refresh preserves that block.
+Invalid arguments raise exceptions. The compatibility replace_tool_group method continues to re-raise failures.
+''')
+
 add_chinese_doc('ToolManager.enable_tool_retrieval', '''\
 启用显式工具检索与原子 schema 加载，返回检索控制器。注册 search_tools/load_tools，
 保留原子 callable 执行，加载的定义在下一轮模型请求生效。默认不启用。
@@ -766,6 +844,8 @@ FunctionCall是单轮工具调用类。当LLM自身信息不足以回答用户�
 若不需工具调用，则直接返回LLM输出结果，输出为字符串类型。
 
 Args:
+    before_model_request (Optional[Callable[[], None]]): 工具快照、历史压缩及预算校验前的同步准备回调。
+        异常阻止本次请求，不增加轮次，不在上下文预览或强制总结时执行。拒绝异步回调和非 None 返回值。
     llm (ModuleBase): 使用的LLM实例，支持TrainableModule或OnlineChatModule。
     tools (List[Union[str, Callable]]): LLM可调用的工具名称或Callable对象列表。
     return_trace (Optional[bool]): 是否返回调用轨迹，默认为False。
@@ -781,12 +861,15 @@ If the LLM output requires tool calls, the tools are invoked and the combined re
 If no tool calls are needed, the LLM output is returned directly as a string.
 
 Args:
+    before_model_request (Optional[Callable[[], None]]): Synchronous host preparation before the tool snapshot,
+        history compaction and validation. Exceptions abort preparation. Does not create extra rounds or run during
+        context previews or forced summaries. Async callbacks and non-None return values are rejected.
     llm (ModuleBase): The LLM instance to use, which can be either a TrainableModule or OnlineChatModule.
     tools (List[Union[str, Callable]]): A list of tool names or callable objects that the LLM can use.
     return_trace (Optional[bool]): Whether to return the invocation trace, defaults to False.
     stream (Optional[bool]): Whether to enable streaming output, defaults to False.
     _prompt (Optional[str]): Custom prompt for function call, defaults to automatic selection based on llm type.
-    model_context_provider (Optional[Callable]): Returns one ephemeral internal context string after a tool batch. The
+    model_context_provider (Optional[Callable]): Returns one ephemeral internal context string for each normal model request. The
         string is appended after history compaction and is not stored in public conversation history.
 
 Note: Tools in `tools` must include a `__doc__` attribute and describe their purpose and parameters according to the [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings).
@@ -1202,6 +1285,8 @@ add_chinese_doc('ReactAgent', '''\
 ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
 
 Args:
+    before_model_request (Optional[Callable[[], None]]): 工具快照、历史压缩及预算校验前的同步准备回调。
+        异常阻止本次请求，不增加轮次，不在上下文预览或强制总结时执行。拒绝异步回调和非 None 返回值。
     llm: 大语言模型实例，用于生成推理和工具调用决策
     tools (List): 可用工具列表，每个元素支持以下几种形式：
 
@@ -1243,6 +1328,9 @@ add_english_doc('ReactAgent', '''\
 ReactAgent follows the `Thought->Action->Observation->Thought...->Finish` loop to solve user tasks step by step through LLM reasoning and tool calls, then delivers a final answer.
 
 Args:
+    before_model_request (Optional[Callable[[], None]]): Synchronous host preparation before the tool snapshot,
+        history compaction and validation. Exceptions abort preparation. Does not create extra rounds or run during
+        context previews or forced summaries. Async callbacks and non-None return values are rejected.
     llm: The large language model instance used for reasoning and tool-call decisions.
     tools (List): List of available tools. Each element can be one of the following:
 

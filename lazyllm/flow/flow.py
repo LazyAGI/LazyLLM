@@ -449,12 +449,10 @@ class Parallel(LazyLLMFlowsBase):
     def _worker(func, barrier, sid, local_data, *args, global_data=None, **kw):
         lazyllm.globals._init_sid(sid)
         if global_data: lazyllm.globals._update(global_data)
-        lazyllm.locals._init_sid()
-        lazyllm.locals._update({k: v.copy() for k, v in local_data.items()})
-        _barr.impl = barrier
-        r = func(*args, **kw)
-        lazyllm.locals.clear()
-        return r
+        with lazyllm.locals._scope():
+            lazyllm.locals._update({k: v.copy() for k, v in local_data.items()})
+            _barr.impl = barrier
+            return func(*args, **kw)
 
     class PostProcessType(Enum):
         NONE = 0

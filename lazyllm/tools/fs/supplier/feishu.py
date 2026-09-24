@@ -496,6 +496,82 @@ class FeishuFSBase(LinkDocumentFSBase):
                               oauth_auto=(rt == 'auto'))
         return super()._make_credential(token, dynamic_auth)
 
+    @fc_register(host_file='NONE')
+    def search(self, query: Union[str, List[str]], space_id: str = '', node_id: str = '',
+               page_size: int = 20, page_token: str = '', *, source_type: str = 'all') -> Dict[str, Any]:
+        query = self._validate_search(query, source_type, space_id, node_id, page_size, page_token)
+        sid, node_id = self._search_scope(source_type, space_id, node_id)
+        if self._credential.kind not in ('dynamic', 'oauth2'):
+            raise ValueError('search requires user OAuth authorization')
+        self.ensure_token()
+        payload = {'query': query.strip()}
+        actual_type = 'wiki' if sid else source_type
+        if sid:
+            payload['space_id'] = sid
+            if node_id:
+                payload['node_id'] = node_id
+            params = {'page_size': page_size}
+            if page_token:
+                params['page_token'] = page_token
+            response = self._post(f'{self._base_url}/wiki/v1/nodes/search',
+                                  params=params, json=payload, timeout=15)
+        else:
+            payload['page_size'] = page_size
+            if page_token:
+                payload['page_token'] = page_token
+            # Presence selects the source; an empty filter searches all visible objects of that source.
+            if source_type in ('all', 'document'):
+                payload['doc_filter'] = {}
+            if source_type in ('all', 'wiki'):
+                payload['wiki_filter'] = {}
+            response = self._post(f'{self._base_url}/search/v2/doc_wiki/search', json=payload, timeout=15)
+        if response.get('code', 0) != 0:
+            raise RuntimeError('Feishu search failed: code=%s, message=%s' % (
+                response.get('code'), response.get('msg', 'unknown error')))
+        data = response.get('data') or {}
+        results = data.get('items' if sid else 'res_units') or []
+        if sid:
+            results = [dict(item, node_token=item.get('node_token') or item.get('node_id') or '',
+                            space_id=item.get('space_id') or sid) for item in results]
+        return {
+            'source': 'feishu', 'source_type': actual_type,
+            'scope': {'space_id': sid, 'node_id': node_id},
+            'results': results, 'has_more': bool(data.get('has_more')),
+            'page_token': data.get('page_token') or data.get('next_page_token') or '',
+            'coverage': ('User-visible %s; provider index coverage applies. '
+                         'Explicit Wiki scope narrows combined searches.' % actual_type),
+        }
+
+    @staticmethod
+    def _validate_search(query, source_type, space_id, node_id, page_size, page_token):
+        if isinstance(query, list):
+            query = ' '.join(str(item).strip() for item in query if str(item).strip())
+        if not isinstance(query, str) or not query.strip():
+            raise ValueError('query is required')
+        if source_type not in ('all', 'document', 'wiki'):
+            raise ValueError('source_type must be all, document, or wiki')
+        if isinstance(page_size, bool) or not isinstance(page_size, int) or not 1 <= page_size <= 20:
+            raise ValueError('page_size must be between 1 and 20')
+        if not all(isinstance(value, str) for value in (space_id, node_id, page_token)):
+            raise ValueError('space_id, node_id and page_token must be strings')
+        return query.strip()
+
+    def _search_scope(self, source_type, space_id, node_id):
+        sid, node_id = space_id.strip(), node_id.strip()
+        if sid == _SPACE_ID_DYNAMIC:
+            sid = ''
+        if source_type == 'document' and (sid or node_id):
+            raise ValueError('document search cannot specify a Wiki space or node')
+        if node_id and not sid:
+            raise ValueError('space_id is required when node_id is specified')
+        if source_type == 'wiki' and not sid:
+            configured = self._space_id
+            sid = (configured if configured and configured != _SPACE_ID_DYNAMIC
+                   else lazyllm_globals.config['feishu_wiki_space_id'] or '')
+            if sid == _SPACE_ID_DYNAMIC:
+                sid = ''
+        return sid, node_id
+
     @property
     def _app_id(self) -> str:
         return self._secret_key.get('app_id', '')
@@ -1636,7 +1712,7 @@ class FeishuFS(FeishuFSBase):
         r'https?://[^\s/]+\.(?:feishu\.(?:cn|com)|larksuite\.com)(?:[/:?#]|$)',
         r'飞书|(?<!\w)feishu(?!\w)',
     ]
-    __public_apis__ = LazyLLMFSBase.__public_apis__ + ['create_document']
+    __public_apis__ = LazyLLMFSBase.__public_apis__ + ['create_document', 'search']
 
     def __new__(cls, base_url: Optional[str] = None, app_id: Optional[str] = None, app_secret: Optional[str] = None,
                 space_id: Optional[str] = None, user_refresh_token: Optional[str] = None,
@@ -1907,7 +1983,7 @@ class FeishuWikiFS(FeishuFSBase):
 
     Select this Toolkit for Feishu or Lark browser URLs, especially `/wiki/`
     links. Use resolve_link to inspect a URL, read or read_with_references to
-    load its content, search/find to locate Wiki nodes, and editing methods only
+    load its content, search to find documents or Wiki, find to locate Wiki titles, and editing methods only
     when the user requests a change.
     '''
 
@@ -2385,56 +2461,6 @@ class FeishuWikiFS(FeishuFSBase):
             if sid:
                 self._space_id = sid
         return node or {}
-
-    @fc_register(host_file='NONE')
-    def search(self, query: Union[str, List[str]], space_id: str = '', node_id: str = '',
-               page_size: int = 20) -> List[Dict[str, Any]]:
-        '''Search Feishu Wiki nodes by text.
-
-        Args:
-            query: Text to search for.
-            space_id: Optional Wiki space id.
-            node_id: Optional parent node scope.
-            page_size: Maximum result count.
-        '''
-        if isinstance(query, list):
-            query = ' '.join(str(item).strip() for item in query if str(item).strip())
-        query = (query or '').strip()
-        if not query:
-            raise ValueError('query is required')
-        page_size = max(1, min(int(page_size), 50))
-        sid = self._resolve_space_id(space_id)
-        node_id = (node_id or '').strip()
-        if node_id and not sid:
-            raise ValueError('space_id is required when node_id is specified')
-        url = f'{self._base_url}/wiki/v2/nodes/search'
-        payload: Dict[str, Any] = {'query': query}
-        if sid:
-            payload['space_id'] = sid
-        if node_id:
-            payload['node_id'] = node_id
-        params: Dict[str, Any] = {'page_size': page_size}
-        results: List[Dict[str, Any]] = []
-        page_token: Optional[str] = None
-        while True:
-            if page_token:
-                params['page_token'] = page_token
-            data = self._post(url, params=params, json=payload)
-            response_data = data.get('data') or {}
-            items = response_data.get('items') or []
-            for item in items:
-                results.append({
-                    'title': item.get('title') or '',
-                    'node_token': item.get('node_id') or item.get('node_token') or '',
-                    'obj_type': item.get('obj_type') or '',
-                    'url': item.get('url') or '',
-                    'snippet': item.get('snippet') or '',
-                    'space_id': item.get('space_id') or sid,
-                })
-            page_token = response_data.get('page_token') or response_data.get('next_page_token')
-            if not response_data.get('has_more') or not page_token or len(results) >= page_size:
-                break
-        return results[:page_size]
 
     @staticmethod
     def _compile_find_pattern(pattern: str) -> 're.Pattern[str]':

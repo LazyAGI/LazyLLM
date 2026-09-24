@@ -1927,35 +1927,39 @@ Args:
     new_text (str): New plain text content.
 ''')
 
-_add_fs_chinese('FeishuWikiFS.search', '''\
-在飞书知识库中按关键词搜索节点，使用飞书官方 wiki/v2/nodes/search 接口。
-搜索范围包括节点标题和正文内容，返回当前用户可见的匹配 wiki 节点。
-
-这是在线搜索 —— 直接查询飞书线上知识库，不是本地已入库的文档。
+for _feishu_search_class in ('FeishuFS', 'FeishuWikiFS'):
+    _add_fs_chinese(f'{_feishu_search_class}.search', '''\
+使用当前用户 OAuth 搜索在线普通文档、Wiki 或两者，每次返回一页。
+默认组合搜索忽略配置的 Wiki 空间；显式空间或节点会将 all 收窄为 Wiki。
 
 Args:
-    query (str or List[str]): 一个搜索词、以空格分隔的多个词，或搜索词列表。
-    space_id (str, optional): 要搜索的知识空间 ID；为空时搜索当前用户可见的全部 Wiki。
-    node_id (str, optional): 将范围限定到指定节点及其子节点；使用时必须同时提供 space_id。
-    page_size (int): 最大返回条数，默认 20，最大 50。
+    query (str or List[str]): 短关键词或关键词列表。
+    space_id (str): 显式 Wiki 空间；不能与 document 组合。
+    node_id (str): Wiki 父节点；必须同时提供有效 space_id。
+    page_size (int): 本页条数，1–20，默认 20。
+    page_token (str): 上页返回的分页标识；翻页时保持查询、类型和范围不变。
+    source_type (str): all（默认，文档和 Wiki）、document（普通文档）或 wiki。
 
 Returns:
-    List[Dict[str, Any]]: 匹配节点列表。每项包含 title、node_token、obj_type、url、space_id。
+    Dict[str, Any]: source、source_type、scope、results、has_more、page_token 和 coverage。
+        结果保留服务端元数据及 URL；按需使用 resolve/read 读取正文。
 ''')
-_add_fs_english('FeishuWikiFS.search', '''\
-Search wiki nodes by keyword using Feishu's official wiki/v2/nodes/search API.
-Matches node titles and content visible to the current user.
-
-This searches the LIVE online Feishu wiki — not locally indexed documents.
+    _add_fs_english(f'{_feishu_search_class}.search', '''\
+Search one page of live documents, Wiki, or both with the current user's OAuth.
+Combined search ignores configured Wiki spaces; explicit scope narrows all to Wiki.
+Wiki mode uses a configured space when no space is supplied.
 
 Args:
-    query (str or List[str]): One term, multiple space-separated terms, or a list of terms.
-    space_id (str, optional): Wiki space ID to search; when empty, searches all Wiki spaces visible to the user.
-    node_id (str, optional): Limit the search to a node and its descendants; requires space_id.
-    page_size (int): Maximum results, default 20, maximum 50.
+    query (str or List[str]): Short keywords or a list of terms.
+    space_id (str): Explicit Wiki space; incompatible with document mode.
+    node_id (str): Wiki parent node; requires an explicit valid space_id.
+    page_size (int): Results per page, 1–20, default 20.
+    page_token (str): Continuation token; keep query, source_type and scope unchanged.
+    source_type (str): all (default, documents and Wiki), document, or wiki.
 
 Returns:
-    List[Dict[str, Any]]: Matching nodes, each with title, node_token, obj_type, url, and space_id.
+    Dict[str, Any]: source, source_type, scope, results, has_more, page_token and coverage.
+        Results retain provider metadata and URLs; use resolve/read for body evidence.
 ''')
 
 _add_fs_chinese('FeishuWikiFS.find', '''\

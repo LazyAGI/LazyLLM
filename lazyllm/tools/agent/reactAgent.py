@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Any, Dict, Optional, Union, Callable, Iterable
 
 from lazyllm import LOG, globals as lazyllm_globals, locals, loop, once_wrapper
@@ -5,7 +6,7 @@ from lazyllm.components import ChatPrompter
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 
-from .base import LazyLLMAgentBase, _model_facing_prefix, _write_agent_data
+from .base import LazyLLMAgentBase, _model_facing_prefix, _write_agent_data, _clear_unfinished_agent_state
 from .functionCall import FunctionCall
 
 INSTRUCTION = f'''
@@ -89,7 +90,8 @@ class ReactAgent(LazyLLMAgentBase):
                  prompt_skills: Optional[Iterable[str]] = None,
                  excluded_skills: Optional[Iterable[str]] = None,
                  skill_search: Optional[Callable] = None,
-                 skill_tool_mode: str = 'full'):
+                 skill_tool_mode: str = 'full',
+                 before_model_request: Optional[Callable[[], None]] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
                          desc=desc, workspace=workspace, sandbox=sandbox, fs=fs, skills_dir=skills_dir,
@@ -108,10 +110,22 @@ class ReactAgent(LazyLLMAgentBase):
         self._history_compactor = history_compactor
         self._runtime_observer = runtime_observer
         self._model_context_provider = model_context_provider
+        self._before_model_request = before_model_request
         self._extra_stop_condition = extra_stop_condition
         self._on_max_retries = on_max_retries
         self._stop_tools: set = set()
         self._fc = None
+
+    def forward(self, *args, **kwargs):
+        agent_state, histories = locals['_lazyllm_agent'], locals['chat_history']
+        try:
+            return super().forward(*args, **kwargs)
+        except asyncio.CancelledError:
+            _clear_unfinished_agent_state(agent_state, histories, self._fc._llm._module_id if self._fc else None)
+            raise
+        except Exception:
+            _clear_unfinished_agent_state(agent_state, histories, self._fc._llm._module_id if self._fc else None)
+            raise
 
     def set_stop_tools(self, stop_tools: Optional[List[str]]) -> None:
         self._stop_tools = set(stop_tools) if stop_tools else set()
@@ -148,7 +162,8 @@ class ReactAgent(LazyLLMAgentBase):
                           stop_tools=list(self._stop_tools) if self._stop_tools else None,
                           round_limit=self._max_retries + 1,
                           runtime_observer=self._runtime_observer,
-                          model_context_provider=self._model_context_provider)
+                          model_context_provider=self._model_context_provider,
+                          before_model_request=getattr(self, '_before_model_request', None))
         agent = loop(
             fc,
             stop_condition=self._stop,
@@ -247,7 +262,5 @@ class ReactAgent(LazyLLMAgentBase):
                     if self._fc is not None:
                         locals['chat_history'].pop(self._fc._llm._module_id, None)
                     return summary
-        if self._fc is not None:
-            locals['chat_history'].pop(self._fc._llm._module_id, None)
         raise ValueError(f'After retrying {self._max_retries} times, the react agent still failes to call '
                          f'successfully.')

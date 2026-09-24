@@ -1019,3 +1019,41 @@ class TestPlanAndSolveAgentEvents(object):
         assert 'text' in event_types
         assert 'tool_calls' in event_types
         assert 'tool_results' in event_types
+
+
+def test_request_preparation_precedes_snapshot_and_first_turn_notice():
+    order = []
+    manager = ToolManager([get_status])
+    llm = _FakeLLM([{'role': 'assistant', 'content': 'Done.'}])
+    fc = FunctionCall(
+        llm, _tool_manager=manager,
+        before_model_request=lambda: order.append('prepare'),
+        model_context_provider=lambda: '[Host runtime update] connected',
+        runtime_observer=lambda event, **_: order.append(event),
+    )
+    assert fc('continue') == 'Done.'
+    assert order.index('prepare') < order.index('tools_ready') < order.index('history_ready')
+    assert llm.inputs[0]['input'] == [
+        {'role': 'user', 'content': 'continue'},
+        {'role': 'user', 'content': '[Host runtime update] connected'},
+    ]
+    assert lazyllm.locals['_lazyllm_agent']['history'] == [{'role': 'user', 'content': 'continue'}]
+    assert order.count('prepare') == 1
+
+
+def test_invalid_request_preparation_never_calls_model():
+    import pytest
+    from lazyllm.flow.flow import FlowException
+
+    async def async_prepare():
+        pass
+
+    def fail():
+        raise RuntimeError('preparation failed')
+
+    for prepare in (async_prepare, lambda: async_prepare(), lambda: 'invalid', fail):
+        llm = _FakeLLM([{'role': 'assistant', 'content': 'Done.'}])
+        fc = FunctionCall(llm, _tool_manager=ToolManager([get_status]), before_model_request=prepare)
+        with pytest.raises(FlowException, match='before_model_request|preparation failed'):
+            fc('start')
+        assert llm.inputs == []

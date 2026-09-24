@@ -1,3 +1,4 @@
+import pytest
 import lazyllm
 from lazyllm.tools import ToolManager
 from lazyllm.tools.agent.toolsManager import (
@@ -421,56 +422,38 @@ class TestToolGroup:
         assert 'alpha' in result
         assert 'beta' in result
 
-    def test_auto_activate_rule_expands_matching_group(self):
+    @pytest.mark.parametrize('input', [
+        'read https://team.example.com/doc/123',
+        '请帮我查看邮箱和飞书文档',
+        {'role': 'user', 'content': '邮箱'},
+        {'role': 'assistant', 'content': '邮箱连接已就绪'},
+    ])
+    def test_keywords_do_not_expand_tools_before_explicit_gateway(self, input):
         t1 = self._tool('alpha')
         tm = ToolManager([dict(
             name='grp', desc='Group', tools=[t1],
-            auto_activate=[r'https?://[^\s]+\.example\.com'],
+            auto_activate=[r'邮箱|飞书|https?://'],
         )])
 
-        tm.sync_active_groups('read https://team.example.com/doc/123')
-
-        assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
-
-    def test_auto_activate_accepts_single_rule(self):
-        t1 = self._tool('alpha')
-        tm = ToolManager([dict(
-            name='grp', desc='Group', tools=[t1], auto_activate='special-link',
-        )])
-
-        tm.sync_active_groups('open special-link')
-
-        assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
-
-    def test_auto_activate_rules_support_product_names_without_partial_word_matches(self):
-        t1 = self._tool('alpha')
-        tm = ToolManager([dict(
-            name='grp', desc='Group', tools=[t1],
-            auto_activate=[r'飞书|(?<!\w)feishu(?!\w)'],
-        )])
-
-        tm.sync_active_groups('请帮我查看飞书文档')
-        assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
-
-        init_session()
-        lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
-        tm.sync_active_groups('the prefeishuized value')
+        tm.sync_active_groups(input)
         assert [d['function']['name'] for d in tm.tools_description] == ['get_grp_methods']
 
-        tm.sync_active_groups('search FEISHU for it')
+        result = tm([{'id': 'load', 'function': {'name': 'get_grp_methods', 'arguments': '{}'}}])
+        assert result[0]['ok'] is True
+        tm.sync_active_groups('继续')
         assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
 
-    def test_nested_auto_activate_expands_ancestors(self):
+    def test_nested_keywords_do_not_expand_ancestors(self):
         t1 = self._tool('alpha')
         tm = ToolManager([dict(name='outer', desc='Outer', tools=[
-            dict(name='inner', desc='Inner', tools=[t1], auto_activate=['special-link']),
+            dict(name='inner', desc='Inner', tools=[t1], auto_activate='special-link'),
         ])])
 
         tm.sync_active_groups('open special-link')
 
-        assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
+        assert [d['function']['name'] for d in tm.tools_description] == ['get_outer_methods']
 
-    def test_structured_gateway_call_in_history_restores_group(self):
+    def test_structured_gateway_call_in_history_does_not_prove_activation(self):
         t1 = self._tool('alpha')
         tm = ToolManager([dict(name='grp', desc='Group', tools=[t1])])
         history = [{
@@ -480,9 +463,9 @@ class TestToolGroup:
 
         tm.sync_active_groups('continue', history)
 
-        assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
+        assert [d['function']['name'] for d in tm.tools_description] == ['get_grp_methods']
 
-    def test_nested_gateway_history_also_restores_ancestor(self):
+    def test_nested_gateway_history_does_not_activate_ancestors(self):
         t1 = self._tool('alpha')
         tm = ToolManager([dict(name='outer', desc='Outer', tools=[
             dict(name='inner', desc='Inner', tools=[t1]),
@@ -494,7 +477,7 @@ class TestToolGroup:
 
         tm.sync_active_groups('continue', history)
 
-        assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
+        assert [d['function']['name'] for d in tm.tools_description] == ['get_outer_methods']
 
     def test_compacted_text_does_not_restore_group(self):
         t1 = self._tool('alpha')
