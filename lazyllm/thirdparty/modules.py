@@ -4,7 +4,7 @@ modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', '
            'vllm', 'ChatTTS', 'wandb', 'funasr', 'sklearn', 'torchvision', 'scipy', 'pymilvus', 'sentence_transformers',
            'gradio', 'chromadb', 'nltk', ['PIL', 'Image'], 'httpx', 'bm25s', 'kubernetes', 'pymongo',
            'rapidfuzz', 'FlagEmbedding', 'mcp', 'diffusers', 'pypdf', 'pptx', 'html2text', 'ebooklib', 'docx2txt',
-           'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr', 'volcenginesdkarkruntime',
+           'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr',
            'zhipuai', ['dashscope', 'aigc.image_generation'], ['mineru', 'cli.common'], 'opensearchpy',
            ['os', 'path'], 'pkg_resources',
            'fastapi', 'qdrant_client',
