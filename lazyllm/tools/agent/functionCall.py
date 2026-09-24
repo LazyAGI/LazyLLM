@@ -12,6 +12,7 @@ from .base import (
     strip_tool_observations,
     _write_agent_data,
     _unwrap_tool_result,
+    _clear_unfinished_agent_state,
 )
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
@@ -19,6 +20,7 @@ from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbo
 import re
 import json
 import inspect
+import asyncio
 
 FC_PROMPT = f'''# Tools
 
@@ -479,7 +481,8 @@ class FunctionCall(ModuleBase):
         return llm_output
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
-        workspace = locals['_lazyllm_agent'].setdefault('workspace', {})
+        agent_state, histories = locals['_lazyllm_agent'], locals['chat_history']
+        workspace = agent_state.setdefault('workspace', {})
         workspace.setdefault('history', list(llm_chat_history or []))
         if self._round_limit is not None and llm_chat_history is not None:
             previous_round = workspace.get('_react_round_number')
@@ -492,15 +495,14 @@ class FunctionCall(ModuleBase):
                 f'preserved_history_messages={preserved_history_messages} '
                 f'new_round_limit={self._round_limit or 0}'
             )
-        self._tools_manager.sync_active_groups(input, llm_chat_history)
         try:
+            self._tools_manager.sync_active_groups(input, llm_chat_history)
             result = self._impl(input)
-        except Exception:
+        except (asyncio.CancelledError, Exception):
             # On failure, clear any in-progress workspace and the LLM chat history so that
             # the next call (e.g. user says "continue") does not inherit a corrupted history
             # that may contain truncated tool_calls with invalid JSON arguments.
-            locals['_lazyllm_agent'].pop('workspace', None)
-            locals['chat_history'].pop(self._llm._module_id, None)
+            _clear_unfinished_agent_state(agent_state, histories, self._llm._module_id)
             raise
 
         # If the model decides not to call any tools, the result is a string. For debugging and subsequent tasks,

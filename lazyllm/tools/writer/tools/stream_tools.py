@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import re
 import time
-from contextvars import copy_context
+import asyncio
+from concurrent.futures import CancelledError
+from threading import Event
 from queue import Empty, Queue
 from typing import Any, Callable, Dict, Iterator, List, Literal, Optional, Tuple
 
@@ -26,7 +28,7 @@ from ..utils import (
     to_prompt_json,
 )
 
-_WRITER_STREAM_EXECUTOR = ThreadPoolExecutor(max_workers=config['thread_pool_worker_num'])
+_WRITER_STREAM_EXECUTOR = ThreadPoolExecutor(max_workers=config['thread_pool_worker_num'], local_scope='inherit')
 
 
 def resolve_stream_idle_timeout(llm: Any, idle_timeout: Optional[float]) -> float:
@@ -126,7 +128,7 @@ class DraftPreviewStream(Iterator[str]):
         label: str = 'Draft preview',
     ):
         self._queue: Queue[Dict[str, Any]] = Queue()
-        self._cancelled = False
+        self._cancelled = Event()
         # Only user-visible preview deltas count as forward progress. Provider
         # reasoning/heartbeat frames may continue indefinitely after the model
         # has stopped producing document content.
@@ -138,8 +140,7 @@ class DraftPreviewStream(Iterator[str]):
         self._label = label
         self._result: Optional[dict] = None
         self._error: Optional[BaseException] = None
-        context = copy_context()
-        self._future = _WRITER_STREAM_EXECUTOR.submit(context.run, call, self._sink)
+        self._future = _WRITER_STREAM_EXECUTOR.submit(self._call, call)
         self._iterator = self._iterate()
 
     def __iter__(self) -> 'DraftPreviewStream':
@@ -162,14 +163,31 @@ class DraftPreviewStream(Iterator[str]):
         return self._result
 
     def close(self) -> None:
-        self._cancelled = True
-        self._future.cancel()
-        self._iterator.close()
-        self._drain_queue()
+        try:
+            self._iterator.close()
+        finally:
+            self._stop_and_wait()
+            self._drain_queue()
+
+    def _stop_and_wait(self) -> None:
+        if not self._future.done():
+            self._cancelled.set()
+            self._future.cancel()
+        try:
+            self._future.exception()
+        except CancelledError:
+            pass
+
+    def _check_cancelled(self) -> None:
+        if self._cancelled.is_set():
+            raise asyncio.CancelledError(f'{self._label} cancelled')
+
+    def _call(self, call):
+        self._check_cancelled()
+        return call(self._sink)
 
     def _sink(self, payload: Dict[str, Any]) -> None:
-        if self._cancelled:
-            return
+        self._check_cancelled()
         self._queue.put(dict(payload))
 
     def _iterate(self) -> Iterator[str]:
@@ -201,8 +219,8 @@ class DraftPreviewStream(Iterator[str]):
             raise
         finally:
             if self._result is None:
-                self._cancelled = True
-                self._future.cancel()
+                self._stop_and_wait()
+                self._drain_queue()
 
     def _poll_timeout(self) -> float:
         remaining = self._idle_timeout - (time.monotonic() - self._last_activity)
