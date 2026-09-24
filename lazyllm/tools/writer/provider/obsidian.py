@@ -29,6 +29,7 @@ from ..numbering import (
     dematerialize_markdown,
     ensure_markdown_heading_anchors,
     materialize_markdown,
+    parse_markdown_anchor_numbering,
 )
 from ..utils import writer_document_to_markdown
 
@@ -373,7 +374,11 @@ class ObsidianWriterProvider(WriterProviderBase):
         media_assets: MediaAssetLibrary | None,
     ) -> str:
         content = self._restore_images(content, bridge, note, fs, media_assets)
-        content = _WRITER_SYSTEM_ANCHOR_LINE_RE.sub('', content)
+        # Non-default heading modes must survive reopening the note without its bridge state.
+        content = _WRITER_SYSTEM_ANCHOR_LINE_RE.sub(
+            lambda match: match.group(0) if parse_markdown_anchor_numbering(match.group(0)) else '',
+            content,
+        )
         frontmatter = str(bridge.get('frontmatter') or '')
         if not content.endswith('\n'):
             content += '\n'

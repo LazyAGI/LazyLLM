@@ -147,6 +147,28 @@ def test_dematerialize_markdown_preserves_escaped_mode_line_endings():
     ) == source
 
 
+def test_empty_parent_heading_preserves_child_numbering():
+    source = '\n'.join([
+        '# Title',
+        '<a id="block-a"></a>',
+        '##',
+        '<a id="block-a-1"></a>',
+        '### Child',
+        '<a id="block-b"></a>',
+        '## Sibling',
+        '<a id="block-b-1"></a>',
+        '### Sibling child',
+    ])
+
+    numbering = _numbering(source)
+
+    assert numbering['a'].caption is None
+    assert [numbering[node_id].label for node_id in ('a', 'a-1', 'b', 'b-1')] == [
+        '1.', '1.1.', '2.', '2.1.',
+    ]
+    assert dematerialize_markdown(_materialize(source), numbering) == source
+
+
 def test_unordered_parent_preserves_ordered_child_hierarchy():
     source = '\n'.join([
         '# 标题',

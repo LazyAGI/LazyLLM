@@ -224,8 +224,9 @@ def _markdown_visible_text(token: Dict[str, Any]) -> str:
 
 
 MARKDOWN_OUTLINE_INSTRUCTION_RE = re.compile(
-    r'^\s*<!--\s*writer:outline\s+(\{.*\})\s*-->\s*$'
+    r'^\s*<!--\s*writer:outline\s+(\{.*\})\s*(?:-->)?\s*$'
 )
+MARKDOWN_OUTLINE_INSTRUCTION_PREFIX_RE = re.compile(r'^\s*<!--\s*writer:outline\b')
 
 
 def parse_markdown_outline_instructions(markdown: str) -> Dict[str, Dict[str, Any]]:
@@ -270,7 +271,7 @@ def _strip_markdown_outline_instructions(markdown: str) -> str:
     trailing_newline = markdown.endswith('\n')
     value = '\n'.join(
         line for line in markdown.splitlines()
-        if not MARKDOWN_OUTLINE_INSTRUCTION_RE.match(line)
+        if not MARKDOWN_OUTLINE_INSTRUCTION_PREFIX_RE.match(line)
     )
     return f'{value}\n' if trailing_newline else value
 

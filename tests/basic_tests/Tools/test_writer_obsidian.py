@@ -440,6 +440,38 @@ class TestObsidianWriterProvider:
         )
         assert bridge['source_hash'] == provider._hash(source)
 
+    @pytest.mark.parametrize('numbering', ['mode=unordered', 'restart'])
+    @pytest.mark.parametrize('style', ['hierarchical', 'chinese', 'parenthesized'])
+    def test_heading_numbering_survives_repeated_vault_writes(self, tmp_path, monkeypatch, numbering, style):
+        _vault(tmp_path)
+        note_path = tmp_path / 'note.md'
+        note_path.write_text('# Note\n', encoding='utf-8')
+        fs = ObsidianFS(token=str(tmp_path))
+        monkeypatch.setattr(ObsidianWriterProvider, '_fs', staticmethod(lambda: fs))
+        provider = ObsidianWriterProvider()
+        target = TargetDocument(
+            uri=f'obsidian://{fs.discover_vaults()[0].vault_id}/note.md',
+            adapter='obsidian',
+        )
+        source = (
+            f'<!-- heading-numbering: {{"ordered_style":"{style}"}} -->\n'
+            '# Note\n<a id="block-a"></a>\n## Alpha\n'
+            f'<a id="block-b" numbering="{numbering}"></a>\n## Beta\n'
+            '<a id="block-c"></a>\n### Child\n'
+        )
+        provider.write_document(provider.convert_document(source, target=target), target)
+        first_write = note_path.read_text(encoding='utf-8')
+
+        for _ in range(2):
+            loaded = provider.load_document(target)
+            target = loaded['target_document']
+            converted = provider.convert_document(loaded['source_document'], target=target)
+            provider.write_document(converted, target)
+            assert note_path.read_text(encoding='utf-8') == first_write
+
+        assert f'numbering="{numbering}"' in first_write
+        assert '<a id="block-a"></a>' not in first_write
+
     def test_writer_output_is_not_repaired_with_hidden_tokens(self, tmp_path):
         provider = ObsidianWriterProvider()
         note = _note(tmp_path)

@@ -263,6 +263,31 @@ def test_markdown_outline_instruction_sidecars_round_trip_as_outline_fields():
     assert restored.count('writer:outline') == 1
 
 
+def test_markdown_outline_instruction_sidecars_recover_or_discard_malformed_lines():
+    markdown = '\n'.join([
+        '# 方案',
+        '<a id="block-sec-1"></a>',
+        '## 系统设计',
+        '<!-- writer:outline {"node_id":"","target_chars":900,'
+        '"outline_description":"本节介绍系统设计。","context_relations":[],"subtasks":[]}',
+        '<a id="block-sec-2"></a>',
+        '## 实施计划',
+        '<!-- writer:outline {"node_id":"","target_chars":800,'
+        '"outline_description":"说明"实施"计划。","context_relations":[],"subtasks":[]}',
+    ])
+
+    document = parse_document_markdown(markdown, document_id='outline-md', stage='outline')
+    assert [block.content for block in document.blocks] == ['系统设计', '实施计划']
+    assert document.blocks[0].outline_description == '本节介绍系统设计。'
+    assert document.blocks[1].outline_description == ''
+
+    restored = apply_markdown_outline_instructions(markdown, document)
+    sidecars = [line for line in restored.splitlines() if 'writer:outline' in line]
+    assert len(sidecars) == 2
+    assert all(line.endswith(' -->') for line in sidecars)
+    assert set(parse_markdown_outline_instructions(restored)) == {'sec-1', 'sec-2'}
+
+
 def test_complete_user_markdown_outline_adds_anchors_and_instruction_sidecars():
     source = '# 方案\n\n## 系统设计\n'
     anchored = WriterPlanningTools._normalize_markdown_outline(source)

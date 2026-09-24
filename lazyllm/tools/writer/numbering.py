@@ -81,7 +81,7 @@ MARKDOWN_HEADING_NUMBERING_CONFIG_RE = re.compile(
     r'<!--\s*heading-numbering:\s*(\{[^\r\n]*\})\s*-->',
     re.IGNORECASE,
 )
-_HEADING_RE = re.compile(r'^(#{2,6})\s+(.+?)\s*$')
+_HEADING_RE = re.compile(r'^(#{2,6})(?:\s+(.*?))?\s*$')
 _IMAGE_RE = re.compile(r'!\[([^\]]*)\]\(([^)]*)\)')
 _HTML_IMAGE_RE = re.compile(r'<img\b[^>]*?/?>', re.IGNORECASE)
 _HTML_IMAGE_ATTR_RE = re.compile(
@@ -276,7 +276,7 @@ def _markdown_semantic_items(markdown: str):
         )
         heading = _HEADING_RE.match(line)
         if heading:
-            yield index, line, 'heading', heading.group(2).strip(), pending_anchors
+            yield index, line, 'heading', (heading.group(2) or '').strip(), pending_anchors
             pending_anchors = []
             continue
         images = find_markdown_images(line)
@@ -610,7 +610,7 @@ def materialize_markdown(  # noqa: C901
             if target is not None:
                 prefix = format_target_number(numbering[target.id])
                 visible_prefix = f'{prefix} ' if prefix else ''
-                line = f'{heading.group(1)} {visible_prefix}{heading.group(2)}'
+                line = f'{heading.group(1)} {visible_prefix}{heading.group(2) or ""}'.rstrip()
         else:
             images = find_markdown_images(line)
             targets = [
@@ -725,7 +725,7 @@ def dematerialize_markdown(
             ):
                 number = format_target_number(entry)
                 prefix = f'{number} ' if number else ''
-                title = heading.group(2)
+                title = heading.group(2) or ''
                 prefixes = [prefix]
                 if allow_escaped_prefix and prefix:
                     prefixes.append(
@@ -736,6 +736,9 @@ def dematerialize_markdown(
                         ),
                     )
                 for candidate in prefixes:
+                    if candidate and title == candidate.rstrip():
+                        title = ''
+                        break
                     if candidate and title.startswith(candidate):
                         title = title[len(candidate):]
                         break
