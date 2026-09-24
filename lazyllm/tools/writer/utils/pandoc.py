@@ -207,7 +207,7 @@ def _diagnostic(value: object) -> str:
 def _pandoc_working_directory(
     *, environ: Optional[Mapping[str, str]] = None,
 ) -> str:
-    """Use a stable directory outside replaceable application bundles."""
+    '''Use a stable directory outside replaceable application bundles.'''
     environment = os.environ if environ is None else environ
     runtime_root = str(environment.get(RUNTIME_ROOT_ENV) or '').strip()
     if runtime_root:

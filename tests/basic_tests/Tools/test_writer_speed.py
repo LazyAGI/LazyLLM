@@ -1,4 +1,4 @@
-"""Regression checks for Writer's deterministic fast paths."""
+'''Regression checks for Writer's deterministic fast paths.'''
 import json
 from pathlib import Path
 from unittest.mock import patch

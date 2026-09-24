@@ -94,6 +94,14 @@ add_writer_models_english_doc('WriterDocument.block_by_id', '''
 Find a block by its node identifier.
 ''')
 
+add_writer_models_chinese_doc('WritingSubTask.normalize_legacy_subtask_type', '''
+将旧版 extract 子任务类型规范化为 reason。
+''')
+
+add_writer_models_english_doc('WritingSubTask.normalize_legacy_subtask_type', '''
+Normalize the legacy extract subtask type to reason.
+''')
+
 add_writer_models_chinese_doc('WriterBlock.iter_blocks', '''
 遍历当前内容块及其后代。
 ''')
@@ -301,6 +309,8 @@ _add_bilingual_docs(
          'Stream a flat Markdown or Writer IR short-document preview.'),
         ('WriterDraftingTools.stream_short_document_ir', '流式生成无章节标题的 Writer IR 短文及其 Markdown 预览。',
          'Stream a flat Writer IR short document and its Markdown preview.'),
+        ('WriterDraftingTools.stream_whole_document', '流式生成包含多个章节的完整 Markdown 文档。',
+         'Stream a complete Markdown document containing multiple sections.'),
         ('WriterDraftingTools.stream_draft_section', '流式生成 Markdown 章节草稿。',
          'Stream a Markdown section draft.'),
         ('WriterDraftingTools.stream_draft_section_ir', '流式生成 Writer IR 章节草稿的 Markdown 预览。',

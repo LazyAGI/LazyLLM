@@ -934,7 +934,7 @@ class WriterPlanningTools(WriterToolBase):
 
     @staticmethod
     def _add_outline_budget_descriptions(document: WriterDocument) -> None:
-        """Append computed budgets without a second model pass."""
+        '''Append computed budgets without a second model pass.'''
         for block in document.iter_blocks():
             if block.type != 'heading':
                 continue

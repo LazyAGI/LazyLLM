@@ -827,7 +827,7 @@ class WriterDraftingTools(WriterToolBase):
     @staticmethod
     def _draft_prompt_inputs(task: WritingTask, instruction: SectionInstruction,
                              context: WritingContext) -> dict:
-        """Remove exact duplicates only; preserve each request's global context."""
+        '''Remove exact duplicates only; preserve each request's global context.'''
         context_data = context.model_dump(exclude_defaults=True)
         if context.query == task.query:
             context_data.pop('query', None)

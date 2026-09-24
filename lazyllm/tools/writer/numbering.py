@@ -659,12 +659,12 @@ def dematerialize_ir(
     return result
 
 
-def dematerialize_markdown(
+def dematerialize_markdown(  # noqa: C901
     markdown: str,
     base_numbering: NumberingMap | None = None,
     *,
     allow_escaped_prefix: bool = False,
-) -> str:  # noqa: C901
+) -> str:
     view = build_numbering_view_from_markdown(markdown)
     submitted_numbering = compute_numbering(view)
     targets_by_line = _markdown_targets_by_line(markdown, view)

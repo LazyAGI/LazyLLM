@@ -633,7 +633,7 @@ def _render_code_block(block: WriterBlock) -> str:
     return '\n'.join(filter(None, [caption, code]))
 
 
-def _render_block(block: WriterBlock, depth: int, allow_raw: bool) -> str:
+def _render_block(block: WriterBlock, depth: int, allow_raw: bool) -> str:  # noqa: C901
     if allow_raw:
         raw = _preserved_block_source(block)
         if raw is not None:

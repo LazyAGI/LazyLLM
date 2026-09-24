@@ -162,12 +162,12 @@ class DraftPreviewStream(Iterator[str]):
 
     @property
     def timings(self) -> Dict[str, Any]:
-        """Milliseconds from stream submission; missing milestones remain None.
+        '''Milliseconds from stream submission; missing milestones remain None.
 
         First response is the first nonempty stream-sink delta (including thinking),
         not HTTP headers. First visible excludes synthetic prefixes and thinking.
         Generation finished is successful model-call return, before artifact saving.
-        """
+        '''
         return dict(self._timings)
 
     def _record_visible(self, deltas: List[str]) -> None:
@@ -876,7 +876,7 @@ class OutlineIRStream(IRPreviewStream):
 
 
 def _outline_markdown_preview(markdown: str) -> str:
-    """Writer owns the human-readable preview; consumers receive ordinary Markdown."""
+    '''Writer owns the human-readable preview; consumers receive ordinary Markdown.'''
     lines = []
     for line in markdown.split('\n'):
         stripped = line.lstrip()
