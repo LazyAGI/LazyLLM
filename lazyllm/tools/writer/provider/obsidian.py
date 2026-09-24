@@ -23,6 +23,13 @@ from .base import (
 from ..data_models.multimodal import MediaAssetLibrary
 from ..data_models.task import InputResource, TargetDocument
 from ..data_models.writer_ir import WriterDocument, WriterStage
+from ..numbering import (
+    build_numbering_view_from_markdown,
+    compute_numbering,
+    dematerialize_markdown,
+    ensure_markdown_heading_anchors,
+    materialize_markdown,
+)
 from ..utils import writer_document_to_markdown
 
 
@@ -35,6 +42,10 @@ _WRITER_SYSTEM_ANCHOR_LINE_RE = re.compile(
 _LOCAL_MARKDOWN_IMAGE_RE = re.compile(
     r'!\[(?P<alt>[^\]]*)\]\((?P<target><[^>\n]+>|[^)\s]+)(?:\s+["\'][^)]*["\'])?\)'
 )
+
+
+def _preserve_trailing_linebreaks(source: str, transformed: str) -> str:
+    return transformed.rstrip('\r\n') + source[len(source.rstrip('\r\n')):]
 
 
 class ObsidianWriterProvider(WriterProviderBase):
@@ -70,8 +81,21 @@ class ObsidianWriterProvider(WriterProviderBase):
             markdown = self._serialize_writer_document(content, media_assets)
             source_document = content.model_copy(deep=True)
         elif isinstance(content, str):
-            markdown = content
-            source_document = self._writer_document(markdown, media_assets)
+            canonical_markdown = _preserve_trailing_linebreaks(
+                content,
+                ensure_markdown_heading_anchors(
+                    dematerialize_markdown(
+                        content,
+                        allow_escaped_prefix=True,
+                    ),
+                ),
+            )
+            source_document = self._writer_document(canonical_markdown, media_assets)
+            view = build_numbering_view_from_markdown(canonical_markdown)
+            markdown = _preserve_trailing_linebreaks(
+                canonical_markdown,
+                materialize_markdown(canonical_markdown, view, compute_numbering(view)),
+            )
         else:
             raise TypeError('Obsidian Writer Provider accepts Markdown or WriterDocument content.')
         return WriterProviderDocument(
@@ -102,7 +126,13 @@ class ObsidianWriterProvider(WriterProviderBase):
         )
         return {
             **result,
-            'persisted_document': converted.content,
+            'persisted_document': _preserve_trailing_linebreaks(
+                converted.content,
+                dematerialize_markdown(
+                    converted.content,
+                    allow_escaped_prefix=True,
+                ),
+            ),
             'representation': 'markdown',
             'published_link': '',
         }
@@ -273,13 +303,23 @@ class ObsidianWriterProvider(WriterProviderBase):
         if matched:
             frontmatter = matched.group(0)
             content = content[matched.end():]
+        raw_content = content
         bridge: Dict[str, Any] = {
-            'source_hash': self._hash(frontmatter + content),
+            'source_hash': self._hash(frontmatter + raw_content),
             'frontmatter': frontmatter,
             'images': {},
             'external_images': {},
             'warnings': [],
         }
+        content = _preserve_trailing_linebreaks(
+            raw_content,
+            ensure_markdown_heading_anchors(
+                dematerialize_markdown(
+                    raw_content,
+                    allow_escaped_prefix=True,
+                ),
+            ),
+        )
         images: Dict[str, Dict[str, Any]] = bridge['images']
         external_images: Dict[str, str] = bridge['external_images']
         warnings: List[str] = bridge['warnings']

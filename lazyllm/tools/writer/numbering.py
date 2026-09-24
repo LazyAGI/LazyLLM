@@ -659,7 +659,12 @@ def dematerialize_ir(
     return result
 
 
-def dematerialize_markdown(markdown: str, base_numbering: NumberingMap | None = None) -> str:  # noqa: C901
+def dematerialize_markdown(
+    markdown: str,
+    base_numbering: NumberingMap | None = None,
+    *,
+    allow_escaped_prefix: bool = False,
+) -> str:  # noqa: C901
     view = build_numbering_view_from_markdown(markdown)
     submitted_numbering = compute_numbering(view)
     targets_by_line = _markdown_targets_by_line(markdown, view)
@@ -675,6 +680,14 @@ def dematerialize_markdown(markdown: str, base_numbering: NumberingMap | None = 
     output: list[str] = []
     fence: str | None = None
     lines = markdown.splitlines()
+    preserve_line_endings = allow_escaped_prefix
+    line_ending = '\n'
+    if preserve_line_endings:
+        if '\r\n' in markdown:
+            line_ending = '\r\n'
+        elif '\r' in markdown:
+            line_ending = '\r'
+    has_trailing_newline = preserve_line_endings and markdown.endswith(('\r\n', '\r', '\n'))
     for index, line in enumerate(lines):
         fence_match = _CODE_FENCE_RE.match(line)
         if fence_match:
@@ -713,8 +726,19 @@ def dematerialize_markdown(markdown: str, base_numbering: NumberingMap | None = 
                 number = format_target_number(entry)
                 prefix = f'{number} ' if number else ''
                 title = heading.group(2)
-                if prefix and title.startswith(prefix):
-                    title = title[len(prefix):]
+                prefixes = [prefix]
+                if allow_escaped_prefix and prefix:
+                    prefixes.append(
+                        re.sub(
+                            r'([\\`*_\[\]{}#+.!|>\-])',
+                            r'\\\1',
+                            prefix,
+                        ),
+                    )
+                for candidate in prefixes:
+                    if candidate and title.startswith(candidate):
+                        title = title[len(candidate):]
+                        break
                 line = f'{heading.group(1)} {title}'.rstrip()
         else:
             images = find_markdown_images(line)
@@ -744,7 +768,10 @@ def dematerialize_markdown(markdown: str, base_numbering: NumberingMap | None = 
                 pieces.append(line[last:])
                 line = ''.join(pieces)
         output.append(line)
-    return '\n'.join(output)
+    result = line_ending.join(output) if preserve_line_endings else '\n'.join(output)
+    if has_trailing_newline and output and not result.endswith(line_ending):
+        result += line_ending
+    return result
 
 
 def _validate_numbering_update(update: Mapping[str, Any]) -> str:

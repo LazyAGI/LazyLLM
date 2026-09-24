@@ -143,6 +143,131 @@ class TestObsidianWriterProvider:
         assert converted_ir.content == '# Note\n\nBody\n'
         assert converted_ir.source_document.document_id == 'writer-document'
 
+    def test_convert_markdown_materializes_heading_numbers_once(self):
+        provider = ObsidianWriterProvider()
+        target = TargetDocument(adapter='obsidian', uri='obsidian://vlt_test/note.md')
+        converted = provider.convert_document(
+            '# Note\n\n## Chapter\n\n### Section\n',
+            target=target,
+        )
+
+        assert converted.content == (
+            '# Note\n\n'
+            '<a id="block-sec-001"></a>\n'
+            '## 1. Chapter\n\n'
+            '<a id="block-sec-001-001"></a>\n'
+            '### 1.1. Section\n'
+        )
+        assert r'## 1. 1. Chapter' not in converted.content
+
+    def test_convert_ir_materializes_heading_numbers_once(self):
+        provider = ObsidianWriterProvider()
+        document = WriterDocument(
+            document_id='writer-document',
+            title='Note',
+            blocks=[{
+                'node_id': 'chapter',
+                'type': 'heading',
+                'content': 'Chapter',
+                'numbering': {'level': 1},
+            }],
+            provider_binding={'provider': 'feishu'},
+        )
+
+        converted = provider.convert_document(document)
+
+        assert converted.content == (
+            '# Note\n\n'
+            '<a id="block-chapter"></a>\n'
+            '## 1\\. Chapter\n'
+        )
+
+    def test_write_document_returns_canonical_markdown_after_materialized_write(self, monkeypatch):
+        provider = ObsidianWriterProvider()
+        target = TargetDocument(adapter='obsidian', uri='obsidian://vlt_test/note.md')
+        converted = provider.convert_document(
+            '# Note\n\n## Chapter\n',
+            target=target,
+        )
+        captured = {}
+
+        def replace_document(content, write_target, *, media_assets=None):
+            captured.update({
+                'content': content,
+                'target': write_target,
+                'media_assets': media_assets,
+            })
+            return {'doc_id': 'vlt_test:note.md', 'adapter': 'obsidian', 'locator': target.uri}
+
+        monkeypatch.setattr(provider, 'replace_document', replace_document)
+
+        result = provider.write_document(converted, target)
+
+        assert captured['content'] == converted.content
+        assert result['persisted_document'] == (
+            '# Note\n\n'
+            '<a id="block-sec-001"></a>\n'
+            '## Chapter\n'
+        )
+        assert result['representation'] == 'markdown'
+
+    def test_write_ir_returns_canonical_markdown_after_materialized_write(self, monkeypatch):
+        provider = ObsidianWriterProvider()
+        target = TargetDocument(adapter='obsidian', uri='obsidian://vlt_test/note.md')
+        document = WriterDocument(
+            document_id='writer-document',
+            title='Note',
+            blocks=[{
+                'node_id': 'chapter',
+                'type': 'heading',
+                'content': 'Chapter',
+                'numbering': {'level': 1},
+            }],
+            provider_binding={'provider': 'feishu'},
+        )
+        converted = provider.convert_document(document, target=target)
+        monkeypatch.setattr(
+            provider,
+            'replace_document',
+            lambda content, write_target, *, media_assets=None: {'doc_id': 'vlt_test:note.md'},
+        )
+
+        result = provider.write_document(converted, target)
+
+        assert result['persisted_document'] == (
+            '# Note\n\n'
+            '<a id="block-chapter"></a>\n'
+            '## Chapter\n'
+        )
+
+    def test_write_document_does_not_duplicate_matching_heading_number(self, monkeypatch):
+        provider = ObsidianWriterProvider()
+        target = TargetDocument(adapter='obsidian', uri='obsidian://vlt_test/note.md')
+        converted = provider.convert_document(
+            '# Note\n\n## 1. Chapter\n',
+            target=target,
+        )
+        captured = {}
+
+        def replace_document(content, write_target, *, media_assets=None):
+            captured['content'] = content
+            return {'doc_id': 'vlt_test:note.md'}
+
+        monkeypatch.setattr(provider, 'replace_document', replace_document)
+
+        result = provider.write_document(converted, target)
+
+        assert captured['content'] == (
+            '# Note\n\n'
+            '<a id="block-sec-001"></a>\n'
+            '## 1. Chapter\n'
+        )
+        assert result['persisted_document'] == (
+            '# Note\n\n'
+            '<a id="block-sec-001"></a>\n'
+            '## Chapter\n'
+        )
+
     def test_write_document_delegates_native_markdown_write(self, monkeypatch):
         provider = ObsidianWriterProvider()
         target = TargetDocument(adapter='obsidian', uri='obsidian://vlt_test/note.md')
@@ -271,6 +396,49 @@ class TestObsidianWriterProvider:
             '```\n'
             '![[embedded-note]]\n'
         )
+
+    def test_read_dematerializes_escaped_heading_numbers_without_changing_hash(self, tmp_path):
+        provider = ObsidianWriterProvider()
+        note = _note(tmp_path)
+        source = (
+            '---\n'
+            'title: Demo\n'
+            '---\n'
+            '<a id="block-a"></a>\n'
+            '## 1\\. 第一章\n'
+            '<a id="block-b"></a>\n'
+            '### 1\\.1\\. 小节\n'
+        )
+
+        markdown, bridge = provider._to_writer_markdown(source, note, MagicMock())
+
+        assert markdown == (
+            '<a id="block-a"></a>\n'
+            '## 第一章\n'
+            '<a id="block-b"></a>\n'
+            '### 小节\n'
+        )
+        assert bridge['source_hash'] == provider._hash(source)
+
+    def test_load_dematerializes_published_heading_numbers(self, tmp_path):
+        provider = ObsidianWriterProvider()
+        note = _note(tmp_path)
+        source = (
+            '# Note\n\n'
+            '## 1. Chapter\n\n'
+            '### 1.1. Section\n'
+        )
+
+        markdown, bridge = provider._to_writer_markdown(source, note, MagicMock())
+
+        assert markdown == (
+            '# Note\n\n'
+            '<a id="block-sec-001"></a>\n'
+            '## Chapter\n\n'
+            '<a id="block-sec-001-001"></a>\n'
+            '### Section\n'
+        )
+        assert bridge['source_hash'] == provider._hash(source)
 
     def test_writer_output_is_not_repaired_with_hidden_tokens(self, tmp_path):
         provider = ObsidianWriterProvider()

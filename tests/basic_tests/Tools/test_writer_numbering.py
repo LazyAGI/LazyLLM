@@ -121,6 +121,32 @@ def test_markdown_style_restart_and_unordered_heading_round_trip():
     assert dematerialize_markdown(materialized, numbering) == source
 
 
+def test_dematerialize_markdown_accepts_escaped_heading_prefix_when_enabled():
+    source = '<a id="block-a"></a>\n## 第一章\n'
+    numbering = _numbering(source)
+    materialized = '<a id="block-a"></a>\n## 1\\. 第一章\n'
+
+    default_result = dematerialize_markdown(materialized, numbering)
+    assert '## 1\\. 第一章' in default_result
+    assert dematerialize_markdown(
+        materialized,
+        numbering,
+        allow_escaped_prefix=True,
+    ) == source
+
+
+def test_dematerialize_markdown_preserves_escaped_mode_line_endings():
+    source = '<a id="block-a"></a>\r\n## 第一章\r\n'
+    numbering = _numbering(source)
+    materialized = '<a id="block-a"></a>\r\n## 1\\. 第一章\r\n'
+
+    assert dematerialize_markdown(
+        materialized,
+        numbering,
+        allow_escaped_prefix=True,
+    ) == source
+
+
 def test_unordered_parent_preserves_ordered_child_hierarchy():
     source = '\n'.join([
         '# 标题',
