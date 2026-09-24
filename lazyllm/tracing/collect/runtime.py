@@ -350,7 +350,7 @@ class TracingRuntime:
             return
         span.output_attrs.update(attrs)
 
-    def set_error(self, span: Optional[LazySpan], exc: Exception):
+    def set_error(self, span: Optional[LazySpan], exc: BaseException):
         if span is None:
             return
         span.status = 'error'
@@ -522,7 +522,7 @@ def set_span_attributes(handle, attrs: Dict[str, Any]):
     _runtime.set_attributes(handle, attrs)
 
 
-def set_span_error(handle, exc: Exception):
+def set_span_error(handle, exc: BaseException):
     _runtime.set_error(handle, exc)
 
 
@@ -592,7 +592,7 @@ def _stream_trace_scope(stream_ctx: LazyTraceContext, stream_trace, span):
     try:
         with span_cm:
             yield
-    except Exception as e:
+    except BaseException as e:
         if span:
             set_span_error(span, e)
         raise
@@ -620,6 +620,10 @@ def _wrap_asyncgen_with_trace(result, stream_ctx: LazyTraceContext, stream_trace
                 if item is sentinel:
                     return
                 yield item
+        except BaseException as e:
+            if span:
+                set_span_error(span, e)
+            raise
         finally:
             try:
                 with _stream_trace_scope(stream_ctx, stream_trace, span):
@@ -639,6 +643,10 @@ def _wrap_generator_with_trace(result, stream_ctx: LazyTraceContext, stream_trac
                 if item is sentinel:
                     return
                 yield item
+        except BaseException as e:
+            if span:
+                set_span_error(span, e)
+            raise
         finally:
             try:
                 with _stream_trace_scope(stream_ctx, stream_trace, span):
@@ -669,7 +677,7 @@ def _run_with_trace(func, args, kwargs, trace_config):
         if span:
             set_span_output(span, result)
         return result
-    except Exception as e:
+    except BaseException as e:
         if span:
             set_span_error(span, e)
         raise
