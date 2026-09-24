@@ -259,3 +259,34 @@ def test_feishu_download_media_uses_authenticated_media_endpoint():
         'GET',
         'https://open.feishu.cn/open-apis/drive/v1/medias/token%2Fwith%20space/download',
     )
+
+
+@pytest.mark.parametrize('analyze', [False, True])
+@pytest.mark.parametrize('origin', [
+    {'origin': 'markdown'}, {'origin': 'source_document'},
+    {'referenced_from': 'https://example.com/document.md'},
+])
+def test_source_images_can_be_preserved_without_vision(tmp_path, analyze, origin):
+    source = tmp_path / 'old.png'
+    upload = tmp_path / 'reference.png'
+    source.write_bytes(_PNG_BYTES)
+    upload.write_bytes(_PNG_BYTES + b'upload')
+    task = WritingTask(
+        task_id='preserve', query='Edit text', task_type='revise',
+        constraints={'visual_policy': {'analyze_source_images': analyze}},
+    )
+    resources = [InputResource(resource_id='old', resource_type='image', uri=source.as_uri(), meta=origin),
+                 InputResource(resource_id='reference', resource_type='image', uri=upload.as_uri())]
+    tool = WriterMultimodalTools(llm=lambda _: '', artifact_store=str(tmp_path / 'assets'))
+    with patch.object(tool, '_describe_image', return_value='Visual description') as vision:
+        result = tool.collect_available_media(task, input_resources=resources)
+    assert vision.call_count == (2 if analyze else 1)
+    library = load_artifact_json(result['artifact_path'], MediaAssetLibrary)
+    assert len(library.assets) == 2
+    assert all(Path(asset.local_path).is_file() for asset in library.assets.values())
+    profiles = load_artifact_json(
+        result['metadata']['artifact_paths']['profile_input_resources'], validate_schema=False,
+    )
+    assert bool(profiles[0]['meta'].get('source_image_preserved')) is not analyze
+    assert not profiles[1]['meta'].get('source_image_preserved')
+    assert resources[0].meta == origin

@@ -47,8 +47,9 @@ def _run_filter(markdown: str, *, template_name: str | None = None):
     )
 
 
-def test_pandoc_execution_contract(monkeypatch):
+def test_pandoc_execution_contract(monkeypatch, tmp_path):
     calls = []
+    monkeypatch.setenv('LAZYMIND_RUNTIME_ROOT', str(tmp_path))
 
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
@@ -69,6 +70,7 @@ def test_pandoc_execution_contract(monkeypatch):
     assert run_pandoc('# Title', command) == '\\section{Title}\n'
     assert calls[-1][1]['input'] == '# Title'
     assert calls[-1][1]['shell'] is False
+    assert all(call[1]['cwd'] == str(tmp_path) for call in calls)
 
 
 def test_pandoc_execution_enforces_limits(monkeypatch):

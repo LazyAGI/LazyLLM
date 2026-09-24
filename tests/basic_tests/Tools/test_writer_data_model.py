@@ -184,3 +184,17 @@ def test_writer_tool_base_save_artifacts_metadata():
             'lazyllm.tools.writer.artifacts.resource_profiles'
         )
         assert result.metadata['counts']['blocks'] == 2
+
+
+def test_legacy_extract_subtasks_normalize_to_reason_and_schema_exposes_two_types():
+    task = WritingSubTask(
+        subtask_id='old-extract', node_id='section-1', question='提取已提供的数据',
+        subtask_type='extract', status='completed', result_summary='已提取',
+        tools_used=['llm'],
+    )
+    assert task.subtask_type == 'reason'
+    assert task.model_dump()['subtask_type'] == 'reason'
+    assert task.status == 'completed'
+    assert task.result_summary == '已提取'
+    assert task.tools_used == ['llm']
+    assert WritingSubTask.model_json_schema()['properties']['subtask_type']['enum'] == ['retrieve', 'reason']

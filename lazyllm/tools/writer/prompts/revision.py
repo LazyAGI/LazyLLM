@@ -217,7 +217,9 @@ Plan semantics:
     The semantic description itself is not a verbatim locator_text.
   - fragment: part of a prose paragraph, such as a sentence or phrase, or an image or other
     non-prose fragment. Describe the exact target in instruction, retain the containing section's
-    content_ref, and set locator_text=null. A complete paragraph is not a fragment merely because
+    content_ref. For move, locator_text must copy the complete fragment verbatim from the raw
+    Markdown, including punctuation and any enclosing inline markup. For other fragment operations,
+    set locator_text=null. A complete paragraph is not a fragment merely because
     it occupies only part of a section or the user did not quote its opening words.
   Set target_scope explicitly. Before returning, check that it agrees with the unit described
   in instruction: deleting a complete paragraph must not be labeled fragment.
@@ -231,6 +233,12 @@ Plan semantics:
 - Create must provide position; content_ref and position identify the insertion location.
 - For move, content_ref identifies the content being moved, while destination_ref and
   position identify its destination. Move must provide both destination_ref and position.
+  Set destination_scope to section, paragraph, or fragment independently of target_scope.
+  For a paragraph destination, destination_locator_text is a short verbatim identifying excerpt;
+  for a fragment destination, it is the complete raw Markdown fragment; for section, it is null.
+  before/after refers to the start/end of the entire destination unit, including descendants for
+  a section. Source and destination may share a section reference when moving distinct paragraphs
+  or fragments within it. Copy complete inline markup; never cut inside links, emphasis, or code.
 - instruction describes the complete visible result of the operation.
 - For a pure deletion, instruction specifies the exact target and boundaries and requires
   all other content to remain unchanged. Describe preservation constraints briefly instead of
@@ -279,10 +287,45 @@ for text without headings. Never use node_id or placeholder_id, including HTML i
 
 RETRY_MODIFY_PLAN_MARKDOWN_PROMPT = '''
 
-Your previous plan used invalid content references: {invalid_shapes}
+Your previous plan has invalid content references or missing required fields: {invalid_shapes}
 For non-create instructions, copy content_ref exactly from locate_result.targets.
 Use heading_path/occurrence or document_root only; HTML image anchors are not node_id values.
+For target_scope=paragraph, locator_text must be a non-empty short verbatim excerpt from the
+requested paragraph. Correct the reported errors and preserve the other operations and their order.
 A whole-section deletion already includes all images within it. Return valid JSON only.
+
+Previous plan:
+{previous_plan_json}
+'''
+
+
+COMPLETE_MARKDOWN_PLAN_FIELDS_PROMPT = '''Complete only the missing fields in the existing Markdown revision plan.
+Return a MarkdownPlanCompletion, not a replacement plan or document edits.
+
+- instruction_index is the 1-based position in the existing instructions list. Never reorder operations.
+- Each entry contains instruction_index and only missing fields listed in allowed_fields for that index.
+  Do not repeat or change existing fields, even when their values would remain the same.
+- Infer values from the existing operation and the supplied document. Preserve its requested outcome.
+- A move requires destination_ref, destination_scope and position. Do not infer destination_scope
+  from target_scope: the source and destination may have different scopes.
+- When supplying destination_scope=paragraph or fragment, also supply destination_locator_text if
+  it is missing. For paragraph, copy a short unique verbatim excerpt; for fragment, copy the complete
+  fragment verbatim, including inline markup. For section, no locator text is required.
+- Missing locator_text follows the same paragraph/fragment rules for the source target_scope.
+- Use Markdown heading_path/occurrence or document_root references, never node_id or placeholder_id.
+- Return only the small JSON completion. Do not output old_string/new_string or copy whole sections.
+
+Previous plan:
+{previous_plan_json}
+
+Validation errors:
+{errors_json}
+
+Allowed fields by instruction_index (including conditional destination_locator_text):
+{allowed_fields_json}
+
+Markdown document (reference data):
+{document_content}
 '''
 
 
@@ -316,6 +359,8 @@ Output semantics:
   Never invent blank lines between sentences or normalize the source text.
   JSON escaping must decode to the exact original text.
 - Move is represented by replacements that remove the source content and insert it at destination_ref.
+  Respect destination_scope and destination_locator_text as well as position. Generate local
+  replacements for the affected content; do not rewrite the entire document to implement a move.
 - Every ModifyPlan instruction must be implemented by one or more replacements; do not omit an instruction.
 - Respect target_scope even when deterministic location was unavailable: section replaces the
   complete section, paragraph replaces the complete paragraph, and fragment changes only the
@@ -477,7 +522,7 @@ Output semantics:
   retained inline formatting and concatenate to the block content.
 - A create contains all new sibling blocks in final document order. Children represent
   genuine document hierarchy.
-- Delete and move instructions have empty content lists because their result is structural.
+- Omit delete and move instructions from changes; the program executes these structural operations.
 - new_title represents title_instruction when the plan includes a title revision.
 - Headings use type="heading" with numbering.level; inline formatting uses spans.
 - Tables use table children of type table_row, whose children are table_cell blocks. Update one cell by targeting its

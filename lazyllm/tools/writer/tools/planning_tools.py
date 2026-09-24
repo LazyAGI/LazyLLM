@@ -28,9 +28,7 @@ from ..prompts import (
     GENERATE_OUTLINE_PROMPT,
     GENERATE_REWRITE_OUTLINE_PROMPT,
     GENERATE_REWRITE_SECTION_INSTRUCTIONS_PROMPT,
-    GENERATE_SECTION_INSTRUCTIONS_PROMPT,
     GENERATE_SHORT_VISUAL_PLAN_PROMPT,
-    GENERATE_SHORT_WRITING_PLAN_PROMPT,
     GENERATE_VISUAL_PLAN_MARKDOWN_PROMPT,
     GENERATE_VISUAL_PLAN_PROMPT,
 )
@@ -167,6 +165,8 @@ class WriterPlanningTools(WriterToolBase):
         if not isinstance(document, WriterDocument):
             raise TypeError('Outline completion requires Markdown or WriterDocument.')
 
+        # Give the completion model final character budgets, not relative weights.
+        self._ensure_outline_fields(document, writing_task)
         prompt = COMPLETE_OUTLINE_INSTRUCTIONS_PROMPT.format(
             task_json=to_prompt_json(writing_task),
             context_json=to_prompt_json(writing_context),
@@ -179,14 +179,25 @@ class WriterPlanningTools(WriterToolBase):
             if block.type != 'heading' or candidate is None or candidate.type != 'heading' \
                     or candidate.content != block.content:
                 continue
-            if block.target_chars is None:
-                block.target_chars = candidate.target_chars
+            if candidate.outline_description.strip():
+                block.outline_description = ' '.join(candidate.outline_description.split())
             if not block.context_relations:
                 block.context_relations = candidate.context_relations
             if not block.subtasks:
-                block.subtasks = candidate.subtasks
+                block.subtasks = [item.model_copy(update={
+                    'status': 'pending', 'result_summary': '', 'retry_count': 0,
+                    'result_references': [], 'tools_used': [],
+                }) for item in candidate.subtasks]
+            else:
+                retained_ids = {item.subtask_id for item in candidate.subtasks}
+                # Completion may remove unnecessary, unstarted work, never execution history.
+                block.subtasks = [item for item in block.subtasks if (
+                    item.subtask_id in retained_ids or item.status != 'pending'
+                    or item.retry_count or item.result_summary or item.result_references or item.tools_used
+                )]
 
         self._ensure_outline_fields(document, writing_task)
+        self._add_outline_budget_descriptions(document)
         if is_markdown:
             completed = apply_markdown_outline_instructions(source, document)
             path = self._write_markdown_artifact('outline.md', completed)
@@ -319,16 +330,18 @@ class WriterPlanningTools(WriterToolBase):
         writing_task = self._unified_model(task, WritingTask)
         writing_context = self._unified_model(context, WritingContext)
         execution_data = self._unified_raw_data(execution_results)
-        prompt = GENERATE_SHORT_WRITING_PLAN_PROMPT.format(
-            task_json=to_prompt_json(writing_task),
-            context_json=to_prompt_json(writing_context),
-            execution_results_json=to_prompt_json(execution_data),
-        )
-        plan = self._normalize_short_writing_plan(
-            self._call_llm_structured(prompt, ShortWritingPlan),
-            writing_task,
-            writing_context,
-            execution_data,
+        # This compatibility record supplies the visual planner with a document-root target.
+        # Content planning is performed by the final drafting call.
+        plan = ShortWritingPlan(
+            instruction_id=f'{writing_context.context_id}-short-writing-plan',
+            content_ref=ContentRef(document_root=True),
+            section_title=(writing_task.target_document.title if writing_task.target_document else '') or 'Document',
+            section_goal=writing_task.query, core_viewpoint=writing_task.query,
+            meta={
+                'representation': writing_task.output.get('representation', 'markdown'), 'source': 'request',
+                **{key: writing_task.constraints[key]
+                   for key in ('target_chars', 'max_chars') if key in writing_task.constraints},
+            },
         )
         return self._save_artifacts(
             {'short_writing_plan': plan},
@@ -526,7 +539,6 @@ class WriterPlanningTools(WriterToolBase):
                 }
                 for block in target_blocks
             ]
-            outline_payload = writing_outline
             representation = 'ir'
         else:
             _, targets = get_markdown_outline_targets(writing_outline)
@@ -542,26 +554,18 @@ class WriterPlanningTools(WriterToolBase):
                 }
                 for level, heading_path, occurrence, body in targets
             ]
-            outline_payload = writing_outline
+            parsed_outline = parse_document_markdown(
+                writing_outline, document_id='instruction-outline', stage='outline',
+            )
+            headings = [block for block in parsed_outline.blocks if block.type == 'heading']
+            for target, block in zip(target_payload, headings):
+                target.pop('outline_body', None)
+                target['outline_content'] = block.model_dump(exclude_defaults=True)
             representation = 'markdown'
 
-        deterministic = self._use_deterministic_short_instructions(
-            writing_task, len(target_payload),
+        instruction_list = self._build_deterministic_section_instructions(
+            target_payload, writing_context, writing_task,
         )
-        if deterministic:
-            instruction_list = self._build_deterministic_section_instructions(
-                target_payload, writing_context, writing_task,
-            )
-        else:
-            prompt = GENERATE_SECTION_INSTRUCTIONS_PROMPT.format(
-                task_json=to_prompt_json(writing_task),
-                outline_json=to_prompt_json(outline_payload),
-                target_outline_blocks_json=to_prompt_json(target_payload),
-                context_json=to_prompt_json(writing_context),
-                execution_results_json=to_prompt_json(execution_data),
-                visual_plan_json=to_prompt_json(writing_visual_plan),
-            )
-            instruction_list = self._call_llm_structured(prompt, SectionInstructionList)
         if isinstance(writing_outline, WriterDocument):
             instruction_list = self._normalize_ir_section_instructions(
                 instruction_list,
@@ -584,8 +588,7 @@ class WriterPlanningTools(WriterToolBase):
                 writing_visual_plan,
             )
             outline_id = instruction_list.outline_id
-        if deterministic:
-            instruction_list.meta['source'] = 'deterministic_short'
+        instruction_list.meta['source'] = 'outline'
 
         result = self._save_artifacts(
             {'section_instructions': instruction_list},
@@ -606,21 +609,6 @@ class WriterPlanningTools(WriterToolBase):
         )
         return result.model_dump()
 
-    @staticmethod
-    def _use_deterministic_short_instructions(
-        task: WritingTask | None,
-        section_count: int,
-    ) -> bool:
-        if task is None or task.task_type != 'write' or section_count <= 0:
-            return False
-        target_chars = task.constraints.get('target_chars')
-        max_chars = task.constraints.get('max_chars')
-        limits = [
-            value for value in (target_chars, max_chars)
-            if isinstance(value, int) and not isinstance(value, bool) and value > 0
-        ]
-        return bool(limits) and max(limits) <= 1200
-
     @classmethod
     def _build_deterministic_section_instructions(
         cls,
@@ -628,25 +616,6 @@ class WriterPlanningTools(WriterToolBase):
         context: WritingContext,
         task: WritingTask,
     ) -> SectionInstructionList:
-        fact_constraints = [
-            f'{fact.key}: {fact.value}'
-            for fact in context.facts
-            if str(fact.key).strip() and str(fact.value).strip()
-        ]
-        style_constraints: List[str] = []
-        if context.style_profile is not None:
-            for label, value in (
-                ('tone', context.style_profile.tone),
-                ('formality', context.style_profile.formality),
-                ('audience', context.style_profile.audience),
-            ):
-                if str(value or '').strip():
-                    style_constraints.append(f'{label}: {value}')
-            style_constraints.extend(
-                str(note).strip() for note in context.style_profile.notes
-                if str(note).strip()
-            )
-
         instructions = []
         titles = [str(target.get('section_title') or '').strip() for target in targets]
         for index, target in enumerate(targets):
@@ -665,8 +634,8 @@ class WriterPlanningTools(WriterToolBase):
                     f'围绕“{title}”完成本节，覆盖大纲要点并遵守全文约束。'
                 ),
                 required_points=points,
-                fact_constraints=list(fact_constraints),
-                style_constraints=list(style_constraints),
+                fact_constraints=[f'{fact.key}: {fact.value}' for fact in context.facts
+                                  if _IMAGE_RESOURCE_FACT_PATTERN.match(f'{fact.key}: {fact.value}')],
                 relation_constraints=relations,
                 expected_blocks=points,
                 meta={
@@ -676,7 +645,7 @@ class WriterPlanningTools(WriterToolBase):
             ))
         return SectionInstructionList(
             instructions=instructions,
-            meta={'source': 'deterministic_short', 'task_id': task.task_id},
+            meta={'source': 'outline', 'task_id': task.task_id if task else None},
         )
 
     @staticmethod
@@ -686,19 +655,21 @@ class WriterPlanningTools(WriterToolBase):
             outline_content = target.get('outline_content')
             if isinstance(outline_content, dict):
                 values = []
-                pending = list(outline_content.get('children') or [])
+                pending = [outline_content]
                 while pending:
                     block = pending.pop(0)
                     if not isinstance(block, dict):
                         continue
                     content = str(block.get('content') or '').strip()
-                    if content:
+                    if content and block is not outline_content:
                         values.append(content)
+                    if block.get('outline_description'):
+                        values.append(str(block['outline_description']))
                     pending[0:0] = list(block.get('children') or [])
                 return values
             return []
         points = []
-        for line in str(body).splitlines():
+        for line in re.sub(r'<!--.*?-->|<a\b[^>]*>.*?</a>', '', str(body), flags=re.S).splitlines():
             value = re.sub(r'^\s*(?:#{3,6}\s+|[-*+]\s+|\d+[.)]\s+)', '', line).strip()
             if value:
                 points.append(value)
@@ -815,6 +786,7 @@ class WriterPlanningTools(WriterToolBase):
             stage='outline',
         )
         cls._ensure_outline_fields(document, task)
+        cls._add_outline_budget_descriptions(document)
         return apply_markdown_outline_instructions(outline, document)
 
     @staticmethod
@@ -887,6 +859,7 @@ class WriterPlanningTools(WriterToolBase):
 
         outline.metadata.setdefault('source', 'llm')
         self._ensure_outline_fields(outline, task)
+        self._add_outline_budget_descriptions(outline)
         return outline
 
     @classmethod
@@ -954,11 +927,29 @@ class WriterPlanningTools(WriterToolBase):
                     'subtask_id': subtask.subtask_id
                     or f'{block.node_id}-subtask-{index}',
                     'node_id': block.node_id,
-                    'status': 'pending',
                 })
                 for index, subtask in enumerate(block.subtasks, start=1)
                 if subtask.question.strip()
             ]
+
+    @staticmethod
+    def _add_outline_budget_descriptions(document: WriterDocument) -> None:
+        '''Append computed budgets without a second model pass.'''
+        for block in document.iter_blocks():
+            if block.type != 'heading':
+                continue
+            description = block.outline_description.strip()
+            if not description:
+                continue
+            # Keep fluent model prose, but never save a description without its allocated budget.
+            normalized = re.sub(r'(?<=\d)[,，](?=\d)', '', description)
+            if re.search(rf'(?<![\d.]){block.target_chars}\s*(?:字|characters?\b)', normalized, re.IGNORECASE):
+                continue
+            chinese = bool(re.search(r'[\u4e00-\u9fff]', description or block.content))
+            budget = f'（约{block.target_chars}字）' if chinese else f' (about {block.target_chars} characters)'
+            ending = description[-1:] if description.endswith(('。', '.', '!', '?', '！', '？')) else ''
+            body = description[:-1] if ending else description
+            block.outline_description = f'{body}{budget}{ending}'.strip()
 
     def _normalize_ir_section_instructions(
         self,
@@ -1137,6 +1128,8 @@ class WriterPlanningTools(WriterToolBase):
                 'outline_node_id': node_id_by_ref[key],
             })
             outline_field = outline_fields.get(node_id_by_ref[key]) or {}
+            if outline_field.get('description'):
+                instruction.section_goal = str(outline_field['description'])
             target_chars = outline_field.get('target_chars')
             if isinstance(target_chars, int) and not isinstance(target_chars, bool) \
                     and target_chars > 0:
@@ -1593,6 +1586,8 @@ class WriterPlanningTools(WriterToolBase):
     ) -> SectionInstruction:
         self._validate_instruction(instruction, block.node_id)
         instruction.section_title = block.content
+        if block.outline_description.strip():
+            instruction.section_goal = block.outline_description.strip()
         instruction.heading_structure = [
             HeadingStructureItem(
                 node_id=node_id_by_original[item.node_id],

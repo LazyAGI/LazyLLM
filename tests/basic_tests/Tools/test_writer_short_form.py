@@ -72,7 +72,7 @@ def test_generate_short_plans(tmp_path):
     )])
 
     tool = WriterPlanningTools(artifact_store=str(tmp_path))
-    with patch.object(tool, '_call_llm_structured', side_effect=[model_plan, model_visuals]):
+    with patch.object(tool, '_call_llm_structured', return_value=model_visuals):
         writing_result = tool.generate_short_writing_plan(task=task, context=context)
         writing_plan = load_artifact_json(writing_result['artifact_path'], ShortWritingPlan)
         visual_result = tool.generate_short_visual_plan(task, writing_plan, context)
@@ -80,7 +80,8 @@ def test_generate_short_plans(tmp_path):
 
     assert writing_plan.content_ref == ContentRef(document_root=True)
     assert writing_plan.section_title == _TITLE
-    assert writing_plan.references == [{'id': 'fact-1'}]
+    assert writing_plan.references == []
+    assert writing_plan.meta['source'] == 'request'
     assert writing_plan.visual_needs == []
     assert writing_plan.meta['representation'] == 'markdown'
     assert writing_plan.meta['max_chars'] == 800

@@ -20,6 +20,7 @@ from .pandoc import markdown_to_latex
 from .artifact import deserialize_artifact_json, serialize_artifact_json
 from .markdown_inline import MarkdownInlineContent, parse_markdown_inline
 from .markdown_ids import markdown_anchor_ids, next_markdown_node_id
+from .serialization import CALLOUT_MARKER_RE, slice_spans_from
 from .tables import table_grid
 
 
@@ -313,12 +314,30 @@ class _MarkdownParser:
             if token_type == 'block_quote':
                 parts = self.parse_sequence(token.get('children') or [])
                 first = parts.pop(0) if parts else None
-                blocks.append(self.block(
-                    'quote', first.content if first else '',
-                    spans=first.spans if first else [],
-                    references=first.references if first else [],
-                    children=[*(first.children if first else []), *parts],
-                ))
+                content = first.content if first else ''
+                callout = CALLOUT_MARKER_RE.match(content)
+                if callout is not None:
+                    title_start = callout.start(3) if callout.group(3) is not None else callout.end()
+                    spans = first.spans if first else []
+                    aligned = ''.join(span.text for span in spans) == content
+                    blocks.append(self.block(
+                        'callout', content[title_start:],
+                        spans=slice_spans_from(spans, title_start) if aligned else [],
+                        references=first.references if first else [],
+                        children=[*(first.children if first else []), *parts],
+                        numbering={
+                            'callout_kind': str(callout.group(1)),
+                            'callout_fold': str(callout.group(2) or ''),
+                            'callout_titled': callout.group(3) is not None,
+                        },
+                    ))
+                else:
+                    blocks.append(self.block(
+                        'quote', content,
+                        spans=first.spans if first else [],
+                        references=first.references if first else [],
+                        children=[*(first.children if first else []), *parts],
+                    ))
                 self.emitted = True
                 continue
             if token_type == 'block_code':
@@ -614,7 +633,7 @@ def _render_code_block(block: WriterBlock) -> str:
     return '\n'.join(filter(None, [caption, code]))
 
 
-def _render_block(block: WriterBlock, depth: int, allow_raw: bool) -> str:
+def _render_block(block: WriterBlock, depth: int, allow_raw: bool) -> str:  # noqa: C901
     if allow_raw:
         raw = _preserved_block_source(block)
         if raw is not None:
@@ -632,6 +651,24 @@ def _render_block(block: WriterBlock, depth: int, allow_raw: bool) -> str:
         current = f'{"#" * level} {_render_inline(block)}'
     elif block.type == 'paragraph':
         current = _render_inline(block)
+    elif block.type == 'callout':
+        kind = str(block.numbering.get('callout_kind') or 'note')
+        fold = str(block.numbering.get('callout_fold') or '')
+        marker = f'[!{kind}]' + (fold if fold in {'+', '-'} else '')
+        inline = _render_inline(block)
+        if not inline:
+            lines = [marker]
+        elif block.numbering.get('callout_titled', True):
+            head, _, tail = inline.partition('\n')
+            lines = [f'{marker} {head}'.rstrip()] if head else [marker]
+            if tail:
+                lines.extend(tail.split('\n'))
+        else:
+            lines = [marker, *inline.split('\n')]
+        child_markdown = _render_block_sequence(block.children, depth, allow_raw=False)
+        if child_markdown:
+            lines.extend(child_markdown.split('\n'))
+        return '\n'.join(f'> {line}' if line else '>' for line in lines)
     elif block.type == 'quote':
         body = '\n\n'.join(filter(None, [
             _render_inline(block),

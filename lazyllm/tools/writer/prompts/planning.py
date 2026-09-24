@@ -32,9 +32,11 @@ Requirements:
   Image needs are planned by the visual plan step; the outline must stay pure text structure.
 - Do not emit Markdown image syntax, HTML image tags, image paths, or image placeholders.
   The visual plan and media resolver exclusively own image selection and placement.
+- Generate all outline descriptions, context relations and necessary subtasks in this response.
+  There is no second model pass to complete this generated outline.
 - Keep the outline concise but concrete enough to guide drafting.
 - Immediately after every H2-H6 heading, output exactly one single-line hidden sidecar:
-  <!-- writer:outline {{"node_id":"","target_chars":3,"context_relations":[],"subtasks":[]}} -->
+  <!-- writer:outline {{"node_id":"","target_chars":3,"outline_description":"","context_relations":[],"subtasks":[]}} -->
 - target_chars is a positive relative weight, not a default or a final character count. Choose
   it independently for every heading from the expected prose work: narrative importance,
   number of events or claims, explanatory complexity, and transition versus climax/resolution.
@@ -42,16 +44,36 @@ Requirements:
   when their expected prose work is genuinely equal; do not use equal allocation merely for
   convenience. context_relations contains only objects
   with target_node_id, relation, and guidance. subtasks contains only unresolved material
-  questions with subtask_id, node_id, question, subtask_type (retrieve, extract, or reason),
+  questions with subtask_id, node_id, question, subtask_type (retrieve or reason),
   and status="pending". Leave node_id empty; the system assigns stable heading ids afterwards.
-- Do not expose these instruction fields as visible outline prose.
+- For every heading, set outline_description to ONE concise, fluent sentence in the document's
+  language, describing what this section will cover and relevant context relations.
+  Naturally incorporate any genuine subtask as work still to do, rather than quoting a task list.
+  Do not claim pending work has completed. The system will incorporate the final length;
+  target_chars at this generation step is still a relative weight. Treat unresolved facts as things to
+  investigate, never as confirmed conclusions. Do not use lists, tables, field labels such as
+  "字数", "子任务", "Length", or "Subtasks", task type names, or character counts. Do not repeat
+  this sentence in visible paragraph/list blocks; the editor displays it below the heading.
+- Keep outline_description and other instruction fields in the hidden sidecar, not visible prose.
+- Image generation, drawing, chart rendering, and inserting an illustration are NOT retrieve or reason subtasks. Never put these actions in subtasks, even when explicitly requested.
+  Keep the visual requirement in outline_description and let the separate VisualPlan and media
+  resolver execute it. For example, "为第一章生成一张恐怖氛围图片" requires a visual plan,
+  NOT a search query or a writing subtask. A distinct factual question needed to inform a visual
+  may be a retrieve subtask; generating the visual itself may not.
+- Ordinary fiction atmosphere, familiar genre motifs, scene design and imaginative details do not
+  require external evidence. A Cthulhu-inspired story does not need a search for common deep-sea
+  imagery or cosmic-horror motifs. Leave subtasks empty for such work and let drafting handle it.
+  Create retrieve subtasks only for explicit user research requests or concrete factual gaps that
+  materially require external evidence (e.g. a sourced quotation, historical detail or current data).
+  Do not invent a factual gap merely to justify a task, and do not replace an unnecessary search
+  with a separate reason subtask. This applies even when an illustration needs creative inspiration.
 - Most headings should have no subtasks. Create a subtask only when an unresolved question
   materially blocks accurate drafting; normal scene design, transitions, stylistic choices,
   and reasoning the drafting model can perform directly are not subtasks. When the target length
   is 3000 characters or fewer, use at most 3 subtasks across the entire outline unless the user
   explicitly specifies a larger subtask count. Prefer one document-level question over repeating
   similar questions on parent and child headings. Use retrieve only when external or knowledge-base
-  evidence is genuinely required, and use extract only for facts that must be recovered from supplied sources.
+  evidence is genuinely required, use reason for analysis, comparison, or extracting facts from supplied sources without external search.
 - Treat task.constraints.target_chars and task.constraints.max_chars as limits for the
   entire final document, not for each section.
 - When max_chars is at most 1200 and the user did not explicitly request multiple
@@ -82,6 +104,8 @@ GENERATE_OUTLINE_PROMPT = '''Generate a writing outline from the given writing t
 
 Requirements:
 - Return a WriterDocument object with stage="outline".
+- Generate all descriptions, context relations and necessary subtasks now; there is no second
+  model pass to complete this generated outline.
 - Set document_id to the exact document_id below.
 - Generate at least 3 top-level blocks unless the task asks for a short document or
   explicitly asks for fewer.
@@ -109,12 +133,20 @@ Requirements:
   that should appear in the final document.
 - Do not create heading blocks named "图片：..." or "Image: ..." for image planning; visual
   needs are handled by the visual plan step, not by outline headings.
-- All user-visible outline text MUST use the same document tree contract as draft and final content:
-  put section titles in heading block.content, and put section descriptions and key points in
-  paragraph or list_item blocks under block.children.
+- Put section titles in heading block.content and the one-sentence section explanation in
+  heading block.outline_description. Additional source-grounded content, when needed, uses
+  paragraph or list_item blocks under block.children; never duplicate the explanation there.
 - Fill node_id for every block. Use stable ids such as section-1, section-2, section-1-1.
 - Use block.numbering.level for the heading level: 1 for top-level sections, incrementing for children.
   Put child sections under block.children as heading blocks alongside any visible description blocks.
+- For every heading, set outline_description to ONE concise, fluent sentence in the document's
+  language, describing what this section will cover and relevant context relations.
+  Naturally incorporate any genuine subtask as work still to do, rather than quoting a task list.
+  Do not claim pending work has completed. The system will incorporate the final length;
+  target_chars at this generation step is still a relative weight. Treat unresolved facts as things to
+  investigate, never as confirmed conclusions. Do not use lists, tables, field labels such as
+  "字数", "子任务", "Length", or "Subtasks", task type names, or character counts. Do not repeat
+  this sentence in visible paragraph/list blocks; the editor displays it below the heading.
 - For every heading block, set target_chars to a positive relative weight, not a final character
   count. Choose it independently from the expected prose work: narrative importance, number of
   events or claims, explanatory complexity, and transition versus climax/resolution. Equal
@@ -125,14 +157,26 @@ Requirements:
   Each item contains target_node_id, relation, and guidance; target_node_id must name another
   heading block in this outline.
 - Use subtasks only for unresolved work that would materially improve the section. Each item
-  contains subtask_id, node_id, question, subtask_type (retrieve, extract, or reason), and
+  contains subtask_id, node_id, question, subtask_type (retrieve or reason), and
   status="pending". node_id must equal the containing heading block's node_id.
+- Image generation, drawing, chart rendering, and inserting an illustration are NOT retrieve or reason subtasks. Never put these actions in subtasks, even when explicitly requested.
+  Keep the visual requirement in outline_description and let the separate VisualPlan and media
+  resolver execute it. For example, "为第一章生成一张恐怖氛围图片" requires a visual plan,
+  NOT a search query or a writing subtask. A distinct factual question needed to inform a visual
+  may be a retrieve subtask; generating the visual itself may not.
+- Ordinary fiction atmosphere, familiar genre motifs, scene design and imaginative details do not
+  require external evidence. A Cthulhu-inspired story does not need a search for common deep-sea
+  imagery or cosmic-horror motifs. Leave subtasks empty for such work and let drafting handle it.
+  Create retrieve subtasks only for explicit user research requests or concrete factual gaps that
+  materially require external evidence (e.g. a sourced quotation, historical detail or current data).
+  Do not invent a factual gap merely to justify a task, and do not replace an unnecessary search
+  with a separate reason subtask. This applies even when an illustration needs creative inspiration.
 - Most headings should have no subtasks. Normal drafting decisions, scene design, transitions,
   and stylistic reasoning belong to the drafting model rather than separate subtasks. When the
   target length is 3000 characters or fewer, create at most 3 subtasks across the entire outline
   unless the user explicitly specifies a larger subtask count. Avoid duplicate parent/child
   questions. Use retrieve only when external or knowledge-base evidence is genuinely necessary,
-  and use extract only for facts that must be recovered from supplied sources.
+  use reason for analysis, comparison, or extracting facts from supplied sources without external search.
 - Write titles and section titles without visible numbering; the system renders numbers.
 - block.references holds identifiers for facts or resources the section depends on.
 - Each element of block.references is an object with at least an "id" field. The id must match a
@@ -161,16 +205,42 @@ COMPLETE_OUTLINE_INSTRUCTIONS_PROMPT = '''Complete instruction fields on an exis
 
 Return one WriterDocument object. Preserve document_id, title, every block node_id, type,
 content, order, nesting, numbering, and visible text exactly. Do not add, remove, move, rename,
-or rewrite any block. Only fill these fields on heading blocks:
-- target_chars: a positive relative writing-length budget;
+or rewrite any block. Preserve existing non-empty context_relations. Review existing pending
+subtasks: omit ordinary drafting work and unnecessary background searches. Preserve genuinely
+necessary subtasks exactly, including their question text and ids. Never remove or rewrite a
+subtask that has started, failed, completed, or has results or tools_used; keep its execution history.
+The supplied target_chars values are FINAL allocated character counts, not relative weights;
+preserve them exactly. Fill missing instruction fields and refresh outline_description using
+these budgets and the retained or newly added subtasks. Only update these fields on heading blocks:
+- outline_description: write ONE complete, natural sentence in the document's language, integrating
+  this heading's exact target_chars budget, its content, and any genuine outstanding work.
+  Vary wording to suit each section; do not repeat a fixed length/task template. For example:
+  "用约800字描写渔村从平静转为诡异的过程，并在动笔前核实当地潮汐记录。"
+  Only mention verification when a retained subtask actually requires it; otherwise simply describe
+  the writing plan and budget. Keep explicitly requested illustrations in this sentence as well.
+  The frontend displays this sentence verbatim and appends nothing. No lists, tables, field labels,
+  task type names, quoted task lists, or unsupported conclusions; do not duplicate it as a paragraph;
 - context_relations: dependencies on other heading node_ids, each with target_node_id, relation,
   and actionable guidance;
-- subtasks: only unresolved questions requiring retrieval, extraction, or reasoning, each with
-  subtask_id, node_id equal to the containing heading, question, subtask_type, and status="pending".
+- subtasks: only unresolved questions requiring retrieval or reasoning, each with
+  subtask_id, node_id equal to the containing heading, question, subtask_type (retrieve or reason),
+  and status="pending". reason also covers extracting facts from supplied material; it does not search.
 Do not turn ordinary drafting requirements into subtasks. Use empty arrays when no relation or
 subtask is needed. When the writing task explicitly requests one or more writing subtasks, place
 that requested unresolved work on the relevant heading blocks; never return every subtasks array
 empty in that case.
+- Image generation, drawing, chart rendering, and inserting an illustration are NOT retrieve or reason subtasks. Never put these actions in subtasks, even when explicitly requested.
+  Keep the visual requirement in outline_description and let the separate VisualPlan and media
+  resolver execute it. For example, "为第一章生成一张恐怖氛围图片" requires a visual plan,
+  NOT a search query or a writing subtask. A distinct factual question needed to inform a visual
+  may be a retrieve subtask; generating the visual itself may not.
+- Ordinary fiction atmosphere, familiar genre motifs, scene design and imaginative details do not
+  require external evidence. A Cthulhu-inspired story does not need a search for common deep-sea
+  imagery or cosmic-horror motifs. Leave subtasks empty for such work and let drafting handle it.
+  Create retrieve subtasks only for explicit user research requests or concrete factual gaps that
+  materially require external evidence (e.g. a sourced quotation, historical detail or current data).
+  Do not invent a factual gap merely to justify a task, and do not replace an unnecessary search
+  with a separate reason subtask. This applies even when an illustration needs creative inspiration.
 Most headings should have no subtasks. When the target length is 3000 characters or fewer, create
 at most 3 subtasks across the entire outline unless the user explicitly specifies a larger subtask
 count. Do not create subtasks for normal drafting decisions, scene design, transitions, or stylistic reasoning, and do
@@ -276,6 +346,8 @@ Requirements:
 - Each content_ref must contain only node_id for one top-level heading in the outline.
 - Use the most appropriate visual_type. preferred_strategy is optional; if omitted, the system
   derives it from visual_type. Do not use image_generation for chart or table.
+- When the user asks to generate or draw an image, use preferred_strategy=image_generation;
+  do not substitute web_search or kb_search. Explicitly requested visuals must have a plan entry.
 - purpose must state what the visual communicates for its section.
 - Set required=true only when the user explicitly requires the visual.
 - Do not change the outline. Do not generate asset IDs, paths, URLs, captions, placeholders, or upload details.
@@ -300,6 +372,8 @@ Requirements:
   heading_path and occurrence. Do not use node_id or document_root.
 - Use the most appropriate visual_type. preferred_strategy is optional; if omitted, the system
   derives it from visual_type. Do not use image_generation for chart or table.
+- When the user asks to generate or draw an image, use preferred_strategy=image_generation;
+  do not substitute web_search or kb_search. Explicitly requested visuals must have a plan entry.
 - purpose must state what the visual communicates for its section.
 - Set required=true only when the user explicitly requires the visual.
 - Do not change the outline. Do not generate asset IDs, paths, URLs, captions, placeholders, or upload details.

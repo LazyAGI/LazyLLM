@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .writer_ir import ContentRef, WriterBlock, WriterSpan
 from .multimodal import VisualInstruction
 from ..utils.artifact import ArtifactModel
@@ -54,10 +54,29 @@ class ModifyPlan(BaseModel):
 class MarkdownModifyInstruction(ModifyInstruction):
     target_scope: Literal['section', 'paragraph', 'fragment'] = 'fragment'
     locator_text: Optional[str] = None
+    destination_scope: Optional[Literal['section', 'paragraph', 'fragment']] = None
+    destination_locator_text: Optional[str] = None
 
 
 class MarkdownModifyPlan(ModifyPlan):
     instructions: List[MarkdownModifyInstruction] = Field(default_factory=list)
+
+
+class MarkdownInstructionCompletion(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    instruction_index: int = Field(ge=1, strict=True)
+    destination_ref: Optional[ContentRef] = None
+    position: Optional[PatchPosition] = None
+    locator_text: Optional[str] = None
+    destination_scope: Optional[Literal['section', 'paragraph', 'fragment']] = None
+    destination_locator_text: Optional[str] = None
+
+
+class MarkdownPlanCompletion(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    instructions: List[MarkdownInstructionCompletion] = Field(min_length=1)
 
 
 class RevisionBlockContent(BaseModel):

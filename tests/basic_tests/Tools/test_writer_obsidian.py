@@ -143,6 +143,131 @@ class TestObsidianWriterProvider:
         assert converted_ir.content == '# Note\n\nBody\n'
         assert converted_ir.source_document.document_id == 'writer-document'
 
+    def test_convert_markdown_materializes_heading_numbers_once(self):
+        provider = ObsidianWriterProvider()
+        target = TargetDocument(adapter='obsidian', uri='obsidian://vlt_test/note.md')
+        converted = provider.convert_document(
+            '# Note\n\n## Chapter\n\n### Section\n',
+            target=target,
+        )
+
+        assert converted.content == (
+            '# Note\n\n'
+            '<a id="block-sec-001"></a>\n'
+            '## 1. Chapter\n\n'
+            '<a id="block-sec-001-001"></a>\n'
+            '### 1.1. Section\n'
+        )
+        assert r'## 1. 1. Chapter' not in converted.content
+
+    def test_convert_ir_materializes_heading_numbers_once(self):
+        provider = ObsidianWriterProvider()
+        document = WriterDocument(
+            document_id='writer-document',
+            title='Note',
+            blocks=[{
+                'node_id': 'chapter',
+                'type': 'heading',
+                'content': 'Chapter',
+                'numbering': {'level': 1},
+            }],
+            provider_binding={'provider': 'feishu'},
+        )
+
+        converted = provider.convert_document(document)
+
+        assert converted.content == (
+            '# Note\n\n'
+            '<a id="block-chapter"></a>\n'
+            '## 1\\. Chapter\n'
+        )
+
+    def test_write_document_returns_canonical_markdown_after_materialized_write(self, monkeypatch):
+        provider = ObsidianWriterProvider()
+        target = TargetDocument(adapter='obsidian', uri='obsidian://vlt_test/note.md')
+        converted = provider.convert_document(
+            '# Note\n\n## Chapter\n',
+            target=target,
+        )
+        captured = {}
+
+        def replace_document(content, write_target, *, media_assets=None):
+            captured.update({
+                'content': content,
+                'target': write_target,
+                'media_assets': media_assets,
+            })
+            return {'doc_id': 'vlt_test:note.md', 'adapter': 'obsidian', 'locator': target.uri}
+
+        monkeypatch.setattr(provider, 'replace_document', replace_document)
+
+        result = provider.write_document(converted, target)
+
+        assert captured['content'] == converted.content
+        assert result['persisted_document'] == (
+            '# Note\n\n'
+            '<a id="block-sec-001"></a>\n'
+            '## Chapter\n'
+        )
+        assert result['representation'] == 'markdown'
+
+    def test_write_ir_returns_canonical_markdown_after_materialized_write(self, monkeypatch):
+        provider = ObsidianWriterProvider()
+        target = TargetDocument(adapter='obsidian', uri='obsidian://vlt_test/note.md')
+        document = WriterDocument(
+            document_id='writer-document',
+            title='Note',
+            blocks=[{
+                'node_id': 'chapter',
+                'type': 'heading',
+                'content': 'Chapter',
+                'numbering': {'level': 1},
+            }],
+            provider_binding={'provider': 'feishu'},
+        )
+        converted = provider.convert_document(document, target=target)
+        monkeypatch.setattr(
+            provider,
+            'replace_document',
+            lambda content, write_target, *, media_assets=None: {'doc_id': 'vlt_test:note.md'},
+        )
+
+        result = provider.write_document(converted, target)
+
+        assert result['persisted_document'] == (
+            '# Note\n\n'
+            '<a id="block-chapter"></a>\n'
+            '## Chapter\n'
+        )
+
+    def test_write_document_does_not_duplicate_matching_heading_number(self, monkeypatch):
+        provider = ObsidianWriterProvider()
+        target = TargetDocument(adapter='obsidian', uri='obsidian://vlt_test/note.md')
+        converted = provider.convert_document(
+            '# Note\n\n## 1. Chapter\n',
+            target=target,
+        )
+        captured = {}
+
+        def replace_document(content, write_target, *, media_assets=None):
+            captured['content'] = content
+            return {'doc_id': 'vlt_test:note.md'}
+
+        monkeypatch.setattr(provider, 'replace_document', replace_document)
+
+        result = provider.write_document(converted, target)
+
+        assert captured['content'] == (
+            '# Note\n\n'
+            '<a id="block-sec-001"></a>\n'
+            '## 1. Chapter\n'
+        )
+        assert result['persisted_document'] == (
+            '# Note\n\n'
+            '<a id="block-sec-001"></a>\n'
+            '## Chapter\n'
+        )
+
     def test_write_document_delegates_native_markdown_write(self, monkeypatch):
         provider = ObsidianWriterProvider()
         target = TargetDocument(adapter='obsidian', uri='obsidian://vlt_test/note.md')
@@ -271,6 +396,81 @@ class TestObsidianWriterProvider:
             '```\n'
             '![[embedded-note]]\n'
         )
+
+    def test_read_dematerializes_escaped_heading_numbers_without_changing_hash(self, tmp_path):
+        provider = ObsidianWriterProvider()
+        note = _note(tmp_path)
+        source = (
+            '---\n'
+            'title: Demo\n'
+            '---\n'
+            '<a id="block-a"></a>\n'
+            '## 1\\. 第一章\n'
+            '<a id="block-b"></a>\n'
+            '### 1\\.1\\. 小节\n'
+        )
+
+        markdown, bridge = provider._to_writer_markdown(source, note, MagicMock())
+
+        assert markdown == (
+            '<a id="block-a"></a>\n'
+            '## 第一章\n'
+            '<a id="block-b"></a>\n'
+            '### 小节\n'
+        )
+        assert bridge['source_hash'] == provider._hash(source)
+
+    def test_load_dematerializes_published_heading_numbers(self, tmp_path):
+        provider = ObsidianWriterProvider()
+        note = _note(tmp_path)
+        source = (
+            '# Note\n\n'
+            '## 1. Chapter\n\n'
+            '### 1.1. Section\n'
+        )
+
+        markdown, bridge = provider._to_writer_markdown(source, note, MagicMock())
+
+        assert markdown == (
+            '# Note\n\n'
+            '<a id="block-sec-001"></a>\n'
+            '## Chapter\n\n'
+            '<a id="block-sec-001-001"></a>\n'
+            '### Section\n'
+        )
+        assert bridge['source_hash'] == provider._hash(source)
+
+    @pytest.mark.parametrize('numbering', ['mode=unordered', 'restart'])
+    @pytest.mark.parametrize('style', ['hierarchical', 'chinese', 'parenthesized'])
+    def test_heading_numbering_survives_repeated_vault_writes(self, tmp_path, monkeypatch, numbering, style):
+        _vault(tmp_path)
+        note_path = tmp_path / 'note.md'
+        note_path.write_text('# Note\n', encoding='utf-8')
+        fs = ObsidianFS(token=str(tmp_path))
+        monkeypatch.setattr(ObsidianWriterProvider, '_fs', staticmethod(lambda: fs))
+        provider = ObsidianWriterProvider()
+        target = TargetDocument(
+            uri=f'obsidian://{fs.discover_vaults()[0].vault_id}/note.md',
+            adapter='obsidian',
+        )
+        source = (
+            f'<!-- heading-numbering: {{"ordered_style":"{style}"}} -->\n'
+            '# Note\n<a id="block-a"></a>\n## Alpha\n'
+            f'<a id="block-b" numbering="{numbering}"></a>\n## Beta\n'
+            '<a id="block-c"></a>\n### Child\n'
+        )
+        provider.write_document(provider.convert_document(source, target=target), target)
+        first_write = note_path.read_text(encoding='utf-8')
+
+        for _ in range(2):
+            loaded = provider.load_document(target)
+            target = loaded['target_document']
+            converted = provider.convert_document(loaded['source_document'], target=target)
+            provider.write_document(converted, target)
+            assert note_path.read_text(encoding='utf-8') == first_write
+
+        assert f'numbering="{numbering}"' in first_write
+        assert '<a id="block-a"></a>' not in first_write
 
     def test_writer_output_is_not_repaired_with_hidden_tokens(self, tmp_path):
         provider = ObsidianWriterProvider()
@@ -431,7 +631,8 @@ class TestObsidianWriterProvider:
     def test_new_media_image_still_copies_into_the_vault(self, tmp_path):
         provider = ObsidianWriterProvider()
         note = _note(tmp_path)
-        workspace_image = tmp_path / 'generated.png'
+        workspace_image = tmp_path / 'Application Support' / 'generated.png'
+        workspace_image.parent.mkdir()
         workspace_image.write_bytes(b'generated')
         media_assets = MediaAssetLibrary(
             library_id='media-library-test',
@@ -448,7 +649,7 @@ class TestObsidianWriterProvider:
         fs.copy_attachment.return_value = 'assets/lazymind/generated.png'
 
         restored = provider._from_writer_markdown(
-            f'![Generated]({workspace_image})\n',
+            f'![Generated](<{workspace_image}>)\n',
             {},
             note,
             fs,
@@ -456,6 +657,38 @@ class TestObsidianWriterProvider:
         )
 
         assert restored == '![[assets/lazymind/generated.png]]\n'
+        fs.copy_attachment.assert_called_once_with(note, workspace_image)
+
+    def test_new_media_image_with_encoded_space_path_still_copies_into_the_vault(self, tmp_path):
+        provider = ObsidianWriterProvider()
+        note = _note(tmp_path)
+        workspace_image = tmp_path / 'Application Support' / 'encoded.png'
+        workspace_image.parent.mkdir()
+        workspace_image.write_bytes(b'encoded')
+        media_assets = MediaAssetLibrary(
+            library_id='media-library-test',
+            assets={
+                'asset-encoded-test': MediaAsset(
+                    media_asset_id='asset-encoded-test',
+                    asset_type='image',
+                    source_type='image_generation',
+                    local_path=str(workspace_image),
+                ),
+            },
+        )
+        fs = MagicMock()
+        fs.copy_attachment.return_value = 'assets/lazymind/encoded.png'
+        encoded = str(workspace_image).replace(' ', '%20')
+
+        restored = provider._from_writer_markdown(
+            f'![Encoded]({encoded})\n',
+            {},
+            note,
+            fs,
+            media_assets,
+        )
+
+        assert restored == '![[assets/lazymind/encoded.png]]\n'
         fs.copy_attachment.assert_called_once_with(note, workspace_image)
 
     def test_unregistered_local_image_is_not_copied_into_the_vault(self, tmp_path):

@@ -445,3 +445,77 @@ def test_stream_ir_outline_exposes_markdown_and_saves_validated_document(tmp_pat
     )
     assert deltas[0] == '# 权威标题'
     assert any('要点1' in delta for delta in deltas[:-1])
+
+
+def test_stream_timings_separate_thinking_visible_content_and_completion():
+    from threading import Event
+
+    thinking_sent, release_body = Event(), Event()
+
+    def call(sink):
+        sink({'tag': 'think', 'delta': 'reasoning'})
+        thinking_sent.set()
+        assert release_body.wait(2)
+        sink({'tag': 'text', 'delta': '<think>hidden</think>\n# Outline'})
+        return '# Outline'
+
+    stream = DraftMarkdownStream(
+        call=call, finalize=lambda body: {'body': body},
+        prefix='synthetic prefix', idle_timeout=3,
+    )
+    try:
+        assert thinking_sent.wait(2)
+        assert next(stream) == 'synthetic prefix'
+        before = stream.timings
+        assert before['first_response_ms'] is not None
+        assert before['first_visible_ms'] is None
+        assert before['generation_finished_ms'] is None
+    finally:
+        release_body.set()
+    assert ''.join(stream) == '# Outline\n'
+    timing = stream.timings
+    assert 0 <= timing['call_started_ms'] <= timing['first_response_ms']
+    assert timing['first_response_ms'] <= timing['first_visible_ms']
+    assert timing['first_response_ms'] <= timing['generation_finished_ms']
+    assert timing['started_at_unix_ms'] > 0
+    assert stream.result() == {'body': '# Outline'}
+
+
+def test_failed_stream_timings_leave_missing_milestones_empty():
+    def call(sink):
+        sink({'tag': 'text', 'delta': ''})
+        raise RuntimeError('provider failed')
+
+    stream = DraftMarkdownStream(
+        call=call, finalize=lambda body: {}, prefix='', idle_timeout=1,
+    )
+    with pytest.raises(RuntimeError, match='provider failed'):
+        list(stream)
+    assert stream.timings['call_started_ms'] is not None
+    assert stream.timings['first_response_ms'] is None
+    assert stream.timings['first_visible_ms'] is None
+    assert stream.timings['generation_finished_ms'] is None
+
+
+def test_outline_producer_streams_descriptions_but_saves_structured_metadata(tmp_path):
+    source = '# Story\n\n## Chapter\n<!-- writer:outline ' + json.dumps({
+        'node_id': '', 'outline_description': '开篇介绍人物与冲突',
+        'target_chars': 3, 'context_relations': [], 'subtasks': [],
+    }, ensure_ascii=False) + ' -->'
+    tool = WriterPlanningTools(
+        llm=_StreamingLLM([('text', char) for char in source]), artifact_store=str(tmp_path),
+    )
+    task = WritingTask(task_id='preview', query='写故事', task_type='write',
+                       output={'representation': 'markdown'})
+    with tool.stream_outline(task, WritingContext(context_id='preview-context')) as stream:
+        deltas = list(stream)
+        result = stream.result()
+    preview = ''.join(deltas)
+    assert '开篇介绍人物与冲突' in preview
+    assert 'writer:outline' not in preview
+    assert 'outline_description' not in preview
+    assert any(delta == '开' for delta in deltas)
+    artifact = Path(result['artifact_path']).read_text()
+    assert '<!-- writer:outline' in artifact
+    assert 'outline_description' in artifact
+    assert '开篇介绍人物与冲突' in artifact
