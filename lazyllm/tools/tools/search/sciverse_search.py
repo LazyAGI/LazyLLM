@@ -1,8 +1,9 @@
+from lazyllm.tools.agent.toolsManager import fc_register
 from typing import Any, Dict, List, Literal, Optional
 
 from lazyllm.thirdparty import httpx
 
-from .base import SearchBase, _make_content_result, _make_result
+from .base import SearchBase, _make_content_result, _make_result, _content_window, CONTENT_CHARS
 
 
 _DEFAULT_META_FIELDS = [
@@ -51,18 +52,20 @@ class SciverseSearch(SearchBase):
         self._base_url = base_url.rstrip('/')
         self._timeout = timeout
 
+    @fc_register(host_file='NONE')
     def get_content(
         self,
         item: Dict[str, Any],
-        offset: Optional[int] = None,
-        limit: int = 700,
+        offset: int = 0,
+        limit: int = CONTENT_CHARS,
     ) -> Dict[str, Any]:
+        offset, limit = _content_window(offset, limit)
         extra = item.get('extra') or {}
         doc_id = item.get('doc_id') or extra.get('doc_id')
+        content = None
+        data = {}
         if doc_id:
-            params: Dict[str, Any] = {'doc_id': doc_id}
-            if offset is not None:
-                params.update({'offset': max(0, int(offset)), 'limit': max(1, int(limit))})
+            params: Dict[str, Any] = {'doc_id': doc_id, 'offset': offset, 'limit': limit}
             try:
                 resp = httpx.get(
                     f'{self._base_url}/content',
@@ -72,13 +75,37 @@ class SciverseSearch(SearchBase):
                 )
                 resp.raise_for_status()
                 data = resp.json()
-                if isinstance(data, dict) and data.get('text'):
-                    return _make_content_result(item, data['text'])
+                if isinstance(data, dict) and isinstance(data.get('text'), str):
+                    content = data['text']
             except Exception:
                 pass
-        fallback = extra.get('content') or item.get('snippet')
-        return _make_content_result(item, fallback) if fallback else super().get_content(item)
+        fallback = content is None
+        if fallback:
+            content = str(extra.get('content') or item.get('snippet') or self._fetch_content_text(item))
+        result = _make_content_result(item, content, content_type='search_preview' if fallback else 'document')
+        result['content'] = content[:limit]
+        result['snippet'] = result['snippet'][:700]
+        result['extra'].pop('content', None)
+        result['extra'].pop('raw_content', None)
+        # Keep read metadata separate from search-hit offsets and snippet truncation.
+        result['extra']['content_read'] = {
+            'content_type': 'search_preview' if fallback else 'document',
+            'offset': None if fallback else offset,
+            'limit': limit,
+            'truncated': len(content) > limit,
+            'fallback': fallback,
+        }
+        if not fallback and len(content) <= limit:
+            more, next_offset = data.get('more'), data.get('next_offset')
+            if (isinstance(more, bool) and type(next_offset) is int
+                    and (next_offset > offset if more else next_offset >= offset)):
+                result['extra']['content_read'].update(more=more, next_offset=next_offset)
+        if not fallback and 'more' not in result['extra']['content_read']:
+            result['extra']['content_read']['pagination_error'] = (
+                'response_exceeds_limit' if len(content) > limit else 'invalid_continuation')
+        return result
 
+    @fc_register(host_file='NONE')
     def search(self, query: str, topk: int = 5, include_content: bool = True,
                search_type: Literal['agentic', 'meta'] = 'agentic',
                year_from: Optional[int] = None,
@@ -107,6 +134,7 @@ class SciverseSearch(SearchBase):
 
         return self._normalize_items(_items(data)[:limit], include_content=include_content, search_type='agentic')
 
+    @fc_register(host_file='NONE')
     def meta_search(
         self,
         query: str = '',
@@ -185,6 +213,7 @@ class SciverseSearch(SearchBase):
             'search_time_ms': data.get('search_time_ms'),
         }
 
+    @fc_register(host_file='NONE')
     def meta_catalog(self, include_sample_values: bool = False) -> Dict[str, Any]:
         resp = httpx.get(
             f'{self._base_url}/meta-catalog',

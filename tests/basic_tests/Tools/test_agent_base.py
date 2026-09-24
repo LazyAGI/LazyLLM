@@ -11,43 +11,67 @@ class _DummyAgent(LazyLLMAgentBase):
 
 
 class TestLazyLLMAgentBase(object):
+    def test_filesystem_group_is_eager_without_changing_other_groups(self):
+        from lazyllm.tools.agent import FileSystemToolkit
+        from lazyllm.tools.agent.file_tool import read
+        from lazyllm.tools.agent.toolsManager import ToolGroup
+        agent = _DummyAgent(tools=[FileSystemToolkit(), ToolGroup([read], name='Other')], skills=False)
+        names = [item['function']['name'] for item in agent._tools_manager.tools_description]
+        assert len(names) == len(set(names))
+        assert {'read', 'write', 'edit', 'ls', 'glob', 'grep', 'mkdir', 'move', 'remove', 'stat'} <= set(names)
+        assert 'get_FileSystemToolkit_methods' not in names
+        assert 'get_Other_methods' in names
+        assert 'Other_read' not in names
+
     def test_enable_builtin_tools_warns_when_skills_disabled(self):
         agent = _DummyAgent(skills=False, enable_builtin_tools=False)
         assert agent._skill_manager is None
         assert agent._enable_builtin_tools is False
-        assert 'read_file' not in agent._builtin_tool_names
+        assert 'read' not in agent._builtin_tool_names
         assert all(not (isinstance(tool, str) and tool.startswith('builtin_tools.')) for tool in agent._tools)
 
     def test_enable_builtin_tools_default_does_not_warn_when_skills_disabled(self):
         agent = _DummyAgent(skills=False)
         assert agent._skill_manager is None
         assert agent._enable_builtin_tools is True
-        assert 'read_file' in agent._builtin_tool_names
-        assert any(isinstance(tool, str) and tool.startswith('builtin_tools.read_file') for tool in agent._tools)
-        assert 'read_file' in {tool.name for tool in agent._tools_manager.all_tools}
+        assert 'read' in agent._builtin_tool_names
+        assert any(isinstance(tool, str) and tool.startswith('builtin_tools.read') for tool in agent._tools)
+        assert 'read' in {tool.name for tool in agent._tools_manager.all_tools}
 
     def test_builtin_tools_are_added_without_skills(self):
         agent = _DummyAgent(skills=False, enable_builtin_tools=True)
         assert agent._skill_manager is None
-        assert any(isinstance(tool, str) and tool.startswith('builtin_tools.read_file') for tool in agent._tools)
-        assert {'read_file', 'shell_tool'}.issubset({tool.name for tool in agent._tools_manager.all_tools})
+        assert any(isinstance(tool, str) and tool.startswith('builtin_tools.read') for tool in agent._tools)
+        names = {item['function']['name'] for item in agent._tools_manager.tools_description}
+        assert {'read', 'shell'} <= names
+        assert names.isdisjoint({'shell_tool', 'download_file'})
 
     def test_skills_only_add_skill_tools_when_builtin_tools_disabled(self, monkeypatch):
         monkeypatch.setattr(SkillManager, 'get_skill_tools', lambda self: [
+            self._build_search_skill_tool(),
             self._build_get_skill_tool(),
-            self._build_read_reference_tool(),
-            self._build_run_script_tool(),
+            self._build_read_skill_resource_tool(),
+            self._build_run_skill_script_tool(),
         ])
         agent = _DummyAgent(skills=['demo-skill'], enable_builtin_tools=False)
         assert agent._skill_manager is not None
         assert agent._builtin_tool_names == set()
-        assert agent._skill_tool_names == {'get_skill', 'read_reference', 'run_script'}
+        assert agent._skill_tool_names == {
+            'search_skill', 'get_skill', 'read_skill_resource', 'run_skill_script',
+        }
         assert all(not (isinstance(tool, str) and tool.startswith('builtin_tools.')) for tool in agent._tools)
         assert all(
             tool.execute_in_sandbox is False
             for tool in agent._tools_manager.all_tools
             if tool.name in agent._skill_tool_names
         )
+
+    def test_discovery_mode_exposes_search_and_get_only(self, tmp_path):
+        agent = _DummyAgent(
+            skills=True, enable_builtin_tools=False, skills_dir=str(tmp_path),
+            skill_tool_mode='discovery', prompt_skills=[],
+        )
+        assert agent._skill_tool_names == {'search_skill', 'get_skill'}
 
     def test_agent_sandbox_auto_creates_sandbox(self, monkeypatch):
         sentinel = object()
@@ -72,16 +96,19 @@ class TestLazyLLMAgentBase(object):
             enable_builtin_tools=False,
         )
 
-        result = agent._tools_manager({
+        loaded = agent._skill_manager.get_skill('demo-skill')
+        assert 'scripts/check.py' in loaded['resources']
+        call = {
             'function': {
-                'name': 'run_script',
+                'name': 'run_skill_script',
                 'arguments': json.dumps({
                     'name': 'demo-skill',
                     'rel_path': 'scripts/check.py',
                 }),
             },
-        })
-        result = result[0]
+        }
+        prepared = agent._tools_manager.prepare_tool_calls(call)
+        result = agent._tools_manager.execute_prepared(prepared).results[0]
 
         assert result['ok'] is True
         assert result['value']['status'] == 'ok'

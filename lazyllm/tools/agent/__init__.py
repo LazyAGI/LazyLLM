@@ -2,12 +2,21 @@ from .history import ToolCallTurn, describe_tool_turns
 from .functionCall import FunctionCall, FunctionCallAgent
 from .toolsManager import fc_register, register, ToolManager
 from .tool_runtime import (
+    AuthorizationDecision,
+    AuthorizationPolicy,
+    HostFile,
+    HostFileAccess,
+    HostFileIntent,
+    HostFileResolution,
+    PreparedToolBatch,
     PreparedToolCall,
     ResolvedToolAccess,
+    resolve_host_path,
     ToolExecutionBatch,
     ToolExecutionDisposition,
     ToolExecutionRecord,
     ToolRuntimeMetadata,
+    get_tool_runtime_metadata,
 )
 from .base import (
     LazyLLMAgentBase,
@@ -23,9 +32,10 @@ from .planAndSolveAgent import PlanAndSolveAgent
 from .rewooAgent import ReWOOAgent
 from .toolsManager import ModuleTool
 from .code_interpreter import code_interpreter
-from .skill_manager import SkillManager
+from .skill_manager import SkillManager, inherit_skill_scope
 from .skill_hub import install_skill
 from .todo_tool import todo_write
+from .file_tool import FileSystemToolkit
 from .toolError import ToolExecutionError
 
 __all__ = [
@@ -38,23 +48,34 @@ __all__ = [
     'normalize_tool_observation',
     'strip_tool_observations',
     'ToolManager',
+    'FileSystemToolkit',
     'FunctionCall',
     'FunctionCallAgent',
     'LazyLLMAgentBase',
     'register',
     'fc_register',
     'ResolvedToolAccess',
+    'resolve_host_path',
+    'AuthorizationDecision',
+    'AuthorizationPolicy',
+    'HostFile',
+    'HostFileAccess',
+    'HostFileIntent',
+    'HostFileResolution',
+    'PreparedToolBatch',
     'PreparedToolCall',
     'ToolExecutionRecord',
     'ToolExecutionBatch',
     'ToolExecutionDisposition',
     'ToolRuntimeMetadata',
+    'get_tool_runtime_metadata',
     'ReactAgent',
     'PlanAndSolveAgent',
     'ReWOOAgent',
     'ModuleTool',
     'code_interpreter',
     'SkillManager',
+    'inherit_skill_scope',
     'install_skill',
     'todo_write',
     'ToolExecutionError',

@@ -1,6 +1,7 @@
-from typing import List, Any, Dict, Optional, Union, Callable
+from typing import List, Any, Dict, Optional, Union, Callable, Iterable
 
 from lazyllm import LOG, globals as lazyllm_globals, locals, loop, once_wrapper
+from lazyllm.components import ChatPrompter
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 
@@ -84,11 +85,17 @@ class ReactAgent(LazyLLMAgentBase):
                  on_max_retries: Optional[Callable] = None,
                  history_compactor: Optional[Callable] = None,
                  runtime_observer: Optional[Callable] = None,
-                 model_context_provider: Optional[Callable[[], Optional[str]]] = None):
+                 model_context_provider: Optional[Callable[[], Optional[str]]] = None,
+                 prompt_skills: Optional[Iterable[str]] = None,
+                 excluded_skills: Optional[Iterable[str]] = None,
+                 skill_search: Optional[Callable] = None,
+                 skill_tool_mode: str = 'full'):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
                          desc=desc, workspace=workspace, sandbox=sandbox, fs=fs, skills_dir=skills_dir,
-                         enable_builtin_tools=enable_builtin_tools)
+                         enable_builtin_tools=enable_builtin_tools, prompt_skills=prompt_skills,
+                         excluded_skills=excluded_skills, skill_search=skill_search,
+                         skill_tool_mode=skill_tool_mode)
         prompt = prompt or INSTRUCTION
         if self._return_last_tool_calls:
             prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
@@ -197,7 +204,13 @@ class ReactAgent(LazyLLMAgentBase):
             f'{obs_text}\n\n'
             f'{_FORCE_SUMMARIZE_MSG}'
         )
-        summarize_llm = self._llm.share(stream=False)
+        validator = getattr(self._tools_manager, 'context_validator', None)
+        if validator is not None:
+            # Keep the fallback request explicit so its complete input is budgeted too.
+            validator({'system_prompt': '', 'tool_definitions': []}, [], summarize_prompt)
+            summarize_llm = self._llm.share(prompt=ChatPrompter(instruction=''), stream=False)
+        else:
+            summarize_llm = self._llm.share(stream=False)
         resp = summarize_llm(summarize_prompt)
         summary = resp if isinstance(resp, str) else (
             resp.get('content', '') if isinstance(resp, dict) else None

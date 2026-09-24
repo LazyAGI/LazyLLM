@@ -47,6 +47,20 @@ Notion document link usage:
     - Do not use generic URL fetching first for private Notion pages; clearly report when the integration is not connected, unauthorized, or lacks access.'''
 
 # LazyLLMFSBase
+_add_fs_chinese('fs_read_limits', '''按执行上下文限制云端读取，默认总时限 20 秒、响应解压后累计 16 MiB、256 次 HTTP 请求。
+仅在 with 范围启用；退出恢复原上下文，其他 FS 调用不受影响。限制范围内响应流式计数、禁止重定向，单次连接/读取等待最多 5 秒。
+字节数/请求数超限抛 FSReadLimitError，时限超限抛 TimeoutError。不能强制中断 CPU 解析，硬取消由调用方管理。''')
+_add_fs_english('fs_read_limits', '''Context-local cloud read limits: 20 seconds, 16 MiB of decoded response bytes and 256 HTTP requests by default.
+Enabled only inside the with block; existing calls outside it are unchanged. Responses are counted while streaming, redirects rejected, and connect/read waits capped at five seconds.
+Raises FSReadLimitError for byte/request overflow and TimeoutError for deadline expiry. CPU parsing requires caller-owned hard cancellation.''')
+_add_fs_chinese('FSReadLimitError', '云端读取超过字节数/请求次数限制或遇到受限重定向。')
+_add_fs_english('FSReadLimitError', 'Cloud reads exceeded byte/request limits or encountered a restricted redirect.')
+_add_fs_chinese('GoogleDriveFS.list_page', '''查询一页文件/目录。folder_id 限定直接子项；query 可为空，query_mode 为 name 或 full_text；drive_id 限定共享盘。
+page_size 为 1–1000，page_token 传前页的 next_page_token。返回 items、next_page_token、incomplete_search；空页也可能有下一页。
+结果保留文件 ID、父目录、类型和原文链接。不代替用户授权校验，不改变现有 ls/search 返回。''')
+_add_fs_english('GoogleDriveFS.list_page', '''Fetch one files/folders page. folder_id limits direct children; query may be empty; query_mode is name or full_text; drive_id scopes a shared drive.
+page_size is 1–1000; page_token accepts the previous next_page_token. Returns items, next_page_token and incomplete_search; empty pages can have a continuation.
+Preserves IDs, parents, types and source URLs. Caller owns authorization. Existing ls/search contracts remain unchanged.''')
 _add_fs_chinese('LazyLLMFSBase', '''\
 云文件系统统一基类，继承 fsspec.AbstractFileSystem，借助 registry 注册各平台实现。混入 CredentialMixin 提供统一的 token 生命周期管理。
 子类需实现：_setup_auth、ls、info、_open、_download_range、_upload_data 等；可选实现 rm_file、mkdir。
@@ -2687,40 +2701,40 @@ _add_fs_example('S3FS', '''\
 
 # ObsidianFS
 _add_fs_chinese('ObsidianFS', '''\
-本地 Obsidian 仓库（Vault）文件系统：将本机磁盘上的 Obsidian 笔记目录映射为 FS 接口，支持 ls、info、读写、mkdir、rm、递归删除等。路径为相对 Vault 根目录的逻辑路径（如 Daily/note.md）。不依赖网络；token 填 Vault 根目录的绝对或相对路径。
+本地 Obsidian 仓库（Vault）文件系统：将本机磁盘上的 Obsidian 笔记目录映射为 FS 接口，支持 ls、info、读写、mkdir、rm、递归删除等。token 可填单个 Vault 根目录，也可填扫描根目录；扫描根下任意包含 .obsidian 目录的文件夹都会被 Writer Provider 识别为 Vault。单个 Vault 模式下，路径为相对 Vault 根目录的逻辑路径（如 Daily/note.md）。不依赖网络。
 
 Args:
-    token (str): Vault 根目录路径；可为绝对路径或相对路径（相对当前工作目录），默认 '.' 表示当前目录。
+    token (str): 单个 Vault 根目录或 Vault 扫描根目录；可为绝对路径或相对路径（相对当前工作目录），默认 '.' 表示当前目录。
     base_url (str, optional): 未使用，保留兼容。
     asynchronous (bool): 是否启用异步模式（高级用法，通常无需修改）。
     use_listings_cache (bool): 是否缓存目录列表（高级用法，通常无需修改）。
     skip_instance_cache (bool): 是否跳过实例缓存（高级用法，通常无需修改）。
     loop (Any, optional): 异步事件循环对象（高级用法）。
 
-认证与配置: 无需 API 认证；构造时传入 token 作为 Vault 路径即可。若路径不是已存在的目录，_setup_auth 会抛出 FileNotFoundError。
-环境变量（CloudFS 选用 obsidian 时）: OBSIDIAN_VAULT_PATH、OBSIDIAN_VAULT；非空值作为 token（Vault 路径）使用。
+认证与配置: 无需 API 认证；构造时传入 token 作为 Vault 或扫描根路径即可。若路径不是已存在的目录，_setup_auth 会抛出 FileNotFoundError。
+环境变量（CloudFS 选用 obsidian 时）: OBSIDIAN_VAULT_PATH；非空值作为 token 使用。
 
 使用说明:
-    1. 确保 Vault 路径存在且为目录（可在 Obsidian 中打开该仓库，复制其路径）。
-    2. 通过 CloudFS(platform='obsidian', token='/path/to/vault') 或设置 OBSIDIAN_VAULT_PATH 后 CloudFS(platform='obsidian') 使用。
+    1. 确保单个 Vault 或扫描根路径存在且为目录。
+    2. 单个 Vault 可通过 CloudFS(platform='obsidian', token='/path/to/vault') 使用；Writer Provider 也可通过设置 OBSIDIAN_VAULT_PATH 为扫描根来发现多个 Vault，并以 obsidian:// URI 定位笔记。
 ''')
 _add_fs_english('ObsidianFS', '''\
-Local Obsidian vault filesystem: maps an Obsidian vault directory on disk to the FS interface; supports ls, info, read/write, mkdir, rm, and recursive delete. Paths are logical paths relative to the vault root (e.g. Daily/note.md). No network; token is the vault root path (absolute or relative).
+Local Obsidian vault filesystem: maps Obsidian notes on disk to the FS interface; supports ls, info, read/write, mkdir, rm, and recursive delete. The token can be one Vault root or a scan root; Writer Provider discovers every directory containing .obsidian below a scan root. In single-Vault mode, paths are logical paths relative to that Vault root (for example, Daily/note.md). No network is required.
 
 Args:
-    token (str): Vault root directory path; absolute or relative to cwd; default '.' for current directory.
+    token (str): One Vault root or a Vault scan-root directory path; absolute or relative to cwd; default '.' for current directory.
     base_url (str, optional): Unused; kept for compatibility.
     asynchronous (bool): Advanced async mode flag; usually not needed.
     use_listings_cache (bool): Advanced flag to cache directory listings; usually not needed.
     skip_instance_cache (bool): Advanced flag to skip instance cache; usually not needed.
     loop (Any, optional): Event loop for async environments.
 
-Auth and config: No API auth; pass token as vault path. If the path is not an existing directory, _setup_auth raises FileNotFoundError.
-Env vars (when CloudFS uses obsidian): OBSIDIAN_VAULT_PATH, OBSIDIAN_VAULT; non-empty value used as token (vault path).
+Auth and config: No API auth; pass token as a Vault or scan-root path. If the path is not an existing directory, _setup_auth raises FileNotFoundError.
+Env vars (when CloudFS uses obsidian): OBSIDIAN_VAULT_PATH; a non-empty value is used as the token.
 
 Usage:
-    1. Ensure the vault path exists and is a directory (e.g. copy path from Obsidian).
-    2. Use CloudFS(platform='obsidian', token='/path/to/vault') or set OBSIDIAN_VAULT_PATH and call CloudFS(platform='obsidian').
+    1. Ensure the Vault or scan-root path exists and is a directory.
+    2. Use CloudFS(platform='obsidian', token='/path/to/vault') for a single Vault. For multiple Vaults, set OBSIDIAN_VAULT_PATH to a scan root and let Writer Provider address notes through obsidian:// URIs.
 ''')
 _add_fs_example('ObsidianFS', '''\
 >>> from lazyllm.tools.fs import ObsidianFS
@@ -2731,3 +2745,104 @@ _add_fs_example('ObsidianFS', '''\
 ...     content = f.read()
 >>> fs.get_file('Daily/note.md', '/tmp/note.md')
 ''')
+
+
+def _add_bilingual_docs(chinese_adder, english_adder, entries):
+    for target, chinese, english in entries:
+        chinese_adder(target, chinese)
+        english_adder(target, english)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.obsidian')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.obsidian')),
+    [
+        ('ObsidianFS.discover_vaults_for_root',
+         '扫描 root 下包含 .obsidian 的目录；返回带稳定标识、根路径和名称的 Vault 列表，并缓存发现结果。',
+         'Discover directories containing .obsidian under root; return and cache Vault records with stable IDs, roots and names.'),
+        ('ObsidianFS.discover_vaults',
+         '返回当前配置根目录下发现的 Vault 列表。',
+         'Return the Vault records discovered under the configured root.'),
+        ('ObsidianFS.resolve_locator',
+         '解析 obsidian URI 为笔记路径与 Vault；拒绝歧义 Vault 名称、越界路径和不存在的笔记。',
+         'Resolve an obsidian URI to a note and Vault; reject ambiguous Vault names, escaping paths and missing notes.'),
+        ('ObsidianFS.read_note',
+         '解析 locator 并按 UTF-8 读取笔记，返回笔记记录和 Markdown 正文。',
+         'Resolve locator and read UTF-8 Markdown, returning the note record and its text.'),
+        ('ObsidianFS.write_note',
+         '将 content 以 UTF-8 写入临时文件后原子替换 note 对应的笔记。',
+         'Write UTF-8 content to a temporary file and atomically replace the supplied note.'),
+        ('ObsidianFS.copy_attachment',
+         '将 source 文件按内容哈希复制到笔记 Vault 的 assets/lazymind 目录，返回 Vault 相对路径。',
+         'Copy source into the note Vault assets/lazymind directory by content hash and return its Vault-relative path.'),
+    ],
+)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.feishu')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.feishu')),
+    [
+        ('FeishuWikiFS.get_document_metadata',
+         '解析文档路径并获取飞书文档元数据，校验 revision_id，返回包含文档 ID 和版本号的字典。',
+         'Resolve the document path, fetch metadata and validate revision_id, returning document ID and revision information.'),
+    ],
+)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.github')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.github')),
+    [
+        ('GitHubRepoFS.matches_create_parent',
+         '判断输入链接是否可作为 GitHub 仓库文档的创建位置。',
+         'Check whether the link identifies a GitHub repository parent for document creation.'),
+        ('GitHubRepoFS.resolve_create_parent',
+         '解析并校验 GitHub 仓库创建位置，返回规范 URI、路径及平台元数据。',
+         'Resolve and validate a GitHub repository creation parent and return canonical URI, path and provider metadata.'),
+        ('GitHubRepoFS.resolve_create_target',
+         '根据 title 与 parent 生成待创建文档的目标元数据，不写入文档正文。',
+         'Build pending document target metadata from title and parent without writing document content.'),
+        ('GitHubRepoFS.resolve_target',
+         '解析文档定位符并返回规范 URI、浏览器地址、路径及版本信息。',
+         'Resolve a document locator into canonical URI, browser URL, path and revision metadata.'),
+        ('GitHubRepoFS.get_document_id',
+         '从文档路径或链接解析规范的平台文档标识。',
+         'Resolve the canonical provider document identifier from a path or link.'),
+        ('GitHubRepoFS.apply_document_patch',
+         '校验预期版本后写入 Markdown 和资源文件，返回发布结果；仓库支持 PR 或直接提交，Wiki 通过 Git 写回。',
+         'Check the expected revision, write Markdown and assets, and return publication metadata; repositories support PR or direct commits, while Wiki uses Git.'),
+        ('GitHubRepoFS.create_document',
+         '在 parent 位置为 title 创建 Markdown 文档并返回发布结果。',
+         'Create a Markdown document with title under parent and return publication metadata.'),
+    ],
+)
+
+
+_add_bilingual_docs(
+    functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.github')),
+    functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.fs.supplier.github')),
+    [
+        ('GitHubWikiFS.matches_create_parent',
+         '判断输入链接是否可作为 GitHub Wiki文档的创建位置。',
+         'Check whether the link identifies a GitHub Wiki parent for document creation.'),
+        ('GitHubWikiFS.resolve_create_parent',
+         '解析并校验 GitHub Wiki创建位置，返回规范 URI、路径及平台元数据。',
+         'Resolve and validate a GitHub Wiki creation parent and return canonical URI, path and provider metadata.'),
+        ('GitHubWikiFS.resolve_create_target',
+         '根据 title 与 parent 生成待创建文档的目标元数据，不写入文档正文。',
+         'Build pending document target metadata from title and parent without writing document content.'),
+        ('GitHubWikiFS.resolve_target',
+         '解析文档定位符并返回规范 URI、浏览器地址、路径及版本信息。',
+         'Resolve a document locator into canonical URI, browser URL, path and revision metadata.'),
+        ('GitHubWikiFS.get_document_id',
+         '从文档路径或链接解析规范的平台文档标识。',
+         'Resolve the canonical provider document identifier from a path or link.'),
+        ('GitHubWikiFS.apply_document_patch',
+         '校验预期版本后写入 Markdown 和资源文件，返回发布结果；仓库支持 PR 或直接提交，Wiki 通过 Git 写回。',
+         'Check the expected revision, write Markdown and assets, and return publication metadata; repositories support PR or direct commits, while Wiki uses Git.'),
+        ('GitHubWikiFS.create_document',
+         '在 parent 位置为 title 创建 Markdown 文档并返回发布结果。',
+         'Create a Markdown document with title under parent and return publication metadata.'),
+    ],
+)

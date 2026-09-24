@@ -8,17 +8,8 @@ from lazyllm import locals, once_wrapper
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
 from .toolsManager import ToolManager
 from .skill_manager import SkillManager
-from .file_tool import (  # noqa: F401
-    read_file,
-    list_dir,
-    search_in_files,
-    make_dir,
-    write_file,
-    delete_file,
-    move_file,
-)
-from .shell_tool import shell_tool  # noqa: F401
-from .download_tool import download_file  # noqa: F401
+from .file_tool import FileSystemToolkit  # noqa: F401
+from .shell_tool import shell  # noqa: F401
 
 
 TOOL_OBSERVATION_KEY = '_lazyllm_tool_observation'
@@ -99,7 +90,11 @@ class LazyLLMAgentBase(ModuleBase):
                  desc: str = '', workspace: Optional[str] = None,
                  sandbox: Union[str, LazyLLMSandboxBase, None] = 'auto',
                  fs: Optional[Any] = None, skills_dir: Optional[str] = None,
-                 enable_builtin_tools: bool = True):
+                 enable_builtin_tools: bool = True,
+                 prompt_skills: Optional[Iterable[str]] = None,
+                 excluded_skills: Optional[Iterable[str]] = None,
+                 skill_search: Optional[Callable] = None,
+                 skill_tool_mode: str = 'full'):
         super().__init__(return_trace=return_trace)
         use_skills, skills = self._normalize_skills_config(skills)
         if not use_skills and (fs is not None or skills_dir is not None):
@@ -130,6 +125,8 @@ class LazyLLMAgentBase(ModuleBase):
         if use_skills:
             self._skill_manager = SkillManager(
                 dir=skills_dir, skills=self._skills, fs=fs, sandbox=self._sandbox,
+                prompt_skills=prompt_skills, excluded_skills=excluded_skills,
+                skill_search=skill_search, skill_tool_mode=skill_tool_mode,
             )
             self._ensure_default_skill_tools()
         self._tools_manager = ToolManager(
@@ -212,6 +209,8 @@ class LazyLLMAgentBase(ModuleBase):
         for tool in self._tools:
             if isinstance(tool, str):
                 existing.add(tool.split('.')[-1])
+            elif hasattr(tool, 'get_flat_tools'):
+                existing.update(tool.get_flat_tools())
             elif hasattr(tool, '__name__'):
                 existing.add(tool.__name__)
         for key in builtin_keys:

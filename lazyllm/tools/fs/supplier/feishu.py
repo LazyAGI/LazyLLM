@@ -3,7 +3,7 @@ from copy import deepcopy
 import json
 import re
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import quote, urlencode, urlparse
 
 import requests
@@ -12,12 +12,7 @@ import requests
 from lazyllm import LOG, config
 from lazyllm import globals as lazyllm_globals
 from lazyllm.common import Credential
-from lazyllm.tools.writer.utils.feishu_docx import (
-    DOCX_BLOCK_TYPE_FIELDS,
-    normalize_docx_clone_content,
-    prepare_docx_clone_descendants,
-    prepare_docx_descendants,
-)
+from lazyllm.tools.agent.toolsManager import fc_register
 from ..base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile
 
 config.add('feishu_app_id', str, None, 'FEISHU_APP_ID', description='Feishu App ID for tenant_access_token.')
@@ -33,6 +28,284 @@ _FEISHU_BARE_HOST_RE = re.compile(
     r'^https?://(?:[^/@]+\.)*(?:feishu\.cn|larksuite\.com)(?::\d+)?/', re.IGNORECASE,
 )
 _FEISHU_WIKI_TILDE_PREFIXES = ('~link/', '~node/', '~docx/', '~doc/')
+
+
+DOCX_BLOCK_TYPE_FIELDS: Dict[int, str] = {
+    1: 'page', 2: 'text', 3: 'heading1', 4: 'heading2', 5: 'heading3', 6: 'heading4',
+    7: 'heading5', 8: 'heading6', 9: 'heading7', 10: 'heading8', 11: 'heading9',
+    12: 'bullet', 13: 'ordered', 14: 'code', 15: 'quote', 17: 'todo',
+    19: 'callout', 22: 'divider', 24: 'grid', 25: 'grid_column',
+    27: 'image',
+    31: 'table', 32: 'table_cell', 34: 'quote_container',
+}
+
+_DOCX_DEFAULT_CLONE_FIELDS = {
+    'align': 1,
+    'done': False,
+    'folded': False,
+    'wrap': False,
+    'language': 1,
+    'indentation_level': 'NoIndent',
+    'bold': False,
+    'italic': False,
+    'strikethrough': False,
+    'underline': False,
+    'inline_code': False,
+}
+
+
+def _append_table_descendants(content_blocks, descendants) -> None:
+    table_cells = {
+        block.get('block_id'): (
+            block.get('_table_cells'), block.get('_table_cell_ids'),
+        )
+        for block in content_blocks
+        if block.get('block_type') == 31 and isinstance(block.get('_table_cells'), list)
+    }
+    table_descendants: List[Dict[str, Any]] = []
+    for descendant in descendants:
+        table_grid = table_cells.get(descendant.get('block_id'))
+        if table_grid is None:
+            continue
+        grid, node_ids = table_grid
+        table_id = str(descendant['block_id'])
+        cell_ids: List[str] = []
+        for row_index, row in enumerate(grid):
+            for column_index, elements in enumerate(row):
+                requested_id = (
+                    node_ids[row_index][column_index]
+                    if isinstance(node_ids, list)
+                    and row_index < len(node_ids)
+                    and isinstance(node_ids[row_index], list)
+                    and column_index < len(node_ids[row_index])
+                    else ''
+                )
+                fallback_id = (
+                    f'{table_id}-covered-{row_index}-{column_index}'
+                    if isinstance(node_ids, list)
+                    else f'{table_id}_cell_{row_index}_{column_index}'
+                )
+                cell_id = str(requested_id or fallback_id)
+                text_id = (
+                    f'{cell_id}::text' if isinstance(node_ids, list)
+                    else f'{cell_id}_text'
+                )
+                cell_ids.append(cell_id)
+                table_descendants.extend([{
+                    'block_id': cell_id,
+                    'block_type': 32,
+                    'table_cell': {},
+                    'children': [text_id],
+                }, {
+                    'block_id': text_id,
+                    'block_type': 2,
+                    'text': {'elements': deepcopy(elements or [])},
+                }])
+        descendant['children'] = cell_ids
+    descendants.extend(table_descendants)
+
+def prepare_docx_descendants(
+    blocks: List[Dict[str, Any]],
+) -> Tuple[List[str], List[Dict[str, Any]]]:
+    '''Build Feishu descendant-create payloads from a flat block tree.'''
+    content_blocks = [block for block in blocks if block.get('block_type') != 1]
+    raw_by_id = {block['block_id']: block for block in content_blocks}
+    children_by_parent: Dict[str, List[str]] = {}
+    for block in content_blocks:
+        parent_id = block.get('parent_id')
+        if parent_id in raw_by_id:
+            children_by_parent.setdefault(parent_id, []).append(block['block_id'])
+
+    root_block_ids: List[str] = []
+    descendants: List[Dict[str, Any]] = []
+    for block in content_blocks:
+        block_id = block['block_id']
+        block_type = block.get('block_type')
+        content_key = DOCX_BLOCK_TYPE_FIELDS.get(block_type)
+        if content_key is None:
+            raise ValueError(
+                f'Feishu block type {block_type!r} is not supported for structured writing.')
+        content = block.get(content_key)
+        if block_type == 22 and content is None:
+            content = {}
+        content = dict(content)
+        if block_type == 31:
+            content.pop('cells', None)
+            content.pop('merge_info', None)
+            prop = dict(content.get('property') or {})
+            prop.pop('merge_info', None)
+            content['property'] = prop
+
+        descendant = {
+            'block_id': block_id,
+            'block_type': block_type,
+            content_key: content,
+        }
+        children = children_by_parent.get(block_id)
+        if children:
+            descendant['children'] = children
+        descendants.append(descendant)
+        if block.get('parent_id') not in raw_by_id:
+            root_block_ids.append(block_id)
+    _append_table_descendants(content_blocks, descendants)
+    return root_block_ids, descendants
+
+
+def _normalize_clone_value(value: Any, normalized_fields: Set[str], path: str = '') -> Any:
+    if isinstance(value, list):
+        normalized = [
+            _normalize_clone_value(item, normalized_fields, path)
+            for item in value
+        ]
+        return [item for item in normalized if item not in (None, {}, [])]
+    if not isinstance(value, dict):
+        return value
+
+    normalized: Dict[str, Any] = {}
+    for key, item in value.items():
+        field_path = f'{path}.{key}' if path else key
+        if key == 'comment_ids':
+            normalized_fields.add(field_path)
+            continue
+        if key == 'title' and path.endswith('mention_doc'):
+            normalized_fields.add(field_path)
+            continue
+        if path.endswith('elements') and key in {
+            'file', 'inline_block', 'undefined', 'undefined_element',
+        }:
+            normalized_fields.add(field_path)
+            continue
+        if key in _DOCX_DEFAULT_CLONE_FIELDS \
+                and item == _DOCX_DEFAULT_CLONE_FIELDS[key]:
+            normalized_fields.add(field_path)
+            continue
+        normalized_item = _normalize_clone_value(item, normalized_fields, field_path)
+        if normalized_item not in (None, {}, []):
+            normalized[key] = normalized_item
+    return normalized
+
+
+def normalize_docx_clone_content(
+    block_type: Any,
+    content: Any,
+) -> Tuple[Dict[str, Any], List[str]]:
+    normalized_fields: Set[str] = set()
+    normalized = _normalize_clone_value(
+        deepcopy(content) if isinstance(content, dict) else {},
+        normalized_fields,
+    )
+    if block_type == 31:
+        if normalized.pop('cells', None) is not None:
+            normalized_fields.add('table.cells')
+        if normalized.pop('merge_info', None) is not None:
+            normalized_fields.add('table.merge_info')
+        prop = dict(normalized.get('property') or {})
+        if prop.pop('merge_info', None) is not None:
+            normalized_fields.add('table.property.merge_info')
+        if prop:
+            normalized['property'] = prop
+        else:
+            normalized.pop('property', None)
+    return normalized, sorted(normalized_fields)
+
+
+def prepare_docx_clone_descendants(  # noqa: C901
+    blocks: List[Dict[str, Any]],
+    root_block_id: str,
+) -> Tuple[List[str], List[Dict[str, Any]], Dict[str, str], List[str]]:
+    raw_by_id = {
+        block.get('block_id'): block
+        for block in blocks
+        if isinstance(block, dict) and isinstance(block.get('block_id'), str)
+    }
+    if root_block_id not in raw_by_id:
+        raise ValueError(f'Feishu move source block {root_block_id!r} does not exist.')
+
+    children_by_parent: Dict[str, List[str]] = {}
+    for block_id, block in raw_by_id.items():
+        raw_children = block.get('children') or []
+        if not isinstance(raw_children, list):
+            raise TypeError(f'Feishu block {block_id!r}.children must be a list.')
+        missing_children = [
+            child_id for child_id in raw_children if child_id not in raw_by_id
+        ]
+        if missing_children:
+            raise ValueError(
+                f'Feishu move subtree is missing child blocks: {missing_children}.')
+        children = list(raw_children)
+        if children:
+            children_by_parent[block_id] = children
+    for block_id, block in raw_by_id.items():
+        parent_id = block.get('parent_id')
+        if parent_id in raw_by_id and block_id not in children_by_parent.get(parent_id, []):
+            children_by_parent.setdefault(parent_id, []).append(block_id)
+
+    ordered_ids: List[str] = []
+    visiting: Set[str] = set()
+    visited: Set[str] = set()
+
+    def visit(block_id: str) -> None:
+        if block_id in visiting:
+            raise ValueError(f'cycle detected in Feishu move subtree at {block_id!r}.')
+        if block_id in visited:
+            raise ValueError(
+                f'Feishu move subtree contains block {block_id!r} more than once.')
+        visiting.add(block_id)
+        ordered_ids.append(block_id)
+        for child_id in children_by_parent.get(block_id, []):
+            visit(child_id)
+        visiting.remove(block_id)
+        visited.add(block_id)
+
+    visit(root_block_id)
+    source_by_temporary_id = {
+        f'move-block-{index}': block_id
+        for index, block_id in enumerate(ordered_ids)
+    }
+    temporary_by_source_id = {
+        source_id: temporary_id
+        for temporary_id, source_id in source_by_temporary_id.items()
+    }
+
+    normalized_fields: Set[str] = set()
+    descendants: List[Dict[str, Any]] = []
+    for source_id in ordered_ids:
+        raw = raw_by_id[source_id]
+        block_type = raw.get('block_type')
+        if block_type == 27:
+            raise ValueError('Feishu image move is not supported.')
+        content_key = DOCX_BLOCK_TYPE_FIELDS.get(block_type)
+        if content_key is None:
+            raise ValueError(
+                f'Feishu block type {block_type!r} cannot be cloned safely.')
+        content, fields = normalize_docx_clone_content(block_type, raw.get(content_key))
+        normalized_fields.update(f'{source_id}.{field}' for field in fields)
+        normalized_fields.update(
+            f'{source_id}.{field}'
+            for field in raw
+            if field not in {
+                'block_id', 'block_type', 'parent_id', 'children',
+                'plain_text', content_key,
+            }
+        )
+        descendant = {
+            'block_id': temporary_by_source_id[source_id],
+            'block_type': block_type,
+            content_key: content,
+        }
+        children = children_by_parent.get(source_id)
+        if children:
+            descendant['children'] = [
+                temporary_by_source_id[child_id] for child_id in children
+            ]
+        descendants.append(descendant)
+
+    return (
+        [temporary_by_source_id[root_block_id]],
+        descendants,
+        source_by_temporary_id,
+        sorted(normalized_fields),
+    )
 
 
 _API_BASE = 'https://open.feishu.cn/open-apis'
@@ -413,7 +686,17 @@ class FeishuFSBase(LinkDocumentFSBase):
     def _prepare_docx_descendants(
         cls, blocks: List[Dict[str, Any]],
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
-        return prepare_docx_descendants(blocks)
+        children_id, descendants = prepare_docx_descendants(blocks)
+        media_by_block_id = {
+            block.get('block_id'): block.get('_media')
+            for block in blocks
+            if isinstance(block, dict) and isinstance(block.get('_media'), dict)
+        }
+        for descendant in descendants:
+            media = media_by_block_id.get(descendant.get('block_id'))
+            if media is not None:
+                descendant['_media'] = deepcopy(media)
+        return children_id, descendants
 
     def _resolve_and_insert_children(
         self,
@@ -572,6 +855,8 @@ class FeishuFSBase(LinkDocumentFSBase):
         for descendant in api_descendants:
             if isinstance(descendant, dict):
                 descendant.pop('_media', None)
+                descendant.pop('_table_cells', None)
+                descendant.pop('_table_cell_ids', None)
         response = self._post(
             url,
             params={'document_revision_id': document_revision_id},
@@ -792,11 +1077,11 @@ class FeishuFSBase(LinkDocumentFSBase):
         document_id: str,
         parent_block_id: str,
         index: int,
-        children_id: List[str],
-        descendants: List[Dict[str, Any]],
+        blocks: List[Dict[str, Any]],
         *,
         document_revision_id: int = -1,
     ) -> Dict[str, Any]:
+        children_id, descendants = self._prepare_docx_descendants(blocks)
         created = self._create_descendant_blocks(
             document_id,
             parent_block_id,
@@ -993,7 +1278,7 @@ class FeishuFSBase(LinkDocumentFSBase):
         )
         created_root_block_id = root_relation.get('block_id')
         try:
-            block_id_relations = self._verify_subtree_copy(
+            provider_id_remap = self._verify_subtree_copy(
                 document_id,
                 descendants,
                 source_by_temporary_id,
@@ -1016,7 +1301,7 @@ class FeishuFSBase(LinkDocumentFSBase):
             raise RuntimeError(
                 f'{operation_name} aborted: target copy verification failed and was rolled back.'
             ) from verify_error
-        return create_data, created_revision, block_id_relations
+        return create_data, created_revision, provider_id_remap
 
     def _delete_subtree_source(
         self,
@@ -1115,11 +1400,11 @@ class FeishuFSBase(LinkDocumentFSBase):
                     f'{operation_name} source root is missing from its cloned subtree.')
             transform_root(root)
 
-        create_data, created_revision, block_id_relations = self._create_and_verify_subtree_copy(
+        create_data, created_revision, provider_id_remap = self._create_and_verify_subtree_copy(
             document_id, target_parent_block_id, create_index, children_id,
             descendants, source_by_temporary_id, document_revision_id, operation_name,
         )
-        created_root_block_id = block_id_relations[source_block_id]
+        created_root_block_id = provider_id_remap[source_block_id]
         delete_data = self._delete_subtree_source(
             document_id, source_parent_block_id, source_block_id, target_parent_block_id,
             create_index, created_root_block_id, created_revision, operation_name,
@@ -1130,7 +1415,7 @@ class FeishuFSBase(LinkDocumentFSBase):
         return {
             'create': create_data,
             'delete': delete_data,
-            'block_id_relations': block_id_relations,
+            'provider_id_remap': provider_id_remap,
             'normalized_fields': normalized_fields,
             'document_revision_id': (
                 final_revision if final_revision is not None else created_revision
@@ -1218,6 +1503,9 @@ class FeishuFSBase(LinkDocumentFSBase):
         self,
         document_id: str,
         blocks: List[Dict[str, Any]],
+        *,
+        block_id_relations: Optional[List[Dict[str, str]]] = None,
+        document_revision_id: int = -1,
     ) -> List[Dict[str, Any]]:
         '''Append native blocks to an existing Feishu document.'''
         if not isinstance(blocks, list):
@@ -1227,21 +1515,27 @@ class FeishuFSBase(LinkDocumentFSBase):
         children_id, descendants = self._prepare_docx_descendants(blocks)
         if descendants:
             created = self._create_descendant_blocks(
-                document_id, document_id, -1, children_id, descendants)
+                document_id, document_id, -1, children_id, descendants,
+                document_revision_id=document_revision_id)
             try:
                 document_revision_id = int(created.get('document_revision_id', -1))
             except (TypeError, ValueError):
                 document_revision_id = -1
             document_revision_id = self._bind_docx_images(
-                document_id, blocks, created, document_revision_id)
+                document_id, blocks, created, document_revision_id, raise_on_error=True)
             document_revision_id = self._bind_docx_links(
                 document_id, blocks, created, document_revision_id)
+        if block_id_relations is not None and descendants:
+            block_id_relations.extend(created.get('block_id_relations') or [])
         return self._get_doc_blocks_raw(document_id, with_descendants=True)
 
     def replace_doc_blocks(
         self,
         document_id: str,
         blocks: List[Dict[str, Any]],
+        *,
+        block_id_relations: Optional[List[Dict[str, str]]] = None,
+        document_revision_id: int = -1,
     ) -> List[Dict[str, Any]]:
         '''Replace all root content blocks in an existing Feishu document.'''
         if not isinstance(blocks, list):
@@ -1252,7 +1546,6 @@ class FeishuFSBase(LinkDocumentFSBase):
         existing_blocks = self._get_docx_children(document_id, document_id)
         existing_count = len(existing_blocks)
         children_id, descendants = self._prepare_docx_descendants(blocks)
-        document_revision_id = -1
         if descendants:
             created = self._create_descendant_blocks(
                 document_id,
@@ -1260,13 +1553,14 @@ class FeishuFSBase(LinkDocumentFSBase):
                 -1,
                 children_id,
                 descendants,
+                document_revision_id=document_revision_id,
             )
             try:
                 document_revision_id = int(created.get('document_revision_id', -1))
             except (TypeError, ValueError):
                 document_revision_id = -1
             document_revision_id = self._bind_docx_images(
-                document_id, blocks, created, document_revision_id)
+                document_id, blocks, created, document_revision_id, raise_on_error=True)
             document_revision_id = self._bind_docx_links(
                 document_id, blocks, created, document_revision_id)
 
@@ -1279,6 +1573,8 @@ class FeishuFSBase(LinkDocumentFSBase):
                 existing_count,
                 document_revision_id=document_revision_id,
             )
+        if block_id_relations is not None and descendants:
+            block_id_relations.extend(created.get('block_id_relations') or [])
         return self._get_doc_blocks_raw(document_id, with_descendants=True)
 
     def _get_table_cells(self, document_id: str, table_block_id: str) -> List[Dict[str, Any]]:
@@ -1391,12 +1687,14 @@ class FeishuFS(FeishuFSBase):
             current_token = match.get('token') or ''
         return current_token
 
+    @fc_register(host_file='NONE')
     def ls(self, path: str = '/', detail: bool = True, **kwargs) -> List:
         folder_token = self._resolve_path_to_token(path)
         items = self._list_files_raw(folder_token)
         entries = [self._item_to_entry(item) for item in items]
         return entries if detail else [e['name'] for e in entries]
 
+    @fc_register(host_file='NONE')
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
         token = self._resolve_path_to_token(path)
         if not token:
@@ -1436,6 +1734,7 @@ class FeishuFS(FeishuFSBase):
             'folder_token': folder_token,
         }
 
+    @fc_register(host_file='NONE')
     def create_document(self, title: str, parent: str = '') -> Dict[str, Any]:
         '''Create a Feishu Docx in the default Cloud Docs root or a selected folder.'''
         title = (title or '').strip()
@@ -1445,6 +1744,7 @@ class FeishuFS(FeishuFSBase):
         folder_token = self._resolve_path_to_token(parent) if parent and parent != '/' else ''
         return self._create_drive_docx(title, folder_token=folder_token)
 
+    @fc_register(host_file='NONE')
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
         parts = [p for p in path.strip('/').split('/') if p]
         if not parts:
@@ -1479,6 +1779,7 @@ class FeishuFS(FeishuFSBase):
             raise FileNotFoundError(path)
         return match
 
+    @fc_register(host_file='NONE')
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         src = self._get_item_raw(path1)
         if src.get('type') == 'folder':
@@ -1491,6 +1792,7 @@ class FeishuFS(FeishuFSBase):
         self._post(f'{self._base_url}/drive/v1/files/{src_token}/copy',
                    json={'name': new_name, 'type': src.get('type', 'file'), 'folder_token': folder_token})
 
+    @fc_register(host_file='NONE')
     def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         src = self._get_item_raw(path1)
         src_token = src.get('token', '')
@@ -1559,6 +1861,31 @@ class FeishuFS(FeishuFSBase):
             title=name, token=item.get('token') or '',
         )
 
+    @fc_register(host_file='NONE')
+    def exists(self, path: str, **kwargs) -> bool:
+        '''Return whether a remote file or folder exists.'''
+        return super().exists(path, **kwargs)
+
+    @fc_register(host_file='NONE')
+    def read(self, path: str) -> str:
+        '''Read a remote text file or document.'''
+        return super().read(path)
+
+    @fc_register(host_file='NONE')
+    def read_file(self, path: str) -> str:
+        '''Read a remote file as text.'''
+        return super().read_file(path)
+
+    @fc_register(host_file='NONE')
+    def write(self, path: str, content: str) -> None:
+        '''Write text content to a remote file or document.'''
+        return super().write(path, content)
+
+    @fc_register(host_file='NONE')
+    def rm(self, path: str, recursive: bool = False) -> None:
+        '''Remove a remote file or folder, recursively when requested.'''
+        return super().rm(path, recursive=recursive)
+
 
 class FeishuWikiFile(CloudFSBufferedFile):
 
@@ -1601,6 +1928,7 @@ class FeishuWikiFS(FeishuFSBase):
             raise RuntimeError('Feishu wiki create docx node failed: empty obj_token')
         return node
 
+    @fc_register(host_file='NONE')
     def create_document(self, title: str, parent: str = '') -> Dict[str, Any]:
         '''Create an empty Feishu Docx node in a Wiki space.'''
         title = (title or '').strip()
@@ -1781,6 +2109,7 @@ class FeishuWikiFS(FeishuFSBase):
     def _list_child_nodes(self, node_token: str) -> List[Dict[str, Any]]:
         return self._list_nodes_raw(node_token)
 
+    @fc_register(host_file='NONE')
     def ls(self, path: str = '/', detail: bool = True, **kwargs) -> List:
         if _is_wiki_locator_path(path):
             ref = self.resolve_wiki_ref(path)
@@ -1799,6 +2128,7 @@ class FeishuWikiFS(FeishuFSBase):
         entries = [self._node_to_entry(item) for item in items]
         return entries if detail else [e['name'] for e in entries]
 
+    @fc_register(host_file='NONE')
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
         if _is_wiki_locator_path(path):
             ref = self.resolve_wiki_ref(path)
@@ -1814,6 +2144,7 @@ class FeishuWikiFS(FeishuFSBase):
         name = path.rstrip('/').split('/')[-1] if path != '/' else '/'
         return self._node_to_entry(node, default_name=name)
 
+    @fc_register(host_file='NONE')
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         src_token = self._resolve_path_to_token(path1)
         if not src_token:
@@ -1829,6 +2160,7 @@ class FeishuWikiFS(FeishuFSBase):
             payload['title'] = title
         self._post(f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes/{src_token}/copy', json=payload)
 
+    @fc_register(host_file='NONE')
     def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         src_token = self._resolve_path_to_token(path1)
         if not src_token:
@@ -1974,6 +2306,7 @@ class FeishuWikiFS(FeishuFSBase):
         return CloudFSBufferedFile(self, path, mode=mode, block_size=block_size or self.blocksize,
                                    autocommit=autocommit, cache_options=cache_options)
 
+    @fc_register(host_file='NONE')
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
         parts = [p for p in path.strip('/').split('/') if p]
         if not parts:
@@ -2053,6 +2386,7 @@ class FeishuWikiFS(FeishuFSBase):
                 self._space_id = sid
         return node or {}
 
+    @fc_register(host_file='NONE')
     def search(self, query: Union[str, List[str]], space_id: str = '', node_id: str = '',
                page_size: int = 20) -> List[Dict[str, Any]]:
         '''Search Feishu Wiki nodes by text.
@@ -2197,6 +2531,7 @@ class FeishuWikiFS(FeishuFSBase):
             )
         return len(results) >= max_results
 
+    @fc_register(host_file='NONE')
     def find(self, pattern: str, space_id: str = '', max_results: int = 50) -> List[Dict[str, Any]]:
         '''Find Feishu Wiki nodes whose paths or titles match a pattern.
 
@@ -2218,6 +2553,7 @@ class FeishuWikiFS(FeishuFSBase):
                 break
         return results[:max_results]
 
+    @fc_register(host_file='NONE')
     def get_document_id(self, path: str) -> str:
         if self.is_link_path(path):
             path = self.decode_link_path(path)
@@ -2251,6 +2587,7 @@ class FeishuWikiFS(FeishuFSBase):
             )
         return document_id
 
+    @fc_register(host_file='NONE')
     def get_doc_blocks(self, path: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
         '''Return native Feishu blocks with an added derived ``plain_text`` field.'''
         document_id = self.get_document_id(path)
@@ -2259,6 +2596,22 @@ class FeishuWikiFS(FeishuFSBase):
             block.setdefault('plain_text', self._docx_block_plain_text(block))
         return blocks
 
+    def get_document_metadata(self, path: str) -> Dict[str, Any]:
+        document_id = self.get_document_id(path)
+        response = self._get(f'{self._base_url}/docx/v1/documents/{document_id}')
+        document = (response.get('data') or {}).get('document') if isinstance(response, dict) else None
+        if not isinstance(document, dict):
+            raise RuntimeError('Feishu document metadata response is missing document data.')
+        revision_id = document.get('revision_id')
+        if not isinstance(revision_id, int) or isinstance(revision_id, bool):
+            raise RuntimeError('Feishu document metadata response is missing revision_id.')
+        return {
+            **document,
+            'document_id': str(document.get('document_id') or document_id),
+            'revision_id': revision_id,
+        }
+
+    @fc_register(host_file='NONE')
     def update_doc_block_text(self, path: str, block_id: str, new_text: str) -> None:
         document_id = self.get_document_id(path)
         url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{block_id}'
@@ -2292,3 +2645,42 @@ class FeishuWikiFS(FeishuFSBase):
             creator=node.get('creator') or '', owner=node.get('owner') or '',
             node_creator=node.get('node_creator') or '',
         )
+
+    @fc_register(host_file='NONE')
+    def resolve_link(self, url_or_path: str) -> Dict[str, Any]:
+        '''Resolve a supplier document URL or path to metadata.'''
+        return super().resolve_link(url_or_path)
+
+    @fc_register(host_file='NONE')
+    def read_with_references(self, path: str) -> str:
+        '''Read a remote document including its linked references.'''
+        return super().read_with_references(path)
+
+    @fc_register(host_file='NONE')
+    def rm(self, path: str, recursive: bool = False) -> None:
+        '''Remove a remote file or folder, recursively when requested.'''
+        return super().rm(path, recursive=recursive)
+
+    @fc_register(host_file='NONE')
+    def exists(self, path: str, **kwargs) -> bool:
+        '''Return whether a remote file or folder exists.
+
+        Args:
+            path (str): Remote file or folder path.
+        '''
+        return super().exists(path, **kwargs)
+
+    @fc_register(host_file='NONE')
+    def read(self, path: str) -> str:
+        '''Read a remote text file or document.'''
+        return super().read(path)
+
+    @fc_register(host_file='NONE')
+    def read_file(self, path: str) -> str:
+        '''Read a remote file as text.'''
+        return super().read_file(path)
+
+    @fc_register(host_file='NONE')
+    def write(self, path: str, content: str) -> None:
+        '''Write text content to a remote document.'''
+        return super().write(path, content)

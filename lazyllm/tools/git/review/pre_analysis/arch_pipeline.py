@@ -121,7 +121,7 @@ def _arch_collect_snippets(  # noqa: C901
     clone_dir: str, section: Dict[str, Any], max_chars: int = 6000,
     extra_globs: Optional[List[str]] = None, max_results_per_pattern: int = 8,
 ) -> str:
-    from lazyllm.tools.agent.file_tool import search_in_files, read_file
+    from lazyllm.tools.agent.file_tool import grep, read
     hints = section.get('search_hints', [])
     parts: List[str] = []
     seen_paths: set = set()
@@ -129,7 +129,7 @@ def _arch_collect_snippets(  # noqa: C901
     for pattern in hints:
         for glob_pat in globs_to_search:
             try:
-                result = search_in_files(
+                result = grep(
                     pattern, path=clone_dir, glob=glob_pat,
                     max_results=max_results_per_pattern, root=clone_dir,
                 )
@@ -145,7 +145,7 @@ def _arch_collect_snippets(  # noqa: C901
                     line = int(m.get('line', 1))
                     match_text = m.get('text', '')
                     if re.match(r'\s*class\s+\w+', match_text):
-                        fc = read_file(path, start_line=max(1, line - 1), end_line=line + 2, root=clone_dir)
+                        fc = read(path, start_line=max(1, line - 1), end_line=line + 2, root=clone_dir)
                         class_def = fc.get('content', '') if isinstance(fc, dict) else ''
                         try:
                             with open(path, 'r', encoding='utf-8', errors='replace') as _f:
@@ -156,7 +156,7 @@ def _arch_collect_snippets(  # noqa: C901
                             snippet = class_def
                     else:
                         end = line + 10 if re.match(r'\s*def\s+\w+', match_text) else line + 20
-                        fc = read_file(path, start_line=max(1, line - 1), end_line=end, root=clone_dir)
+                        fc = read(path, start_line=max(1, line - 1), end_line=end, root=clone_dir)
                         snippet = fc.get('content', '') if isinstance(fc, dict) else ''
                 except Exception:
                     snippet = m.get('text', '')

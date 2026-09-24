@@ -1,10 +1,12 @@
 import inspect
+import json
 import asyncio
 import re
 
 from typing import Any, Callable, Dict, List, Set
 from lazyllm import LOG
 from lazyllm.thirdparty import mcp
+from ..agent.toolsManager import fc_register
 
 from .utils import run_async_in_new_loop, run_async_in_thread
 
@@ -121,6 +123,7 @@ def generate_lazyllm_tool(client, mcp_tool) -> Callable:
     # servers commonly namespace tools with dots, so expose a valid Python
     # identifier while retaining the original name in the call closure.
     dynamic_lazyllm_func.__name__ = exposed_tool_name
+    dynamic_lazyllm_func.__mcp_tool_name__ = tool_name
     dynamic_lazyllm_func.__doc__ = func_desc
     dynamic_lazyllm_func.__annotations__ = annotations
 
@@ -137,4 +140,7 @@ def generate_lazyllm_tool(client, mcp_tool) -> Callable:
     )
     dynamic_lazyllm_func.__signature__ = sig
 
-    return dynamic_lazyllm_func
+    server_id = getattr(client, 'server_id', '')
+    metadata = {'tool_origin': server_id,
+                'tool_identity': json.dumps([server_id, tool_name], ensure_ascii=False)} if server_id else {}
+    return fc_register(tool_source='mcp', **metadata)(dynamic_lazyllm_func)

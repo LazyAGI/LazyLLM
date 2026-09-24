@@ -12,15 +12,19 @@ from lazyllm.tools.agent.skill_manager import SkillManager
 from lazyllm.tools.fs.base import LazyLLMFSBase
 
 
-def _make_skill(base_dir: str, folder_name: str, meta_name: str) -> str:
+def _make_skill(base_dir: str, folder_name: str, meta_name: str, description: str | None = None,
+                extra_meta: str = '') -> str:
     skill_dir = os.path.join(base_dir, folder_name)
     os.makedirs(skill_dir, exist_ok=True)
     skill_md = os.path.join(skill_dir, 'SKILL.md')
+    desc = description or f'{meta_name} skill for tests'
+    extra = f'{extra_meta.rstrip()}\n' if extra_meta else ''
     with open(skill_md, 'w', encoding='utf-8') as f:
         f.write(
             '---\n'
             f'name: {meta_name}\n'
-            f'description: {meta_name} skill for tests\n'
+            f'description: {desc}\n'
+            f'{extra}'
             '---\n'
             f'# {meta_name}\n'
             'Test skill\n'
@@ -103,6 +107,229 @@ class TestSkills(object):
         listing = manager.list_skill()
         assert self._alpha_name in listing
         assert self._beta_name in listing
+
+    def test_prompt_catalog_does_not_limit_loading(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _make_skill(tmp, 'resident', 'resident')
+            _make_skill(tmp, 'on-demand', 'on-demand')
+            manager = SkillManager(dir=tmp, skills=['resident', 'on-demand'], prompt_skills=['resident'])
+            prompt = manager.build_prompt()
+            assert 'resident skill for tests' in prompt
+            assert 'on-demand skill for tests' not in prompt
+            assert 'source:' not in prompt
+            assert 'Test skill' in manager.get_skill('on-demand')['content']
+            assert 'on-demand skill for tests' not in ''.join(
+                part['content'] for part in manager.describe_prompt()
+            )
+            manager.set_prompt_skills([])
+            assert 'resident skill for tests' not in manager.build_prompt()
+            assert 'Test skill' in manager.get_skill('on-demand')['content']
+            manager.set_prompt_skills(None)
+            restored = manager.build_prompt()
+            assert 'resident skill for tests' in restored
+            assert 'on-demand skill for tests' in restored
+            assert 'source:' in restored
+
+    def test_inherit_skill_scope_keeps_loadable_and_filters_catalog(self):
+        from lazyllm.tools.agent.skill_manager import inherit_skill_scope
+        loadable, catalog = inherit_skill_scope(
+            ['design/image', 'research/deep'],
+            ['research/deep', 'missing/gone'],
+            extra_catalog=['design/image'],
+        )
+        assert loadable == ['design/image', 'research/deep']
+        assert catalog == ['research/deep', 'design/image']
+
+    def test_search_tools_use_backend_without_shrinking_loadable_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _make_skill(tmp, 'resident', 'resident')
+            _make_skill(tmp, 'on-demand', 'on-demand')
+            captured = {}
+
+            def backend(request):
+                captured['request'] = request
+                return {'skills': [
+                    {'skill_key': 'on-demand', 'name': 'on-demand', 'description': 'hidden until search'},
+                    {'skill_key': 'denied', 'name': 'denied', 'description': 'out of scope'},
+                ]}
+
+            manager = SkillManager(
+                dir=tmp, skills=['resident', 'on-demand'], prompt_skills=['resident'],
+                excluded_skills=['denied'], skill_search=backend,
+            )
+            assert manager.list_prompt_skills()['skills'] == ['resident']
+            result = manager.search_skill('anything')
+            assert captured['request']['allowed_skill_keys'] == ['on-demand', 'resident']
+            assert result['hits'] == [{
+                'skill_key': 'on-demand',
+                'name': 'on-demand',
+                'description': 'hidden until search',
+                'match_reason': 'hidden until search',
+            }]
+            assert result['has_more'] is False
+            names = [tool.__name__ for tool in manager.get_skill_tools()]
+            assert names == ['search_skill', 'get_skill', 'read_skill_resource', 'run_skill_script']
+            assert 'filters' not in captured['request']
+
+    def test_search_skill_uses_local_catalog_without_backend(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _make_skill(tmp, 'writing/xiaohongshu-copywriter', 'xiaohongshu-copywriter')
+            _make_skill(tmp, 'learning/anki', 'anki')
+            manager = SkillManager(dir=tmp)
+            names = [tool.__name__ for tool in manager.get_skill_tools()]
+            assert names[0] == 'search_skill'
+            hits = manager.search_skill('xiaohongshu copy')['hits']
+            assert [item['skill_key'] for item in hits] == ['writing/xiaohongshu-copywriter']
+
+    def test_local_search_ranks_chinese_and_rejects_noise(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _make_skill(
+                tmp, 'writing/article', 'article',
+                description='Long-form article and blog writing',
+            )
+            _make_skill(
+                tmp, 'design/diagram-design', 'diagram-design',
+                description='Visual diagrams posters and image layout in SVG',
+            )
+            _make_skill(
+                tmp, 'learning/vocabulary-learning', 'vocabulary-learning',
+                description='Vocabulary flashcards and spaced repetition review',
+            )
+            _make_skill(tmp, 'career/resume', 'resume', description='Resume generator')
+            manager = SkillManager(dir=tmp)
+            writing_hits = [item['skill_key'] for item in manager.search_skill(
+                '帮我写文章', enforce_budget=False,
+            )['hits']]
+            assert writing_hits[0] == 'writing/article'
+            image_hits = [item['skill_key'] for item in manager.search_skill(
+                '生成图片 图像生成 视觉设计 海报 配图', enforce_budget=False,
+            )['hits']]
+            assert image_hits[0] == 'design/diagram-design'
+            anki_hits = [item['skill_key'] for item in manager.search_skill(
+                'anki', enforce_budget=False,
+            )['hits']]
+            assert anki_hits[0] == 'learning/vocabulary-learning'
+            assert manager.search_skill('a', enforce_budget=False)['hits'] == []
+            _make_skill(tmp, 'tiny/a', 'a', description='Named exactly a')
+            manager = SkillManager(dir=tmp)
+            assert [item['skill_key'] for item in manager.search_skill(
+                'a', enforce_budget=False,
+            )['hits']] == ['tiny/a']
+            mixed = [item['skill_key'] for item in manager.search_skill(
+                'writing article', enforce_budget=False,
+            )['hits']]
+            assert mixed[0] == 'writing/article'
+            assert [tool.__name__ for tool in manager.get_skill_tools()][:2] == ['search_skill', 'get_skill']
+            discovery = SkillManager(dir=tmp, skill_tool_mode='discovery')
+            assert [tool.__name__ for tool in discovery.get_skill_tools()] == ['search_skill', 'get_skill']
+
+    def test_search_skill_has_more_when_catalog_exceeds_max_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for index in range(25):
+                _make_skill(
+                    tmp, f'noise/skill-{index:02d}', f'skill-{index:02d}',
+                    description=f'Generic helper for miscellaneous tasks number {index}',
+                )
+            _make_skill(
+                tmp, 'writing/xiaohongshu-copywriter', 'xiaohongshu-copywriter',
+                description='Xiaohongshu copywriting and travel product posts',
+                extra_meta='field: writing',
+            )
+            manager = SkillManager(dir=tmp)
+            assert manager.list_prompt_skills()['count'] == 26
+            wide = manager.search_skill(
+                'generic helper miscellaneous tasks', limit=20, enforce_budget=False,
+            )
+            assert len(wide['hits']) == 20
+            assert wide['has_more'] is True
+            hits = [item['skill_key'] for item in manager.search_skill(
+                'xiaohongshu copywriting', enforce_budget=False,
+            )['hits']]
+            assert hits[0] == 'writing/xiaohongshu-copywriter'
+
+    def test_get_skill_resolves_unique_name_and_basename(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _make_skill(tmp, 'writing/xiaohongshu-copywriter', 'xiaohongshu-copywriter')
+            _make_skill(tmp, 'external/okr-writer', 'okr-writer')
+            manager = SkillManager(dir=tmp)
+            assert manager.get_skill('xiaohongshu-copywriter')['skill_key'] == (
+                'writing/xiaohongshu-copywriter'
+            )
+            assert manager.get_skill('writing/xiaohongshu-copywriter')['skill_key'] == (
+                'writing/xiaohongshu-copywriter'
+            )
+            assert manager.get_skill('`xiaohongshu-copywriter`')['skill_key'] == (
+                'writing/xiaohongshu-copywriter'
+            )
+            unresolved = manager.get_skill('external/xiaohongshu-copywriter')
+            assert unresolved['code'] == 'skill_not_installed'
+
+    def test_get_skill_reports_resolution_and_visibility_states_without_search(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _make_skill(tmp, 'writing/enabled', 'enabled')
+            _make_skill(tmp, 'external/enabled', 'enabled')
+            _make_skill(tmp, 'writing/disabled', 'disabled')
+            _make_skill(tmp, 'writing/hidden', 'hidden')
+            _make_skill(tmp, 'external/shared', 'shared')
+            _make_skill(tmp, 'writing/shared', 'shared')
+            manager = SkillManager(
+                dir=tmp,
+                skills=['writing/enabled', 'writing/hidden'],
+                excluded_skills=['writing/hidden'],
+            )
+
+            before = manager._search_count
+            assert manager.get_skill('enabled')['skill_key'] == 'writing/enabled'
+            assert manager._search_count == before
+            assert manager.get_skill('external/enabled')['code'] == 'skill_disabled'
+            assert manager.get_skill('disabled')['code'] == 'skill_disabled'
+            assert manager.get_skill('hidden')['code'] == 'skill_exists_but_not_visible'
+            assert manager.get_skill('missing')['code'] == 'skill_not_installed'
+            assert manager.get_skill('shared')['code'] == 'identifier_not_resolved'
+            assert manager.get_skill('')['code'] == 'identifier_not_resolved'
+
+    def test_search_skill_enforces_budget_and_resource_chain(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'demo', 'demo')
+            os.makedirs(os.path.join(skill_dir, 'references'), exist_ok=True)
+            with open(os.path.join(skill_dir, 'references', 'guide.md'), 'w', encoding='utf-8') as handle:
+                handle.write('guide')
+
+            def backend(request):
+                return {'skills': [
+                    {'skill_key': 'demo', 'name': 'demo', 'description': 'Use for routing tests'},
+                ]}
+
+            manager = SkillManager(dir=tmp, skill_search=backend)
+            first = manager.search_skill('routing tests')
+            assert first['status'] == 'ok'
+            assert manager.search_skill('routing tests')['error'] == 'duplicate_search'
+            manager.search_skill('another query')
+            exhausted = manager.search_skill('third query')
+            assert exhausted['error'] == 'retrieval_budget_exhausted'
+            blocked = manager._read_loaded_skill_resource('demo', 'references/guide.md')
+            assert blocked['error'] == 'skill_not_loaded'
+            loaded = manager.get_skill('demo')
+            assert loaded['resources'] == ['references/guide.md']
+            assert manager.get_skill('demo').get('already_loaded') is True
+            missing = manager._read_loaded_skill_resource('demo', 'references/missing.md')
+            assert missing['error'] == 'resource_not_declared'
+            assert manager._read_loaded_skill_resource('demo', 'references/guide.md')['content'] == 'guide'
+
+    def test_routing_description_strips_execution_steps(self):
+        info = {
+            'name': 'xiaohongshu-copywriter',
+            'description': (
+                '用于生成小红书种草内容，按照标题吸引力、emoji、正文结构、'
+                '标签、互动引导等步骤生成小红书文案'
+            ),
+            'raw_meta': {},
+        }
+        assert SkillManager._routing_description_text(info['description']) == '用于生成小红书种草内容'
+        info['raw_meta'] = {'when_to_use': 'Use for Xiaohongshu travel or product posts'}
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = SkillManager(dir=tmp)
+            assert manager._routing_description(info) == 'Use for Xiaohongshu travel or product posts'
 
     def test_parse_dirs_local_expands_paths(self):
         parsed = SkillManager._parse_dirs('~/skills')
@@ -251,7 +478,7 @@ class TestSkills(object):
         )
         manager = SkillManager(dir='skills', fs=fs)
 
-        result = manager.run_script('script-skill', 'scripts/ok.py', allow_unsafe=True)
+        result = manager.run_script('script-skill', 'scripts/ok.py')
 
         assert result['status'] == 'ok'
         assert result['exit_code'] == 0
@@ -271,9 +498,9 @@ class TestSkills(object):
 
             manager = SkillManager(dir=tmp)
 
-            ok_result = manager.run_script('script-skill', 'scripts/ok.py', allow_unsafe=True)
+            ok_result = manager.run_script('script-skill', 'scripts/ok.py')
             with pytest.raises(ToolExecutionError) as exc_info:
-                manager.run_script('script-skill', 'scripts/fail.py', allow_unsafe=True)
+                manager.run_script('script-skill', 'scripts/fail.py')
 
             assert ok_result['status'] == 'ok'
             assert ok_result['exit_code'] == 0
@@ -293,7 +520,7 @@ class TestSkills(object):
             lazyllm.globals['dynamic_env_vars'] = {'DYNAMIC_TEST_API_KEY': 'secret-from-session'}
             try:
                 manager = SkillManager(dir=tmp)
-                result = manager.run_script('env-skill', 'scripts/print_env.py', allow_unsafe=True)
+                result = manager.run_script('env-skill', 'scripts/print_env.py')
             finally:
                 if old_dynamic_env is None:
                     lazyllm.globals.pop('dynamic_env_vars', None)
@@ -326,13 +553,13 @@ class TestSkills(object):
                 manager = SkillManager(dir=tmp)
                 with pytest.raises(ToolExecutionError) as exc_info:
                     manager.run_script(
-                        'retry-env-skill', 'scripts/needs_key.py', allow_unsafe=True,
+                        'retry-env-skill', 'scripts/needs_key.py',
                     )
                 assert exc_info.value.missing_env == ['DYNAMIC_TEST_API_KEY']
                 assert 'missing_env: ["DYNAMIC_TEST_API_KEY"]' in str(exc_info.value)
                 inject_env_vars({'DYNAMIC_TEST_API_KEY': 'secret-after-set'})
                 result = manager.run_script(
-                    'retry-env-skill', 'scripts/needs_key.py', allow_unsafe=True,
+                    'retry-env-skill', 'scripts/needs_key.py',
                 )
             finally:
                 if old_dynamic_env is None:
@@ -363,7 +590,7 @@ class TestSkills(object):
 
             manager = SkillManager(dir=tmp)
             result = manager.run_script(
-                'optional-env-skill', 'scripts/ok.py', allow_unsafe=True,
+                'optional-env-skill', 'scripts/ok.py',
             )
 
             assert result['status'] == 'ok'
@@ -394,7 +621,7 @@ class TestSkills(object):
                 manager = SkillManager(dir=tmp)
                 with pytest.raises(ToolExecutionError) as exc_info:
                     manager.run_script(
-                        'declared-env-skill', 'scripts/fail.py', allow_unsafe=True,
+                        'declared-env-skill', 'scripts/fail.py',
                     )
             finally:
                 if old_dynamic_env is None:
@@ -420,7 +647,7 @@ class TestSkills(object):
             manager = SkillManager(dir=tmp)
             with pytest.raises(ToolExecutionError) as exc_info:
                 manager.run_script(
-                    'convention-env-skill', 'scripts/fail.py', allow_unsafe=True,
+                    'convention-env-skill', 'scripts/fail.py',
                 )
 
             assert exc_info.value.missing_env == ['CONVENTION_API_KEY']
@@ -436,7 +663,7 @@ class TestSkills(object):
 
             manager = SkillManager(dir=tmp)
             with pytest.raises(ToolExecutionError) as exc_info:
-                manager.run_script('cwd-skill', 'scripts/ok.py', allow_unsafe=True, cwd='missing')
+                manager.run_script('cwd-skill', 'scripts/ok.py', cwd='missing')
 
             assert 'scripts/ok.py' in str(exc_info.value)
             assert 'missing' in str(exc_info.value)

@@ -102,7 +102,6 @@ Args:
     rel_path (str): 相对于 `source_dir` 的脚本路径。
     args (list[str] | None): 传递给脚本的参数。
     cwd (str): 相对于 `source_dir` 的工作目录，默认为 `.`。
-    allow_unsafe (bool): 预留的审批参数；DummySandbox 当前不提供审批边界，因此会忽略该参数。
     env (dict[str, str] | None): 额外环境变量，会覆盖合并进子进程环境；不会修改当前进程的 `os.environ`。默认为 `None`。
 
 **Returns:**\n
@@ -126,7 +125,6 @@ Args:
     rel_path (str): script path relative to `source_dir`.
     args (list[str] | None): arguments passed to the script.
     cwd (str): working directory relative to `source_dir`, default `.`.
-    allow_unsafe (bool): reserved approval parameter; DummySandbox currently has no approval boundary and ignores it.
     env (dict[str, str] | None): extra environment variables merged into the subprocess environment; does not mutate the
         parent process `os.environ`. Default `None`.
 
