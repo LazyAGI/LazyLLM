@@ -1,7 +1,6 @@
 import hashlib
 import os
 import re
-import time
 import traceback
 import lazyllm
 from collections import defaultdict
@@ -249,7 +248,6 @@ class _DocumentStore(object):
             for node in nodes:
                 group_segments[node._group].append(self._serialize_node(node))
             # upsert batch segments
-            _t_store = time.time()
             for group, segments in group_segments.items():
                 if not self.is_group_active(group):
                     LOG.warning(f'[_DocumentStore] Group {group} is not active, skip')
@@ -257,17 +255,12 @@ class _DocumentStore(object):
                 for i in range(0, len(segments), INSERT_BATCH_SIZE):
                     upsert = self._upsert_segments if copy else self._upsert_segment_data
                     upsert(group, segments[i:i + INSERT_BATCH_SIZE])
-            LOG.info(f'[BENCHMARK] phase=segment_store elapsed={time.time() - _t_store:.3f}s nodes={len(nodes)}')
             embedding_error = None
             if self._embed and self.vector_initialized_impl.need_embedding and not copy and nodes_to_embed:
-                _t_emb = time.time()
                 try:
                     parallel_do_embedding(self._embed, [], nodes_to_embed, self._group_embed_keys)
                 except Exception as exc:
                     embedding_error = exc
-                LOG.info(f'[BENCHMARK] phase=embed elapsed={time.time() - _t_emb:.3f}s '
-                         f'nodes={len(nodes_to_embed)}')
-                _t_vector = time.time()
                 embedded_segments = defaultdict(list)
                 for node in nodes_to_embed:
                     keys = self._group_embed_keys.get(node._group) if self._group_embed_keys else self._embed.keys()
@@ -279,12 +272,9 @@ class _DocumentStore(object):
                     for i in range(0, len(segments), INSERT_BATCH_SIZE):
                         # Text and FTS were persisted before the model call.
                         self._upsert_segments(group, segments[i:i + INSERT_BATCH_SIZE], vectors_only=True)
-                LOG.info(f'[BENCHMARK] phase=vector_store elapsed={time.time() - _t_vector:.3f}s '
-                         f'nodes={sum(len(segments) for segments in embedded_segments.values())}')
             # update indices
             for index in self._indices.values():
                 index.update([node for node in nodes if not node.is_null_node])
-            LOG.info(f'[BENCHMARK] phase=store elapsed={time.time() - _t_store:.3f}s nodes={len(nodes)}')
             if embedding_error:
                 embedding_error._lazyllm_segments_persisted = True
                 raise embedding_error

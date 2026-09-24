@@ -202,22 +202,12 @@ class _SQLBasedQueue:
         try:
             with self._sql_manager.get_session() as session:
                 query = self._build_query(session, filter_by)
-                TableCls = self._sql_manager.get_table_orm_class(self._table_name)
-                raw_finished_at = (self._db_config.get('db_type') == 'sqlite'
-                                   and hasattr(TableCls, 'finished_at'))
-                if raw_finished_at:
-                    # The SQLite proxy's Go driver attaches UTC to naive DATETIME
-                    # values. CAST preserves the stored local wall time (and any
-                    # explicit offset) instead of inventing a timezone on read.
-                    query = query.add_columns(sqlalchemy.cast(TableCls.finished_at, sqlalchemy.String))
                 record = query.first()
 
                 if not record:
                     return None
 
-                result = _orm_to_dict(record[0] if raw_finished_at else record)
-                if raw_finished_at:
-                    result['finished_at'] = record[1]
+                result = _orm_to_dict(record)
                 LOG.debug(f'[SQLBasedQueue] Peeked from {self._table_name}')
                 return result
 
