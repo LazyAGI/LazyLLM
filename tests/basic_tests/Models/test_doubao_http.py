@@ -48,8 +48,8 @@ def test_image_public_router_preserves_config_and_reference_options(transport, m
 
 def test_video_dynamic_router_uses_request_key_model_and_url(transport, monkeypatch):
     transport.side_effect = [response({'id': 'task-1'}), response({'status': 'queued'}),
-                            response({'status': 'succeeded', 'content': {'video_url': 'https://cdn.example/video'}}),
-                            response(content=b'video')]
+                             response({'status': 'succeeded', 'content': {'video_url': 'https://cdn.example/video'}}),
+                             response(content=b'video')]
     monkeypatch.setitem(lazyllm.globals['config'], 'doubao_api_key', 'request-key')
     model = OnlineMultiModalModule(source='dynamic', dynamic_auth=True, type='text2video')
     with dynamic_multimodal_config(model, source='doubao', model='doubao-seedance-2-5-260628',
@@ -72,7 +72,7 @@ def test_video_dynamic_router_uses_request_key_model_and_url(transport, monkeypa
 @pytest.mark.parametrize('status', ['failed', 'cancelled', 'expired', 'unexpected'])
 def test_video_terminal_states_stop_polling(transport, status):
     transport.side_effect = [response({'id': 'task-1'}),
-                            response({'status': status, 'error': {'message': 'stopped'}})]
+                             response({'status': status, 'error': {'message': 'stopped'}})]
     model = doubao.DoubaoText2Video(api_key='key')
     with pytest.raises(RuntimeError, match=status):
         model.forward('animate', poll_interval=0)
@@ -111,8 +111,8 @@ def test_failed_download_is_not_saved_as_media(transport):
 
 def test_video_first_last_frame_and_runtime_override(transport):
     transport.side_effect = [response({'id': 'task-1'}),
-                            response({'status': 'succeeded', 'content': {'video_url': 'https://cdn.example/video'}}),
-                            response(content=b'video')]
+                             response({'status': 'succeeded', 'content': {'video_url': 'https://cdn.example/video'}}),
+                             response(content=b'video')]
     model = doubao.DoubaoText2Video(api_key=['key'], model='initial')
     model.forward('animate', model='runtime-model', url='https://ark.example/override/',
                   files=['data:image/png;base64,Zmlyc3Q=', 'https://cdn.example/last'],
