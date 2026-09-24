@@ -19,8 +19,8 @@ def cancel_tool() -> str:
 
 
 def tool_output(name='status'):
-    return {'content': '', 'tool_calls': [{'id': 'call-1', 'type': 'function',
-                                         'function': {'name': name, 'arguments': '{}'}}]}
+    return {'content': '', 'tool_calls': [{
+        'id': 'call-1', 'type': 'function', 'function': {'name': name, 'arguments': '{}'}}]}
 
 
 class ScriptedModel:
@@ -106,7 +106,8 @@ def test_react_cleanup_uses_captured_containers_after_sid_switch(tmp_path):
         lazyllm.locals._clear_sid(alternate)
 
 
-def test_summary_retained_only_within_scope_and_completed_history_preserved(tmp_path):
+@pytest.mark.parametrize('continue_a', [False, True])
+def test_summary_retained_only_within_scope_and_completed_history_preserved(tmp_path, continue_a):
     model = ScriptedModel([tool_output(), tool_output(), 'summary A', {'content': 'completed', 'tool_calls': []}])
 
     def summarize_and_continue():
@@ -116,6 +117,8 @@ def test_summary_retained_only_within_scope_and_completed_history_preserved(tmp_
         state = lazyllm.locals['_lazyllm_agent']
         assert state['workspace']['history'][0]['content'] == 'marker A'
         assert model._module_id not in lazyllm.locals['chat_history']
+        if not continue_a:
+            return
         assert agent('continue') == 'completed'
         assert 'workspace' not in state
         assert state['completed']

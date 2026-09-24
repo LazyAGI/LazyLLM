@@ -145,8 +145,8 @@ def test_queued_stream_cancel_never_calls_producer_or_callback(monkeypatch):
 
         pool.submit(block)
         assert entered.wait(2)
-        helper = lazyllm.StreamCallHelper(lambda: calls.append('work'), init_sid=False,
-                                         on_cancel=lambda: calls.append('cancel'))
+        helper = lazyllm.StreamCallHelper(
+            lambda: calls.append('work'), init_sid=False, on_cancel=lambda: calls.append('cancel'))
         try:
             helper._submit()
             helper.close()
@@ -168,8 +168,8 @@ def test_async_close_waits_and_preserves_exit_reason(reason):
             assert release.wait(5)
             raise ValueError('producer failure stays in future')
 
-        helper = lazyllm.StreamCallHelper(work, init_sid=False,
-                                         on_cancel=lambda: loop.call_soon_threadsafe(notified.set))
+        helper = lazyllm.StreamCallHelper(
+            work, init_sid=False, on_cancel=lambda: loop.call_soon_threadsafe(notified.set))
         iterator = helper.astream()
         assert (await anext(iterator))['delta'] == 'ready'
         original = ValueError('consumer failed')
