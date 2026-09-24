@@ -220,6 +220,10 @@ Args:
     kwargs: 传递给目标函数的关键字参数字典，默认为 ``None``
     prehook: 在线程执行前要调用的函数或函数列表，默认为 ``None``
     daemon: 是否为守护线程，默认为 ``None``
+    local_scope: ``isolated``（默认）创建并回收独立 locals；``inherit`` 借用构造线程时调用方的 locals。
+
+两种模式均传递 globals SID 和 ContextVar。隔离仅针对 locals 自有数据，不深拷贝 globals 或其他共享对象。
+异常（包括取消和 prehook 异常）通过 get_result() 重新抛出；正常返回的异常对象仍是返回值。
 ''')
 
 add_english_doc('Thread', '''\
@@ -233,6 +237,27 @@ Args:
     kwargs: Dictionary of keyword arguments to pass to the target function, default to ``None``
     prehook: Function or list of functions to call before thread execution, default to ``None``
     daemon: Whether the thread is a daemon thread, default to ``None``
+    local_scope: ``isolated`` (default) creates and releases independent locals; ``inherit`` borrows the
+        caller's locals captured at construction.
+
+Both modes propagate the globals SID and ContextVars, without deep-copying globals or shared objects.
+get_result() re-raises failures, including cancellation and prehook errors; returned exception objects remain values.
+''')
+
+add_chinese_doc('ThreadPoolExecutor', '''\
+兼容标准库线程池，新增关键字参数 local_scope，支持 isolated（默认）和 inherit；非法值抛出 ValueError。
+每次 submit 捕获调用方 globals SID 和 ContextVar，inherit 还捕获实际 locals SID。
+isolated 在任务开始后建立独立 locals，退出时仅回收自己创建的作用域；inherit 不删除借用状态。
+同一逻辑执行跨线程时显式使用 inherit，并确保子任务结束后才释放父作用域。
+保留 initializer、initargs、map 和 Future 接口；submit 的关键字参数仍传给目标函数。
+''')
+
+add_english_doc('ThreadPoolExecutor', '''\
+Standard-library-compatible pool with keyword-only local_scope: isolated (default) or inherit; invalid values
+raise ValueError. Each submit captures the caller's globals SID and ContextVars, plus the actual locals SID for inherit.
+Isolated tasks create locals only when execution starts and release only their own scope. Inherit borrows state
+without deleting it. Join inherited children before releasing their parent scope. Globals and shared objects are
+not deep-copied. initializer, initargs, map and Future APIs are preserved; submit keywords belong to the target.
 ''')
 
 add_example('Thread', '''\

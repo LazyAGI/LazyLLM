@@ -1,40 +1,65 @@
 import threading
 from queue import Queue
 import functools
-from .globals import globals
+from contextvars import copy_context
+from .globals import globals, locals
 from concurrent.futures import ThreadPoolExecutor as TPE
 
-def _sid_setter(sid):
-    globals._init_sid(sid)
+
+def _validate_local_scope(local_scope):
+    if local_scope not in ('isolated', 'inherit'):
+        raise ValueError('local_scope must be isolated or inherit')
+
+
+def _context_call(fn, local_scope):
+    sid = globals._sid
+    local_sid = locals._sid if local_scope == 'inherit' else None
+    context = copy_context()
+
+    def impl(*args, **kwargs):
+        globals._init_sid(sid)
+        with locals._scope(local_sid):
+            return fn(*args, **kwargs)
+
+    return functools.partial(context.run, impl)
+
 
 class Thread(threading.Thread):
     def __init__(self, group=None, target=None, name=None,
-                 args=(), kwargs=None, *, prehook=None, daemon=None):
+                 args=(), kwargs=None, *, prehook=None, daemon=None, local_scope='isolated'):
+        _validate_local_scope(local_scope)
         self.q = Queue()
-        if not isinstance(prehook, (tuple, list)): prehook = [prehook] if prehook else []
-        prehook.insert(0, functools.partial(_sid_setter, sid=globals._sid))
+        prehook = list(prehook) if isinstance(prehook, (tuple, list)) else [prehook] if prehook else []
+        self._call = _context_call(self._run_target, local_scope)
         super().__init__(group, self.work, name, (prehook, target, args), kwargs, daemon=daemon)
 
+    @staticmethod
+    def _run_target(prehook, target, args, **kw):
+        for hook in prehook:
+            hook()
+        if target is not None:
+            return target(*args, **kw)
+
     def work(self, prehook, target, args, **kw):
-        [p() for p in prehook]
         try:
-            r = target(*args, **kw)
-        except Exception as e:
-            self.q.put(e)
+            result = self._call(prehook, target, args, **kw)
+        except BaseException as error:
+            self.q.put((False, error))
         else:
-            self.q.put(r)
+            self.q.put((True, result))
 
     def get_result(self):
-        r = self.q.get()
-        if isinstance(r, Exception):
-            raise r
-        return r
+        success, result = self.q.get()
+        if not success:
+            raise result
+        return result
 
 
 class ThreadPoolExecutor(TPE):
-    def submit(self, fn, /, *args, **kwargs):
-        def impl(sid, *a, **kw):
-            globals._init_sid(sid)
-            return fn(*a, **kw)
+    def __init__(self, *args, local_scope='isolated', **kwargs):
+        _validate_local_scope(local_scope)
+        self._local_scope = local_scope
+        super().__init__(*args, **kwargs)
 
-        return super(__class__, self).submit(functools.partial(impl, globals._sid), *args, **kwargs)
+    def submit(self, fn, /, *args, **kwargs):
+        return super().submit(_context_call(fn, self._local_scope), *args, **kwargs)
