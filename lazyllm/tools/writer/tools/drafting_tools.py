@@ -13,6 +13,7 @@ from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterSpan
 from ..data_models.planning import SectionInstruction, SectionInstructionList, ShortWritingPlan
 from ..numbering import (
     MARKDOWN_ANCHOR_RE,
+    _is_table_header,
     build_numbering_view_from_ir,
     build_numbering_view_from_markdown,
     compute_numbering,
@@ -797,7 +798,7 @@ class WriterDraftingTools(WriterToolBase):
             purpose = re.sub(r'[\[\]\r\n]+', ' ', purpose).strip() or '图'
             lines.insert(
                 insertion_index + offset,
-                f'\n![{purpose}](media-placeholder://{need_id})',
+                f'\n![{purpose}](media-placeholder://{need_id})\n',
             )
         return '\n'.join(lines).strip()
 
@@ -1679,7 +1680,7 @@ class WriterDraftingTools(WriterToolBase):
                     insertions.append((
                         reference_lines[target] + 1,
                         f'\n<a id="block-{target}"></a>\n'
-                        f'![{caption}](media-placeholder://{target})',
+                        f'![{caption}](media-placeholder://{target})\n',
                     ))
                     continue
                 if f'block-{target}' not in found_anchors:
@@ -1712,6 +1713,7 @@ class WriterDraftingTools(WriterToolBase):
         paragraph_end: int | None = None
         first_content: int | None = None
         fence: str | None = None
+        in_table = False
         for index, line in enumerate(lines):
             fence_match = re.match(r'^\s*(```+|~~~+)', line)
             if fence_match:
@@ -1725,11 +1727,20 @@ class WriterDraftingTools(WriterToolBase):
                 continue
             stripped = line.strip()
             if not stripped:
+                in_table = False
                 if paragraph_end is not None:
                     return paragraph_end
                 continue
             if first_content is None:
                 first_content = index
+            if _is_table_header(lines, index):
+                if paragraph_end is not None:
+                    return paragraph_end
+                in_table = True
+            if in_table:
+                if '|' in stripped:
+                    continue
+                in_table = False
             if stripped.startswith('#') or cls._MARKDOWN_ANCHOR_RE.fullmatch(stripped):
                 if paragraph_end is not None:
                     return paragraph_end
@@ -1738,7 +1749,9 @@ class WriterDraftingTools(WriterToolBase):
         if paragraph_end is not None:
             return paragraph_end
         if first_content is not None:
-            return first_content
+            # A table-only section needs a separate paragraph for appended references.
+            lines.extend(['', ''])
+            return len(lines) - 1
         raise ValueError('Markdown draft section body must not be empty.')
 
     @staticmethod
