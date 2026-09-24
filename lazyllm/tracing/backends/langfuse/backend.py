@@ -73,12 +73,14 @@ class LangfuseBackend(TracingBackend):
 
         return OTLPSpanExporter(
             endpoint=endpoint,
-            headers={'Authorization': auth},
+            headers={
+                'Authorization': auth,
+                'x-langfuse-ingestion-version': '4',
+            },
         )
 
     def map_attributes(self, otel_attrs: Dict[str, Any]) -> Dict[str, Any]:
         attrs: Dict[str, Any] = {}
-        is_root_span = otel_attrs.get('lazyllm.span.is_root') is True
 
         semantic_type = otel_attrs.get('lazyllm.semantic_type')
         if semantic_type:
@@ -109,10 +111,8 @@ class LangfuseBackend(TracingBackend):
             attrs['langfuse.observation.status_message'] = str(otel_attrs['lazyllm.error.message'])
 
         self._copy_usage_attrs(attrs, otel_attrs)
-
-        if is_root_span:
-            self._copy_trace_attrs(attrs, otel_attrs)
-            attrs.update(extract_trace_metadata(otel_attrs, target_prefix='langfuse.trace.metadata.'))
+        self._copy_trace_attrs(attrs, otel_attrs)
+        attrs.update(extract_trace_metadata(otel_attrs, target_prefix='langfuse.trace.metadata.'))
 
         return attrs
 
