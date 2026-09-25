@@ -174,6 +174,66 @@ For more examples, please refer to our official documentation [Usage Examples](h
 4. **Supports common RAG (Retrieval-Augmented Generation) components**: Document, Parser, Retriever, Reranker, etc.
 5. **Supports basic webs**: such as chat interface and document management interface, etc.
 
+
+## FAQ
+
+### What is LazyLLM?
+
+LazyLLM is a low-code development tool for building **multi-agent** large language model applications. It helps developers create complex AI applications at low cost with continuous iterative optimization.
+
+### How does LazyLLM differ from LangChain or CrewAI?
+
+- **LazyLLM**: Low-code approach, focuses on rapid prototyping → data feedback → iterative optimization, one-click deployment, cross-platform compatibility
+- **LangChain**: Chain-based workflow orchestration, more granular control
+- **CrewAI**: Role-based multi-agent collaboration framework
+
+### How do I install LazyLLM?
+
+```bash
+pip install lazyllm
+```
+
+### What LLM providers are supported?
+
+- **Online models**: OpenAI, Azure OpenAI, Anthropic, Google, etc.
+- **Local models**: Any model via LightLLM or vLLM inference frameworks
+- Model switching is seamless - just change the model name
+
+### How do I use a local model?
+
+```python
+import lazyllm
+chat = lazyllm.TrainableModule('internlm2-chat-7b')
+lazyllm.WebModule(chat, port=23466).start().wait()
+```
+
+### What is the "one-click deployment" feature?
+
+LazyLLM simplifies deployment of multi-agent applications:
+- **POC phase**: Lightweight gateway mechanism for sequential module startup
+- **Release phase**: Package images with one click for Kubernetes deployment
+
+### What platforms are supported?
+
+- Bare-metal servers
+- Development machines
+- Slurm clusters
+- Public clouds (AWS, GCP, Azure, etc.)
+- Switch platforms without modifying code
+
+### How does model fine-tuning work?
+
+LazyLLM supports in-application fine-tuning:
+- Auto-selects best fine-tuning framework
+- Auto-selects model splitting strategy
+- Simplifies maintenance of model iterations
+- Algorithm researchers focus on data, not engineering
+
+### How do I get help?
+
+- **Documentation**: https://docs.lazyllm.ai/
+- **Discord**: https://discord.gg/cDSrRycuM6
+- **GitHub Issues**: https://github.com/LazyAGI/LazyLLM/issues
 ## Installation
 
 ### pip installation (recommended)
