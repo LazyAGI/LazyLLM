@@ -95,10 +95,11 @@ class FewShotPromptTemplate(BasePromptTemplate):
         # 3. Combine prefix, examples(already formatted), and suffix
         examples_text = sep.join(formatted_examples)
 
-        # 4. Format the final prompt
+        # 4. Format prefix and suffix only; examples are already rendered and may contain literal braces
         try:
-            final_template = f'{self.prefix}\n{examples_text}\n{self.suffix}'
-            return final_template.format(**format_kwargs)
+            prefix = self.prefix.format(**format_kwargs)
+            suffix = self.suffix.format(**format_kwargs)
+            return f'{prefix}\n{examples_text}\n{suffix}'
         except KeyError as e:
             raise KeyError(f'Template variable not found: {e}')
         except Exception as e:
