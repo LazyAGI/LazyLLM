@@ -130,7 +130,7 @@ agent('写一个函数计算斐波那契数列前 n 项')
 
 ### MCPClient
 
-连接 MCP 服务器（本地或 SSE），获取 MCP 提供的工具列表，可直接作为 Agent 的 tools 使用。用法见 [基础组件 - MCPClient](../assets/agent/basic.md#4-mcpclient)。
+连接 MCP 服务器（本地或 SSE），获取 MCP 提供的工具列表，可直接作为 Agent 的 tools 使用。用法见 [基础组件 - MCPClient](../../references/basic.md#4-mcpclient)。
 
 ---
 
@@ -139,6 +139,6 @@ agent('写一个函数计算斐波那契数列前 n 项')
 - **搜索与通用工具**: `lazyllm.tools.tools` 中的 Search、Weather、Calculator、Json*。
 - **SQL / 数据**: `lazyllm.tools` 的 SqlManager、SqlCall（以及 MongoDBManager、DBManager 等）。
 - **代码与 MCP**: `lazyllm.tools` 的 CodeGenerator、MCPClient；ToolManager、SkillManager 等见 Agent 模块文档。
-- **自定义工具**: 使用 `fc_register('tool')` 注册函数，见 [基础组件](../assets/agent/basic.md)。
+- **自定义工具**: 使用 `fc_register('tool')` 注册函数，见 [基础组件](../../references/basic.md)。
 
 更多参数与用法见本页上文及 [references/agent.md](../../references/agent.md)。
