@@ -1,6 +1,6 @@
 # Multi-turn Agent Dialogue System
 
-This tutorial will guide you on how to build a multi-turn dialogue system using [LazyLLM](https://github.com/LazyLLM/LazyLLM), where two agents (e.g., "Stock Trader" and "Python Programmer") collaborate to complete a specific task. The system supports task specification, role-playing, memory retention, and tool usage.
+This tutorial will guide you on how to build a multi-turn dialogue system using [LazyLLM](https://github.com/LazyAGI/LazyLLM), where two agents (e.g., "Stock Trader" and "Python Programmer") collaborate to complete a specific task. The system supports task specification, role-playing, memory retention, and tool usage.
 
 !!! abstract "By the end of this tutorial, you will understand these key LazyLLM concepts"
 

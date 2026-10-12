@@ -1,6 +1,6 @@
 # 多轮智能体对话系统
 
-本教程将教你如何使用 [LazyLLM](https://github.com/LazyLLM/LazyLLM) 搭建一个多轮对话系统，其中两个智能体（如“股票交易员”和“Python 程序员”）协同完成特定任务。该系统支持任务细化、角色扮演、历史记忆以及工具调用。
+本教程将教你如何使用 [LazyLLM](https://github.com/LazyAGI/LazyLLM) 搭建一个多轮对话系统，其中两个智能体（如“股票交易员”和“Python 程序员”）协同完成特定任务。该系统支持任务细化、角色扮演、历史记忆以及工具调用。
 
 !!! abstract "通过本节您将学习到 LazyLLM 的以下要点"
 

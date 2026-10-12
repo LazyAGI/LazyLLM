@@ -148,7 +148,7 @@ https://github.com/LazyAGI/LazyLLM/assets/12124621/77267adc-6e40-47b8-96a8-895df
 
 ### 3.3 更多例子
 
-更多例子可以参考我们官方文档的[使用示例](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/robot/)
+更多例子可以参考我们官方文档的[使用示例](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/chatbot/)
 * [绘画大师](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/painting_master/)
 * [多模态聊天机器人](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/multimodal_robot/)
 * [知识库](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/rag/)
