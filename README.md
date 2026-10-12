@@ -149,7 +149,7 @@ If you installed `lazyllm` using `pip` and ensured that the `bin` directory of y
 
 ### 3.3 More Examples
 
-For more examples, please refer to our official documentation [Usage Examples](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/multimodal_robot/)
+For more examples, please refer to our official documentation [Usage Examples](https://docs.lazyllm.ai/en/stable/Cookbook/chatbot/)
 * [Painting Master](https://docs.lazyllm.ai/en/stable/Cookbook/painting_master/)
 * [Multimodal Chatbot](https://docs.lazyllm.ai/en/stable/Cookbook/multimodal_robot/)
 * [Knowledge Base](https://docs.lazyllm.ai/en/stable/Cookbook/rag/)
