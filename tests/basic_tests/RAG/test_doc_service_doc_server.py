@@ -61,6 +61,9 @@ class _FakeManager:
         self.cancel_response = BaseResponse(
             code=200, msg='success', data={'task_id': 'task-1', 'cancel_status': True, 'status': 'CANCELED'}
         )
+        # doc_ids that should fail the reparse/upload state check, mirroring a
+        # real WORKING/DELETING doc; tests set this to simulate the rejection.
+        self.reject_action_for = set()
 
     def run_idempotent(self, endpoint, idempotency_key, payload, handler):
         self.run_calls.append({
@@ -79,6 +82,10 @@ class _FakeManager:
 
     def _list_kb_docs_by_path(self, kb_id, exclude_failed=True):
         return dict(self.existing_docs_by_path)
+
+    def _assert_action_allowed(self, doc_id, kb_id, action):
+        if doc_id in self.reject_action_for:
+            raise DocServiceError('E_STATE_CONFLICT', f'cannot {action} while state is WORKING')
 
     def reparse(self, request):
         self.reparse_request = request
@@ -706,3 +713,25 @@ def test_legacy_upload_reparse_validates_before_new_uploads(server_impl):
     assert fake.upload_request is None, (
         'new-file upload must not commit when the reparse phase fails'
     )
+
+
+def test_legacy_upload_reparse_state_conflict_does_not_commit_metadata(server_impl):
+    '''Regression (#1090): reparse's own state check (WORKING/DELETING) must
+    run and raise before the legacy shim writes the caller's metadata into
+    the documents row, not after. Without this, a rejected reparse still
+    leaves the metadata change committed with no rollback.'''
+    fake = server_impl._manager
+    storage = server_impl._storage_dir
+    existing_path = os.path.join(storage, 'existing.txt')
+    fake.existing_docs_by_path = {existing_path: 'preexisting-doc-id'}
+    fake.reject_action_for = {'preexisting-doc-id'}
+
+    files = [_UploadFile('existing.txt', b'updated')]
+    response = asyncio.run(server_impl.upload_files_legacy(
+        files=files, override=True, metadatas=json.dumps([{'tag': 'should-not-commit'}]),
+        group_name=None, user_path=None,
+    ))
+    assert fake.synced_meta_writes == [], 'metadata must not commit when reparse is rejected'
+    assert fake.reparse_request is None, 'reparse must not be enqueued after its own validation rejects'
+    body = _decode_response(response)
+    assert body['data']['biz_code'] == 'E_STATE_CONFLICT'

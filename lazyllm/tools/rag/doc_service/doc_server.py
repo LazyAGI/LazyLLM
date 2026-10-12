@@ -643,6 +643,10 @@ class DocServer(ModuleBase):
             # raised on a WORKING/DELETING existing doc, the new-file uploads
             # would already be committed -- a partial-commit failure mode.
             if reparse_inputs:
+                # Same reordering as reparse-before-upload above: raise here,
+                # before the metadata write below, not after it.
+                for _, _, _, eid in reparse_inputs:
+                    self._manager._assert_action_allowed(eid, kb_id, 'reparse')
                 # Apply the caller's metadata directly to the documents row
                 # so the reparse worker (which reloads ``doc.meta`` in
                 # ``_prepare_reparse_items``) picks up the new values.
