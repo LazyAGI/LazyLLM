@@ -196,6 +196,7 @@ Example Langfuse result:
 - Key nodes include `Pipeline`, `retriever`, `llm`, `<lambda>`, and the document-reading node `TxtReader`
 - The `llm` node has observation type `GENERATION`, and the model name is `SenseNova-V6-5-Pro`
 - The `retriever` node has observation type `RETRIEVER`
+- Control-flow traces follow `condition → branch → Switch/IFS` and `item → stop_condition → Loop`; callables used as those callbacks (functions, `functools.partial`, callable objects) emit child spans, and Modules keep their own single span
 
 For details on how to read the page fields and the path structure, see `2.6 Reading the Langfuse UI`.
 

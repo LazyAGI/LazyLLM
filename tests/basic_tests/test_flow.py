@@ -180,6 +180,34 @@ class TestFlow(object):
             sw.case[is_3, t3]
         assert sw(1, 30) == 60 and sw(2, 10) == 30 and sw(3, 5) == 5
 
+    def test_control_callback_wrap_invokes_once(self):
+        pred_calls = []
+
+        def pred(x):
+            pred_calls.append(x)
+            return x == 1
+
+        sw = switch(pred, t1)
+        assert sw(1) == 2
+        assert pred_calls == [1]
+        assert sw(2) is None
+        assert pred_calls == [1, 2]
+
+        stop_calls = []
+
+        def stop(x):
+            stop_calls.append(x)
+            return x >= 3
+
+        lp = loop(add_one, stop_condition=stop, count=10)
+        assert lp(0) == 3
+        assert stop_calls == [1, 2, 3]
+
+    def test_control_callback_class(self):
+        assert loop(lambda x: x + 1, stop_condition=bool, count=3)(0) == 1
+        assert switch(bool, lambda x: x + 1)(1) == 2
+        assert switch(bool, lambda x: x + 1)(0) is None
+
     def test_ifs(self, capfd):
 
         assert ifs(is_1, t3, t1)(1) == 1
