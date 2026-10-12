@@ -507,3 +507,28 @@ class TestFewShotPromptTemplate:
         # Partial template should not be affected
         assert len(partial_template.examples) == 1
         assert partial_template.examples == [{'input': 'What is 2+2?', 'output': '4'}]
+
+    def test_format_examples_with_braces(self):
+        '''Rendered examples are not formatted again, so JSON and literal braces survive'''
+        egs_template = PromptTemplate.from_template('Text: {text}\nJSON: {json}')
+        few_shot_template = FewShotPromptTemplate(
+            prefix='Extract entities as JSON.',
+            suffix='Text: {question}\nJSON:',
+            examples=[
+                {'text': 'Alice lives in Paris', 'json': '{"name": "Alice", "city": "Paris"}'},
+                {'text': 'Nothing here, not even {question}', 'json': '{}'},
+            ],
+            egs_prompt_template=egs_template,
+            required_vars=['question'],
+        )
+
+        result = few_shot_template.format(question='Bob lives in Rome')
+        expected = textwrap.dedent('''
+            Extract entities as JSON.
+            Text: Alice lives in Paris
+            JSON: {"name": "Alice", "city": "Paris"}
+            Text: Nothing here, not even {question}
+            JSON: {}
+            Text: Bob lives in Rome
+            JSON:''').strip()
+        assert result == expected
