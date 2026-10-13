@@ -146,9 +146,8 @@ def test_u1_fast_keeps_generation_contract(monkeypatch):
 
 @pytest.mark.parametrize('base_url,root', [
     ('https://token.sensenova.cn/v1/', 'https://token.sensenova.cn/v1'),
-    ('https://token.sensenova.cn/v1/chat/completions/', 'https://token.sensenova.cn/v1'),
     ('https://proxy.example/prefix/v2', 'https://proxy.example/prefix/v2'),
-    ('https://proxy.example/prefix/v3/chat/completions', 'https://proxy.example/prefix/v3'),
+    ('https://proxy.example/prefix/v3/', 'https://proxy.example/prefix/v3'),
     ('https://proxy.example/custom/', 'https://proxy.example/custom'),
 ])
 @pytest.mark.parametrize('override', [False, True])
@@ -178,7 +177,7 @@ def test_image_endpoint_preserves_configured_base(monkeypatch, base_url, root, o
 @pytest.mark.parametrize('base_url,expected', [
     ('https://token.sensenova.cn/v1/', 'https://token.sensenova.cn/v1/chat/completions'),
     ('https://proxy.example/prefix/v2', 'https://proxy.example/prefix/v2/chat/completions'),
-    ('https://proxy.example/v3/chat/completions/', 'https://proxy.example/v3/chat/completions'),
+    ('https://proxy.example/v3/', 'https://proxy.example/v3/chat/completions'),
     ('https://proxy.example/v2?route=test', 'https://proxy.example/v2/chat/completions?route=test'),
 ])
 def test_chat_endpoint_preserves_configured_base(base_url, expected):

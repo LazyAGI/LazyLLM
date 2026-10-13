@@ -60,12 +60,7 @@ class _SenseNovaBase(object):
     def _get_endpoint_url(base_url: str, endpoint: str) -> str:
         parsed = urlsplit(base_url)
         path = parsed.path.rstrip('/')
-        for suffix in ('/chat/completions', '/images/generations', '/images/edits'):
-            if path.endswith(suffix):
-                path = path[:-len(suffix)]
-                break
         return parsed._replace(path=f'{path}/{endpoint}').geturl()
-
 
     def _get_api_key(self, api_key: str, secret_key: str):
         if not api_key and not secret_key:
