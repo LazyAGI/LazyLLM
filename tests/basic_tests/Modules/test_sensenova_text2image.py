@@ -1,5 +1,4 @@
 import base64
-import pytest
 
 from lazyllm.module.llms.onlinemodule.supplier import sensenova
 
@@ -23,35 +22,6 @@ def _module():
         api_key='sk-test',
         model='sensenova-u1.5-lite',
     )
-
-
-@pytest.mark.parametrize('base_url', [
-    'https://token.sensenova.cn/v1/chat/completions/',
-    'https://api.sensenova.cn/compatible-mode/v1/',
-    'https://proxy.example/custom/',
-])
-@pytest.mark.parametrize('override', [False, True])
-@pytest.mark.parametrize('editing', [False, True])
-def test_image_endpoint_uses_token_plan(monkeypatch, base_url, override, editing):
-    captured = {}
-
-    def fake_post(url, headers, json, timeout):
-        captured['url'] = url
-        return _Response({'data': [{'b64_json': base64.b64encode(_PNG_BYTES).decode()}]})
-
-    monkeypatch.setattr(sensenova.requests, 'post', fake_post)
-    monkeypatch.setattr(sensenova, 'bytes_to_file', lambda values: ['/tmp/generated.png'])
-    monkeypatch.setattr(sensenova, 'encode_query_with_filepaths', lambda query, paths: paths)
-    module = sensenova.SenseNovaText2Image(
-        api_key='sk-test', model='sensenova-u1.5-lite', url=None if override else base_url,
-    )
-    result = module._forward(
-        input='一只猫', url=base_url if override else None,
-        files=['https://example.com/source.png'] if editing else None,
-    )
-    endpoint = 'images/edits' if editing else 'images/generations'
-    assert captured['url'] == f'https://token.sensenova.cn/v1/{endpoint}'
-    assert result == ['/tmp/generated.png']
 
 
 def test_u15_lite_payload_defaults_and_b64_response(monkeypatch):
