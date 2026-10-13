@@ -1,4 +1,5 @@
 import base64
+import pytest
 
 from lazyllm.module.llms.onlinemodule.supplier import sensenova
 
@@ -141,3 +142,45 @@ def test_u1_fast_keeps_generation_contract(monkeypatch):
         'n': 1,
         'watermark': True,
     }
+
+
+@pytest.mark.parametrize('base_url,root', [
+    ('https://token.sensenova.cn/v1/', 'https://token.sensenova.cn/v1'),
+    ('https://token.sensenova.cn/v1/chat/completions/', 'https://token.sensenova.cn/v1'),
+    ('https://proxy.example/prefix/v2', 'https://proxy.example/prefix/v2'),
+    ('https://proxy.example/prefix/v3/chat/completions', 'https://proxy.example/prefix/v3'),
+    ('https://proxy.example/custom/', 'https://proxy.example/custom'),
+])
+@pytest.mark.parametrize('override', [False, True])
+@pytest.mark.parametrize('editing', [False, True])
+def test_image_endpoint_preserves_configured_base(monkeypatch, base_url, root, override, editing):
+    captured = {}
+
+    def fake_post(url, headers, json, timeout):
+        captured['url'] = url
+        return _Response({'data': [{'b64_json': base64.b64encode(_PNG_BYTES).decode()}]})
+
+    monkeypatch.setattr(sensenova.requests, 'post', fake_post)
+    monkeypatch.setattr(sensenova, 'bytes_to_file', lambda values: ['/tmp/generated.png'])
+    monkeypatch.setattr(sensenova, 'encode_query_with_filepaths', lambda query, paths: paths)
+    module = sensenova.SenseNovaText2Image(
+        api_key='sk-test', model='sensenova-u1.5-lite', url=None if override else base_url,
+    )
+    result = module._forward(
+        input='cat', url=base_url if override else None,
+        files=['https://example.com/source.png'] if editing else None,
+    )
+    endpoint = 'images/edits' if editing else 'images/generations'
+    assert captured['url'] == f'{root}/{endpoint}'
+    assert result == ['/tmp/generated.png']
+
+
+@pytest.mark.parametrize('base_url,expected', [
+    ('https://token.sensenova.cn/v1/', 'https://token.sensenova.cn/v1/chat/completions'),
+    ('https://proxy.example/prefix/v2', 'https://proxy.example/prefix/v2/chat/completions'),
+    ('https://proxy.example/v3/chat/completions/', 'https://proxy.example/v3/chat/completions'),
+    ('https://proxy.example/v2?route=test', 'https://proxy.example/v2/chat/completions?route=test'),
+])
+def test_chat_endpoint_preserves_configured_base(base_url, expected):
+    module = sensenova.SenseNovaChat(api_key='sk-test', base_url=base_url)
+    assert module._chat_url == expected

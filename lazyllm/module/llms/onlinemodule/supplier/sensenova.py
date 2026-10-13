@@ -5,7 +5,7 @@ import time
 import os
 import requests
 from typing import Tuple, Dict, List, Union, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 import uuid
 
 import lazyllm
@@ -55,6 +55,17 @@ _SENSENOVA_ERROR_TYPE_MAP = {
 
 
 class _SenseNovaBase(object):
+
+    @staticmethod
+    def _get_endpoint_url(base_url: str, endpoint: str) -> str:
+        parsed = urlsplit(base_url)
+        path = parsed.path.rstrip('/')
+        for suffix in ('/chat/completions', '/images/generations', '/images/edits'):
+            if path.endswith(suffix):
+                path = path[:-len(suffix)]
+                break
+        return parsed._replace(path=f'{path}/{endpoint}').geturl()
+
 
     def _get_api_key(self, api_key: str, secret_key: str):
         if not api_key and not secret_key:
@@ -121,6 +132,9 @@ class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
         self._vlm_force_format_input_with_files = True
+
+    def _get_chat_url(self, url):
+        return self._get_endpoint_url(url, 'chat/completions')
 
     def _get_system_prompt(self):
         return 'You are an AI assistant, developed by SenseTime.'
@@ -383,8 +397,8 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
                 payload['images'] = self._prepare_edit_images(files)
             else:
                 payload['output_format'] = output_format
-        base_url = (url or self._base_url).rstrip('/')
-        resp = requests.post(f'{base_url}/{endpoint}',
+        request_url = self._get_endpoint_url(url or self._base_url, endpoint)
+        resp = requests.post(request_url,
                              headers=self._header, json=payload, timeout=180)
         resp.raise_for_status()
         image_bytes = []
