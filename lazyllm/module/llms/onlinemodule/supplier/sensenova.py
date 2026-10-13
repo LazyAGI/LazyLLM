@@ -383,8 +383,8 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
                 payload['images'] = self._prepare_edit_images(files)
             else:
                 payload['output_format'] = output_format
-        base_url = (url or self._base_url).rstrip('/')
-        resp = requests.post(f'{base_url}/{endpoint}',
+        # Image generation and editing are only available on Token Plan.
+        resp = requests.post(f'https://token.sensenova.cn/v1/{endpoint}',
                              headers=self._header, json=payload, timeout=180)
         resp.raise_for_status()
         image_bytes = []
