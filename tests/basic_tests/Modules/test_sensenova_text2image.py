@@ -1,4 +1,5 @@
 import base64
+import pytest
 
 from lazyllm.module.llms.onlinemodule.supplier import sensenova
 
@@ -24,7 +25,8 @@ def _module():
     )
 
 
-def test_u15_lite_payload_defaults_and_b64_response(monkeypatch):
+@pytest.mark.parametrize('model', ['sensenova-u1.5-lite', 'sensenova-u1.5-fast'])
+def test_u15_payload_defaults_and_b64_response(monkeypatch, model):
     captured = {}
 
     def fake_post(url, headers, json, timeout):
@@ -38,7 +40,7 @@ def test_u15_lite_payload_defaults_and_b64_response(monkeypatch):
 
     result = _module()._forward(
         input='一只猫',
-        model='sensenova-u1.5-lite',
+        model=model,
         stream_output=False,
         priority=0,
     )
@@ -46,7 +48,7 @@ def test_u15_lite_payload_defaults_and_b64_response(monkeypatch):
     assert result == ['/tmp/generated.png']
     assert captured['url'] == 'https://token.sensenova.cn/v1/images/generations'
     assert captured['payload'] == {
-        'model': 'sensenova-u1.5-lite',
+        'model': model,
         'prompt': '一只猫',
         'size': 'auto',
         'n': 1,
@@ -90,7 +92,8 @@ def test_u15_lite_maps_workflow_parameter_names(monkeypatch):
     assert captured['payload']['prompt_extend'] is False
 
 
-def test_u15_lite_uses_edits_endpoint_and_images_array(monkeypatch):
+@pytest.mark.parametrize('model', ['sensenova-u1.5-lite', 'sensenova-u1.5-fast'])
+def test_u15_uses_edits_endpoint_and_images_array(monkeypatch, model):
     captured = {}
 
     def fake_post(url, headers, json, timeout):
@@ -107,7 +110,7 @@ def test_u15_lite_uses_edits_endpoint_and_images_array(monkeypatch):
     module._forward(
         input='把背景改成雪山',
         files=['/tmp/source.png', 'https://example.com/reference.webp'],
-        model='sensenova-u1.5-lite',
+        model=model,
     )
 
     assert captured['url'] == 'https://token.sensenova.cn/v1/images/edits'
@@ -141,3 +144,44 @@ def test_u1_fast_keeps_generation_contract(monkeypatch):
         'n': 1,
         'watermark': True,
     }
+
+
+@pytest.mark.parametrize('base_url,root', [
+    ('https://token.sensenova.cn/v1/', 'https://token.sensenova.cn/v1'),
+    ('https://proxy.example/prefix/v2', 'https://proxy.example/prefix/v2'),
+    ('https://proxy.example/prefix/v3/', 'https://proxy.example/prefix/v3'),
+    ('https://proxy.example/custom/', 'https://proxy.example/custom'),
+])
+@pytest.mark.parametrize('override', [False, True])
+@pytest.mark.parametrize('editing', [False, True])
+def test_image_endpoint_preserves_configured_base(monkeypatch, base_url, root, override, editing):
+    captured = {}
+
+    def fake_post(url, headers, json, timeout):
+        captured['url'] = url
+        return _Response({'data': [{'b64_json': base64.b64encode(_PNG_BYTES).decode()}]})
+
+    monkeypatch.setattr(sensenova.requests, 'post', fake_post)
+    monkeypatch.setattr(sensenova, 'bytes_to_file', lambda values: ['/tmp/generated.png'])
+    monkeypatch.setattr(sensenova, 'encode_query_with_filepaths', lambda query, paths: paths)
+    module = sensenova.SenseNovaText2Image(
+        api_key='sk-test', model='sensenova-u1.5-lite', url=None if override else base_url,
+    )
+    result = module._forward(
+        input='cat', url=base_url if override else None,
+        files=['https://example.com/source.png'] if editing else None,
+    )
+    endpoint = 'images/edits' if editing else 'images/generations'
+    assert captured['url'] == f'{root}/{endpoint}'
+    assert result == ['/tmp/generated.png']
+
+
+@pytest.mark.parametrize('base_url,expected', [
+    ('https://token.sensenova.cn/v1/', 'https://token.sensenova.cn/v1/chat/completions'),
+    ('https://proxy.example/prefix/v2', 'https://proxy.example/prefix/v2/chat/completions'),
+    ('https://proxy.example/v3/', 'https://proxy.example/v3/chat/completions'),
+    ('https://proxy.example/v2?route=test', 'https://proxy.example/v2/chat/completions?route=test'),
+])
+def test_chat_endpoint_preserves_configured_base(base_url, expected):
+    module = sensenova.SenseNovaChat(api_key='sk-test', base_url=base_url)
+    assert module._chat_url == expected

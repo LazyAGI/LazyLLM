@@ -5,7 +5,7 @@ import time
 import os
 import requests
 from typing import Tuple, Dict, List, Union, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 import uuid
 
 import lazyllm
@@ -55,6 +55,12 @@ _SENSENOVA_ERROR_TYPE_MAP = {
 
 
 class _SenseNovaBase(object):
+
+    @staticmethod
+    def _get_endpoint_url(base_url: str, endpoint: str) -> str:
+        parsed = urlsplit(base_url)
+        path = parsed.path.rstrip('/')
+        return parsed._replace(path=f'{path}/{endpoint}').geturl()
 
     def _get_api_key(self, api_key: str, secret_key: str):
         if not api_key and not secret_key:
@@ -121,6 +127,9 @@ class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
         self._vlm_force_format_input_with_files = True
+
+    def _get_chat_url(self, url):
+        return self._get_endpoint_url(url, 'chat/completions')
 
     def _get_system_prompt(self):
         return 'You are an AI assistant, developed by SenseTime.'
@@ -319,8 +328,9 @@ class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):
 
 
 class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
-    MODEL_NAME = 'sensenova-u1-fast'
+    MODEL_NAME = 'sensenova-u1.5-fast'
     IMAGE_EDITING_MODEL_NAME = 'sensenova-u1.5-lite'
+    IMAGE_EDITING_MODEL_NAMES = ('sensenova-u1.5-lite', 'sensenova-u1.5-fast')
 
     def _materialize_lazy_api_key(self) -> str:
         return self._get_api_key(None, None)
@@ -366,8 +376,8 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
                  watermark: bool = True, prompt_extend: bool = True,
                  url: str = None, model: str = None, **kwargs):
         model = model or self._model_name
-        is_u15_lite = model.lower() == self.IMAGE_EDITING_MODEL_NAME
-        size = kwargs.get('image_size') or size or ('auto' if is_u15_lite else '2752x1536')
+        is_u15 = model.lower() in self.IMAGE_EDITING_MODEL_NAMES
+        size = kwargs.get('image_size') or size or ('auto' if is_u15 else '2752x1536')
         payload = {
             'model': model,
             'prompt': input,
@@ -376,15 +386,15 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
             'watermark': watermark,
         }
         endpoint = 'images/edits' if files else 'images/generations'
-        if is_u15_lite:
+        if is_u15:
             payload['response_format'] = response_format
             payload['prompt_extend'] = prompt_extend
             if files:
                 payload['images'] = self._prepare_edit_images(files)
             else:
                 payload['output_format'] = output_format
-        base_url = (url or self._base_url).rstrip('/')
-        resp = requests.post(f'{base_url}/{endpoint}',
+        request_url = self._get_endpoint_url(url or self._base_url, endpoint)
+        resp = requests.post(request_url,
                              headers=self._header, json=payload, timeout=180)
         resp.raise_for_status()
         image_bytes = []

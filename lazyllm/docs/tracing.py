@@ -313,6 +313,153 @@ Args:
     handle: The ``LazySpan`` from ``start_span``, or ``None`` (no-op).
 ''')
 
+# ============= TracingRuntime
+
+add_chinese_doc_runtime = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.collect.runtime)
+add_english_doc_runtime = functools.partial(utils.add_english_doc, module=lazyllm.tracing.collect.runtime)
+
+add_chinese_doc_runtime('TracingRuntime', '''\
+管理 OpenTelemetry provider、tracer 和 backend 的采集运行时。
+
+构造时仅初始化内部状态；在检查可用性或创建 span 时按当前 tracing 配置延迟初始化资源。
+''')
+
+add_english_doc_runtime('TracingRuntime', '''\
+Collection runtime managing the OpenTelemetry provider, tracer, and backend.
+
+Construction only initializes internal state. Resources are initialized lazily according to
+the current tracing configuration when checking availability or starting a span.
+''')
+
+add_chinese_doc_runtime('TracingRuntime.available', '''\
+尝试初始化采集运行时并检查 tracer 是否可用。
+
+Returns:
+    bool: tracing 已开启且运行时可用时为 ``True``，否则为 ``False``。
+''')
+
+add_english_doc_runtime('TracingRuntime.available', '''\
+Attempt to initialize the collection runtime and check whether its tracer is available.
+
+Returns:
+    bool: ``True`` when tracing is enabled and the runtime is available, otherwise ``False``.
+''')
+
+add_chinese_doc_runtime('TracingRuntime.start_span', '''\
+创建并进入一个 span，关联当前 trace 上下文并记录目标对象信息。
+
+Args:
+    span_kind (str): ``flow``、``module`` 或 ``callable``。
+    target: 被追踪的目标对象。
+    args (tuple): 目标调用的位置参数。
+    kwargs (dict): 目标调用的关键字参数。
+
+Returns:
+    Optional[LazySpan]: span 句柄；tracing 关闭、未采样或运行时不可用时返回 ``None``。
+''')
+
+add_english_doc_runtime('TracingRuntime.start_span', '''\
+Create and enter a span, attach the current trace context, and record target information.
+
+Args:
+    span_kind (str): ``flow``, ``module``, or ``callable``.
+    target: The object being traced.
+    args (tuple): Positional arguments for the target call.
+    kwargs (dict): Keyword arguments for the target call.
+
+Returns:
+    Optional[LazySpan]: A span handle, or ``None`` if tracing is disabled, not sampled,
+        or the runtime is unavailable.
+''')
+
+add_chinese_doc_runtime('TracingRuntime.set_output', '''\
+将 span 标记为成功，并在开启载荷采集时保存输出。
+
+Args:
+    span (Optional[LazySpan]): span 句柄；为 ``None`` 时不执行操作。
+    output: 目标调用的返回值。
+''')
+
+add_english_doc_runtime('TracingRuntime.set_output', '''\
+Mark a span as successful and save its output when payload capture is enabled.
+
+Args:
+    span (Optional[LazySpan]): The span handle; ``None`` is a no-op.
+    output: The return value of the target call.
+''')
+
+add_chinese_doc_runtime('TracingRuntime.set_usage', '''\
+设置 span 的用量信息，供结束 span 时导出。
+
+Args:
+    span (Optional[LazySpan]): span 句柄；为 ``None`` 时不执行操作。
+    usage (dict): 用量字典，例如 ``prompt_tokens`` 和 ``completion_tokens``。
+''')
+
+add_english_doc_runtime('TracingRuntime.set_usage', '''\
+Set span usage information for export when the span finishes.
+
+Args:
+    span (Optional[LazySpan]): The span handle; ``None`` is a no-op.
+    usage (dict): Usage values such as ``prompt_tokens`` and ``completion_tokens``.
+''')
+
+add_chinese_doc_runtime('TracingRuntime.set_attributes', '''\
+将额外属性合并到 span 的输出属性中。
+
+Args:
+    span (Optional[LazySpan]): span 句柄；为 ``None`` 时不执行操作。
+    attrs (dict): 要合并的属性；为空时不执行操作。
+''')
+
+add_english_doc_runtime('TracingRuntime.set_attributes', '''\
+Merge additional attributes into the span's output attributes.
+
+Args:
+    span (Optional[LazySpan]): The span handle; ``None`` is a no-op.
+    attrs (dict): Attributes to merge; an empty mapping is a no-op.
+''')
+
+add_chinese_doc_runtime('TracingRuntime.set_error', '''\
+将 span 标记为失败，并保存异常以供结束时上报。
+
+Args:
+    span (Optional[LazySpan]): span 句柄；为 ``None`` 时不执行操作。
+    exc (BaseException): 目标调用抛出的异常。
+''')
+
+add_english_doc_runtime('TracingRuntime.set_error', '''\
+Mark a span as failed and store its exception for reporting when the span finishes.
+
+Args:
+    span (Optional[LazySpan]): The span handle; ``None`` is a no-op.
+    exc (BaseException): The exception raised by the target call.
+''')
+
+add_chinese_doc_runtime('TracingRuntime.finish_span', '''\
+写入通用及 backend 属性与异常信息，退出并结束底层 span，更新当前 trace 的生命周期。
+
+Args:
+    span (Optional[LazySpan]): 要结束的 span；为 ``None`` 时不执行操作。
+''')
+
+add_english_doc_runtime('TracingRuntime.finish_span', '''\
+Write generic and backend attributes and error details, exit and end the underlying span,
+and update the current trace lifecycle.
+
+Args:
+    span (Optional[LazySpan]): The span to finish; ``None`` is a no-op.
+''')
+
+add_chinese_doc_runtime('TracingRuntime.shutdown', '''\
+刷新待导出的 span 并关闭 provider。provider 尚未初始化时不执行操作，关闭期间的异常会被忽略。
+''')
+
+add_english_doc_runtime('TracingRuntime.shutdown', '''\
+Flush pending spans and shut down the provider. Do nothing if the provider has not been
+initialized, and suppress exceptions raised during shutdown.
+''')
+
 # ============= LazyTraceContext
 
 add_chinese_doc_ctx = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.collect.context)

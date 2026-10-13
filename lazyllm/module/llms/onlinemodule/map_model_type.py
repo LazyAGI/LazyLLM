@@ -82,6 +82,8 @@ MODEL_MAPPING = {
     'nova-embedding-stable': 'embed',
     'sensenova-u1-fast': 'sd',
     'sensenova-u1.5-lite': 'sd',
+    'sensenova-u1.5-fast': 'sd',
+    'sensenova-6.8-flash-lite': 'vlm',
 
     # ===== GLM =====
     'chatglm3-6b': 'llm',
