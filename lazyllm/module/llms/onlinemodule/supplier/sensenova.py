@@ -328,8 +328,9 @@ class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):
 
 
 class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
-    MODEL_NAME = 'sensenova-u1-fast'
+    MODEL_NAME = 'sensenova-u1.5-fast'
     IMAGE_EDITING_MODEL_NAME = 'sensenova-u1.5-lite'
+    IMAGE_EDITING_MODEL_NAMES = ('sensenova-u1.5-lite', 'sensenova-u1.5-fast')
 
     def _materialize_lazy_api_key(self) -> str:
         return self._get_api_key(None, None)
@@ -375,8 +376,8 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
                  watermark: bool = True, prompt_extend: bool = True,
                  url: str = None, model: str = None, **kwargs):
         model = model or self._model_name
-        is_u15_lite = model.lower() == self.IMAGE_EDITING_MODEL_NAME
-        size = kwargs.get('image_size') or size or ('auto' if is_u15_lite else '2752x1536')
+        is_u15 = model.lower() in self.IMAGE_EDITING_MODEL_NAMES
+        size = kwargs.get('image_size') or size or ('auto' if is_u15 else '2752x1536')
         payload = {
             'model': model,
             'prompt': input,
@@ -385,7 +386,7 @@ class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
             'watermark': watermark,
         }
         endpoint = 'images/edits' if files else 'images/generations'
-        if is_u15_lite:
+        if is_u15:
             payload['response_format'] = response_format
             payload['prompt_extend'] = prompt_extend
             if files:
