@@ -82,7 +82,7 @@ def _image_library(tmp_path, need_id='instr-image'):
     )
 
 
-def test_revision_candidates_include_read_only_table_structure():
+def test_revision_candidates_preserve_parent_and_heading_structure():
     row = WriterBlock(
         node_id='row', type='table_row', editable=False, children=[
             WriterBlock(node_id='cell-a', type='table_cell', content='A1'),
@@ -92,12 +92,16 @@ def test_revision_candidates_include_read_only_table_structure():
     table = WriterBlock(
         node_id='table', type='table', children=[row], editable=False,
     )
+    heading = WriterBlock(node_id='heading', type='heading', numbering={'level': 2}, children=[table])
     candidates = WriterRevisionTools()._revision_candidates(WriterDocument(
-        document_id='doc-1', blocks=[table],
+        document_id='doc-1', blocks=[heading],
     ))
 
     assert [(item['type'], item['content']) for item in candidates] == [
-        ('table', ''), ('table_row', ''), ('table_cell', 'A1'), ('table_cell', 'B1'),
+        ('heading', ''), ('table', ''), ('table_row', ''), ('table_cell', 'A1'), ('table_cell', 'B1'),
+    ]
+    assert [(item['parent_node_id'], item['heading_level']) for item in candidates] == [
+        (None, 2), ('heading', None), ('table', None), ('row', None), ('row', None),
     ]
 
 
@@ -500,7 +504,10 @@ def test_content_ref_key_preserves_non_ir_locator_identity():
         ('document_root',)
 
 
-def test_normalize_create_plan_merges_content_refs_with_same_node_id():
+@pytest.mark.parametrize('first_scope,second_scope,count', [
+    (None, None, 1), ('section', 'section', 1), ('section', 'block', 2),
+])
+def test_normalize_create_plan_merges_only_same_node_and_scope(first_scope, second_scope, count):
     content_ref = ContentRef(node_id='anchor')
     enriched_ref = ContentRef(node_id='anchor', heading_path=['第一章'])
     plan = ModifyPlan(
@@ -510,12 +517,14 @@ def test_normalize_create_plan_merges_content_refs_with_same_node_id():
                 content_ref=content_ref,
                 modify_type='create',
                 position='after',
+                anchor_scope=first_scope,
                 instruction='新增第一段',
             ),
             ModifyInstruction(
                 content_ref=enriched_ref,
                 modify_type='create',
                 position='after',
+                anchor_scope=second_scope,
                 instruction='新增第二段',
             ),
         ],
@@ -528,8 +537,8 @@ def test_normalize_create_plan_merges_content_refs_with_same_node_id():
         {WriterRevisionTools._content_ref_key(content_ref)},
     )
 
-    assert len(normalized.instructions) == 1
-    assert normalized.instructions[0].instruction == '新增第一段\n新增第二段'
+    assert len(normalized.instructions) == count
+    assert '\n'.join(item.instruction for item in normalized.instructions) == '新增第一段\n新增第二段'
 
 
 def test_normalize_create_plan_requires_position():
@@ -750,16 +759,21 @@ def test_generate_markdown_replace_set_uses_modify_plan_image_need():
     assert generated.replacements[0].new_string.endswith('media-placeholder://IMAGE-1)')
 
 
-def test_markdown_replace_rejects_partial_image_old_string():
-    markdown = '# 测试文档\n\n## 第一章\n\n![原图](media-asset://asset-1|/tmp/image.png)\n'
+@pytest.mark.parametrize('suffix', ['', ' 附加文字'])
+def test_markdown_replace_requires_complete_image_source(suffix):
+    image = '![原图](media-asset://asset-1|/tmp/image_(1).png)'
+    markdown = '# 测试文档\n\n## 第一章\n\n' + image + '\n'
     replace_set = StringReplaceSet(replacements=[StringReplace(
         content_ref=ContentRef(heading_path=['测试文档', '第一章']),
-        old_string='![原图](media-asset://asset-1|/tmp/image.png) 附加文字',
+        old_string=image + suffix,
         new_string='',
     )])
 
-    with pytest.raises(ValueError, match='complete image line'):
+    if not suffix:
         WriterRevisionTools()._validate_string_replace_images(replace_set, markdown)
+    else:
+        with pytest.raises(ValueError, match='complete image line'):
+            WriterRevisionTools()._validate_string_replace_images(replace_set, markdown)
 
 
 @pytest.mark.parametrize('bad_image', [
