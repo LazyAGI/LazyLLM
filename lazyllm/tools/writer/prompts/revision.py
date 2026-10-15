@@ -7,42 +7,60 @@ with the exact visual_instruction.need_id from the plan. Include every required 
 Do not copy invented paths from the plan's prose. Image acquisition is already handled separately.
 '''
 
-LOCATE_REVISION_TARGET_PROMPT = '''You are a revision target locator. Identify the existing document content that participates in the requested revision. The document may be represented as Writer IR or Markdown.
+LOCATE_REVISION_TARGET_PROMPT = '''You are a Writer IR revision target locator. Identify the existing document nodes that participate in the requested revision.
 
 Output semantics:
 - task.query is the revision request.
-- target_title indicates whether the document title participates in the revision.
+- target_title refers only to the top-level document.title shown separately below.
+  A section heading is a block, not document.title: select its node_id and set target_title=false
+  when only that heading changes. Set target_title=true only when the user requests changing
+  the overall document title. When both change, set it true and also select the heading node_id.
+  For a document-title-only revision, return target_title=true and targets=[]. Preserving
+  section headings or body content does not make them targets; do not select a title proxy block.
 - Updates and deletions target the blocks being changed.
+- For changes to words or sentences within a paragraph or table cell, select that containing
+  block, not its section heading or neighboring blocks.
 - Insertions target the existing section or block being extended.
+- For a new section, select the user's existing insertion anchor. Preserve following
+  content and its existing parent; do not select it for rewriting or invent heading-level
+  changes unless the user requests those changes.
 - Reordering targets every existing block whose relative order participates in the change.
+- Candidates are in document order. parent_node_id gives their current containment and
+  heading_level gives the known heading level. A null parent means a root block; a null
+  level means no known heading level. Do not infer heading levels from flat list order.
 - targets contains the relevant content_ref values copied exactly from the document candidates.
 - Each target contains content_ref and a brief reason.
 - For Writer IR, each content_ref must be exactly {{"node_id": "<string copied from a candidate>"}}.
 - node_id must be a string. Never put an object inside node_id, and do not add
   heading_path, document_root, occurrence, or other fields when node_id is present.
-- For Markdown, copy heading_path and occurrence exactly from one candidate. Never add
-  node_id or placeholder_id to a Markdown heading reference.
-- Plain text without headings uses content_ref.document_root=true.
 - summary describes the revision scope in one sentence.
 - A body revision has one or more targets.
 
 Writing task:
 {task_json}
 
+Current top-level document.title (not a section heading):
+{document_title_json}
+
 Document candidates in source order:
 {document_content}
 '''
 
 
-GENERATE_MODIFY_PLAN_PROMPT = '''You are a revision planner. Translate the requested end state into a ModifyPlan over the located source blocks.
+GENERATE_MODIFY_PLAN_PROMPT = '''You are a Writer IR revision planner. Translate the requested end state into a ModifyPlan over the located source blocks.
 
 Plan semantics:
-- title_instruction describes the requested title result when target_title is true.
+- title_instruction changes only document.title when target_title is true.
+  A section heading rename uses update on its node_id, not title_instruction. If the user
+  requests both titles, express the document title and heading update separately.
 - Each ModifyInstruction represents one content or structural operation:
-  - create inserts a contiguous sequence of new sibling blocks;
+  - create inserts a contiguous sequence of new blocks in document order;
   - update changes the visible fields of an existing block;
   - delete removes an existing block;
   - move relocates an existing block.
+- Inserting, deleting, or replacing words or sentences within a paragraph or table cell
+  uses update on that containing block, preserving its other text, formatting and references.
+  create, delete and move are structural operations on complete IR blocks.
 - Choose operations that match the requested structural outcome, not merely an
   approximately similar textual result:
   - If task.query explicitly asks to delete or remove N paragraphs, sections, or
@@ -70,21 +88,40 @@ Plan semantics:
     create, update, delete, and move.
 - A contiguous insertion uses one create instruction so its blocks share one destination
   and retain their final document order.
-- content_ref identifies the located content involved in the operation.
-- Every content_ref and destination_ref must copy exactly one reference from locate_result
-  or the visible document. Locator kinds are mutually exclusive; never combine node_id,
-  heading_path, placeholder_id, or document_root in one reference. Describe a fragment
-  inside a Markdown section in instruction while retaining the section heading_path.
-- Create must provide position; content_ref and position identify the insertion location.
+- Every content_ref and destination_ref must be exactly {{"node_id": "<existing node_id>"}}.
+  Never use heading_path, placeholder_id, document_root, instruction_id, or an invented node ID.
+- For update, delete and move, copy content_ref from locate_result.targets.
+  The located source blocks below pair these IDs with their current text, spans and references.
+  Plan edits against those blocks; use the full document as surrounding context and for
+  existing insertion anchors or move destinations, not to choose a different edit source.
+- For create, content_ref is the existing insertion anchor in the current document;
+  position is before or after that anchor. Do not put the anchor in destination_ref.
+- Every IR create must explicitly set anchor_scope. Use "section" when the user means
+  before or after an entire named section, including its body and subsections; keep that
+  section's heading as content_ref. Use "block" for a specific paragraph, image, table,
+  or an explicit insertion immediately after a heading line and before its body.
+  Infer this from the full request: inserting a new section after a named section means
+  "section", while adding an introduction directly under its heading means "block".
+  The program ends a section before the next heading of the same or higher level,
+  or at the end of its containing block list. Do not move existing content to make room.
+  Leave anchor_scope null for update, delete and move; it controls create placement only.
+- destination_ref is used only by move; leave it null for all other operations.
+- For a new section, keep the user's exact insertion anchor, including a paragraph inside
+  an existing subsection, and state the requested heading level in instruction. The new
+  heading level is independent of anchor_scope; preserve the selected insertion boundary.
+  Generate only new content. Do not plan moves or rewrites of following content merely to
+  implement the insertion; the program preserves its existing parent and relative order.
+  Preserve existing heading levels unless the user explicitly requests changing them.
+  For insertion at document end, use an existing final block or final section with after;
+  Writer IR references must use a real node_id, never document_root.
 - For move, content_ref identifies the content being moved, while destination_ref and
   position identify its destination. Move must provide both destination_ref and position.
 - instruction describes the complete visible result of the operation.
 - Preserve existing cross-reference links. Do not plan to remove or rewrite an
   internal reference unless the user explicitly asks to change that reference.
 - Preserve every explicit structural constraint from task.query in instruction itself,
-  including paragraph count, list-item count, heading level, and ordering. Render distinct
-  Markdown paragraphs with blank lines and render lists/headings with their Markdown syntax;
-  do not record required structure only in meta.
+  including paragraph count, list-item count, heading level, and ordering. Express structure
+  using IR block types and heading numbering.level; do not record it only in meta.
 - When task.query requires inserted or updated content to reference an existing section or
   image, keep that requirement in instruction; the content writer emits an internal_ref span
   for the existing target.
@@ -97,7 +134,10 @@ Plan semantics:
 Writing task:
 {task_json}
 
-Document, including possible move destinations:
+Located source blocks from the current document:
+{located_content_json}
+
+Document, including existing insertion anchors and move destinations:
 {document_content}
 
 Locate result:
@@ -112,7 +152,10 @@ LOCATE_REVISION_TARGET_MARKDOWN_PROMPT = '''You are a Markdown revision target l
 
 Output semantics:
 - task.query is the revision request.
-- target_title indicates whether the document title participates in the revision.
+- Set target_title=true only when the user requests changing the overall document title.
+  Preserving or mentioning a title does not make it a title target. Editing section body text,
+  deleting text before the first heading, or changing a section heading uses targets and
+  target_title=false. If the overall title and body both change, set it true and select the body targets.
 - Updates and deletions target the blocks being changed.
 - Insertions target the existing section or block being extended.
 - Reordering targets every existing block whose relative order participates in the change.
@@ -157,6 +200,7 @@ GENERATE_MODIFY_PLAN_MARKDOWN_PROMPT = '''You are a Markdown revision planner. T
 
 Plan semantics:
 - title_instruction describes the requested title result when target_title is true.
+  It changes only the overall document title; preserving a title requires no title_instruction.
 - Each MarkdownModifyInstruction represents one content or structural operation:
   - create inserts a contiguous sequence of new sibling blocks;
   - update changes the visible fields of an existing block;
@@ -166,10 +210,15 @@ Plan semantics:
   containing section used as content_ref. If the request only removes specified existing
   text and preserves the rest verbatim, use delete. Determine target_scope from the complete
   unit requested below. Do not express a pure deletion as update or expand its requested extent.
+- When complete prose paragraphs are replaced in place, use update + paragraph, even if the request
+  says to delete the old wording and replace it. Do not split an in-place replacement into delete + create.
+  If retained images or tables separate the paragraphs to rewrite, use a separate update for each
+  original paragraph, with its own locator_text. Keep retained objects outside the replacement ranges;
+  do not delete/recreate them or use them as insertion anchors for this in-place rewrite.
 - Choose operations that match the requested structural outcome, not merely an
   approximately similar textual result:
-  - If task.query explicitly asks to delete or remove N paragraphs, sections, or
-    blocks, produce exactly N delete instructions targeting those complete existing
+  - If task.query asks only to delete or remove N paragraphs, sections, or blocks without
+    replacing their content, produce exactly N delete instructions targeting those complete existing
     blocks. Do not simulate structural deletion by shortening them with update.
   - If task.query asks to merge or consolidate blocks, update the retained block with
     the essential combined content and delete each absorbed block.
@@ -189,8 +238,12 @@ Plan semantics:
   - visual_instruction.preferred_strategy may be null or "image_generation". For
     "image" and "diagram", it may also be "web_search".
   - A delete instruction targeting an existing image must not include visual_instruction.
-  - Existing image blocks must not be updated or moved. Text blocks continue to support
-    create, update, delete, and move.
+  - Editing an existing Markdown image caption or URL is update with target_scope=fragment;
+    preserve the rest of that image's syntax and all other images. Whole-image replacement
+    or relocation is not expressed as an image-scope update or move.
+  - Identify an existing image using its actual source position and the user's constraints.
+    For "the image after the table", find that table and the following image in document order
+    before copying the image's caption. Caption similarity does not override before/after or ordinal constraints.
 - A contiguous insertion uses one create instruction so its blocks share one destination
   and retain their final document order.
 - content_ref identifies the located content involved in the operation.
@@ -215,10 +268,16 @@ Plan semantics:
     If the user describes the paragraph by meaning without quoting it, first identify the
     paragraph in the supplied document, then copy a short identifying excerpt into locator_text.
     The semantic description itself is not a verbatim locator_text.
-  - fragment: part of a prose paragraph, such as a sentence or phrase, or an image or other
+  - image: use only for deleting one complete existing image. Keep the containing section's
+    content_ref and set locator_text to its unique verbatim caption, ![caption], or complete
+    image syntax if captions repeat. The program resolves the full image source range;
+    a caption locator is not the deletion range. Never use image scope to delete or edit only
+    a caption or URL; those are fragment operations and must preserve the image.
+  - fragment: part of a prose paragraph, such as a sentence or phrase, or another
     non-prose fragment. Describe the exact target in instruction, retain the containing section's
-    content_ref. For move, locator_text must copy the complete fragment verbatim from the raw
-    Markdown, including punctuation and any enclosing inline markup. For other fragment operations,
+    content_ref. For create and move, locator_text must copy the complete anchor/source fragment
+    verbatim from the raw Markdown, including punctuation and any enclosing inline markup.
+    For delete, locator_text may identify the exact text to remove. For other fragment operations,
     set locator_text=null. A complete paragraph is not a fragment merely because
     it occupies only part of a section or the user did not quote its opening words.
   Set target_scope explicitly. Before returning, check that it agrees with the unit described
@@ -230,7 +289,15 @@ Plan semantics:
   The presence of delete and heading_path alone does not imply section scope.
 - A section delete already removes its contained paragraphs, images, and subsections.
   Do not add separate delete instructions for content already covered by that section delete.
-- Create must provide position; content_ref and position identify the insertion location.
+- Create must provide position. content_ref selects the containing section; target_scope and
+  locator_text select the existing insertion anchor. before/after refers to that anchor's boundaries.
+  Choose target_scope from the existing anchor, not the type of newly inserted content.
+  For insertion before/after a complete table, image, or fenced code block, use fragment and
+  copy that object's complete raw Markdown into locator_text; never label these anchors paragraph.
+  This also applies when inserting a new paragraph or section heading.
+  "Before the first paragraph" uses paragraph + before with that paragraph's locator_text,
+  keeping the section heading before both paragraphs. "Before the whole section" uses section + before.
+  Inserting inside a paragraph before/after a sentence uses fragment and that complete sentence as locator_text.
 - For move, content_ref identifies the content being moved, while destination_ref and
   position identify its destination. Move must provide both destination_ref and position.
   Set destination_scope to section, paragraph, or fragment independently of target_scope.
@@ -239,7 +306,13 @@ Plan semantics:
   before/after refers to the start/end of the entire destination unit, including descendants for
   a section. Source and destination may share a section reference when moving distinct paragraphs
   or fragments within it. Copy complete inline markup; never cut inside links, emphasis, or code.
-- instruction describes the complete visible result of the operation.
+- For create, instruction describes only the new content to insert; put the existing anchor
+  in locator_text. Describe preserved neighbors as constraints without quoting them as content to write.
+  Do not include the anchor or existing following sentences in the requested insertion unless
+  the user explicitly requests inserting another copy of them.
+- For update, instruction describes the requested replacement or local change. When task.query
+  supplies literal replacement text, copy it exactly into instruction, including punctuation,
+  Markdown and citation markers; do not summarize or rephrase it or move its punctuation outside the quote.
 - For a pure deletion, instruction specifies the exact target and boundaries and requires
   all other content to remain unchanged. Describe preservation constraints briefly instead of
   copying retained sentences, paragraphs, or sections into instruction. For a complete paragraph,
@@ -312,6 +385,7 @@ Return a MarkdownPlanCompletion, not a replacement plan or document edits.
   it is missing. For paragraph, copy a short unique verbatim excerpt; for fragment, copy the complete
   fragment verbatim, including inline markup. For section, no locator text is required.
 - Missing locator_text follows the same paragraph/fragment rules for the source target_scope.
+  For image scope, copy the target image's unique caption or complete image syntax if captions repeat.
 - Use Markdown heading_path/occurrence or document_root references, never node_id or placeholder_id.
 - Return only the small JSON completion. Do not output old_string/new_string or copy whole sections.
 
@@ -329,7 +403,22 @@ Markdown document (reference data):
 '''
 
 
-GENERATE_STRING_REPLACE_SET_PROMPT = '''You are a Markdown revision writer. Convert the ModifyPlan into a StringReplaceSet that applies the requested revision directly to the supplied Markdown.
+_MARKDOWN_UPDATE_TEXT_RULES = '''Update text rules:
+- When an instruction explicitly replaces an entire paragraph or other target with supplied
+  literal text, use that text verbatim. Do not retain the old target's prefix, suffix or facts,
+  and do not paraphrase or expand the supplied text. This takes precedence over preserving
+  old wording inside that replacement target.
+- For a partial update, change only the requested part and preserve the rest of the target.
+  Preserve surrounding content used only to locate the target, and all unaffected Markdown.
+- Preserve content outside the replacement range by leaving it out of new_string. For example,
+  when replacing a paragraph while keeping its section title, return only the replacement
+  paragraph; do not copy the title into it. A heading belongs in new_string only when it is
+  part of the actual old_string being replaced or the instruction explicitly adds a heading.
+'''
+
+
+GENERATE_STRING_REPLACE_SET_PROMPT = _MARKDOWN_UPDATE_TEXT_RULES + '''
+You are a Markdown revision writer. Convert the ModifyPlan into a StringReplaceSet that applies the requested revision directly to the supplied Markdown.
 
 Output semantics:
 - Each replacement contains an exact old_string copied from the Markdown and its complete new_string.
@@ -363,8 +452,9 @@ Output semantics:
   replacements for the affected content; do not rewrite the entire document to implement a move.
 - Every ModifyPlan instruction must be implemented by one or more replacements; do not omit an instruction.
 - Respect target_scope even when deterministic location was unavailable: section replaces the
-  complete section, paragraph replaces the complete paragraph, and fragment changes only the
-  requested fragment. locator_text identifies a paragraph; it is not itself the deletion range.
+  complete section, paragraph replaces the complete paragraph, image deletes one complete image,
+  and fragment changes only the requested fragment. locator_text identifies a paragraph or image;
+  it is not itself the deletion range.
 - A section starts with its owned anchor(s), if any, followed by its heading, and ends before
   the next heading of the same or higher level and that heading's owned anchors. Include all
   descendant subsections. Heading-like text inside fenced code is not a section boundary.
@@ -405,13 +495,25 @@ Writing context:
 '''
 
 
-GENERATE_MARKDOWN_REVISION_BATCH_PROMPT = '''You are a Markdown revision writer. Complete all operations together against the original document and return one MarkdownRevisionBatch.
+GENERATE_MARKDOWN_REVISION_BATCH_PROMPT = _MARKDOWN_UPDATE_TEXT_RULES + '''
+You are a Markdown revision writer. Complete all operations together against the original document and return one MarkdownRevisionBatch.
 
 Output semantics:
 - Operation keys are supplied by the program and are separate from instruction_id. Copy them exactly.
 - For an update with located_old_string, return contents[key] containing only new_string.
   Rewrite that complete range, including required headings and structure, without copying old_string.
-- A delete with located_old_string is performed by the program. Omit it from both output mappings.
+  new_string replaces only located_old_string. Unaffected text, images, tables and references
+  outside that range are retained by the program; do not copy them into new_string merely to preserve them.
+  Content already inside located_old_string must still be retained, changed or removed as instructed.
+  Use surrounding content as context; include copies of it only when explicitly requested by this update.
+- For a create with located_old_string, return insertions[key] containing only insert_text.
+  located_old_string is read-only location context, not text to return. The program retains it
+  and inserts insert_text before/after that complete anchor. Do not return the revised anchor.
+  For a fragment anchor, supply inline content unless the instruction explicitly requests a new block.
+  Include any needed inline spaces or line breaks in insert_text; the program inserts it verbatim.
+  Copy user-specified literal insertion text exactly; do not expand or paraphrase it.
+  Text matching the anchor belongs in insert_text only if explicitly requested as new content.
+- A delete with located_old_string is performed by the program. Omit it from all output mappings.
 - For every operation without located_old_string, return a non-empty replacements[key] list
   of StringReplace objects implementing that operation. Each old_string must be copied exactly
   from the original document. Do not include changes assigned to another operation.
@@ -439,6 +541,7 @@ Output semantics:
 - Respect target_scope: section includes its owned anchors, heading, body, images and descendants,
   ending before the next peer or ancestor heading and its anchors. Fenced code is not a heading.
   paragraph means the complete paragraph identified by locator_text, not only that excerpt.
+  image means deleting one complete image identified by its caption or full source syntax.
   fragment changes only the requested sentence, phrase, image or other partial content.
 - Preserve unaffected Markdown, facts, anchors, links, image paths, whitespace, and non-standard
   extensions including double-bracket links/embeds, Callouts, comments, block IDs and query fences.
@@ -465,11 +568,37 @@ Writing context:
 '''
 
 
-GENERATE_MARKDOWN_REVISION_CONTENT_PROMPT = '''Rewrite the complete, program-located Markdown range below.
+GENERATE_MARKDOWN_INSERTION_CONTENT_PROMPT = '''Write only the new content requested by this create instruction.
 
-Return only new_string in the structured response. The program already has the exact old_string;
-do not copy the old Markdown into a separate response field. Implement the instruction over this
-entire range and retain unaffected content, formatting, anchors, image paths, and internal links.
+Return insert_text in the structured response. The existing anchor below is read-only location
+context. The program retains it and inserts insert_text at the specified before/after position.
+Do not return the revised anchor or include existing text just to show where the insertion goes.
+Copy user-specified literal insertion text exactly; do not expand or paraphrase it. Text matching
+the anchor belongs in insert_text only if the instruction explicitly requests it as new content.
+For a paragraph/section anchor the program supplies block separators. For a fragment anchor,
+return inline content unless a new block is explicitly requested; include necessary spaces or
+line breaks in insert_text because the program inserts it verbatim.
+When adding an image, use ![caption](media-placeholder://<need_id>) with the instruction's
+visual_instruction.need_id. Never invent image paths or reuse existing images as new ones.
+Do not emit block anchors, IDs, explanatory text or an outer code fence.
+
+Create instruction:
+{instruction_json}
+
+Existing insertion anchor (location context only):
+{markdown_block}
+
+Writing context:
+{context_json}
+'''
+
+
+GENERATE_MARKDOWN_REVISION_CONTENT_PROMPT = _MARKDOWN_UPDATE_TEXT_RULES + '''
+Implement the update instruction using the program-located Markdown range below.
+
+Return only new_string in the structured response. The program already has the exact old_string.
+- For update, rewrite the complete range and retain unaffected content, formatting, anchors,
+  image paths, and internal links. Preserve every fact explicitly required by the instruction.
 Preserve non-standard Markdown extensions, including double-bracket links/embeds, Callouts,
 inline comments, block-ID markers, and query fences. Do not invent IDs, paths, or URLs.
 Respect target_scope: section includes its heading and descendants; paragraph is the complete
@@ -520,10 +649,18 @@ Output semantics:
 - An update contains one RevisionBlockContent describing the resulting visible fields.
   Omitted type, numbering, and references retain their source values. Spans represent
   retained inline formatting and concatenate to the block content.
-- A create contains all new sibling blocks in final document order. Children represent
+  For a heading update, return only that heading's own fields; omit children. The program
+  preserves its existing subtree, including body text, images, tables, and references.
+  Renaming a heading does not change the overall document title or require new_title.
+- A create contains all new blocks in final document order. Children represent
   genuine document hierarchy.
+  A new section uses a heading with the requested numbering.level and its new body as children.
+  Generate only the new content. The program inserts it before or after the selected block
+  without reparenting existing content; do not copy that content into changes.
 - Omit delete and move instructions from changes; the program executes these structural operations.
 - new_title represents title_instruction when the plan includes a title revision.
+  If title_instruction is present and instructions is empty, return only new_title with
+  changes={{}}. The title instruction describes the requested change; generate the resulting title.
 - Headings use type="heading" with numbering.level; inline formatting uses spans.
 - Tables use table children of type table_row, whose children are table_cell blocks. Update one cell by targeting its
   table_cell; add, delete, or move rows and cells structurally. Never put a Markdown table in table.content.

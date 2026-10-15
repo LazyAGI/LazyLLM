@@ -82,7 +82,7 @@ MARKDOWN_HEADING_NUMBERING_CONFIG_RE = re.compile(
     re.IGNORECASE,
 )
 _HEADING_RE = re.compile(r'^(#{2,6})(?:\s+(.*?))?\s*$')
-_IMAGE_RE = re.compile(r'!\[([^\]]*)\]\(([^)]*)\)')
+_IMAGE_RE = re.compile(r'!\[([^\]]*)\]\(')
 _HTML_IMAGE_RE = re.compile(r'<img\b[^>]*?/?>', re.IGNORECASE)
 _HTML_IMAGE_ATTR_RE = re.compile(
     r'\b(src|alt)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+))',
@@ -94,16 +94,42 @@ _CODE_FENCE_RE = re.compile(r'^\s*(```+|~~~+)(.*)$')
 _ORDERED_STYLES = {'hierarchical', 'chinese', 'parenthesized'}
 
 
+def _markdown_image_end(source: str, start: int) -> int | None:
+    depth, pos, quote = 1, start, ''
+    while pos < len(source):
+        char = source[pos]
+        if char == '\\':
+            pos += 2
+            continue
+        if quote:
+            if char == quote:
+                quote = ''
+        elif char == '<' and not source[start:pos].strip():
+            quote = '>'
+        elif char in '\'"' and pos > start and source[pos - 1].isspace():
+            quote = char
+        elif char == '(':
+            depth += 1
+        elif char == ')':
+            depth -= 1
+            if depth == 0:
+                return pos + 1
+        pos += 1
+    return None
+
+
 def find_markdown_images(line: str) -> tuple[MarkdownImage, ...]:
     '''Return CommonMark and standalone HTML images in source order.'''
-    images = [
-        MarkdownImage(
-            raw=match.group(0), start=match.start(), end=match.end(),
-            caption=match.group(1).strip(), source=match.group(2).strip(),
+    images = []
+    for match in _IMAGE_RE.finditer(line):
+        end = _markdown_image_end(line, match.end())
+        if end is None:
+            continue
+        images.append(MarkdownImage(
+            raw=line[match.start():end], start=match.start(), end=end,
+            caption=match.group(1).strip(), source=line[match.end():end - 1].strip(),
             syntax='markdown',
-        )
-        for match in _IMAGE_RE.finditer(line)
-    ]
+        ))
     for match in _HTML_IMAGE_RE.finditer(line):
         attributes: dict[str, str] = {}
         for attribute in _HTML_IMAGE_ATTR_RE.finditer(match.group(0)):
