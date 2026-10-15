@@ -12,6 +12,7 @@ from ..data_models.context import WritingContext
 from ..data_models.multimodal import MediaAssetLibrary
 from ..data_models.revision import (
     GeneratedRevision,
+    IRPlanCompletion,
     LocatedContent,
     LocateResult,
     MarkdownInsertionContent,
@@ -48,6 +49,7 @@ from ..prompts import (
     REWRITE_MARKDOWN_BLOCK_PROMPT,
 )
 from ..prompts.revision import (
+    COMPLETE_IR_ANCHOR_SCOPES_PROMPT,
     COMPLETE_MARKDOWN_PLAN_FIELDS_PROMPT,
     GENERATE_MARKDOWN_REVISION_BATCH_PROMPT,
     GENERATE_MARKDOWN_REVISION_CONTENT_PROMPT,
@@ -475,6 +477,8 @@ locator kind per reference. Return valid JSON only.
 
         if is_markdown:
             modify_plan = self._unified_markdown_modify_plan(modify_plan)
+        else:
+            modify_plan = self._complete_ir_anchor_scopes(writing_task, source_doc, modify_plan)
 
         modify_plan = self._normalize_modify_plan(
             modify_plan,
@@ -1694,6 +1698,27 @@ locator kind per reference. Return valid JSON only.
                 if reference is not None and not cls._revision_ref_is_exclusive(reference):
                     invalid.append(reference.model_dump(exclude_none=True))
         return invalid
+
+    def _complete_ir_anchor_scopes(
+        self, task: WritingTask, document: WriterDocument, plan: ModifyPlan,
+    ) -> ModifyPlan:
+        missing = {index for index, instruction in enumerate(plan.instructions, start=1)
+                   if instruction.modify_type == 'create' and instruction.anchor_scope is None}
+        if not missing:
+            return plan
+        prompt = COMPLETE_IR_ANCHOR_SCOPES_PROMPT.format(
+            task_json=to_prompt_json(task), previous_plan_json=to_prompt_json(plan),
+            missing_indexes_json=to_prompt_json(sorted(missing)),
+            document_content=to_prompt_json(self._visible_document(document)),
+        )
+        completion = self._call_llm_structured(prompt, IRPlanCompletion, trace_label='ir_anchor_scope_completion')
+        indexes = [entry.instruction_index for entry in completion.instructions]
+        if len(indexes) != len(missing) or set(indexes) != missing:
+            raise ValueError('IR plan completion must fill each missing anchor_scope exactly once.')
+        completed = plan.model_copy(deep=True)
+        for entry in completion.instructions:
+            completed.instructions[entry.instruction_index - 1].anchor_scope = entry.anchor_scope
+        return completed
 
     @classmethod
     def _markdown_ref_is_exclusive(cls, content_ref: ContentRef) -> bool:

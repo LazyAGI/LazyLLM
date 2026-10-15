@@ -53,6 +53,19 @@ class ModifyPlan(BaseModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
+class IRAnchorScopeCompletion(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    instruction_index: int = Field(ge=1, strict=True)
+    anchor_scope: Literal['block', 'section']
+
+
+class IRPlanCompletion(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    instructions: List[IRAnchorScopeCompletion] = Field(min_length=1)
+
+
 class MarkdownModifyInstruction(ModifyInstruction):
     target_scope: Literal['section', 'paragraph', 'fragment', 'image'] = 'fragment'
     locator_text: Optional[str] = None

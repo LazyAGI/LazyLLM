@@ -148,6 +148,28 @@ Writing context:
 '''
 
 
+COMPLETE_IR_ANCHOR_SCOPES_PROMPT = '''Complete only missing anchor_scope values in the existing IR revision plan.
+Return an IRPlanCompletion with exactly one entry for each supplied 1-based instruction_index.
+Each entry must contain only instruction_index and anchor_scope; do not rewrite the plan or other fields.
+Use the original user request, the existing instruction, and the current document to choose:
+- "section" for before/after a complete named section, including its body and subsections.
+- "block" for a specific paragraph, image, table, or immediately under a heading before its body.
+The new content's heading level does not determine the anchor's scope. Preserve before/after and the anchor node.
+
+Original writing task:
+{task_json}
+
+Existing plan:
+{previous_plan_json}
+
+Instruction indexes with missing anchor_scope:
+{missing_indexes_json}
+
+Current document (reference data):
+{document_content}
+'''
+
+
 LOCATE_REVISION_TARGET_MARKDOWN_PROMPT = '''You are a Markdown revision target locator. Identify the existing document content that participates in the requested revision.
 
 Output semantics:
