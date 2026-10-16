@@ -68,7 +68,7 @@ You are responsible for maintaining correctness, efficiency, and clarity through
 
 
 _FORCE_SUMMARIZE_MSG = (
-    'You have reached the maximum number of tool calls. '
+    'Tool exploration has ended. '
     'Stop calling tools now and provide your final answer immediately.'
 )
 
@@ -193,44 +193,48 @@ class ReactAgent(LazyLLMAgentBase):
         self._prepare_tool_context(query, llm_chat_history)
         return (query, llm_chat_history or [])
 
-    def _force_summarize_from_history(self, history: list) -> Optional[str]:
-        recent = history[-8:]
-        obs_lines: List[str] = []
-        for idx, m in enumerate(recent):
-            role = m.get('role', '')
-            raw_content = m.get('content')
-            if raw_content is None:
-                tool_calls = m.get('tool_calls') or []
-                if tool_calls:
-                    names = ', '.join(tc.get('function', {}).get('name', '?') for tc in tool_calls)
-                    obs_lines.append(f'{role}: [called tools: {names}]')
-                continue
-            content_str = raw_content if isinstance(raw_content, str) else str(raw_content)
-            limit = 1000 if idx == len(recent) - 1 else 300
-            obs_lines.append(f'{role}: {content_str[:limit]}')
-        obs_text = '\n'.join(obs_lines)
-        ctx_prefix = (
-            f'Original task context:\n{self._force_summarize_context[:500]}\n\n'
-            if self._force_summarize_context else ''
-        )
+    def _force_summarize_from_history(self, history: list, pending: Optional[dict] = None) -> Optional[str]:
         summarize_prompt = (
-            f'{ctx_prefix}'
-            f'Based on the following recent observations from your tool exploration:\n'
-            f'{obs_text}\n\n'
-            f'{_FORCE_SUMMARIZE_MSG}'
+            (f'Original task context:\n{self._force_summarize_context}\n\n'
+             if self._force_summarize_context else '')
+            + _FORCE_SUMMARIZE_MSG
+            + ' Use the evidence already obtained. Distinguish supported conclusions from unresolved '
+              'questions and verification gaps. Do not claim unread sources were verified.'
         )
-        validator = getattr(self._tools_manager, 'context_validator', None)
-        if validator is not None:
-            # Keep the fallback request explicit so its complete input is budgeted too.
-            validator({'system_prompt': '', 'tool_definitions': []}, [], summarize_prompt)
-            summarize_llm = self._llm.share(prompt=ChatPrompter(instruction=''), stream=False)
+        if self._extra_stop_condition:
+            self._extra_stop_condition(pending)  # A cancellation raises before the final request.
+        if self._before_model_request:
+            self._before_model_request()
+        if self._fc is not None:
+            workspace = locals['_lazyllm_agent']['workspace']
+            if isinstance(pending, dict) and pending.get('tool_calls'):
+                current = self._fc._build_tool_call_input(
+                    pending, workspace, None, None, 0, final_input=summarize_prompt)['input']
+                prior = locals['chat_history'].get(self._fc._llm._module_id, [])
+            else:
+                prior, current = self._fc._compact_history(
+                    history, current_input=summarize_prompt, workspace=workspace,
+                    remaining_rounds=0, final_answer=True)
+                current.extend(self._fc._consume_model_context())
+                self._fc._validate_context(prior + current, summarize_prompt, final_answer=True)
+            history = prior + current
         else:
-            summarize_llm = self._llm.share(stream=False)
-        resp = summarize_llm(summarize_prompt)
-        summary = resp if isinstance(resp, str) else (
-            resp.get('content', '') if isinstance(resp, dict) else None
+            validator = getattr(self._tools_manager, 'context_validator', None)
+            if validator is not None:
+                validator({'system_prompt': self._prompt, 'tool_definitions': []}, history, summarize_prompt)
+        prompt = ChatPrompter(
+            instruction={'system': self._prompt, 'user': ''},
+            skills=self._skill_manager.build_prompt() if self._skill_manager else '',
         )
-        return summary if summary else None
+        summarize_llm = self._llm.share(prompt=prompt, stream=False)
+        resp = summarize_llm(summarize_prompt, llm_chat_history=history)
+        if self._extra_stop_condition:
+            self._extra_stop_condition(pending)
+        summary = resp if isinstance(resp, str) else (
+            resp.get('content', '') if isinstance(resp, dict) else None)
+        if not summary or not summary.strip():
+            raise ValueError('Final-answer model returned no answer')
+        return summary
 
     def _post_process(self, ret):  # noqa: C901
         if isinstance(ret, str):
@@ -245,12 +249,9 @@ class ReactAgent(LazyLLMAgentBase):
                 agent_ctx = {}
             history = agent_ctx.get('workspace', {}).get('history', []) if isinstance(agent_ctx, dict) else []
             if history:
-                LOG.warning(f'ReactAgent reached max_retries={self._max_retries}, attempting force summarize.')
-                summary = None
-                try:
-                    summary = self._force_summarize_from_history(history)
-                except Exception as e:
-                    LOG.warning(f'ReactAgent force-summarize call failed: {e}')
+                LOG.warning(f'ReactAgent tool exploration stopped (max_retries={self._max_retries}); '
+                            'attempting final answer.')
+                summary = self._force_summarize_from_history(history, ret)
                 if summary is not None:
                     if self._stream:
                         _write_agent_data('text', delta=summary)

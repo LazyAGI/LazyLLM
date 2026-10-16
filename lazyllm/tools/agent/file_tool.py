@@ -6,7 +6,7 @@ import threading
 import stat as stat_module
 from pathlib import PurePath
 import os
-from typing import Optional
+from typing import BinaryIO, Optional, TextIO
 
 from .toolsManager import fc_register, ToolGroup
 from .toolError import ToolExecutionError
@@ -14,6 +14,8 @@ from .tool_runtime import HostFileIntent, HostFileResolution, resolve_host_path
 
 
 MAX_EDIT_BYTES = 64 * 1024
+MAX_READ_BYTES = 64 * 1024
+MAX_SEARCH_RESULTS = 100
 
 
 def _host_files(*fields):
@@ -25,8 +27,6 @@ def _host_files(*fields):
         for name, operation in fields:
             arguments[name] = resolve_host_path(arguments.get(name, '.'))
             intents.append(HostFileIntent(arguments[name], operation))
-        if arguments.get('root'):
-            arguments['root'] = resolve_host_path(arguments['root'])
         return HostFileResolution(arguments, tuple(intents))
     return resolve
 
@@ -108,60 +108,86 @@ def _atomic_write(path, content, encoding, mode='overwrite'):
     return added_bytes
 
 
+def _physical_line(stream: TextIO) -> Optional[tuple[str, bool, bool]]:
+    # Retain only the display prefix, but consume the entire physical line.
+    part = stream.readline(4096)
+    if not part:
+        return None
+    prefix = part[:2001]
+    while not part.endswith('\n'):
+        part = stream.readline(4096)
+        if not part:
+            break
+        if len(prefix) < 2001:
+            prefix += part[:2001 - len(prefix)]
+    prefix = prefix.rstrip('\n')
+    return prefix[:2000], len(prefix) > 2000, bool(part and part.endswith('\n'))
+
+
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
-@fc_register(host_file=_host_files(('path', 'read')))
-def read(path: str, offset: int = 1, limit: int = 500, max_bytes: int = 65536,
-         encoding: str = 'utf-8', errors: str = 'replace', root: Optional[str] = None) -> dict:
+@fc_register(host_file=_host_files(('file_path', 'read')))
+def read(file_path: str, offset: int = 1, limit: int = 2000) -> dict:
     '''Read a bounded text window without loading the whole file.
 
     Args:
-        path (str): File path.
-        offset (int): First logical line, starting at one. Long lines split every 1024 characters.
-        limit (int): Maximum logical lines, default 500, hard cap 2000.
-        max_bytes (int): UTF-8 content budget, default 65536, hard cap 262144, minimum 4096.
-        encoding (str): Source encoding, default utf-8.
-        errors (str): Decoding error policy, default replace.
-        root (str, optional): Restrict reads to this root directory.
+        file_path (str): Absolute path, or a path relative to the current working directory.
+        offset (int): First physical file line, starting at one (same as grep).
+        limit (int): Maximum physical lines, default and hard cap 2000.
 
     Returns:
-        dict: Content, next_offset, eof and truncation status.
+        dict: Up to 64 KiB of UTF-8 text, physical line range, clipped line numbers and EOF. Each line
+            has at most 2000 characters. next_offset only advances to later lines;
+            use targeted Shell extraction for a clipped line's omitted suffix.
     '''
-    if offset < 1 or limit < 1 or max_bytes < 4096:
-        raise ToolExecutionError('offset/limit must be positive and max_bytes at least 4096')
-    limit, max_bytes = min(limit, 2000), min(max_bytes, 262144)
-    _check_root(path, root)
-    path = _resolve_path(path)
-    content, size, count = [], 0, 0
-    with _open_text(path, encoding=encoding, errors=errors) as stream:
+    if offset < 1 or limit < 1:
+        raise ToolExecutionError('offset and limit must be positive')
+    limit, max_bytes = min(limit, 2000), MAX_READ_BYTES
+    path = _resolve_path(file_path)
+    content, size, count, clipped = [], 0, 0, []
+    with _open_text(path, errors='replace') as stream:
         for _ in range(offset - 1):
-            if not stream.readline(1024):
+            if _physical_line(stream) is None:
                 break
-        line = stream.readline(1024)
-        while line and count < limit:
-            encoded = len(line.encode('utf-8', errors='replace'))
-            if size + encoded > max_bytes:
-                break
-            content.append(line)
-            size += encoded
+        line = _physical_line(stream)
+        while line is not None and count < limit:
+            prefix, truncated_line, newline = line
+            # Preserve record boundaries even when a long line's suffix is omitted.
+            display = prefix.rstrip('\n') + ('\n' if newline else '')
+            encoded = display.encode('utf-8', errors='replace')
+            if size + len(encoded) > max_bytes:
+                if count:
+                    break
+                display = encoded[:max_bytes - int(newline)].decode('utf-8', 'ignore')
+                display += '\n' if newline else ''
+                encoded = display.encode('utf-8')
+                truncated_line = True
+            content.append(display)
+            size += len(encoded)
+            if truncated_line:
+                clipped.append(offset + count)
             count += 1
-            line = stream.readline(1024)
-    eof = not line
-    return {'status': 'ok', 'path': path, 'offset': offset, 'end_line': offset + count - 1,
-            'content': ''.join(content), 'eof': eof, 'truncated': not eof,
-            'next_offset': None if eof else offset + count}
+            line = _physical_line(stream)
+    eof = line is None
+    result = {'status': 'ok', 'path': path, 'line_unit': 'physical',
+              'offset': offset, 'end_line': offset + count - 1,
+              'content': ''.join(content), 'eof': eof, 'truncated': not eof or bool(clipped),
+              'truncated_lines': clipped, 'next_offset': None if eof else offset + count}
+    if clipped:
+        result['notice'] = ('Some physical lines were clipped. next_offset reads later lines, not omitted suffixes. '
+                            'Use authorized, bounded Shell extraction at the listed physical lines if needed.')
+    return result
 
 
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'read')))
-def ls(path: str = '.', limit: int = 200, root: Optional[str] = None) -> dict:
+def ls(path: str = '.', limit: int = 200) -> dict:
     '''List one directory level. Use glob for recursive discovery.
 
     Args:
         path (str): Directory path, defaults to current directory.
         limit (int): Maximum entries, default 200, hard cap 1000.
-        root (str, optional): Restrict listing to this root directory.
 
     Returns:
         dict: Entries and truncation status.
@@ -169,7 +195,6 @@ def ls(path: str = '.', limit: int = 200, root: Optional[str] = None) -> dict:
     if limit < 1:
         raise ToolExecutionError('limit must be positive')
     limit = min(limit, 1000)
-    _check_root(path, root)
     path = _resolve_path(path)
     entries = []
     with os.scandir(path) as directory:
@@ -184,53 +209,77 @@ def ls(path: str = '.', limit: int = 200, root: Optional[str] = None) -> dict:
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'read')))
-def grep(pattern: str, path: str = '.', glob: Optional[str] = None,
-         max_results: int = 100, root: Optional[str] = None) -> dict:
+def grep(pattern: str, path: str = '.', include: Optional[str] = None) -> dict:
     '''Search file contents with ripgrep without following symbolic links.
 
     Args:
         pattern (str): Ripgrep regular expression.
         path (str): File or directory to search, defaults to current directory.
-        glob (str, optional): Filename glob filter.
-        max_results (int): Maximum matches, default and hard cap 100.
-        root (str, optional): Restrict search to this root directory.
+        include (str, optional): Filename glob filter, for example *.py or **/*.{yaml,yml}.
 
     Returns:
-        dict: Matches with path, line number and bounded snippets, plus truncation status.
+        dict: Up to 100 matches with path, line number and bounded snippets, plus truncation status.
+            Hidden and ignored files follow ripgrep defaults. Narrow the path or pattern if truncated.
     '''
-    if not pattern or len(pattern) > 4096 or '\0' in pattern or max_results < 1:
-        raise ToolExecutionError('A valid pattern and positive result limit are required')
-    _check_root(path, root)
+    if not pattern or len(pattern) > 4096 or '\0' in pattern:
+        raise ToolExecutionError('A valid pattern is required')
     path = _resolve_path(path)
-    max_results = min(max_results, 100)
+    max_results = MAX_SEARCH_RESULTS
     executable = shutil.which('rg')
     if not executable:
         raise ToolExecutionError('grep requires ripgrep (rg) to be installed')
     command = [executable, '--no-config', '--json', '--max-count', str(max_results + 1)]
-    if glob:
-        command += ['--glob', glob]
+    if include:
+        command += ['--glob', include]
     command += ['--', pattern, path]
-    results, truncated = _run_rg(command, lambda stream: _read_grep_matches(stream, path, max_results))
-    return {'status': 'ok', 'results': results, 'truncated': truncated}
+    result, _ = _run_rg(command, lambda stream: _read_grep_matches(stream, path, max_results))
+    return {'status': 'ok', 'line_unit': 'physical', **result}
 
 
-def _read_grep_matches(stream, path, limit):
-    results, size = [], 0
-    while line := stream.readline(65537):
-        if len(line) > 65536:
-            return results, True
+def _match_snippet(data: dict) -> tuple[str, bool]:
+    raw = data['lines'].get('text', '').rstrip('\r\n')
+    if len(raw) <= 1000:
+        return raw, False
+    matches = data.get('submatches') or []
+    encoded = raw.encode('utf-8')
+    first = matches[0] if matches else {'start': 0, 'end': 0}
+    start = len(encoded[:first['start']].decode('utf-8', 'replace'))
+    end = len(encoded[:first['end']].decode('utf-8', 'replace'))
+    if end - start > 990:
+        return '…' + raw[start:start + 490] + '…[match clipped]…' + raw[end - 490:end] + '…', True
+    left = max(0, start - max(0, (996 - (end - start)) // 2))
+    right = min(len(raw), left + 996)
+    return ('…' if left else '') + raw[left:right] + ('…' if right < len(raw) else ''), True
+
+
+def _read_grep_matches(stream: BinaryIO, path: str, limit: int) -> tuple[dict, bool]:
+    results, size, skipped, output_limit = [], 0, 0, False
+    record_limit = 16 * 1024 * 1024
+    while line := stream.readline(record_limit + 1):
+        if len(line) > record_limit:
+            while line and not line.endswith(b'\n'):
+                line = stream.readline(65536)
+            skipped += 1
+            continue
         event = json.loads(line)
         if event['type'] != 'match':
             continue
         data = event['data']
+        if 'text' not in data['lines'] or 'text' not in data['path']:
+            skipped += 1
+            continue
+        snippet, clipped = _match_snippet(data)
         item = {'path': data['path'].get('text', path), 'line': str(data['line_number']),
-                'text': data['lines'].get('text', '').rstrip('\n')[:1000]}
+                'text': snippet, 'snippet_truncated': clipped}
         added = len(json.dumps(item, ensure_ascii=False).encode('utf-8')) + 2
         if len(results) == limit or size + added > 65000:
-            return results, True
+            output_limit = True
+            break
         results.append(item)
         size += added
-    return results, False
+    return {'results': results, 'truncated': output_limit or bool(skipped),
+            'output_limit_reached': output_limit, 'skipped_records': skipped,
+            'search_incomplete': output_limit or bool(skipped)}, output_limit
 
 
 def _run_rg(command, collect, cwd=None):
@@ -266,20 +315,17 @@ def _run_rg(command, collect, cwd=None):
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'write')))
-def mkdir(path: str, parents: bool = True, exist_ok: bool = True,
-          root: Optional[str] = None) -> dict:
+def mkdir(path: str, parents: bool = True, exist_ok: bool = True) -> dict:
     '''Create a directory.
 
     Args:
         path (str): Directory path to create.
         parents (bool, optional): Create parent directories. Defaults to True.
         exist_ok (bool, optional): Ignore if already exists. Defaults to True.
-        root (str, optional): Restrict to this root directory.
 
     Returns:
         dict: Status result.
     '''
-    _check_root(path, root)
     path_abs = _resolve_path(path)
     if parents:
         os.makedirs(path_abs, exist_ok=exist_ok)
@@ -290,49 +336,39 @@ def mkdir(path: str, parents: bool = True, exist_ok: bool = True,
 
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
-@fc_register(host_file=_host_files(('path', 'write')))
-def write(path: str, content: str, mode: str = 'overwrite', encoding: str = 'utf-8',
-          root: Optional[str] = None, create_parents: bool = True) -> dict:
-    '''Write content to a file.
+@fc_register(host_file=_host_files(('file_path', 'write')))
+def write(file_path: str, content: str) -> dict:
+    '''Create or completely overwrite a UTF-8 text file. Use edit for targeted changes.
 
     Args:
-        path (str): File path.
+        file_path (str): Absolute path, or a path relative to the current working directory.
         content (str): Content to write.
-        mode (str, optional): create|overwrite|append. Defaults to overwrite.
-        encoding (str, optional): File encoding. Defaults to utf-8.
-        root (str, optional): Restrict writes to this root directory.
-        create_parents (bool, optional): Create parent directories if needed.
 
     Returns:
         dict: Status result.
     '''
-    _check_root(path, root)
-    path_abs = _resolve_path(path)
-    if mode not in ('create', 'overwrite', 'append'):
-        raise ToolExecutionError(f'Invalid write mode {mode!r}; expected "create", "overwrite" or "append".')
+    path_abs = _resolve_path(file_path)
     parent = os.path.dirname(path_abs)
 
-    if parent and create_parents:
+    if parent:
         os.makedirs(parent, exist_ok=True)
-    size = _atomic_write(path_abs, content, encoding, mode)
-    return {'status': 'ok', 'path': path_abs, 'mode': mode, 'bytes': size}
+    size = _atomic_write(path_abs, content, 'utf-8')
+    return {'status': 'ok', 'path': path_abs, 'mode': 'overwrite', 'bytes': size}
 
 
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'delete')))
-def remove(path: str, recursive: bool = False, root: Optional[str] = None) -> dict:
+def remove(path: str, recursive: bool = False) -> dict:
     '''Delete a file or directory. Recursive deletion requires explicit opt-in.
 
     Args:
         path (str): File path.
         recursive (bool): Delete nonempty directories recursively. Defaults to False.
-        root (str, optional): Restrict deletion to this root directory.
     Returns:
         dict: Status result.
     '''
     _check_entry(path)
-    _check_root(path, root)
     path_abs = _resolve_path(path)
     if not os.path.exists(path_abs):
         raise ToolExecutionError(f'File not found: {path_abs}')
@@ -346,14 +382,13 @@ def remove(path: str, recursive: bool = False, root: Optional[str] = None) -> di
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('src', 'read'), ('src', 'delete'), ('dst', 'write')))
-def move(src: str, dst: str, root: Optional[str] = None, overwrite: bool = False,
+def move(src: str, dst: str, overwrite: bool = False,
          create_parents: bool = True) -> dict:
     '''Move or rename a file.
 
     Args:
         src (str): Source path.
         dst (str): Destination path.
-        root (str, optional): Restrict operations to this root directory.
         overwrite (bool, optional): Allow overwrite at destination. Defaults to False.
         create_parents (bool, optional): Create destination parents if needed.
 
@@ -362,8 +397,6 @@ def move(src: str, dst: str, root: Optional[str] = None, overwrite: bool = False
     '''
     _check_entry(src)
     _check_entry(dst)
-    _check_root(src, root)
-    _check_root(dst, root)
     src_abs = _resolve_path(src)
     dst_abs = _resolve_path(dst)
     if not os.path.exists(src_abs):
@@ -379,26 +412,24 @@ def move(src: str, dst: str, root: Optional[str] = None, overwrite: bool = False
 
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
-@fc_register(host_file=_host_files(('path', 'write')))
-def edit(path: str, old_text: str, new_text: str, expected_replacements: int = 1,
-         encoding: str = 'utf-8') -> dict:
+@fc_register(host_file=_host_files(('file_path', 'write')))
+def edit(file_path: str, old_string: str, new_string: str, replace_all: bool = False) -> dict:
     '''Replace exact text in an existing file up to 64 KiB (65536 bytes).
 
     Larger files require a targeted or streaming workflow.
 
     Args:
-        path (str): File to edit.
-        old_text (str): Exact nonempty text to replace.
-        new_text (str): Replacement text.
-        expected_replacements (int): Required number of matches, defaults to one.
-        encoding (str): Text encoding, defaults to utf-8.
+        file_path (str): Absolute path, or a path relative to the current working directory.
+        old_string (str): Exact nonempty text to replace.
+        new_string (str): Replacement text, which must differ from old_string.
+        replace_all (bool): Replace all occurrences. Otherwise old_string must match exactly once.
 
     Returns:
         dict: Path and replacement count.
     '''
-    if not old_text or expected_replacements < 1:
-        raise ToolExecutionError('old_text and a positive replacement count are required')
-    path = _resolve_path(path)
+    if not old_string or old_string == new_string:
+        raise ToolExecutionError('old_string must be nonempty and differ from new_string')
+    path = _resolve_path(file_path)
     with _open_text(path, encoding=None) as stream:
         size = os.fstat(stream.fileno()).st_size
         data = stream.read(MAX_EDIT_BYTES + 1) if size <= MAX_EDIT_BYTES else b''
@@ -407,11 +438,11 @@ def edit(path: str, old_text: str, new_text: str, expected_replacements: int = 1
                 'File is too large for edit (limit 65536 bytes). '
                 'Use a targeted or streaming workflow for large files.'
             )
-        content = data.decode(encoding)
-        count = content.count(old_text)
-        if count != expected_replacements:
-            raise ToolExecutionError(f'Expected {expected_replacements} matches, found {count}')
-    _atomic_write(path, content.replace(old_text, new_text), encoding)
+        content = data.decode('utf-8')
+        count = content.count(old_string)
+        if not count or (count != 1 and not replace_all):
+            raise ToolExecutionError(f'Expected {"at least one" if replace_all else "1"} matches, found {count}')
+    _atomic_write(path, content.replace(old_string, new_string), 'utf-8')
     return {'status': 'ok', 'path': path, 'replacements': count}
 
 
@@ -440,21 +471,21 @@ def _read_glob_paths(stream, path, limit):
 @fc_register('builtin_tools')
 @fc_register('tool', execute_in_sandbox=False)
 @fc_register(host_file=_host_files(('path', 'read')))
-def glob(pattern: str, path: str = '.', max_results: int = 100) -> dict:
+def glob(pattern: str, path: str = '.') -> dict:
     '''Find files using ripgrep glob rules without following symbolic links.
 
     Args:
         pattern (str): File filter: *.yml matches any depth, /*.yml only the search
             root, and **/*.{yaml,yml} matches both extensions recursively.
         path (str): Directory to search, defaults to the working directory.
-        max_results (int): Positive maximum number of results.
 
     Returns:
-        dict: Matching absolute paths and truncation status, not a total count.
+        dict: Up to 100 matching absolute paths and truncation status, not a total count.
+            Hidden and ignored files follow ripgrep defaults. Narrow the path or pattern if truncated.
     '''
-    if max_results < 1 or not pattern or '\x00' in pattern or '..' in PurePath(pattern).parts:
-        raise ToolExecutionError('A valid glob pattern and positive result limit are required')
-    max_results = min(max_results, 100)
+    if not pattern or '\x00' in pattern or '..' in PurePath(pattern).parts:
+        raise ToolExecutionError('A valid glob pattern is required')
+    max_results = MAX_SEARCH_RESULTS
     path = _resolve_path(path)
     if not os.path.isdir(path):
         raise ToolExecutionError(f'Directory not found: {path}')
@@ -484,33 +515,6 @@ def stat(path: str) -> dict:
     return {'status': 'ok', 'path': path,
             'type': 'directory' if stat_module.S_ISDIR(info.st_mode) else 'file',
             'size': info.st_size, 'mtime_ns': info.st_mtime_ns}
-
-
-def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
-             root: Optional[str] = None, **kwargs) -> dict:
-    '''Compatibility alias for chat workspace.list_dir.'''
-    if not recursive:
-        return ls(path=path, root=root)
-    _check_root(path, root)
-    base = _resolve_path(path)
-    entries = []
-    for current, dirnames, filenames in os.walk(base):
-        rel = os.path.relpath(current, base)
-        depth = 0 if rel == '.' else rel.count(os.sep) + 1
-        if depth >= max_depth:
-            dirnames[:] = []
-        for name in filenames:
-            entries.append(name if rel == '.' else os.path.join(rel, name))
-    return {'status': 'ok', 'path': base, 'entries': sorted(entries)}
-
-
-def write_file(path: str, content: str, mode: str = 'overwrite', encoding: str = 'utf-8',
-               root: Optional[str] = None, create_parents: bool = True, **kwargs) -> dict:
-    '''Compatibility alias for chat workspace write_file.'''
-    return write(
-        path=path, content=content, mode=mode, encoding=encoding,
-        root=root, create_parents=create_parents,
-    )
 
 
 class FileSystemToolkit(ToolGroup):

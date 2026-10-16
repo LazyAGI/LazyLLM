@@ -13,26 +13,26 @@ class TestFileTool(object):
     def test_file_ops(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, 'a.txt')
-            res = write(path, 'hello\nworld', root=tmp)
+            res = write(path, 'hello\nworld')
             assert res['status'] == 'ok'
 
-            res = read(path, root=tmp)
+            res = read(path)
             assert res['status'] == 'ok'
             assert 'hello' in res['content']
 
-            res = ls(tmp, root=tmp)
+            res = ls(tmp)
             assert res['status'] == 'ok'
             assert 'a.txt' in res['entries']
 
-            res = grep('world', path=tmp, root=tmp)
+            res = grep('world', path=tmp)
             assert res['status'] == 'ok'
             assert any(item['path'].endswith('a.txt') for item in res['results'])
 
             dst = os.path.join(tmp, 'b.txt')
-            res = move(path, dst, root=tmp)
+            res = move(path, dst)
             assert res['status'] == 'ok'
 
-            res = remove(dst, root=tmp)
+            res = remove(dst)
             assert res['status'] == 'ok'
 
 
@@ -61,20 +61,52 @@ class TestShellTool(object):
         assert 'approved' in result.results[0]['value']['stdout']
 
 
-def test_read_windows_continue_through_long_unicode_lines(tmp_path):
+def test_physical_lines_long_unicode_and_grep_read_pair(tmp_path):
     source = tmp_path / 'large.txt'
-    content = ('中' * 12000 + '\nshort\n') * 5
-    source.write_text(content)
-    offset, chunks = 1, []
-    while True:
-        window = read(str(source), offset=offset, limit=2000, max_bytes=4096)
-        assert len(window['content'].encode('utf-8')) <= 4096
-        chunks.append(window['content'])
-        if window['eof']:
-            break
-        assert window['next_offset'] > offset
-        offset = window['next_offset']
-    assert ''.join(chunks) == content
+    source.write_bytes(('中' * 12000 + '\r\nshort needle\r\nlast').encode())
+    first = read(str(source), limit=1)
+    assert len(first['content'].encode()) <= 65536
+    assert first['line_unit'] == 'physical'
+    assert first['truncated_lines'] == [1]
+    assert first['next_offset'] == 2 and not first['eof']
+    found = grep('needle', str(source))['results'][0]
+    assert found['line'] == '2'
+    window = read(str(source), offset=int(found['line']))
+    assert window['content'] == 'short needle\nlast'
+    assert window['eof'] and not window['truncated']
+    assert window['end_line'] == 3
+    assert read(str(source), offset=4)['content'] == ''
+    source.write_text('中' * 3000)
+    last = read(str(source))
+    assert last['eof'] and last['truncated'] and last['truncated_lines'] == [1]
+    assert last['next_offset'] is None and len(last['content']) == 2000
+
+
+def test_read_stops_before_next_line_exceeding_budget(tmp_path):
+    source = tmp_path / 'budget.txt'
+    source.write_text(('x' * 1999 + '\n') * 32 + '中' * 1000 + '\nend')
+    first = read(str(source))
+    assert first['end_line'] == 32 and first['next_offset'] == 33
+    assert first['truncated_lines'] == []
+    second = read(str(source), offset=33)
+    assert second['content'] == '中' * 1000 + '\nend'
+    assert second['eof']
+
+
+def test_grep_snippet_shows_late_match_and_skips_oversized_record(tmp_path):
+    source = tmp_path / 'matches.txt'
+    source.write_text('a' * 100000 + '中文needle' + 'z' * 3000 + '\n'
+                      + 'x' * (17 * 1024 * 1024) + 'needle\n'
+                      + 'later needle\n')
+    result = grep('needle', str(source))
+    assert [r['line'] for r in result['results']] == ['1', '3']
+    assert all('needle' in r['text'] and len(r['text']) <= 1000 for r in result['results'])
+    assert result['results'][0]['snippet_truncated']
+    assert result['skipped_records'] == 1 and result['search_incomplete']
+    assert not result['output_limit_reached']
+    huge = grep('a{3000}', str(source))
+    assert len(huge['results'][0]['text']) <= 1000
+    assert 'match clipped' in huge['results'][0]['text']
 
 
 def test_filesystem_bounds_and_atomic_failures(tmp_path, monkeypatch):
@@ -84,7 +116,7 @@ def test_filesystem_bounds_and_atomic_failures(tmp_path, monkeypatch):
     target.write_text('original')
     target.chmod(0o640)
     with pytest.raises(UnicodeEncodeError):
-        write(str(target), '中文', encoding='ascii')
+        file_tool._atomic_write(str(target), '中文', 'ascii')
     assert target.read_text() == 'original'
     with pytest.raises(ToolExecutionError, match='Expected 1 matches, found 0'):
         file_tool.edit(str(target), 'missing', 'new')
@@ -105,9 +137,9 @@ def test_filesystem_bounds_and_atomic_failures(tmp_path, monkeypatch):
         (tmp_path / f'{index}.txt').write_text('needle\n' * 3)
     listing = ls(str(tmp_path))
     assert len(listing['entries']) == 200 and listing['truncated']
-    matches = grep('needle', str(tmp_path), max_results=1000)
+    matches = grep('needle', str(tmp_path))
     assert len(matches['results']) == 100 and matches['truncated']
-    found = file_tool.glob('*.txt', str(tmp_path), max_results=1000)
+    found = file_tool.glob('*.txt', str(tmp_path))
     assert len(found['paths']) == 100 and found['truncated']
     monkeypatch.setattr(file_tool.shutil, 'which', lambda _: None)
     with pytest.raises(Exception, match='requires ripgrep'):
@@ -184,8 +216,8 @@ def test_append_streams_bytes_and_preserves_original_on_failure(tmp_path, monkey
             yield Reader()
 
     monkeypatch.setattr(file_tool, '_open_text', bounded)
-    result = write(str(target), '中文', mode='append')
-    assert result['bytes'] == 6 and len(reads) > 1
+    size = file_tool._atomic_write(str(target), '中文', 'utf-8', mode='append')
+    assert size == 6 and len(reads) > 1
     assert target.stat().st_size == original_size + 6
     assert target.stat().st_mode & 0o777 == 0o640
     with target.open('rb') as stream:
@@ -197,7 +229,7 @@ def test_append_streams_bytes_and_preserves_original_on_failure(tmp_path, monkey
         raise OSError('replace failed')
     monkeypatch.setattr(file_tool.os, 'replace', fail_replace)
     with pytest.raises(OSError, match='replace failed'):
-        write(str(target), 'lost', mode='append')
+        file_tool._atomic_write(str(target), 'lost', 'utf-8', mode='append')
     assert target.stat().st_size == original_size + 6
     assert not list(tmp_path.glob('.lazyllm-*'))
     link = tmp_path / 'link'

@@ -52,8 +52,8 @@ class StreamResponse():
 
 
 _ROUND_TOOLS_KEY = '_function_call_round_tools'
-_MODEL_CONTEXT_MAX_CHARS = 2048
-_MODEL_CONTEXT_RESERVED_TOKENS = 512
+_MODEL_CONTEXT_MAX_CHARS = 4096
+_MODEL_CONTEXT_RESERVED_TOKENS = 1024
 
 
 def _structured_compact_parts(compacted: Any) -> Optional[tuple]:
@@ -200,6 +200,7 @@ class FunctionCall(ModuleBase):
         current_round_messages: Optional[List[Dict[str, Any]]] = None,
         workspace: Optional[Dict[str, Any]] = None,
         remaining_rounds: Optional[int] = None,
+        final_answer: bool = False,
     ) -> tuple:
         current = list(current_round_messages or [])
         if self._history_compactor is None:
@@ -209,6 +210,8 @@ class FunctionCall(ModuleBase):
             self._tools_manager,
             self._skill_manager,
         )
+        if final_answer:
+            prefix['tool_definitions'] = []
         kwargs = {
             'prefix': prefix,
             'current_input': current_input,
@@ -274,11 +277,11 @@ class FunctionCall(ModuleBase):
         self._observe_runtime('runtime_context_delivered', context_count=1)
         return [{'role': 'user', 'content': content}]
 
-    def _validate_context(self, history, current_input=None):
+    def _validate_context(self, history, current_input=None, final_answer=False):
         validator = getattr(self._tools_manager, 'context_validator', None)
         if validator is not None:
             prefix = _model_facing_prefix(self._system_prompt, self._tools_manager, self._skill_manager)
-            prefix['tool_definitions'] = self._get_current_tools()
+            prefix['tool_definitions'] = [] if final_answer else self._get_current_tools()
             validator(prefix, history, current_input)
 
     def _notify_history_ready(
@@ -325,6 +328,7 @@ class FunctionCall(ModuleBase):
         budget_notice: Optional[str],
         current_round: Optional[int],
         remaining_rounds: Optional[int],
+        final_input: Optional[str] = None,
     ) -> Dict[str, Any]:
         current_round_messages = self._build_current_tool_messages(workspace, budget_notice)
         workspace['history'].append({
@@ -337,17 +341,19 @@ class FunctionCall(ModuleBase):
         workspace['history'].extend(current_round_messages)
         compacted_prior, compacted_current = self._compact_history(
             prior_history,
-            current_input='',
+            current_input=final_input or '',
             current_round_messages=current_round_messages,
             workspace=workspace,
             remaining_rounds=remaining_rounds,
+            final_answer=final_input is not None,
         )
         compacted_current.extend(self._consume_model_context())
         if compacted_prior:
             locals['chat_history'][self._llm._module_id] = compacted_prior
         else:
             locals['chat_history'].pop(self._llm._module_id, None)
-        self._validate_context(compacted_prior + compacted_current)
+        self._validate_context(compacted_prior + compacted_current, final_input,
+                               final_answer=final_input is not None)
         self._notify_history_ready(workspace, current_round, compacted_prior + compacted_current)
         return {'input': compacted_current}
 
