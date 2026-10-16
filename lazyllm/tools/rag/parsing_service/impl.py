@@ -390,6 +390,11 @@ class _Processor:
                         uids=[node.uid for node in ref_nodes], group=ref_path[-1], kb_id=kb_id)
                     if len({node.uid for node in stored_refs}) != len({node.uid for node in ref_nodes}):
                         continue
+                # A durable group may have been deleted for rebuild, while the
+                # loaded parent still carries its old in-memory children. The
+                # transform's duplicate guard must not turn that into a null node.
+                with parent._lock:
+                    parent.children.pop(group_name, None)
                 children = transform.batch_forward([parent], group_name, ref_path=ref_path)
                 if not children:
                     digest = hashlib.sha1(
@@ -569,6 +574,14 @@ class _Processor:
                                             kb_id=kb_id, doc_ids=doc_ids)
             # TODO: reparse recursively
             if not p_nodes:
+                if node_groups[group_name]['parent'] == LAZY_IMAGE_GROUP:
+                    # Text-only documents legitimately have no image roots.
+                    # Rebuilding them cannot create images and would discard
+                    # unrelated text groups that have already been rebuilt.
+                    self._reparse_group_recursive(
+                        p_nodes=[], cur_name=group_name, node_groups=node_groups,
+                        doc_ids=doc_ids, kb_id=kb_id, skip_embedding=processing_level == 'chunked')
+                    return
                 LOG.warning(
                     f'Parent group "{node_groups[group_name]["parent"]}" has no nodes for '
                     f'docs {doc_ids}, falling back to full reparse from source.')
