@@ -168,7 +168,7 @@ For more examples, please refer to our official documentation [Usage Examples](h
         + Supports automatically selecting the most suitable framework and model parameters (such as micro-bs, tp, zero, etc.) based on user scenarios..
     * Online services:
         + Supports fine-tuning services: GPT, SenseNova, Tongyi Qianwen
-        + Supports inference services: GPT, SenseNova, Kimi, Zhipu, Tongyi Qianwen
+        + Supports inference services: GPT, SenseNova, Kimi, Zhipu, Tongyi Qianwen, OrcaRouter
         + Supports embedding inference services: OpenAI, SenseNova, GLM, Tongyi Qianwen
     * Support developers to use local services and online services uniformly.
 4. **Supports common RAG (Retrieval-Augmented Generation) components**: Document, Parser, Retriever, Reranker, etc.
