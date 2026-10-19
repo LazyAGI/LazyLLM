@@ -1244,12 +1244,12 @@ class ToolManager(ModuleBase):
         self._sandbox = sandbox
 
     @staticmethod
-    def _is_skill_run_script_tool(tool: ModuleTool) -> bool:
+    def _is_skill_string_list_tool(tool: ModuleTool, argument: str) -> bool:
         if tool.runtime_metadata.tool_source != 'skill':
             return False
 
         schema = tool.params_schema.model_json_schema()
-        args_schema = (schema.get('properties') or {}).get('args')
+        args_schema = (schema.get('properties') or {}).get(argument)
         if not isinstance(args_schema, dict):
             return False
         variants = args_schema.get('anyOf') or args_schema.get('oneOf') or [args_schema]
@@ -1264,35 +1264,37 @@ class ToolManager(ModuleBase):
             and (value_schema.get('items') or {}).get('type') == 'string'
 
     @staticmethod
-    def _run_script_args_failure(received: str):
+    def _string_list_argument_failure(argument: str, received: str):
         message = (
-            'Invalid arguments: args: expected a JSON array of strings, '
+            f'Invalid arguments: {argument}: expected a JSON array of strings, '
             f'received {received}.'
         )
-        return tool_failure(message + ' Example: {"args":["--query","test"]}.')
+        return tool_failure(message + f' Example: {{"{argument}":["--query","test"]}}.')
 
     @staticmethod
-    def _normalize_run_script_args(tool_arguments: Dict[str, Any]):
-        if 'args' not in tool_arguments or not isinstance(tool_arguments['args'], str):
+    def _normalize_string_list_argument(tool_arguments: Dict[str, Any], argument: str):
+        if argument not in tool_arguments or not isinstance(tool_arguments[argument], str):
             return tool_arguments, None
 
         try:
-            parsed_args = std_json.loads(tool_arguments['args'])
+            parsed_args = std_json.loads(tool_arguments[argument])
         except (TypeError, ValueError):
-            return None, ToolManager._run_script_args_failure('an invalid JSON string')
+            return None, ToolManager._string_list_argument_failure(argument, 'an invalid JSON string')
 
         if not isinstance(parsed_args, list):
-            return None, ToolManager._run_script_args_failure(type(parsed_args).__name__)
+            return None, ToolManager._string_list_argument_failure(argument, type(parsed_args).__name__)
 
         invalid_index = next(
             (index for index, item in enumerate(parsed_args) if not isinstance(item, str)),
             None,
         )
         if invalid_index is not None:
-            return None, ToolManager._run_script_args_failure(f'a non-string item at index {invalid_index}')
+            return None, ToolManager._string_list_argument_failure(
+                argument, f'a non-string item at index {invalid_index}',
+            )
 
         normalized = dict(tool_arguments)
-        normalized['args'] = parsed_args
+        normalized[argument] = parsed_args
         return normalized, None
 
     def _validate_tool(self, tool_name: str, tool_arguments: Dict[str, Any]):
@@ -1300,8 +1302,15 @@ class ToolManager(ModuleBase):
         if not entry:
             LOG.error(f'cannot find tool named [{tool_name}]')
             return None, None
-        if tool_name in ('run_script', 'run_skill_script') and self._is_skill_run_script_tool(entry):
-            tool_arguments, normalization_failure = self._normalize_run_script_args(tool_arguments)
+        string_list_argument = (
+            'args' if tool_name in ('run_script', 'run_skill_script')
+            else 'argv' if tool_name == 'run_skill_command'
+            else None
+        )
+        if string_list_argument and self._is_skill_string_list_tool(entry, string_list_argument):
+            tool_arguments, normalization_failure = self._normalize_string_list_argument(
+                tool_arguments, string_list_argument,
+            )
             if normalization_failure is not None:
                 return None, normalization_failure
         try:
