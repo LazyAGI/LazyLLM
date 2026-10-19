@@ -22,14 +22,16 @@ def test_feishu_folder_pages_and_full_listing_share_results(wiki):
     fs = (FeishuWikiFS if wiki else FeishuFS)(dynamic_auth=True, skip_instance_cache=True)
     field = 'items' if wiki else 'files'
     item_field = 'node_token' if wiki else 'token'
+
     def get(url, params):
         assert params['page_size'] == (50 if wiki else 200)
         assert params['parent_node_token' if wiki else 'folder_token'] == 'root'
         if wiki:
             assert url.endswith('/spaces/space/nodes')
         later = bool(params.get('page_token'))
-        return {'code': 0, 'data': {field: [{item_field: 'b' if later else 'a'}],
-                                  'has_more': not later, 'next_page_token': '' if later else 'next'}}
+        return {'code': 0, 'data': {
+            field: [{item_field: 'b' if later else 'a'}],
+            'has_more': not later, 'next_page_token': '' if later else 'next'}}
     fs._get = get
     kwargs = {'space_id': 'space'} if wiki else {'page_size': 200}
     first = fs.list_page('root', **kwargs)
@@ -53,6 +55,7 @@ def test_feishu_rejects_incomplete_or_invalid_pages(wiki, payload):
 
 def test_google_folder_info_keeps_shared_drive_identity():
     fs = GoogleDriveFS(dynamic_auth=True, skip_instance_cache=True)
+
     def get(url, params):
         assert 'driveId' in params['fields'].split(',')
         return {'id': 'folder', 'name': 'Folder', 'mimeType': 'application/vnd.google-apps.folder',
