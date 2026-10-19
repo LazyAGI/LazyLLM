@@ -163,7 +163,7 @@ class GoogleDriveFS(LazyLLMFSBase):
     def file_id_from_path(path: str) -> str:
         if not isinstance(path, str):
             raise ValueError('Invalid Google Drive file path')
-        path = re.sub(r'^googledrive:(?://)?', '', path)
+        path = re.sub(r'^googledrive:(?://)?', '', path).rstrip('/')
         match = re.fullmatch(r'/?(?:drive/(?:[A-Za-z0-9_-]+/)?)?([A-Za-z0-9_-]+)', path)
         if not match:
             raise ValueError('Invalid Google Drive file path')

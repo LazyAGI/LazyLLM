@@ -1,4 +1,5 @@
 import pytest
+import requests
 
 from lazyllm.tools.fs.supplier.feishu import FeishuFS, FeishuWikiFS
 from lazyllm.tools.fs.supplier.googledrive import GoogleDriveFS
@@ -17,6 +18,42 @@ def test_bound_account_credential_is_instance_local(factory):
     with pytest.raises(ValueError):
         first.bind_access_token('')
     assert first.get_current_token() == 'account-a'
+
+
+@pytest.mark.parametrize('factory', [FeishuFS, FeishuWikiFS])
+def test_bound_user_tokens_search_with_isolated_auth_headers(factory, monkeypatch):
+    clients = [factory(dynamic_auth=True, skip_instance_cache=True) for _ in range(2)]
+    headers = []
+
+    def send(method, url, **kwargs):
+        assert method == 'POST' and url.endswith('/search/v2/doc_wiki/search')
+        assert kwargs['json']['query'] == 'release plan'
+        headers.append(kwargs['headers']['Authorization'])
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b'{"code":0,"data":{"res_units":[],"has_more":false}}'
+        return response
+
+    for client, token in zip(clients, ('account-a', 'account-b')):
+        monkeypatch.setattr(client, '_http_execute', send)
+        client.bind_access_token(token, user_token=True)
+        with pytest.raises(ValueError):
+            client.bind_access_token('', user_token=True)
+    for client in clients:
+        assert client.search('release plan')['results'] == []
+    assert headers == ['Bearer account-a', 'Bearer account-b']
+
+
+def test_bound_static_token_does_not_enable_feishu_search(monkeypatch):
+    fs = FeishuFS(dynamic_auth=True, skip_instance_cache=True)
+    fs.bind_access_token('application-token')
+
+    def unexpected_request(*args, **kwargs):
+        pytest.fail('Static credentials must be rejected before sending a search request')
+
+    monkeypatch.setattr(fs, '_http_execute', unexpected_request)
+    with pytest.raises(ValueError, match='search requires user OAuth authorization'):
+        fs.search('release plan')
 
 
 @pytest.mark.parametrize('wiki', [False, True])
@@ -92,9 +129,12 @@ def test_google_folder_page_rejects_invalid_response(payload):
 
 @pytest.mark.parametrize('path, identifier', [
     ('/folder', 'folder'), ('/drive/shared', 'shared'),
-    ('googledrive://drive/shared', 'shared'), ('/drive/shared/folder', 'folder'),
+    ('/drive/shared/folder', 'folder'),
 ])
-def test_google_folder_info_keeps_shared_drive_identity(path, identifier):
+@pytest.mark.parametrize('prefix', ['', 'googledrive:', 'googledrive://'])
+@pytest.mark.parametrize('suffix', ['', '/'])
+def test_google_folder_info_keeps_shared_drive_identity(path, identifier, prefix, suffix):
+    path = (prefix + path.lstrip('/') if prefix.endswith('//') else prefix + path) + suffix
     fs = GoogleDriveFS(dynamic_auth=True, skip_instance_cache=True)
 
     def get(url, params):
@@ -103,8 +143,16 @@ def test_google_folder_info_keeps_shared_drive_identity(path, identifier):
         return {'id': identifier, 'name': 'Folder', 'mimeType': 'application/vnd.google-apps.folder',
                 'driveId': 'shared'}
     fs._get = get
+    assert fs.file_id_from_path(path) == identifier
     info = fs.info(path)
     assert info['type'] == 'directory' and info['drive_id'] == 'shared'
+    assert fs.exists(path)
+
+
+@pytest.mark.parametrize('path', ['/folder/child', '/drive/shared/folder/child/', '/bad.id/', '/drive//folder/'])
+def test_google_file_path_rejects_invalid_ids_and_extra_segments(path):
+    with pytest.raises(ValueError, match='Invalid Google Drive file path'):
+        GoogleDriveFS.file_id_from_path(path)
 
 
 @pytest.mark.parametrize('wrapped', [False, True])

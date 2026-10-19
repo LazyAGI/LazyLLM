@@ -1,5 +1,7 @@
+import io
 import os
 import tempfile
+from contextlib import nullcontext
 
 
 from lazyllm.tools import AuthorizationDecision, ToolManager
@@ -91,6 +93,28 @@ def test_read_stops_before_next_line_exceeding_budget(tmp_path):
     second = read(str(source), offset=33)
     assert second['content'] == '中' * 1000 + '\nend'
     assert second['eof']
+
+
+def test_read_limit_only_probes_next_line(monkeypatch):
+    from lazyllm.tools.agent import file_tool
+
+    stream = io.StringIO('header\n' + 'x' * (8 * 1024 * 1024) + '\n')
+    monkeypatch.setattr(file_tool, '_open_text', lambda *args, **kwargs: nullcontext(stream))
+    result = read('/tmp/read-limit.txt', limit=1)
+    assert result['content'] == 'header\n'
+    assert result['end_line'] == 1 and result['next_offset'] == 2
+    assert not result['eof'] and result['truncated']
+    assert stream.tell() <= len('header\n') + 1
+
+
+def test_read_limit_at_eof(tmp_path):
+    source = tmp_path / 'one-line.txt'
+    for content in ('header\n', 'header'):
+        source.write_text(content)
+        result = read(str(source), limit=1)
+        assert result['content'] == content
+        assert result['eof'] and not result['truncated']
+        assert result['next_offset'] is None and result['end_line'] == 1
 
 
 def test_grep_snippet_shows_late_match_and_skips_oversized_record(tmp_path):

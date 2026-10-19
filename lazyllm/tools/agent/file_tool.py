@@ -145,30 +145,30 @@ def read(file_path: str, offset: int = 1, limit: int = 2000) -> dict:
     limit, max_bytes = min(limit, 2000), MAX_READ_BYTES
     path = _resolve_path(file_path)
     content, size, count, clipped = [], 0, 0, []
+    eof = False
     with _open_text(path, errors='replace') as stream:
         for _ in range(offset - 1):
             if _physical_line(stream) is None:
                 break
-        line = _physical_line(stream)
-        while line is not None and count < limit:
+        while count < limit:
+            line = _physical_line(stream)
+            if line is None:
+                eof = True
+                break
             prefix, truncated_line, newline = line
             # Preserve record boundaries even when a long line's suffix is omitted.
             display = prefix.rstrip('\n') + ('\n' if newline else '')
             encoded = display.encode('utf-8', errors='replace')
             if size + len(encoded) > max_bytes:
-                if count:
-                    break
-                display = encoded[:max_bytes - int(newline)].decode('utf-8', 'ignore')
-                display += '\n' if newline else ''
-                encoded = display.encode('utf-8')
-                truncated_line = True
+                break
             content.append(display)
             size += len(encoded)
             if truncated_line:
                 clipped.append(offset + count)
             count += 1
-            line = _physical_line(stream)
-    eof = line is None
+            if count == limit:
+                eof = not stream.read(1)
+                break
     result = {'status': 'ok', 'path': path, 'line_unit': 'physical',
               'offset': offset, 'end_line': offset + count - 1,
               'content': ''.join(content), 'eof': eof, 'truncated': not eof or bool(clipped),
@@ -295,16 +295,16 @@ def _run_rg(command, collect, cwd=None):
         timer.daemon = True
         timer.start()
         try:
-            results, truncated = collect(process.stdout)
-            if truncated:
+            results, stop_early = collect(process.stdout)
+            if stop_early:
                 process.kill()
             code = process.wait()
             if expired.is_set():
                 raise ToolExecutionError('Search timed out after 30 seconds; narrow the search path')
-            if not truncated and code not in (0, 1):
+            if not stop_early and code not in (0, 1):
                 errors.seek(0)
                 raise ToolExecutionError('Search failed: ' + errors.read(4096).decode('utf-8', 'replace'))
-            return results, truncated
+            return results, stop_early
         finally:
             timer.cancel()
             if process.poll() is None:

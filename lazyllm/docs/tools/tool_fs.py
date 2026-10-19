@@ -99,9 +99,13 @@ _add_fs_example('LazyLLMFSBase', '''\
 
 # LazyLLMFSBase abstract and public methods
 _add_fs_chinese('LazyLLMFSBase.bind_access_token', '''绑定当前实例的非空 access token；不修改会话凭据。空值或非字符串抛 ValueError。
-调用方必须用 skip_instance_cache=True 创建独立实例，并在首次请求前绑定账号；不要在共享实例上切换账号。token 刷新由调用方负责。''')
+user_token 默认为 False，沿用静态 token 绑定；显式传入 user_token=True 声明这是用户 OAuth token，允许飞书搜索等需要用户授权的操作。
+该声明不验证 token 的实际权限，权限由供应商校验。调用方必须用 skip_instance_cache=True 创建独立实例，并在首次请求前绑定账号；不要在共享实例上切换账号。
+不配置自动刷新或到期时间；token 刷新由调用方负责，HTTP 认证失败继续向上传递。''')
 _add_fs_english('LazyLLMFSBase.bind_access_token', '''Bind a nonempty access token to this instance without changing session credentials. Empty or non-string values raise ValueError.
-Create an isolated instance with skip_instance_cache=True and bind its account before the first request. Do not switch accounts on shared instances. The caller owns token refresh.''')
+user_token defaults to False for static token binding. Pass user_token=True to declare a user OAuth token, enabling operations that require user authorization, such as Feishu search.
+This declaration does not validate permissions; the provider does. Create an isolated instance with skip_instance_cache=True and bind its account before the first request. Do not switch accounts on shared instances.
+No automatic refresh or expiration time is configured. The caller owns token refresh; HTTP authentication errors propagate.''')
 
 _add_feishu_chinese('FeishuFS.folder_info', '''按稳定 folder_token 查询云盘文件夹元数据，返回供应商字段字典，不改变 info() 的名称路径语义。
 服务端拒绝访问、响应或元数据结构不合法时抛 ValueError；网络异常继续向上传递。''')
@@ -2415,6 +2419,7 @@ Returns:
 
 _add_fs_chinese('GoogleDriveFS.file_id_from_path', '''\
 从 Google Drive 路径提取文件或文件夹 ID，不发起网络请求。
+支持路径末尾的斜杠。
 
 Args:
     path (str): 对象 ID、/对象ID、共享盘根 /drive/<drive_id> 或 /drive/<drive_id>/<对象ID>，可带 googledrive: 或 googledrive:// 前缀。
@@ -2427,6 +2432,7 @@ Raises:
 ''')
 _add_fs_english('GoogleDriveFS.file_id_from_path', '''\
 Extract a file or folder ID from a Google Drive path without making a network request.
+Trailing slashes are accepted.
 
 Args:
     path (str): An object ID, /<object_id>, shared-drive root /drive/<drive_id>, or /drive/<drive_id>/<object_id>, optionally prefixed with googledrive: or googledrive://.
