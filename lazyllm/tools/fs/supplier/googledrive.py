@@ -164,7 +164,7 @@ class GoogleDriveFS(LazyLLMFSBase):
         if not isinstance(path, str):
             raise ValueError('Invalid Google Drive file path')
         path = re.sub(r'^googledrive:(?://)?', '', path)
-        match = re.fullmatch(r'/?(?:drive/[A-Za-z0-9_-]+/)?([A-Za-z0-9_-]+)', path)
+        match = re.fullmatch(r'/?(?:drive/(?:[A-Za-z0-9_-]+/)?)?([A-Za-z0-9_-]+)', path)
         if not match:
             raise ValueError('Invalid Google Drive file path')
         return match[1]
@@ -462,6 +462,8 @@ class GoogleDriveFS(LazyLLMFSBase):
             field = 'name' if query_mode == 'name' else 'fullText'
             terms.append(f"{field} contains '{self._escape_query_literal(query)}'")
         data = self._files_page(' and '.join(terms), drive_id, page_size, page_token)
+        if not isinstance(data, dict):
+            raise ValueError('Invalid Google Drive files page')
         items = data.get('files', [])
         if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
             raise ValueError('Invalid Google Drive files page')

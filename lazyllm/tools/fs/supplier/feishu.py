@@ -498,13 +498,16 @@ class FeishuFSBase(LinkDocumentFSBase):
 
     def _folder_page(self, url: str, params: Dict[str, Any], fields: Tuple[str, ...]) -> Dict[str, Any]:
         payload = self._get(url, params=params)
+        if not isinstance(payload, dict):
+            raise ValueError('Provider returned invalid enumeration response.')
         if payload.get('code', 0) != 0 or not isinstance(payload.get('data'), dict):
             raise ValueError(f"Provider rejected enumeration (code={payload.get('code', 'missing')}).")
         data = payload['data']
         items = next((data[name] for name in fields if name in data), [])
         token = data.get('page_token') or data.get('next_page_token') or ''
         more = data.get('has_more', bool(token))
-        if not isinstance(items, list) or (more and (not token or token == params.get('page_token'))):
+        if (not isinstance(items, list) or any(not isinstance(item, dict) for item in items)
+                or (more and (not token or token == params.get('page_token')))):
             raise ValueError('Provider returned invalid contents or continuation token.')
         return {'items': items, 'next_page_token': token if more else ''}
 
@@ -1755,15 +1758,17 @@ class FeishuFS(FeishuFSBase):
         return super().__new__(cls)
 
     def folder_info(self, folder_token: str) -> Dict[str, Any]:
-        '''Get metadata for a stable Drive folder token (not a display-name path).'''
         payload = self._get(f'{self._base_url}/drive/explorer/v2/folder/{folder_token}/meta')
-        if payload.get('code', 0) != 0 or not isinstance(payload.get('data'), dict):
+        if (not isinstance(payload, dict) or payload.get('code', 0) != 0
+                or not isinstance(payload.get('data'), dict)):
             raise ValueError('Folder metadata is inaccessible.')
-        return payload['data'].get('folder', payload['data'])
+        info = payload['data'].get('folder', payload['data'])
+        if not isinstance(info, dict):
+            raise ValueError('Provider returned invalid folder metadata.')
+        return info
 
     def list_page(self, folder_token: str = '', page_size: int = 200,
                   page_token: str = '') -> Dict[str, Any]:
-        '''List one Drive folder page; the provider root does not support pagination.'''
         params = {'folder_token': folder_token, 'page_size': min(max(int(page_size), 1), 200)} if folder_token else {}
         if page_token:
             if not folder_token:
@@ -2106,16 +2111,8 @@ class FeishuWikiFS(FeishuFSBase):
                 "set globals.config['feishu_wiki_space_id'], or use feishu@<space_id>:/ URI"
             )
 
-    def folder_info(self, node_token: str) -> Dict[str, Any]:
-        '''Get Wiki subtree metadata using its stable node token.'''
-        info = self._get_node(node_token)
-        if not info.get('space_id'):
-            raise ValueError('Wiki space identity unavailable.')
-        return info
-
     def list_page(self, folder_token: str = '', space_id: str = '', page_size: int = 50,
                   page_token: str = '') -> Dict[str, Any]:
-        '''List one Wiki subtree page without resolving display-name paths.'''
         sid = self._resolve_space_id(space_id)
         if not sid:
             raise ValueError('space_id is required for Feishu wiki node listing')

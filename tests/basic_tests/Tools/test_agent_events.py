@@ -215,7 +215,7 @@ def test_function_call_delivers_model_context_after_compaction():
         '[Internal runtime notice]' not in json.dumps(messages)
         for messages in compacted_inputs
     )
-    assert set(reserved_runtime_tokens) == {1024}
+    assert set(reserved_runtime_tokens) == {512}
     assert not any(
         str(message.get('content') or '').startswith('[Internal runtime notice]\n')
         for message in lazyllm.locals['_lazyllm_agent']['history']
