@@ -85,6 +85,8 @@ _STRUCTURED_SKILL_FAILURE_FIELDS = (
     'blocked_resource',
     'missing_env',
     'available_commands',
+    'stdout',
+    'stderr',
 )
 
 

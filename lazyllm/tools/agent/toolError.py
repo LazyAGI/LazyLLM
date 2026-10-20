@@ -14,6 +14,8 @@ def tool_failure(
     duration_ms: Optional[int] = None,
     blocked_resource: Optional[str] = None,
     available_commands: Optional[Iterable[str]] = None,
+    stdout: Optional[str] = None,
+    stderr: Optional[str] = None,
 ) -> Dict[str, Any]:
     result = {'ok': False, 'value': str(message)}
     if needs_approval:
@@ -34,6 +36,10 @@ def tool_failure(
     commands = [str(name) for name in (available_commands or []) if name]
     if commands:
         result['available_commands'] = commands
+    if stdout:
+        result['stdout'] = str(stdout)
+    if stderr:
+        result['stderr'] = str(stderr)
     return result
 
 
@@ -47,6 +53,8 @@ class ToolExecutionError(HandledException):
     duration_ms = None
     blocked_resource = None
     available_commands = ()
+    stdout = None
+    stderr = None
 
     @classmethod
     def not_ready(cls, blocker: Dict[str, Any]) -> 'ToolExecutionError':
@@ -78,6 +86,8 @@ class ToolExecutionError(HandledException):
         missing_env: Optional[Iterable[str]] = None,
         blocked_resource: Optional[str] = None,
         available_commands: Optional[Iterable[str]] = None,
+        stdout: Optional[str] = None,
+        stderr: Optional[str] = None,
     ) -> 'ToolExecutionError':
         error = cls(message)
         error.error_type = str(error_type) if error_type else None
@@ -87,6 +97,8 @@ class ToolExecutionError(HandledException):
         error.missing_env = [str(name) for name in (missing_env or []) if name]
         error.blocked_resource = str(blocked_resource) if blocked_resource else None
         error.available_commands = [str(name) for name in (available_commands or []) if name]
+        error.stdout = str(stdout) if stdout else None
+        error.stderr = str(stderr) if stderr else None
         return error
 
 
@@ -126,6 +138,8 @@ def exception_failure(tool_name: str, error: Exception) -> Dict[str, Any]:
             duration_ms=getattr(typed_error, 'duration_ms', None),
             blocked_resource=getattr(typed_error, 'blocked_resource', None),
             available_commands=getattr(typed_error, 'available_commands', ()) or None,
+            stdout=getattr(typed_error, 'stdout', None),
+            stderr=getattr(typed_error, 'stderr', None),
         )
 
     semantic_error = causes[-1] if causes else error

@@ -315,6 +315,8 @@ class TestReactAgentEvents(object):
             'error_type': 'COMMAND_DENIED',
             'blocked_resource': 'sudo',
             'duration_ms': 42,
+            'stdout': 'partial output',
+            'stderr': 'sudo: command denied',
         }
 
         skill_content = _model_tool_result_content('run_skill_command', failure)
@@ -325,6 +327,8 @@ class TestReactAgentEvents(object):
             'reason_code': 'COMMAND_DENIED',
             'blocked_resource': 'sudo',
             'duration_ms': 42,
+            'stdout': 'partial output',
+            'stderr': 'sudo: command denied',
         }
         assert _model_tool_result_content('run_skill_script', failure) == skill_content
         assert _model_tool_result_content('unrelated_tool', failure) == failure['value']

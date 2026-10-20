@@ -1109,6 +1109,8 @@ class SkillManager(ModuleBase):
             'missing_env': missing_env,
             'blocked_resource': result.get('blocked_resource'),
             'available_commands': result.get('available_commands') or [],
+            'stdout': result.get('stdout'),
+            'stderr': result.get('stderr'),
         }
         if not any(value not in (None, [], ()) for value in diagnostics.values()):
             return ToolExecutionError(reason)
