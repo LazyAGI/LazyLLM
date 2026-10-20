@@ -16,7 +16,9 @@ Args:
     args (list[str], optional): Arguments list used for starting a local server, if you want to connect to a remote server, this argument is not needed. (default is [])
     env (dict[str, str], optional): Environment variables dictionary used in tools, for example some api keys. (default is None)
     headers(dict[str, Any], optional): HTTP headers used in http client connection. (default is None)
-    server_id (str, optional): Stable server identity supplied by the host. Enables stable tool identities and collision aliases when tools from multiple servers are registered together. Defaults to an empty string for legacy behavior.
+    server_id (str, optional): Stable server identity supplied by the host. Identifies the source independently of the model-facing name. Defaults to an empty string.
+    server_name (str, optional): Namespace for model-facing names, producing mcp_<server>_<tool>. Lowercase the server name, replace runs outside ASCII letters, digits and underscores with _, and strip boundary underscores. Defaults to an empty string, retaining legacy tool-name normalization without hash suffixes.
+    tool_name_prefix (str, optional): Exact prefix to remove from original method names before normalization. Requires server_name; defaults to an empty string. Tool names preserve case and replace runs outside ASCII letters, digits and underscores with _, stripping boundary underscores. Empty normalized names or complete names longer than 64 characters raise ValueError. Normalization collisions raise ValueError; no truncation or suffix is applied. Remote calls still use the original MCP method.
     timeout (float, optional): Timeout for http client connection, in seconds. (default is 5)
     transport (Literal, optional): Transport protocol to use. One of 'auto', 'stdio', 'sse', 'streamable-http'. (default is 'auto')
 
@@ -37,7 +39,9 @@ Args:
     args (list[str], optional): 用于启动本地服务器的参数列表；如果要连接远程服务器，则无需此参数。（默认值为[]）
     env (dict[str, str], optional): 工具中使用的环境变量，例如一些 API 密钥。（默认值为None）
     headers(dict[str, Any], optional): 用于 HTTP 客户端连接的请求头。（默认值为None）
-    server_id (str, optional): Host 提供的稳定服务器标识，用于稳定工具身份和多服务器合并注册时的同名工具别名。默认空字符串，保留旧行为。
+    server_id (str, optional): Host 提供的稳定服务器标识，用于识别工具来源，独立于模型可见名称。默认空字符串。
+    server_name (str, optional): 模型可见名称的命名空间，生成 mcp_<server>_<tool>。Server 名转小写，将非 ASCII 字母、数字、下划线的连续字符替换为 _，去掉首尾下划线。默认空字符串，保留旧工具名规范化行为，不追加哈希。
+    tool_name_prefix (str, optional): 规范化前从原始方法名移除的精确前缀，需要同时指定 server_name，默认空字符串。工具名保留大小写，将非 ASCII 字母、数字、下划线的连续字符替换为 _，去掉首尾下划线。规范化后名称为空、完整名称超过 64 字符或名称冲突时抛出 ValueError，不截断或追加后缀；远端调用仍使用原始 MCP 方法名。
     timeout (float, optional): HTTP 客户端连接的超时时间，单位为秒。(默认值为5)
     transport (Literal, optional): 传输协议。可选值为 'auto'、'stdio'、'sse'、'streamable-http'。(默认值为 'auto')
 
@@ -84,7 +88,7 @@ add_english_doc('MCPClient.get_tools', '''\
 Retrieve a filtered list of tools from the MCP client.
 
 Args:
-    allowed_tools (Optional[list[str]]): List of tool names to filter. If None, all tools are returned.
+    allowed_tools (Optional[list[str]]): List of original MCP method names to filter. If None, all tools are returned.
 
 **Returns:**\n
 - Any: List of tools that match the filter criteria.
@@ -94,7 +98,7 @@ add_chinese_doc('MCPClient.get_tools', '''\
 从 MCP 客户端获取经过筛选的工具列表。
 
 Args:
-    allowed_tools (Optional[list[str]]): 要筛选的工具名称列表，若为 None，则返回所有工具。
+    allowed_tools (Optional[list[str]]): 要筛选的原始 MCP 方法名列表，若为 None，则返回所有工具。
 
 **Returns:**\n
 - Any: 符合筛选条件的工具列表。
@@ -122,7 +126,7 @@ Used to convert the tool set from the MCP server into a list of functions availa
 The allowed_tools parameter is used to specify the list of tools to be returned. If None, all tools will be returned.
 
 Args:
-    allowed_tools (list[str], optional): The list of tools expected to be returned. Defaults to None, meaning that all tools will be returned.
+    allowed_tools (list[str], optional): The list of original MCP method names expected to be returned. Defaults to None, meaning that all tools will be returned.
 ''')
 
 add_chinese_doc('MCPClient.aget_tools', '''\
@@ -131,7 +135,7 @@ add_chinese_doc('MCPClient.aget_tools', '''\
 allowed_tools参数用于指定要返回的工具列表，默认为None，表示返回所有工具。
 
 Args:
-    allowed_tools (list[str], optional): 期望返回的工具列表，默认为None，表示返回所有工具。
+    allowed_tools (list[str], optional): 期望返回的原始 MCP 方法名列表，默认为None，表示返回所有工具。
 ''')
 
 
@@ -151,6 +155,7 @@ add_example('MCPClient', '''\
 >>> file_client = MCPClient(
 ...     command_or_url=file_sys_config["command"],
 ...     args=file_sys_config["args"],
+...     server_name="filesystem",
 ... )
 >>> from lazyllm import OnlineChatModule
 >>> from lazyllm.tools.agent.reactAgent import ReactAgent

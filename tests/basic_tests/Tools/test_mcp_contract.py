@@ -37,11 +37,11 @@ def test_allowlist_filters_wire_names_before_registration(monkeypatch, allowed, 
 
     def register(client, tool):
         registered.append(tool.name)
-        return tool.name
+        return generate_lazyllm_tool(client, tool)
 
     client.list_tools = discover
     monkeypatch.setattr(module, 'generate_lazyllm_tool', register)
-    assert client.get_tools(allowed_tools=allowed) == expected
+    assert [tool.__mcp_tool_name__ for tool in client.get_tools(allowed_tools=allowed)] == expected
     assert registered == expected
 
 

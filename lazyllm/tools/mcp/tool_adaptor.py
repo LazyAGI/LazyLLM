@@ -80,11 +80,39 @@ def _handle_tool_result(result, tool_name: str, result_mode: str = 'text') -> st
         return f'Error processing content from MCP tool "{tool_name}": {e!s}'
 
 
+class MCPToolNameError(ValueError):
+    pass
+
+
+def _validate_mcp_tool_names(tools):
+    names = {}
+    for tool in tools:
+        name = tool.__name__
+        wire_name = tool.__mcp_tool_name__
+        if name in names:
+            raise MCPToolNameError(f'MCP tool name collision: {names[name]} and {wire_name} map to {name}')
+        names[name] = wire_name
+    return tools
+
+
+def _model_tool_name(server_name: str, tool_name: str, tool_name_prefix: str = '') -> str:
+    if not isinstance(tool_name, str) or not tool_name:
+        raise MCPToolNameError('MCP tool name must not be empty')
+    if not server_name:
+        name = re.sub(r'\W', '_', tool_name)
+        return '_' + name if name[:1].isdigit() else name
+    server = re.sub(r'[^a-z0-9_]+', '_', server_name.lower()).strip('_')
+    tool = re.sub(r'[^A-Za-z0-9_]+', '_', tool_name.removeprefix(tool_name_prefix)).strip('_')
+    name = f'mcp_{server}_{tool}'
+    if not server or not tool or len(name) > 64:
+        raise MCPToolNameError(f'MCP tool name is empty or exceeds 64 characters: {name}')
+    return name
+
+
 def generate_lazyllm_tool(client, mcp_tool) -> Callable:
     tool_name = mcp_tool.name
-    exposed_tool_name = re.sub(r'\W', '_', tool_name)
-    if exposed_tool_name[:1].isdigit():
-        exposed_tool_name = '_' + exposed_tool_name
+    exposed_tool_name = _model_tool_name(
+        getattr(client, 'server_name', ''), tool_name, getattr(client, 'tool_name_prefix', ''))
     tool_desc = mcp_tool.description
     # MCP's Pydantic models used the JSON alias ``inputSchema`` in older
     # releases and the Pythonic ``input_schema`` attribute in newer ones.

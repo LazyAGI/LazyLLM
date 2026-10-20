@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from lazyllm.thirdparty import mcp
 
 from .utils import patch_sync
-from .tool_adaptor import generate_lazyllm_tool
+from .tool_adaptor import generate_lazyllm_tool, _validate_mcp_tool_names
 from .deploy import SseServerSettings, start_sse_server
 
 
@@ -24,7 +24,13 @@ class MCPClient(object):
         result_mode: Literal['text', 'structured'] = 'text',
         request_metadata_provider: Optional[Callable[[str, dict], Awaitable[dict[str, Any]]]] = None,
         progress_callback: Optional[Callable[..., Awaitable[None]]] = None,
+        server_name: str = '',
+        tool_name_prefix: str = '',
     ):
+        if not isinstance(server_name, str) or not isinstance(tool_name_prefix, str):
+            raise TypeError('server_name and tool_name_prefix must be strings')
+        if tool_name_prefix and not server_name:
+            raise ValueError('MCP tool name prefix requires server_name')
         self._command_or_url = command_or_url
         self._args = args or []
         self._env = env
@@ -41,6 +47,8 @@ class MCPClient(object):
         if (auth_provider or auth_recovery) and self._resolve_transport() != 'streamable-http':
             raise ValueError('MCP auth callbacks require streamable-http transport')
         self.server_id = server_id
+        self.server_name = server_name
+        self.tool_name_prefix = tool_name_prefix
 
     def _resolve_transport(self) -> str:
         if self._transport != 'auto':
@@ -172,7 +180,7 @@ class MCPClient(object):
         if allowed_tools is not None:
             mcp_tools = [tool for tool in mcp_tools if tool.name in allowed_tools]
 
-        return [generate_lazyllm_tool(self, tool) for tool in mcp_tools]
+        return _validate_mcp_tool_names([generate_lazyllm_tool(self, tool) for tool in mcp_tools])
 
     def get_tools(self, allowed_tools: list[str] = None):
         return patch_sync(self.aget_tools)(allowed_tools=allowed_tools)
