@@ -437,8 +437,8 @@ def test_builtin_paths_use_request_working_directory(tmp_path):
 
     manager = ToolManager([read, write, remove, shell, todo_write])
     batch = manager.prepare_tool_calls(
-        call('read', path='notes.txt'), working_directory=str(tmp_path))
-    assert batch[0].validated_arguments['path'] == str(tmp_path / 'notes.txt')
+        call('read', file_path='notes.txt'), working_directory=str(tmp_path))
+    assert batch[0].validated_arguments['file_path'] == str(tmp_path / 'notes.txt')
     assert batch[0].host_files == (HostFileIntent(str(tmp_path / 'notes.txt'), 'read'),)
 
 
