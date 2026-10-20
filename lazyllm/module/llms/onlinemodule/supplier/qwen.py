@@ -26,6 +26,13 @@ _DASHSCOPE_DEFAULT_WEBSOCKET_URL = 'wss://dashscope.aliyuncs.com/api-ws/v1/infer
 _dashscope_urls_initialized = False
 
 
+def _dashscope_api_root(base_url: str) -> str:
+    base = (base_url or 'https://dashscope.aliyuncs.com/').rstrip('/') + '/'
+    if base.rstrip('/').endswith('/api/v1'):
+        return base
+    return urljoin(base, 'api/v1/')
+
+
 _QWEN_ERROR_MAP = {
     'Arrearage': ModelFailureCode.BALANCE_EXHAUSTED,
     'isv.OUT_OF_SERVICE': ModelFailureCode.BALANCE_EXHAUSTED,
@@ -616,10 +623,7 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
                  base_websocket_url: Optional[str] = None,
                  **kwargs):
         _ensure_dashscope_urls_initialized()
-        base_url = base_url or _DASHSCOPE_DEFAULT_HTTP_URL
         base_websocket_url = base_websocket_url or _DASHSCOPE_DEFAULT_WEBSOCKET_URL
-        if base_url and base_url != _DASHSCOPE_DEFAULT_HTTP_URL:
-            LOG.warning('QwenText2Image ignores `base_url`; use `set_dashscope_urls` instead.')
         if base_websocket_url and base_websocket_url != _DASHSCOPE_DEFAULT_WEBSOCKET_URL:
             LOG.warning('QwenText2Image ignores `base_websocket_url`; use `set_dashscope_urls` instead.')
         super().__init__(api_key=api_key or self._default_api_key(), model_name=model,
@@ -634,6 +638,7 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
                 messages=call_params['messages'], negative_prompt=call_params.get('negative_prompt'),
                 n=n, size=size.replace('x', '*') if size else None,
                 prompt_extend=call_params.get('prompt_extend'),
+                **({'base_address': call_params['base_address']} if 'base_address' in call_params else {}),
                 **({'seed': call_params['seed']} if 'seed' in call_params else {}),
             )
         else:
@@ -655,8 +660,12 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
         task_id = getattr(task_response.output, 'task_id', None)
         if not task_id:
             raise RuntimeError('No task_id returned from async image synthesis call')
-        response = dashscope.ImageSynthesis.wait(task=task_id, api_key=self._api_key)
-        return response
+        # Older ImageSynthesis.wait wrappers discard request-level endpoint options.
+        response = dashscope.client.base_api.BaseAsyncApi.wait(
+            task=task_id, api_key=call_params.get('api_key'),
+            **({'base_address': call_params['base_address']} if 'base_address' in call_params else {}),
+        )
+        return type(task_response).from_api_response(response)
 
     def _extract_sync_image_urls(self, response):
         try:
@@ -744,7 +753,8 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
             'negative_prompt': negative_prompt,
             'n': n,
             'prompt_extend': prompt_extend,
-            **kwargs
+            **kwargs,
+            **({'base_address': _dashscope_api_root(url or self._base_url)} if url or self._base_url else {}),
         }
         call_params['size'] = size.replace('x', '*')
         if self._api_key: call_params['api_key'] = self._api_key
@@ -803,10 +813,7 @@ class QwenText2Video(LazyLLMOnlineText2VideoModuleBase):
 
     @staticmethod
     def _api_root(base_url: str) -> str:
-        base = (base_url or 'https://dashscope.aliyuncs.com/').rstrip('/') + '/'
-        if base.rstrip('/').endswith('/api/v1'):
-            return base
-        return urljoin(base, 'api/v1/')
+        return _dashscope_api_root(base_url)
 
     @staticmethod
     def _format_image(image: str) -> str:
