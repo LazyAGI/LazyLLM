@@ -146,7 +146,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         # commonly use structured request models that are not imported here.
         annotation_func = inspect.unwrap(func)
         func_type_hints = get_type_hints(
-            annotation_func, getattr(annotation_func, '__globals__', globals()), locals())
+            annotation_func, getattr(annotation_func, '__globals__', globals()), locals(), include_extras=True)
 
         func_return = func_type_hints.get('return')
         doc_return = doc_type_hints.get('return')

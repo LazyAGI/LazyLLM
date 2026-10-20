@@ -7,7 +7,8 @@ from lazyllm.tools.agent.toolsManager import (
 from lazyllm.tools.agent.reactAgent import ReactAgent
 from lazyllm.common import LazyLLMRegisterMetaClass
 from lazyllm import locals as lazyllm_locals, init_session
-from typing import List, Literal
+from typing import Annotated, List, Literal
+from pydantic import Field, ValidationError
 
 def _gen_wrapped_moduletool(func):
     if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
@@ -18,6 +19,17 @@ def _gen_wrapped_moduletool(func):
     return wrapped_module
 
 class TestToolManager:
+    def test_annotated_constraints_survive_tool_schema_resolution(self):
+        def positive_count(count: Annotated[int, Field(gt=0)]):
+            """Accept a positive count."""
+            return count
+
+        tool = ToolManager([positive_count]).all_tools[0]
+        assert tool.params_schema.model_json_schema()['properties']['count']['exclusiveMinimum'] == 0
+        assert tool._validate_input({'count': 1}) == {'count': 1}
+        with pytest.raises(ValidationError):
+            tool._validate_input({'count': 0})
+
     def test_enum_func(self):
         def func(s: Literal['a', 'b', 'c']):
             '''
