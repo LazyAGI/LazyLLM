@@ -1018,3 +1018,75 @@ res = tavily('latest AI research', search_depth='advanced', include_answer=True)
 # 新闻搜索
 res = tavily('AI news', topic='news', days=1, max_results=5)
 ''')
+
+
+
+add_chinese_doc('SerplySearch', '''
+Serply Search API 封装，返回 Google 自然搜索结果（organic SERP）。
+
+如何申请 API Key：
+1. 打开 Serply 官网 https://serply.io ，注册并登录。
+2. 在控制台中创建或查看密钥，即 api_key，用于请求头 X-Api-Key: <api_key>。
+3. API 文档：https://serply.io/docs 。
+
+特点：
+- 只需一个 API key，无需像 GoogleSearch 那样额外配置 Programmable Search Engine ID（cx）。
+- 返回的是 Google 自然搜索结果，排序与公开搜索页一致。
+
+Args:
+    api_key (str, optional): Serply API key；为空时从 dynamic_tool_auth["serply"] 读取。
+    endpoint (str): API 端点，默认 https://api.serply.io/v1/search/。
+    timeout (int): 请求超时秒数，默认 10。
+    source_name (str): 结果来源标识，默认 "serply"。
+''')
+
+add_english_doc('SerplySearch', '''
+Serply Search API wrapper that returns Google organic search results.
+
+How to get an API key:
+1. Go to Serply https://serply.io , sign up and log in.
+2. Create or view your key in the dashboard and use it as the X-Api-Key: <api_key> request header.
+3. API docs: https://serply.io/docs .
+
+Features:
+- Needs one API key only, with no Programmable Search Engine ID (cx) to configure as GoogleSearch requires.
+- Returns Google organic results in the same order as the public search page.
+
+Args:
+    api_key (str, optional): Serply API key; when omitted, reads dynamic_tool_auth["serply"].
+    endpoint (str): API endpoint, default https://api.serply.io/v1/search/.
+    timeout (int): Request timeout in seconds, default 10.
+    source_name (str): Source identifier in results, default "serply".
+''')
+
+add_example('SerplySearch', '''
+from lazyllm.tools.tools import SerplySearch
+serply = SerplySearch(api_key='<your_serply_api_key>')
+res = serply('python tutorial', num=5)
+''')
+
+add_chinese_doc('SerplySearch.search', f'''
+执行 Serply 网页搜索。
+
+{_GENERAL_SEARCH_GUIDANCE_ZH}
+
+Args:
+    query (str): 搜索关键词。
+    num (int): 返回条数，默认 10，最大 10（单次请求只取一页结果）。
+
+Returns:
+    List[dict]: 统一格式的搜索结果列表。每条结果包含 title、url（映射自 link 字段）、snippet（映射自 description 字段）、source。
+''')
+
+add_english_doc('SerplySearch.search', f'''
+Execute Serply web search.
+
+{_GENERAL_SEARCH_GUIDANCE_EN}
+
+Args:
+    query (str): Search query.
+    num (int): Number of results, default 10, max 10 (one request fetches a single result page).
+
+Returns:
+    List[dict]: Search results in the unified format. Each item contains title, url (mapped from link), snippet (mapped from description), and source.
+''')

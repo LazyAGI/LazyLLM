@@ -10,6 +10,7 @@ from .arxiv_search import ArxivSearch
 from .wikipedia_search import WikipediaSearch
 from .sciverse_search import SciverseSearch
 from .tavily_search import TavilySearch
+from .serply_search import SerplySearch
 
 __all__ = [
     'SearchBase',
@@ -24,4 +25,5 @@ __all__ = [
     'WikipediaSearch',
     'SciverseSearch',
     'TavilySearch',
+    'SerplySearch',
 ]
