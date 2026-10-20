@@ -7,6 +7,7 @@ from typing import Callable, List, Optional
 
 import requests
 
+from ....module import ModuleExecutionError
 from .model_outcome import (
     ModelCallError,
     ModelCallTerminal,
@@ -60,12 +61,14 @@ class _ModelCallRunner:
                  is_retryable_transport_error: Callable[[Exception], bool] = is_retryable_transport_error,
                  report_failure: Optional[Callable[[ModelFailure], None]] = None,
                  sleep: Callable[[float], None] = time.sleep,
-                 clock: Callable[[], float] = time.monotonic):
+                 clock: Callable[[], float] = time.monotonic, on_terminal=None, control=None):
         self._emit_event = emit_event
         self._is_retryable_transport_error = is_retryable_transport_error
         self._report_failure = report_failure
         self._sleep = sleep
         self._clock = clock
+        self._on_terminal = on_terminal
+        self._control = control
 
     def run(self, execute_attempt: Callable[[ModelAttemptState], List[dict]], *, max_attempts: int) -> List[dict]:
         model_call_id = uuid.uuid4().hex
@@ -76,6 +79,8 @@ class _ModelCallRunner:
         for attempt_index in range(1, max_attempts + 1):
             state = ModelAttemptState()
             try:
+                if self._control is not None:
+                    self._control.check()
                 result = execute_attempt(state)
                 state.frames = result
                 semantic_output = semantic_output or state.semantic_output
@@ -88,13 +93,13 @@ class _ModelCallRunner:
                     duration_ms=self._duration_ms(started_at),
                     usage=state.usage,
                 )
-                self._emit_event('model_call_finished', terminal.public_dict())
+                self._finish(terminal)
                 if state.finish in (ModelFinish.STOP, ModelFinish.TOOL_CALLS):
                     return result
                 raise ModelCallError(
                     'Model call ended without a complete answer.', terminal, state.frames,
                 )
-            except ModelCallError:
+            except (ModelCallError, ModuleExecutionError):
                 raise
             except _ModelResponseError as exc:
                 semantic_output = semantic_output or state.semantic_output
@@ -109,7 +114,7 @@ class _ModelCallRunner:
                     duration_ms=self._duration_ms(started_at),
                     usage=state.usage,
                 )
-                self._emit_event('model_call_finished', terminal.public_dict())
+                self._finish(terminal)
                 raise ModelCallError(str(exc), terminal, state.frames) from exc
             except Exception as exc:
                 semantic_output = semantic_output or state.semantic_output
@@ -122,11 +127,21 @@ class _ModelCallRunner:
                         'max_attempts': max_attempts,
                         'delay_ms': int(delay * 1000),
                     })
-                    self._sleep(delay)
-                    continue
+                    if self._control is not None:
+                        try:
+                            self._control.wait(delay)
+                        except requests.Timeout as wait_error:
+                            exc = wait_error
+                        else:
+                            continue
+                    else:
+                        self._sleep(delay)
+                        continue
                 failure = ModelFailure(
                     origin=ModelFailureOrigin.TRANSPORT,
-                    code=ModelFailureCode.TRANSPORT_ERROR,
+                    code=(ModelFailureCode.REQUEST_TIMEOUT if any(
+                        isinstance(item, (requests.Timeout, socket.timeout)) for item in exception_chain(exc)
+                    ) else ModelFailureCode.TRANSPORT_ERROR),
                     diagnostic_id=uuid.uuid4().hex,
                     response_started=state.response_started,
                 )
@@ -140,9 +155,14 @@ class _ModelCallRunner:
                     duration_ms=self._duration_ms(started_at),
                     usage=state.usage,
                 )
-                self._emit_event('model_call_finished', terminal.public_dict())
+                self._finish(terminal)
                 raise ModelCallError('Model transport failed.', terminal, state.frames) from exc
         raise AssertionError('model call runner exhausted without a terminal')
+
+    def _finish(self, terminal):
+        if self._on_terminal is not None:
+            self._on_terminal(terminal)
+        self._emit_event('model_call_finished', terminal.public_dict())
 
     def _report(self, failure: ModelFailure) -> None:
         if self._report_failure is not None:

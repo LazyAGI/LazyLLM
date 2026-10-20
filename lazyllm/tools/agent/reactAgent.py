@@ -91,7 +91,8 @@ class ReactAgent(LazyLLMAgentBase):
                  excluded_skills: Optional[Iterable[str]] = None,
                  skill_search: Optional[Callable] = None,
                  skill_tool_mode: str = 'full',
-                 before_model_request: Optional[Callable[[], None]] = None):
+                 before_model_request: Optional[Callable[[], None]] = None,
+                 final_summary_call: Optional[Callable[[str], Any]] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
                          desc=desc, workspace=workspace, sandbox=sandbox, fs=fs, skills_dir=skills_dir,
@@ -104,6 +105,7 @@ class ReactAgent(LazyLLMAgentBase):
         assert self._llm is not None, 'llm cannot be empty.'
         self._assert_tools()
         self._prompt = self._append_workspace_prompt(prompt)
+        self._final_summary_call = final_summary_call
         self._force_summarize = force_summarize
         self._force_summarize_context = force_summarize_context
         self._keep_full_turns = keep_full_turns
@@ -219,14 +221,16 @@ class ReactAgent(LazyLLMAgentBase):
             f'{obs_text}\n\n'
             f'{_FORCE_SUMMARIZE_MSG}'
         )
-        validator = getattr(self._tools_manager, 'context_validator', None)
-        if validator is not None:
-            # Keep the fallback request explicit so its complete input is budgeted too.
-            validator({'system_prompt': '', 'tool_definitions': []}, [], summarize_prompt)
-            summarize_llm = self._llm.share(prompt=ChatPrompter(instruction=''), stream=False)
+        if self._final_summary_call is not None:
+            resp = self._final_summary_call(summarize_prompt)
         else:
-            summarize_llm = self._llm.share(stream=False)
-        resp = summarize_llm(summarize_prompt)
+            validator = getattr(self._tools_manager, 'context_validator', None)
+            if validator is not None:
+                validator({'system_prompt': '', 'tool_definitions': []}, [], summarize_prompt)
+                summarize_llm = self._llm.share(prompt=ChatPrompter(instruction=''), stream=False)
+            else:
+                summarize_llm = self._llm.share(stream=False)
+            resp = summarize_llm(summarize_prompt)
         summary = resp if isinstance(resp, str) else (
             resp.get('content', '') if isinstance(resp, dict) else None
         )

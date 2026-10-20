@@ -1,4 +1,4 @@
-from .history import ToolCallTurn, describe_tool_turns
+from .history import ToolCallTurn, describe_tool_turns, invoke_history_compactor
 from .functionCall import FunctionCall, FunctionCallAgent
 from .toolsManager import fc_register, register, ToolManager
 from .tool_runtime import (
@@ -41,6 +41,7 @@ from .toolError import ToolExecutionError
 __all__ = [
     'ToolCallTurn',
     'describe_tool_turns',
+    'invoke_history_compactor',
     'TOOL_OBSERVATION_KEY',
     'TOOL_OBSERVATION_VERSION',
     'attachable_tool_observation',

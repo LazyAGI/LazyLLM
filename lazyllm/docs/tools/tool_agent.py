@@ -1285,6 +1285,7 @@ add_chinese_doc('ReactAgent', '''\
 ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
 
 Args:
+    final_summary_call (Optional[Callable[[str], Any]]): 可选的最终总结调用回调，接收框架生成的总结提示；宿主可绑定当前模型、预算、deadline 和取消。未配置时使用原 LLM，总结失败语义保持不变；此回调不参与历史压缩。
     before_model_request (Optional[Callable[[], None]]): 工具快照、历史压缩及预算校验前的同步准备回调。
         异常阻止本次请求，不增加轮次，不在上下文预览或强制总结时执行。拒绝异步回调和非 None 返回值。
     llm: 大语言模型实例，用于生成推理和工具调用决策
@@ -1328,6 +1329,7 @@ add_english_doc('ReactAgent', '''\
 ReactAgent follows the `Thought->Action->Observation->Thought...->Finish` loop to solve user tasks step by step through LLM reasoning and tool calls, then delivers a final answer.
 
 Args:
+    final_summary_call (Optional[Callable[[str], Any]]): Optional final-answer callback receiving the summary prompt. The host can bind its effective model, budget, deadline and cancellation. Defaults to the original LLM and preserves summary failure behavior. Separate from history compaction.
     before_model_request (Optional[Callable[[], None]]): Synchronous host preparation before the tool snapshot,
         history compaction and validation. Exceptions abort preparation. Does not create extra rounds or run during
         context previews or forced summaries. Async callbacks and non-None return values are rejected.
@@ -3410,4 +3412,18 @@ Messages are not mutated. Standalone compactor callers may use this helper; Func
 through the optional tool_turns keyword to history_compactor callbacks accepting it or **kwargs. Older signatures
 remain supported. Callbacks still return (projected_prior, projected_current), preserving the current-message boundary
 to avoid appending tool results twice.
+''')
+
+
+add_agent_chinese_doc('invoke_history_compactor', '''\
+调用 history_compactor 并返回 (prior, current)。按回调签名过滤可选上下文关键字，兼容旧两参数签名。
+支持显式两列表 tuple、保持总长度的合并列表、以及仅 prior 的列表；仅 prior 返回时保留原 current。
+供 FunctionCall 和独立历史适配器共用。保留消息元数据，发送前由调用方清理；不重试或吞掉回调异常。
+''')
+
+add_agent_english_doc('invoke_history_compactor', '''\
+Invoke a history_compactor and return (prior, current), filtering optional context keywords by its signature.
+Supports legacy two-argument callbacks, explicit pairs of lists, unchanged-length combined lists, and prior-only lists.
+Prior-only results retain the original current messages. Used by FunctionCall and standalone history adapters.
+Preserves message metadata for the caller to strip before sending. Does not retry or suppress callback errors.
 ''')

@@ -330,15 +330,21 @@ class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
         raise AttributeError(f'{self.__class__} object has no attribute {key}')
 
     def __call__(self, *args, **kw):
+        args, kw = self._prepare_call_args(args, kw)
+        return self._call_with_hooks(args, kw, self._call_impl)
+
+    def _prepare_call_args(self, args, kw):
         kw.update(locals['global_parameters'].get(self._module_id, dict()))
         if (files := locals['lazyllm_files'].get(self._module_id)) is not None: kw['lazyllm_files'] = files
         if (history := locals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
 
         if args and isinstance(args[0], kwargs): args, kw = [], {**args[0], **kw}
+        return args, kw
 
+    def _call_with_hooks(self, args, kw, call_impl):
         r = execution_with_hooks(
             self, *args, map_exception=lambda e: _change_exception_type(e, ModuleExecutionError), **kw,
-        )(self._call_impl)(*args, **kw)
+        )(call_impl)(*args, **kw)
 
         if self._return_trace:
             lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))

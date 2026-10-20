@@ -1,11 +1,14 @@
 from functools import partial
 from itertools import groupby
+import copy
 import json
+import re
 import os
 import requests
 import random
 import time
 import uuid
+from dataclasses import replace
 from typing import Tuple, List, Dict, Union, Any, Optional
 from urllib.parse import urljoin
 from operator import itemgetter as itemget
@@ -20,7 +23,8 @@ from .model_call_runner import (
     _ModelCallRunner,
     is_retryable_transport_error,
 )
-from .model_outcome import ModelCallError, ModelFailure
+from .model_outcome import ModelCallError, ModelFailure, ModelFinish
+from .model_request import PreparedModelRequest, ModelCallResult, model_response, _requires_vision
 from .provider_response import (
     OPENAI_COMPATIBLE_PROFILE,
     _OpenAICompatibleResponseParser,
@@ -198,23 +202,36 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
     def _forward_impl(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
                       proxies: Optional[Dict], request_timeout: Optional[Union[float, Tuple[float, float]]],
-                      state: Optional[ModelAttemptState] = None,
+                      state: Optional[ModelAttemptState] = None, call_control=None,
                       ) -> List[Dict[str, Any]]:
         # Always defer body consumption so response_started has the same
         # response-header boundary for provider streaming and non-streaming calls.
-        with requests.post(runtime_url, json=data, headers=self._header, stream=True,
-                           proxies=proxies, timeout=request_timeout) as r:
+        with model_response(runtime_url, json=data, headers=self._header, stream=True,
+                            proxies=proxies, timeout=request_timeout, control=call_control) as r:
             if state is not None: state.response_started = True
             raise_for_http_error(r, self.RESPONSE_PROFILE)
 
             with self.stream_output(stream_output):
                 if self._message_format != 'openai':
-                    result = list(filter(lambda x: x, (
-                        [self._parse_response_frame(line, stream_output) for line in r.iter_lines() if len(line)]
-                        if stream_output else [self._parse_response_frame(r.text, stream_output)]
-                    )))
-                    if state is not None:
-                        state.usage = self._extract_usage(result)
+                    result = []
+                    frames = r.iter_lines() if stream_output else [r.text]
+                    for line in frames:
+                        if not line or isinstance(line, bytes) and line.startswith(b'event:'):
+                            continue
+                        message = self._parse_response_frame(line, stream_output)
+                        if not message:
+                            continue
+                        result.append(message)
+                        if state is not None:
+                            state.frames = result
+                            state.usage = self._extract_usage(result)
+                            for choice in message.get('choices', []):
+                                content = choice.get('message', choice.get('delta')) or {}
+                                state.semantic_output |= bool(content.get('content') or content.get('tool_calls'))
+                                if choice.get('finish_reason'):
+                                    state.finish = ModelFinish(choice['finish_reason'])
+                    if state is not None and state.finish is None:
+                        state.finish = ModelFinish.UNKNOWN
                     return result
                 frames = r.iter_lines() if stream_output else [r.text]
                 result = self._response_parser(stream_output).collect(frames, state)
@@ -242,8 +259,9 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
     def _forward_with_retry(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
                             proxies: Optional[Dict], max_retries: int,
-                            request_timeout: Optional[Union[float, Tuple[float, float]]]) -> List[Dict[str, Any]]:
-        if self._message_format != 'openai':
+                            request_timeout: Optional[Union[float, Tuple[float, float]]],
+                            call_control=None, on_terminal=None) -> List[Dict[str, Any]]:
+        if self._message_format != 'openai' and call_control is None and on_terminal is None:
             max_attempts = max(1, int(max_retries))
             for attempt_index in range(1, max_attempts + 1):
                 state = ModelAttemptState()
@@ -261,7 +279,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             emit_event=lambda event_type, event_data: self._emit_runtime_event(
                 stream_output, event_type, event_data,
             ),
-            report_failure=self._log_failure,
+            report_failure=self._log_failure, on_terminal=on_terminal, control=call_control,
         )
         return runner.run(
             lambda state: self._forward_impl(
@@ -271,28 +289,41 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                 proxies=proxies,
                 request_timeout=request_timeout,
                 state=state,
+                **({'call_control': call_control} if call_control is not None else {}),
             ),
             max_attempts=max_retries,
         )
 
-    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
-                tools: List[Dict[str, Any]] = None, stream_output: bool = None, stream: bool = None,
-                lazyllm_files=None, url: str = None, model: str = None, max_retries: int = 5, **kw):
+    def prepare_request(self, *args, **kwargs):
+        args, kwargs = self._prepare_call_args(args, kwargs)
+        args, kwargs = copy.deepcopy((args, kwargs))
+        prepared = self._prepare_request(*args, **kwargs)
+        return replace(prepared, _caller=self, _args=args, _kwargs=kwargs)
+
+    def _prepare_request(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
+                         tools: List[Dict[str, Any]] = None, stream_output: bool = None, stream: bool = None,
+                         lazyllm_files=None, url: str = None, model: str = None, max_retries: int = 5,
+                         output_limit=None, **kw):
         request_timeout = self._request_timeout(kw, default_timeout=self._timeout)
         stream_output = stream_output if stream_output is not None else stream
         stream_output = stream_output if stream_output is not None else self._stream
-        __input, files = self._get_files(__input, lazyllm_files)
+        __input, files = self._get_files(copy.deepcopy(__input), copy.deepcopy(lazyllm_files))
         model, _, url, kw = resolve_online_params(model, None, url, kw,
                                                   model_aliases='model_name', url_aliases='base_url')
         runtime_url = self._get_chat_url(url) if url else self._chat_url
         runtime_model = model or self._model_name
 
-        params = {'input': __input, 'history': llm_chat_history, 'format': self._message_format}
+        params = {'input': __input, 'history': copy.deepcopy(llm_chat_history), 'format': self._message_format}
         if tools: params['tools'] = tools
         data = self._prompt.generate_prompt(**params)
         data.update(self._static_params, **dict(model=runtime_model, stream=bool(stream_output)))
 
         if len(kw) > 0: data.update(kw)
+        if tools is not None:
+            if tools:
+                data['tools'] = copy.deepcopy(tools)
+            else:
+                data.pop('tools', None)
         if len(self._model_optional_params) > 0: data.update(self._model_optional_params)
 
         if self.type == 'VLM' and (files or self._vlm_force_format_input_with_files):
@@ -302,22 +333,61 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                     if msg.get('role') == 'user' and isinstance(msg.get('content'), str):
                         msg['content'] = self._format_vl_chat_query(msg['content'])
 
+        data.pop('timeout', None)
+        self._bound_output_tokens(data, output_limit, runtime_model, kw)
         data = self._prepare_request_data(data)
+
+        return PreparedModelRequest(self, json.dumps(data, ensure_ascii=False), runtime_url,
+                                    dict(stream_output) if isinstance(stream_output, dict) else stream_output,
+                                    request_timeout, max(1, int(max_retries)),
+                                    _requires_vision([__input, llm_chat_history], files))
+
+    def _bound_output_tokens(self, data, limit, model, kwargs):
+        if limit is None:
+            return
+        sources = (self._static_params, kwargs, data)
+        limits = [int(source[key]) for source in sources for key in ('max_tokens', 'max_completion_tokens')
+                  if source.get(key) is not None]
+        modern = self.series == 'openai' and re.match(r'^(o\d+|gpt-[5-9])(?:[.-]|$)', model.lower())
+        completion = modern or any(source.get('max_completion_tokens') is not None for source in sources)
+        data.pop('max_tokens', None)
+        data.pop('max_completion_tokens', None)
+        key = 'max_completion_tokens' if completion and self._message_format != 'anthropic' else 'max_tokens'
+        data[key] = min([int(limit), *limits])
+
+    def forward(self, __input=None, *, prepared_request=None, call_control=None, return_model_result=False, **kwargs):
+        prepared = prepared_request or self._prepare_request(__input, **kwargs)
+        if prepared._module is not self:
+            raise ValueError('Prepared request belongs to another model view.')
+        call_control = call_control or prepared._control
+        terminals = []
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
+        control_args = {'call_control': call_control} if call_control is not None else {}
+        if return_model_result:
+            control_args['on_terminal'] = terminals.append
         try:
-            msg_json = self._forward_with_retry(data, runtime_url=runtime_url, stream_output=stream_output,
-                                                proxies=proxies, max_retries=max_retries,
-                                                request_timeout=request_timeout)
+            msg_json = self._forward_with_retry(
+                prepared.payload, runtime_url=prepared._url, stream_output=prepared._stream,
+                proxies=proxies, max_retries=prepared._max_attempts,
+                request_timeout=prepared._timeout, **control_args)
         except ModelCallError as exc:
             usage = self._extract_usage(exc.partial_response)
-            exc.usage = usage
+            exc.usage = exc.terminal.usage = usage
             self._record_usage(usage)
             raise
-
         usage = self._extract_usage(msg_json)
         self._record_usage(usage)
         extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
-        return self._formatter(extractor) if extractor else ''
+        result = self._formatter(extractor) if extractor else ''
+        if return_model_result:
+            terminal = terminals[-1]
+            terminal.usage = usage
+            return ModelCallResult(result, terminal)
+        return result
+
+    @classmethod
+    def merge_usage_records(cls, existing, usage):
+        return cls._merge_usage_records(existing, usage)
 
     @staticmethod
     def _extract_usage(msg_json: List[Dict[str, Any]]) -> Dict[str, Any]:
