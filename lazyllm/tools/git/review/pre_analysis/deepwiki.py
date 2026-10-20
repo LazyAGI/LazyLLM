@@ -58,7 +58,7 @@ _DEEPWIKI_FETCH_TIMEOUT_SECS = 30
 def _fetch_deepwiki_summary(owner_repo: str) -> str:
     try:
         from mcp import ClientSession
-        from mcp.client.streamable_http import streamablehttp_client
+        from mcp.client.streamable_http import streamable_http_client
     except ImportError:
         lazyllm.LOG.info('mcp package not installed, skipping DeepWiki integration')
         return ''
@@ -67,7 +67,9 @@ def _fetch_deepwiki_summary(owner_repo: str) -> str:
 
     async def _query() -> str:
         try:
-            async with streamablehttp_client(_DEEPWIKI_MCP_URL) as (read, write, _):
+            # mcp 1.x yields (read, write, get_session_id); mcp 2.x yields (read, write).
+            async with streamable_http_client(_DEEPWIKI_MCP_URL) as streams:
+                read, write = streams[:2]
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     result = await asyncio.wait_for(
@@ -191,7 +193,7 @@ def _deepwiki_ask_cached(owner_repo: str, question: str, max_chars: int = 2000) 
 def _deepwiki_fetch_answer(owner_repo: str, question: str, max_chars: int) -> str:
     try:
         from mcp import ClientSession
-        from mcp.client.streamable_http import streamablehttp_client
+        from mcp.client.streamable_http import streamable_http_client
     except ImportError:
         return ''
 
@@ -199,7 +201,9 @@ def _deepwiki_fetch_answer(owner_repo: str, question: str, max_chars: int) -> st
 
     async def _query() -> str:
         try:
-            async with streamablehttp_client(_DEEPWIKI_MCP_URL) as (read, write, _):
+            # mcp 1.x yields (read, write, get_session_id); mcp 2.x yields (read, write).
+            async with streamable_http_client(_DEEPWIKI_MCP_URL) as streams:
+                read, write = streams[:2]
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     result = await session.call_tool(
