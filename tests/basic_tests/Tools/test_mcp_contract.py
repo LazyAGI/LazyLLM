@@ -181,3 +181,14 @@ def test_sync_bridge_keeps_trusted_context_when_event_loop_is_running():
 
     assert asyncio.run(invoke()) == 'call-a'
     assert request.get() is None
+
+
+def test_nullable_type_array_loads_and_preserves_original_schema():
+    schema = {'type': 'object', 'properties': {
+        'folder_id': {'type': ['string', 'null'], 'description': 'Optional parent'},
+        'names': {'type': ['array', 'null'], 'items': {'type': 'string'}},
+    }}
+    tool = generate_lazyllm_tool(MCPClient('https://example.test/mcp'), wire(schema=schema))
+    manager = ToolManager([tool])
+    assert tool.__mcp_input_schema__ == schema
+    assert manager.tools_description[0]['function']['parameters'] == schema

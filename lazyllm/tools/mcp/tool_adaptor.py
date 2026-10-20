@@ -33,7 +33,9 @@ def _generate_docstring(tool_desc: str, properties: Dict[str, Any], required: Li
 
         for param, prop in properties.items():
             json_type = prop.get('type', 'Any')
-            doc_type = type_mapping.get(json_type, ('Any', Any))[0]
+            # JSON Schema also accepts a type array, e.g. ['string', 'null'].
+            # This is only a doc hint; the original schema remains authoritative.
+            doc_type = type_mapping.get(json_type, ('Any', Any))[0] if isinstance(json_type, str) else 'Any'
             param_desc = prop.get('description', f'type: {json_type}')
             if param in required:
                 doc_lines.append(f'    {param} ({doc_type}): {param_desc}.')
