@@ -57,7 +57,7 @@ for _ext in ('.js', '.ts', '.jsx', '.tsx'):
 def _build_scoped_agent_tools(  # noqa: C901
     clone_dir: str, owner_repo: str = '', cache_path: Optional[str] = None,
 ) -> list:
-    from lazyllm.tools.agent.file_tool import read, ls, grep
+    from lazyllm.tools.agent.file_tool import read, ls, grep, _check_root
     from lazyllm.tools.agent.shell_tool import shell
 
     def read_file_scoped(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None) -> dict:
@@ -71,7 +71,9 @@ def _build_scoped_agent_tools(  # noqa: C901
         abs_path = path if os.path.isabs(path) else os.path.join(clone_dir, path)
         line_info = f':{start_line}-{end_line}' if (start_line or end_line) else ''
         lazyllm.LOG.info(f'  [Agent] Read {path}{line_info}')
-        return read(abs_path, start_line=start_line, end_line=end_line, root=clone_dir)
+        _check_root(abs_path, clone_dir)
+        offset = start_line if start_line is not None else 1
+        return read(abs_path, offset=offset, limit=end_line - offset + 1 if end_line is not None else 2000)
 
     def read_file_skeleton_scoped(path: str) -> dict:
         '''Get the structural skeleton of a file: imports, class definitions, function signatures.
@@ -93,7 +95,12 @@ def _build_scoped_agent_tools(  # noqa: C901
             max_results (int, optional): Max number of matches to return.
         '''
         lazyllm.LOG.info(f'  [Agent] Search {pattern!r}' + (f' in {glob}' if glob else ''))
-        return grep(pattern, path=clone_dir, glob=glob, max_results=max_results, root=clone_dir)
+        result = grep(pattern, path=clone_dir, include=glob)
+        limit = max(1, min(max_results, 100))
+        if len(result['results']) > limit:
+            result.update(truncated=True, output_limit_reached=True, search_incomplete=True)
+            result['results'] = result['results'][:limit]
+        return result
 
     def list_dir_scoped(path: str = '.', recursive: bool = False) -> dict:
         '''List directory entries in the repository.
@@ -104,7 +111,17 @@ def _build_scoped_agent_tools(  # noqa: C901
         '''
         lazyllm.LOG.info(f'  [Agent] ListDir {path}' + (' (recursive)' if recursive else ''))
         abs_path = path if os.path.isabs(path) else os.path.join(clone_dir, path)
-        return ls(abs_path, recursive=recursive, root=clone_dir)
+        _check_root(abs_path, clone_dir)
+        if not recursive:
+            return ls(abs_path)
+        entries = []
+        for current, dirs, files in os.walk(abs_path):
+            dirs[:] = sorted(name for name in dirs if not os.path.islink(os.path.join(current, name)))
+            for name in dirs + sorted(files):
+                entries.append(os.path.relpath(os.path.join(current, name), abs_path))
+                if len(entries) > 1000:
+                    return {'status': 'ok', 'path': abs_path, 'entries': entries[:1000], 'truncated': True}
+        return {'status': 'ok', 'path': abs_path, 'entries': entries, 'truncated': False}
 
     def shell_scoped(cmd: str, timeout: int = 30) -> dict:
         '''Run a read-only shell command inside the repository directory.
@@ -143,7 +160,7 @@ def _build_scoped_agent_tools(  # noqa: C901
         '''
         lazyllm.LOG.info(f'  [Agent] GrepCallers {symbol!r}')
         pattern = rf'\b{re.escape(symbol)}\s*[\(\.]'
-        return grep(pattern, path=clone_dir, max_results=max_results, root=clone_dir)
+        return search_scoped(pattern, max_results=max_results)
 
     def ask_deepwiki(question: str) -> str:
         '''Ask DeepWiki a background question about this repository's architecture or design.
@@ -232,7 +249,7 @@ def _build_analyze_symbol_tool(  # noqa: C901
                         def_pat.replace('(?P<name>', f'(?P<name>{re.escape(symbol_name)}')
                         if '(?P<name>' in def_pat else
                         def_pat.replace('(?P<name2>', f'(?P<name2>{re.escape(symbol_name)}'),
-                        path=clone_dir, glob=glob_pat, max_results=3, root=clone_dir,
+                        path=clone_dir, include=glob_pat,
                     )
                     matches = res.get('results', []) if isinstance(res, dict) else []
                     if matches:

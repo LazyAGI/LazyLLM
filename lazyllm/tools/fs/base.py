@@ -92,6 +92,13 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
     def close(self) -> None:
         self._session.close()
 
+    def bind_access_token(self, token: str, *, user_token: bool = False) -> None:
+        if not isinstance(token, str) or not token.strip():
+            raise ValueError('A nonempty access token is required')
+        credential = (Credential(kind='oauth2', access_token=token) if user_token
+                      else Credential(kind='static', secret_key=token))
+        self.__init_credential__(credential, strategy=self._auth_strategy)
+
     def _make_credential(self, token: Any, dynamic_auth: bool) -> Credential:
         # If a subclass implements _do_acquire_without_refresh, treat it as app_credentials.
         if not dynamic_auth and self._has_app_credentials_flow():

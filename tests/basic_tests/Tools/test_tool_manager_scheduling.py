@@ -80,8 +80,8 @@ def test_runtime_metadata_is_preserved_and_hidden_from_schema():
             for tool in builtin_manager.all_tools
         )
         prepared = builtin_manager.prepare_tool_calls([
-            _tool_call('read', {'path': '/tmp/tool-runtime/read'}),
-            _tool_call('write', {'path': '/tmp/tool-runtime/write', 'content': 'x'}),
+            _tool_call('read', {'file_path': '/tmp/tool-runtime/read'}),
+            _tool_call('write', {'file_path': '/tmp/tool-runtime/write', 'content': 'x'}),
         ])
         assert prepared[0].host_files == (HostFileIntent(str(Path('/tmp/tool-runtime/read').resolve()), 'read'),)
         assert prepared[0].access == host_file_access(prepared[0].host_files)

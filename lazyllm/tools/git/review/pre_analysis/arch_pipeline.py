@@ -121,7 +121,7 @@ def _arch_collect_snippets(  # noqa: C901
     clone_dir: str, section: Dict[str, Any], max_chars: int = 6000,
     extra_globs: Optional[List[str]] = None, max_results_per_pattern: int = 8,
 ) -> str:
-    from lazyllm.tools.agent.file_tool import grep, read
+    from lazyllm.tools.agent.file_tool import grep, read, _check_root
     hints = section.get('search_hints', [])
     parts: List[str] = []
     seen_paths: set = set()
@@ -130,10 +130,9 @@ def _arch_collect_snippets(  # noqa: C901
         for glob_pat in globs_to_search:
             try:
                 result = grep(
-                    pattern, path=clone_dir, glob=glob_pat,
-                    max_results=max_results_per_pattern, root=clone_dir,
+                    pattern, path=clone_dir, include=glob_pat,
                 )
-                matches = result.get('results', []) if isinstance(result, dict) else []
+                matches = result.get('results', [])[:max_results_per_pattern] if isinstance(result, dict) else []
             except Exception:
                 matches = []
             for m in matches:
@@ -143,9 +142,11 @@ def _arch_collect_snippets(  # noqa: C901
                 seen_paths.add(path)
                 try:
                     line = int(m.get('line', 1))
+                    offset = max(1, line - 1)
+                    _check_root(path, clone_dir)
                     match_text = m.get('text', '')
                     if re.match(r'\s*class\s+\w+', match_text):
-                        fc = read(path, start_line=max(1, line - 1), end_line=line + 2, root=clone_dir)
+                        fc = read(path, offset=offset, limit=line + 3 - offset)
                         class_def = fc.get('content', '') if isinstance(fc, dict) else ''
                         try:
                             with open(path, 'r', encoding='utf-8', errors='replace') as _f:
@@ -156,7 +157,7 @@ def _arch_collect_snippets(  # noqa: C901
                             snippet = class_def
                     else:
                         end = line + 10 if re.match(r'\s*def\s+\w+', match_text) else line + 20
-                        fc = read(path, start_line=max(1, line - 1), end_line=end, root=clone_dir)
+                        fc = read(path, offset=offset, limit=end - offset + 1)
                         snippet = fc.get('content', '') if isinstance(fc, dict) else ''
                 except Exception:
                     snippet = m.get('text', '')
