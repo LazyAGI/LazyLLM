@@ -21,6 +21,9 @@ class MCPClient(object):
         server_id: str = '',
         auth_provider: Optional[Callable[[], Awaitable[dict[str, str]]]] = None,
         auth_recovery: Optional[Callable[[], Awaitable[bool]]] = None,
+        result_mode: Literal['text', 'structured'] = 'text',
+        request_metadata_provider: Optional[Callable[[str, dict], Awaitable[dict[str, Any]]]] = None,
+        progress_callback: Optional[Callable[..., Awaitable[None]]] = None,
     ):
         self._command_or_url = command_or_url
         self._args = args or []
@@ -30,6 +33,11 @@ class MCPClient(object):
         self._transport = transport
         self._auth_provider = auth_provider
         self._auth_recovery = auth_recovery
+        if result_mode not in ('text', 'structured'):
+            raise ValueError('result_mode must be text or structured')
+        self.result_mode = result_mode
+        self._request_metadata_provider = request_metadata_provider
+        self._progress_callback = progress_callback
         if (auth_provider or auth_recovery) and self._resolve_transport() != 'streamable-http':
             raise ValueError('MCP auth callbacks require streamable-http transport')
         self.server_id = server_id
@@ -127,29 +135,41 @@ class MCPClient(object):
                 and type(error).__module__.split('.')[0] in ('httpx', 'httpx2')
                 and getattr(getattr(error, 'response', None), 'status_code', None) == 401)
 
-    async def _request(self, method, *args):
+    async def _request(self, method, *args, **kwargs):
         for attempt in range(2):
-            completed = False
+            dispatched = False
             try:
                 async with self._run_session() as session:
-                    result = await getattr(session, method)(*args)
-                    completed = True
-                    return result
+                    # Once dispatched, even a 401 may follow a committed mutation.
+                    dispatched = True
+                    return await getattr(session, method)(*args, **kwargs)
             except Exception as error:
-                if (completed or attempt or not self._auth_recovery or not self._is_unauthorized(error)
+                if (dispatched or attempt or not self._auth_recovery or not self._is_unauthorized(error)
                         or not await self._auth_recovery()):
                     raise
 
-    async def call_tool(self, tool_name: str, arguments: dict):
-        return await self._request('call_tool', tool_name, arguments)
+    async def call_tool(self, tool_name: str, arguments: dict, *, metadata=None, progress_callback=None):
+        # Resolve trusted metadata once, before any setup-only authorization retry.
+        # Neither metadata nor progress callbacks are model-visible tool parameters.
+        kwargs = {}
+        if metadata is None and self._request_metadata_provider:
+            metadata = await self._request_metadata_provider(tool_name, arguments)
+        if metadata is not None:
+            kwargs['meta'] = metadata
+        callback = progress_callback if progress_callback is not None else self._progress_callback
+        if callback is not None:
+            kwargs['progress_callback'] = callback
+        return await self._request('call_tool', tool_name, arguments, **kwargs)
 
     async def list_tools(self):
         return await self._request('list_tools')
 
     async def aget_tools(self, allowed_tools: list[str] = None):
+        if allowed_tools is not None and not allowed_tools:
+            return []
         res = await self.list_tools()
         mcp_tools = getattr(res, 'tools', [])
-        if allowed_tools:
+        if allowed_tools is not None:
             mcp_tools = [tool for tool in mcp_tools if tool.name in allowed_tools]
 
         return [generate_lazyllm_tool(self, tool) for tool in mcp_tools]

@@ -138,6 +138,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return hints
 
     def _load_function_schema(self, func: Callable) -> Type[BaseModel]:
+        self._mcp_input_schema = copy.deepcopy(getattr(func, '__mcp_input_schema__', None))
         parsed_docstring = docstring_parser.parse(self._description)
         doc_type_hints = self._parse_type_from_docstring(parsed_docstring)
 
@@ -492,6 +493,10 @@ def _build_tool_desc(tool: 'ModuleTool') -> Dict:
         if key not in {'title', 'properties'}
     }
     parameters['properties'] = args
+    if tool._mcp_input_schema is not None:
+        # An MCP schema can contain constraints not representable by a Python
+        # signature, including root unions and references into $defs.
+        parameters = copy.deepcopy(tool._mcp_input_schema)
     return {
         'type': 'function',
         'function': {
