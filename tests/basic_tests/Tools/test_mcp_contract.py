@@ -162,3 +162,22 @@ def test_structured_transport_failure_is_error_and_does_not_expose_credentials()
     assert result['structuredContent']['code'] == 'MCP_CALL_FAILED'
     assert result['structuredContent']['error_type'] == 'TimeoutError'
     assert 'private-token' not in json.dumps(result)
+
+
+def test_sync_bridge_keeps_trusted_context_when_event_loop_is_running():
+    from contextvars import ContextVar
+    from lazyllm.tools.mcp.utils import patch_sync
+    request = ContextVar('test_trusted_request', default=None)
+
+    async def read():
+        return request.get()
+
+    async def invoke():
+        token = request.set('call-a')
+        try:
+            return patch_sync(read)()
+        finally:
+            request.reset(token)
+
+    assert asyncio.run(invoke()) == 'call-a'
+    assert request.get() is None
