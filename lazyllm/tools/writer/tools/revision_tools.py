@@ -12,8 +12,10 @@ from ..data_models.context import WritingContext
 from ..data_models.multimodal import MediaAssetLibrary
 from ..data_models.revision import (
     GeneratedRevision,
+    IRPlanCompletion,
     LocatedContent,
     LocateResult,
+    MarkdownInsertionContent,
     MarkdownModifyInstruction,
     MarkdownModifyPlan,
     MarkdownPlanCompletion,
@@ -38,6 +40,7 @@ from ..data_models.writer_ir import (
     WriterDocument,
     WriterStage,
 )
+from ..numbering import find_markdown_images
 from ..prompts import (
     GENERATE_MODIFY_PLAN_PROMPT,
     GENERATE_PATCH_SET_PROMPT,
@@ -46,9 +49,11 @@ from ..prompts import (
     REWRITE_MARKDOWN_BLOCK_PROMPT,
 )
 from ..prompts.revision import (
+    COMPLETE_IR_ANCHOR_SCOPES_PROMPT,
     COMPLETE_MARKDOWN_PLAN_FIELDS_PROMPT,
     GENERATE_MARKDOWN_REVISION_BATCH_PROMPT,
     GENERATE_MARKDOWN_REVISION_CONTENT_PROMPT,
+    GENERATE_MARKDOWN_INSERTION_CONTENT_PROMPT,
     GENERATE_MODIFY_PLAN_MARKDOWN_PROMPT,
     LOCATE_REVISION_TARGET_MARKDOWN_PROMPT,
     RETRY_LOCATE_REVISION_TARGET_MARKDOWN_PROMPT,
@@ -322,6 +327,7 @@ class WriterRevisionTools(WriterToolBase):
             prompt = prompt_template.format(
                 task_json=to_prompt_json(writing_task),
                 document_content=to_prompt_json(candidates),
+                document_title_json=to_prompt_json(source_doc.title) if not is_markdown else 'null',
             )
             try:
                 locate_result = self._call_llm_structured(prompt, LocateResult)
@@ -416,7 +422,9 @@ node_id must be a string. Do not include heading_path or nest objects inside nod
             for candidate in self._revision_candidates(source_doc)
         }
         located_refs = [target.content_ref for target in located.targets]
-        if located_refs or located.target_title:
+        if not is_markdown and located.target_title and not located_refs:
+            modify_plan = ModifyPlan(scope='document', title_instruction=writing_task.query)
+        elif located_refs or located.target_title:
             missing = [
                 content_ref.model_dump(exclude_none=True)
                 for content_ref in located_refs
@@ -433,6 +441,10 @@ node_id must be a string. Do not include heading_path or nest objects inside nod
                     else source_doc
                 ),
                 locate_result_json=to_prompt_json(located),
+                located_content_json=to_prompt_json([
+                    self._visible_block(source_doc.block_by_id(content_ref.node_id))
+                    for content_ref in located_refs
+                ]) if not is_markdown else 'null',
                 context_json=to_prompt_json(writing_context),
             )
             modify_plan = self._call_llm_structured(prompt, plan_schema)
@@ -465,6 +477,8 @@ locator kind per reference. Return valid JSON only.
 
         if is_markdown:
             modify_plan = self._unified_markdown_modify_plan(modify_plan)
+        else:
+            modify_plan = self._complete_ir_anchor_scopes(writing_task, source_doc, modify_plan)
 
         modify_plan = self._normalize_modify_plan(
             modify_plan,
@@ -583,7 +597,7 @@ locator kind per reference. Return valid JSON only.
             if len(plan.instructions) == 1 and plan.instructions[0].modify_type == 'move' \
                     and not plan.title_instruction:
                 replace_set = self._generate_markdown_move_replacements(source, plan, writing_context)
-            elif any(instr.modify_type == 'delete'
+            elif any(instr.modify_type in {'create', 'delete'}
                      or (instr.target_scope != 'fragment' and instr.modify_type == 'update')
                      for instr in plan.instructions):
                 replace_set = self._generate_scoped_markdown_replacements(source, plan, writing_context)
@@ -634,6 +648,13 @@ locator kind per reference. Return valid JSON only.
                 heading_path=reference.heading_path, occurrence=reference.occurrence,
             )
         start, end = (0, len(source)) if reference.document_root else self._markdown_section_range(source, reference)
+        if instruction.target_scope == 'image':
+            text = instruction.locator_text or ''
+            images = [image for image in find_markdown_images(source[start:end])
+                      if text and text in {image.raw, image.caption, f'![{image.caption}]'}]
+            if instruction.modify_type != 'delete' or len(images) != 1:
+                raise ValueError('Markdown image deletion must identify exactly one image in its referenced section.')
+            return images[0].raw
         if instruction.target_scope == 'fragment':
             text = instruction.locator_text or ''
             section = source[start:end]
@@ -641,6 +662,20 @@ locator kind per reference. Return valid JSON only.
                 raise ValueError('Markdown fragment must match exactly once in its referenced section.')
             return text
         return source[start:end]
+
+    def _markdown_insertion_content(
+        self, source: str, instruction: MarkdownModifyInstruction, anchor: str, content: str,
+    ) -> str:
+        replacement = StringReplace(old_string=anchor, new_string='', content_ref=instruction.content_ref)
+        start, end = self._markdown_replacement_range(source, replacement)
+        offset = start if instruction.position == 'before' else end
+        left, right = source[:offset], source[offset:]
+        if instruction.target_scope != 'fragment':
+            content = content.strip('\r\n')
+            newline = '\r\n' if '\r\n' in source else '\n'
+            content = (self._markdown_move_separator(left, content, newline) + content
+                       + (self._markdown_move_separator(content, right, newline) if right.strip() else ''))
+        return content + anchor if instruction.position == 'before' else anchor + content
 
     def _generate_markdown_move_replacements(
         self, source: str, plan: MarkdownModifyPlan, context: WritingContext,
@@ -773,7 +808,7 @@ locator kind per reference. Return valid JSON only.
                         for index, instruction in enumerate(plan.instructions, start=1)}
         located: Dict[str, str] = {}
         for key, instruction in instructions.items():
-            if instruction.modify_type == 'delete' or (
+            if instruction.modify_type in {'create', 'delete'} or (
                 instruction.target_scope != 'fragment' and instruction.modify_type == 'update'
             ):
                 try:
@@ -786,20 +821,28 @@ locator kind per reference. Return valid JSON only.
             return self._generate_model_markdown_replacements(source, plan, context)
 
         update_keys = {key for key in located if instructions[key].modify_type == 'update'}
+        insertion_keys = {key for key in located if instructions[key].modify_type == 'create'}
+        content_keys = update_keys | insertion_keys
         replacement_keys = set(instructions) - set(located)
         if plan.title_instruction:
             replacement_keys.add('title')
         try:
             generated = MarkdownRevisionBatch()
-            if len(instructions) == 1 and update_keys and not plan.title_instruction:
-                key, = update_keys
-                prompt = GENERATE_MARKDOWN_REVISION_CONTENT_PROMPT.format(
+            if len(instructions) == 1 and content_keys and not plan.title_instruction:
+                key, = content_keys
+                is_create = key in insertion_keys
+                template = (GENERATE_MARKDOWN_INSERTION_CONTENT_PROMPT if is_create
+                            else GENERATE_MARKDOWN_REVISION_CONTENT_PROMPT)
+                prompt = template.format(
                     instruction_json=to_prompt_json(instructions[key]),
                     markdown_block=located[key],
                     context_json=to_prompt_json(context),
                 )
-                generated.contents[key] = self._call_llm_structured(prompt, MarkdownRevisionContent)
-            elif update_keys or replacement_keys:
+                if is_create:
+                    generated.insertions[key] = self._call_llm_structured(prompt, MarkdownInsertionContent)
+                else:
+                    generated.contents[key] = self._call_llm_structured(prompt, MarkdownRevisionContent)
+            elif content_keys or replacement_keys:
                 prompt = GENERATE_MARKDOWN_REVISION_BATCH_PROMPT.format(
                     document_content=source,
                     operations_json=to_prompt_json([
@@ -810,7 +853,8 @@ locator kind per reference. Return valid JSON only.
                     context_json=to_prompt_json(context),
                 )
                 generated = self._call_llm_structured(prompt, MarkdownRevisionBatch)
-            if set(generated.contents) != update_keys or set(generated.replacements) != replacement_keys:
+            if set(generated.contents) != update_keys or set(generated.insertions) != insertion_keys \
+                    or set(generated.replacements) != replacement_keys:
                 raise ValueError('Markdown revision batch must implement exactly the requested operation keys.')
             if any(not replacements for replacements in generated.replacements.values()):
                 raise ValueError('Markdown revision batch must not omit an operation with an empty replacement list.')
@@ -823,7 +867,11 @@ locator kind per reference. Return valid JSON only.
                     continue
                 old_string = located[key]
                 new_string = ''
-                if key in update_keys:
+                if key in insertion_keys:
+                    new_string = self._markdown_insertion_content(
+                        source, instruction, old_string, generated.insertions[key].insert_text,
+                    )
+                elif key in update_keys:
                     new_string = generated.contents[key].new_string
                     trailing_breaks = old_string[len(old_string.rstrip('\r\n')):]
                     new_string = new_string.rstrip('\r\n') + trailing_breaks
@@ -866,12 +914,12 @@ locator kind per reference. Return valid JSON only.
         source: str,
         plan: Optional[MarkdownModifyPlan] = None,
     ) -> None:
-        image_line = re.compile(r'!\[[^\]]*\]\([^)]*\)')
         for replacement in replace_set.replacements:
             old = (replacement.old_string or '').strip()
             if not old.startswith('!['):
                 continue
-            if not image_line.fullmatch(old):
+            images = find_markdown_images(old)
+            if len(images) != 1 or images[0].raw != old:
                 raise ValueError(
                     f'Image replacement {replacement.replacement_id!r} old_string '
                     'must be a complete image line.'
@@ -951,13 +999,11 @@ locator kind per reference. Return valid JSON only.
                 revised,
                 self._node_id(instruction.content_ref, 'content_ref'),
                 instruction.position,
+                instruction.anchor_scope,
             )
+            created = [self._new_block(revised.stage, content) for content in blocks]
             siblings = self._children_for_parent(revised, parent_id)
-            for offset, content in enumerate(blocks):
-                siblings.insert(
-                    index + offset,
-                    self._new_block(revised.stage, content),
-                )
+            siblings[index:index] = created
             return
 
         if instruction.modify_type == 'move':
@@ -982,7 +1028,7 @@ locator kind per reference. Return valid JSON only.
         target: WriterBlock,
         content: RevisionBlockContent,
     ) -> None:
-        if content.children:
+        if content.children and (target.type != 'heading' or content.type not in {None, 'heading'}):
             raise ValueError('update content cannot replace a block subtree.')
         if content.type is not None:
             target.type = content.type
@@ -1074,9 +1120,31 @@ locator kind per reference. Return valid JSON only.
         document: WriterDocument,
         destination_node_id: str,
         position: str,
+        anchor_scope: Optional[str] = None,
     ) -> Tuple[Optional[str], int]:
         parent_id, index = self._block_parent_index(document, destination_node_id)
-        return parent_id, index + int(position == 'after')
+        if position != 'after':
+            return parent_id, index
+        anchor = document.block_by_id(destination_node_id)
+        if anchor_scope == 'block' and anchor.type == 'heading' and anchor.children:
+            return anchor.node_id, 0
+        index += 1
+        level = self._heading_level(anchor)
+        if anchor_scope == 'section' and level is not None:
+            siblings = self._children_for_parent(document, parent_id)
+            while index < len(siblings):
+                following_level = self._heading_level(siblings[index])
+                if following_level is not None and following_level <= level:
+                    break
+                index += 1
+        return parent_id, index
+
+    @staticmethod
+    def _heading_level(block: WriterBlock) -> Optional[int]:
+        level = block.numbering.get('level')
+        if block.type == 'heading' and type(level) is int and 1 <= level <= 9:
+            return level
+        return None
 
     def apply_patch(
         self,
@@ -1453,6 +1521,11 @@ locator kind per reference. Return valid JSON only.
                     and normalized[-1].modify_type == 'create' \
                     and self._content_ref_key(normalized[-1].content_ref) == content_key \
                     and normalized[-1].position == instr.position \
+                    and normalized[-1].anchor_scope == instr.anchor_scope \
+                    and (not isinstance(instr, MarkdownModifyInstruction) or (
+                        instr.target_scope == getattr(normalized[-1], 'target_scope', None)
+                        and instr.locator_text == getattr(normalized[-1], 'locator_text', None)
+                        and (instr.target_scope == 'section' or instr.locator_text))) \
                     and normalized[-1].visual_instruction is None \
                     and instr.visual_instruction is None:
                 normalized[-1].instruction += f'\n{instr.instruction}'
@@ -1570,11 +1643,14 @@ locator kind per reference. Return valid JSON only.
 
     def _revision_candidates(self, document: WriterDocument | str) -> List[Dict[str, Any]]:
         if isinstance(document, WriterDocument):
+            layout = self._document_layout(document)
             return [
                 {
                     'content_ref': ContentRef(node_id=block.node_id),
                     'type': block.type,
                     'content': block.content,
+                    'parent_node_id': layout[block.node_id][0],
+                    'heading_level': self._heading_level(block),
                 }
                 for block in document.iter_blocks()
                 if block.editable or block.type in {'image', 'table', 'table_row'}
@@ -1623,6 +1699,27 @@ locator kind per reference. Return valid JSON only.
                     invalid.append(reference.model_dump(exclude_none=True))
         return invalid
 
+    def _complete_ir_anchor_scopes(
+        self, task: WritingTask, document: WriterDocument, plan: ModifyPlan,
+    ) -> ModifyPlan:
+        missing = {index for index, instruction in enumerate(plan.instructions, start=1)
+                   if instruction.modify_type == 'create' and instruction.anchor_scope is None}
+        if not missing:
+            return plan
+        prompt = COMPLETE_IR_ANCHOR_SCOPES_PROMPT.format(
+            task_json=to_prompt_json(task), previous_plan_json=to_prompt_json(plan),
+            missing_indexes_json=to_prompt_json(sorted(missing)),
+            document_content=to_prompt_json(self._visible_document(document)),
+        )
+        completion = self._call_llm_structured(prompt, IRPlanCompletion, trace_label='ir_anchor_scope_completion')
+        indexes = [entry.instruction_index for entry in completion.instructions]
+        if len(indexes) != len(missing) or set(indexes) != missing:
+            raise ValueError('IR plan completion must fill each missing anchor_scope exactly once.')
+        completed = plan.model_copy(deep=True)
+        for entry in completion.instructions:
+            completed.instructions[entry.instruction_index - 1].anchor_scope = entry.anchor_scope
+        return completed
+
     @classmethod
     def _markdown_ref_is_exclusive(cls, content_ref: ContentRef) -> bool:
         return not (content_ref.node_id or content_ref.placeholder_id) and cls._revision_ref_is_exclusive(content_ref)
@@ -1643,7 +1740,7 @@ locator kind per reference. Return valid JSON only.
             if not isinstance(instruction, MarkdownModifyInstruction):
                 continue
             required = {}
-            if instruction.target_scope == 'paragraph' or (
+            if instruction.target_scope in {'paragraph', 'image'} or (
                 instruction.modify_type == 'move' and instruction.target_scope == 'fragment'
             ):
                 required['locator_text'] = f'{instruction.target_scope} requires non-empty locator_text'
@@ -1797,11 +1894,11 @@ locator kind per reference. Return valid JSON only.
             )
 
         hunk_ids: set = set()
+        image_moves = []
         for hunk in patch.hunks:
-            if hunk.hunk_id:
-                if hunk.hunk_id in hunk_ids:
-                    raise ValueError(f'patch contains duplicate hunk_id {hunk.hunk_id!r}.')
-                hunk_ids.add(hunk.hunk_id)
+            if hunk.hunk_id and hunk.hunk_id in hunk_ids:
+                raise ValueError(f'patch contains duplicate hunk_id {hunk.hunk_id!r}.')
+            hunk_ids.add(hunk.hunk_id)
             target = document.block_by_id(hunk.target_node_id)
             if hunk.modify_type == 'create':
                 if hunk.block is None:
@@ -1812,11 +1909,44 @@ locator kind per reference. Return valid JSON only.
             elif hunk.modify_type in {'update', 'move'} \
                     and target is not None \
                     and target.type == 'image':
-                raise ValueError('existing image blocks cannot be updated or moved.')
+                if hunk.modify_type == 'move':
+                    image_moves.append(target.node_id)
+                else:
+                    raise ValueError('existing image blocks cannot be updated or moved.')
             if hunk.modify_type == 'update' \
                     and hunk.block is not None \
                     and hunk.block.type == 'image':
                 raise ValueError('image blocks cannot be created through an update.')
+        if image_moves and not self._is_heading_reparent_patch(document, patch, image_moves):
+            raise ValueError('existing image blocks cannot be updated or moved.')
+
+    def _is_heading_reparent_patch(
+        self, document: WriterDocument, patch: PatchSet, image_ids: List[str],
+    ) -> bool:
+        revised = document.model_copy(deep=True)
+        for hunk in patch.hunks:
+            self._apply_patch_hunk(revised, hunk)
+        source_ids = self._ordered_node_ids(document)
+        revised_ids = self._ordered_node_ids(revised)
+        source_set, revised_set = set(source_ids), set(revised_ids)
+        if [node_id for node_id in source_ids if node_id in revised_set] != [
+            node_id for node_id in revised_ids if node_id in source_set
+        ]:
+            return False
+        new_headings = {
+            block.node_id for block in revised.iter_blocks()
+            if block.node_id not in source_set and self._heading_level(block) is not None
+        }
+        layout = self._document_layout(revised)
+        for node_id in image_ids:
+            if document.block_by_id(node_id) != revised.block_by_id(node_id):
+                return False
+            parent_id = layout[node_id][0]
+            while parent_id is not None and parent_id not in new_headings:
+                parent_id = layout[parent_id][0]
+            if parent_id is None:
+                return False
+        return True
 
     @classmethod
     def _validate_image_block(

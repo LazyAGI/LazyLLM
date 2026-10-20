@@ -57,10 +57,12 @@ _add_fs_chinese('FSReadLimitError', '云端读取超过字节数/请求次数限
 _add_fs_english('FSReadLimitError', 'Cloud reads exceeded byte/request limits or encountered a restricted redirect.')
 _add_fs_chinese('GoogleDriveFS.list_page', '''查询一页文件/目录。folder_id 限定直接子项；query 可为空，query_mode 为 name 或 full_text；drive_id 限定共享盘。
 page_size 为 1–1000，page_token 传前页的 next_page_token。返回 items、next_page_token、incomplete_search；空页也可能有下一页。
-结果保留文件 ID、父目录、类型和原文链接。不代替用户授权校验，不改变现有 ls/search 返回。''')
+结果保留文件 ID、父目录、类型和原文链接。响应不是对象、files 不是列表或条目不是对象时抛 ValueError，网络异常继续向上传递。
+不代替用户授权校验，不改变现有 ls/search 返回。''')
 _add_fs_english('GoogleDriveFS.list_page', '''Fetch one files/folders page. folder_id limits direct children; query may be empty; query_mode is name or full_text; drive_id scopes a shared drive.
 page_size is 1–1000; page_token accepts the previous next_page_token. Returns items, next_page_token and incomplete_search; empty pages can have a continuation.
-Preserves IDs, parents, types and source URLs. Caller owns authorization. Existing ls/search contracts remain unchanged.''')
+Preserves IDs, parents, types and source URLs. Non-object responses, non-list files or non-object items raise ValueError; transport errors propagate.
+Caller owns authorization. Existing ls/search contracts remain unchanged.''')
 _add_fs_chinese('LazyLLMFSBase', '''\
 云文件系统统一基类，继承 fsspec.AbstractFileSystem，借助 registry 注册各平台实现。混入 CredentialMixin 提供统一的 token 生命周期管理。
 子类需实现：_setup_auth、ls、info、_open、_download_range、_upload_data 等；可选实现 rm_file、mkdir。
@@ -96,6 +98,34 @@ _add_fs_example('LazyLLMFSBase', '''\
 ''')
 
 # LazyLLMFSBase abstract and public methods
+_add_fs_chinese('LazyLLMFSBase.bind_access_token', '''绑定当前实例的非空 access token；不修改会话凭据。空值或非字符串抛 ValueError。
+user_token 默认为 False，沿用静态 token 绑定；显式传入 user_token=True 声明这是用户 OAuth token，允许飞书搜索等需要用户授权的操作。
+该声明不验证 token 的实际权限，权限由供应商校验。调用方必须用 skip_instance_cache=True 创建独立实例，并在首次请求前绑定账号；不要在共享实例上切换账号。
+不配置自动刷新或到期时间；token 刷新由调用方负责，HTTP 认证失败继续向上传递。''')
+_add_fs_english('LazyLLMFSBase.bind_access_token', '''Bind a nonempty access token to this instance without changing session credentials. Empty or non-string values raise ValueError.
+user_token defaults to False for static token binding. Pass user_token=True to declare a user OAuth token, enabling operations that require user authorization, such as Feishu search.
+This declaration does not validate permissions; the provider does. Create an isolated instance with skip_instance_cache=True and bind its account before the first request. Do not switch accounts on shared instances.
+No automatic refresh or expiration time is configured. The caller owns token refresh; HTTP authentication errors propagate.''')
+
+_add_feishu_chinese('FeishuFS.folder_info', '''按稳定 folder_token 查询云盘文件夹元数据，返回供应商字段字典，不改变 info() 的名称路径语义。
+服务端拒绝访问、响应或元数据结构不合法时抛 ValueError；网络异常继续向上传递。''')
+_add_feishu_english('FeishuFS.folder_info', '''Fetch Drive folder metadata by stable folder_token and return the provider fields. Does not change the name-based path semantics of info().
+Raises ValueError for provider rejection or invalid response/metadata structure; transport errors propagate.''')
+
+_add_feishu_chinese('FeishuFS.list_page', '''按 folder_token 列举一页云盘直接子项；page_size 限制在 1–200，page_token 使用前页的 next_page_token。
+返回 items（对象列表）和 next_page_token（无后续页时为空字符串）。空页也可能有后续页。空 folder_token 表示云盘根目录，不支持传入续页游标。
+服务端拒绝、响应/条目结构非法或缺失/原样重复的续页游标抛 ValueError；网络异常继续向上传递。完整列举复用此接口并检测游标循环。''')
+_add_feishu_english('FeishuFS.list_page', '''List one page of direct Drive children by folder_token. page_size is clamped to 1–200; page_token accepts the previous next_page_token.
+Returns items (a list of objects) and next_page_token (empty when complete). Empty pages may have a continuation. An empty folder_token selects the Drive root, which rejects incoming pagination tokens.
+Provider rejection, invalid response/items, and missing or immediately repeated continuation tokens raise ValueError; transport errors propagate. Full enumeration reuses this method and detects cursor cycles.''')
+
+_add_feishu_chinese('FeishuWikiFS.list_page', '''按 folder_token 和 space_id 列举一页 Wiki 直接子节点；空 folder_token 表示空间根。space_id 默认使用实例或当前会话配置，缺失时抛 ValueError。
+page_size 限制在 1–50，page_token 使用前页的 next_page_token。返回 items（节点对象列表）和 next_page_token（无后续页时为空字符串）；空页也可能有后续页。
+服务端拒绝、响应/条目结构非法或缺失/原样重复的续页游标抛 ValueError；网络异常继续向上传递。完整列举复用此接口并检测游标循环。''')
+_add_feishu_english('FeishuWikiFS.list_page', '''List one page of direct Wiki children by folder_token and space_id; an empty folder_token selects the space root. space_id defaults to instance/session configuration and raises ValueError if unavailable.
+page_size is clamped to 1–50; page_token accepts the previous next_page_token. Returns items (node objects) and next_page_token (empty when complete); empty pages may have a continuation.
+Provider rejection, invalid response/items, and missing or immediately repeated continuation tokens raise ValueError; transport errors propagate. Full enumeration reuses this method and detects cursor cycles.''')
+
 _add_fs_chinese('LazyLLMFSBase.ls', '''\
 列出路径下的目录项。子类必须实现。
 
@@ -2385,6 +2415,33 @@ Args:
 
 Returns:
     List: Direct child metadata or names.
+''')
+
+_add_fs_chinese('GoogleDriveFS.file_id_from_path', '''\
+从 Google Drive 路径提取文件或文件夹 ID，不发起网络请求。
+支持路径末尾的斜杠。
+
+Args:
+    path (str): 对象 ID、/对象ID、共享盘根 /drive/<drive_id> 或 /drive/<drive_id>/<对象ID>，可带 googledrive: 或 googledrive:// 前缀。
+
+Returns:
+    str: 文件或文件夹 ID。
+
+Raises:
+    ValueError: 路径不是字符串或不符合支持的格式。
+''')
+_add_fs_english('GoogleDriveFS.file_id_from_path', '''\
+Extract a file or folder ID from a Google Drive path without making a network request.
+Trailing slashes are accepted.
+
+Args:
+    path (str): An object ID, /<object_id>, shared-drive root /drive/<drive_id>, or /drive/<drive_id>/<object_id>, optionally prefixed with googledrive: or googledrive://.
+
+Returns:
+    str: File or folder ID.
+
+Raises:
+    ValueError: The path is not a string or does not match a supported format.
 ''')
 
 _add_fs_chinese('GoogleDriveFS.info', '''\
