@@ -1272,6 +1272,19 @@ class SkillManager(ModuleBase):
                 temp_dir.cleanup()
 
     def run_command(self, name: str, argv: List[str], cwd: Optional[str] = None) -> Dict[str, Any]:
+        '''Run an argv-based CLI command for a visible Skill.
+
+        Args:
+            name: Skill key or unique Skill name.
+            argv: Command name followed by literal arguments.
+            cwd: Optional working directory relative to the Skill package.
+
+        Returns:
+            The sandbox's structured execution result.
+
+        Raises:
+            ToolExecutionError: If the Skill, arguments, path, or execution fails.
+        '''
         info, error = self._get_visible_skill_info(name)
         if error:
             self._raise_skill_lookup_error(name, error)
@@ -1310,19 +1323,23 @@ class SkillManager(ModuleBase):
             return self._normalize_script_result(result, info)
         except ToolExecutionError:
             raise
-        except ValueError as exc:
-            raise ToolExecutionError(f'Invalid run_command argument for skill {name}: {exc}') from exc
-        except FileNotFoundError as exc:
-            raise ToolExecutionError(f'run_command filesystem path not found for skill {name}: {exc}') from exc
-        except subprocess.TimeoutExpired as exc:
-            raise ToolExecutionError(
-                f'run_command timed out after {exc.timeout} seconds for skill {name}.'
-            ) from exc
         except Exception as exc:
-            raise ToolExecutionError(f'run_command execution failed for skill {name}: {exc}') from exc
+            self._raise_run_command_exception(name, exc)
         finally:
             if temp_dir is not None:
                 temp_dir.cleanup()
+
+    @staticmethod
+    def _raise_run_command_exception(name: str, exc: Exception) -> None:
+        if isinstance(exc, ValueError):
+            raise ToolExecutionError(f'Invalid run_command argument for skill {name}: {exc}') from exc
+        if isinstance(exc, FileNotFoundError):
+            raise ToolExecutionError(f'run_command filesystem path not found for skill {name}: {exc}') from exc
+        if isinstance(exc, subprocess.TimeoutExpired):
+            raise ToolExecutionError(
+                f'run_command timed out after {exc.timeout} seconds for skill {name}.'
+            ) from exc
+        raise ToolExecutionError(f'run_command execution failed for skill {name}: {exc}') from exc
 
     def read_reference(self, name: str, rel_path: str, **kwargs) -> Dict[str, str]:
         result = self.read_file(name=name, rel_path=rel_path, **kwargs)

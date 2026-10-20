@@ -50,6 +50,7 @@ class LazyLLMSandboxBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self._return_sandbox_result = return_sandbox_result
 
     def capabilities(self) -> Dict[str, Any]:
+        '''Return the runtimes and execution features supported by this sandbox.'''
         return {
             'status': 'ok',
             'runtimes': {language: True for language in self.SUPPORTED_LANGUAGES},
@@ -67,6 +68,19 @@ class LazyLLMSandboxBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         env: Optional[Dict[str, str]] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
+        '''Execute a script from a Skill package.
+
+        Args:
+            source_dir: Local root directory of the Skill package.
+            rel_path: Script path relative to ``source_dir``.
+            args: Literal command-line arguments passed to the script.
+            cwd: Working directory relative to ``source_dir``.
+            env: Environment variables made available to the script.
+            **kwargs: Backend-specific execution options.
+
+        Returns:
+            A structured execution result produced by the sandbox backend.
+        '''
         del source_dir, rel_path, args, cwd, env, kwargs
         raise NotImplementedError(f'{self.__class__.__name__} does not support Skill package scripts.')
 
@@ -78,6 +92,18 @@ class LazyLLMSandboxBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         env: Optional[Dict[str, str]] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
+        '''Execute one argv-based command from a Skill package.
+
+        Args:
+            source_dir: Local root directory of the Skill package.
+            argv: Command and literal arguments. Shell strings are not supported.
+            cwd: Working directory relative to ``source_dir``.
+            env: Environment variables made available to the command.
+            **kwargs: Backend-specific execution options.
+
+        Returns:
+            A structured execution result produced by the sandbox backend.
+        '''
         del source_dir, argv, cwd, env, kwargs
         raise NotImplementedError(f'{self.__class__.__name__} does not support Skill package commands.')
 
