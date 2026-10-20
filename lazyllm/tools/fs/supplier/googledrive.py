@@ -159,14 +159,23 @@ class GoogleDriveFS(LazyLLMFSBase):
                 break
         return results
 
+    @staticmethod
+    def file_id_from_path(path: str) -> str:
+        if not isinstance(path, str):
+            raise ValueError('Invalid Google Drive file path')
+        path = re.sub(r'^googledrive:(?://)?', '', path).rstrip('/')
+        match = re.fullmatch(r'/?(?:drive/(?:[A-Za-z0-9_-]+/)?)?([A-Za-z0-9_-]+)', path)
+        if not match:
+            raise ValueError('Invalid Google Drive file path')
+        return match[1]
+
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
-        parts = self._parse_path(path)
-        if not parts:
+        if not self._parse_path(path):
             return self._entry('/', ftype='directory')
-        file_id = parts[-1]
+        file_id = self.file_id_from_path(path)
         url = f'{self._base_url}/files/{file_id}'
         params = {
-            'fields': 'id,name,mimeType,size,modifiedTime,createdTime,webViewLink',
+            'fields': 'id,name,mimeType,size,modifiedTime,createdTime,webViewLink,trashed,version,driveId',
             'supportsAllDrives': 'true',
         }
         data = self._get(url, params=params)
@@ -316,8 +325,7 @@ class GoogleDriveFS(LazyLLMFSBase):
                     json=body or None)
 
     def _download_range(self, path: str, start: int, end: int) -> bytes:
-        parts = self._parse_path(path)
-        file_id = parts[-1] if parts else path
+        file_id = self.file_id_from_path(path)
         mime_type = self._mime_type_cache.get(file_id)
         if mime_type is None:
             metadata = self._get(
@@ -454,8 +462,13 @@ class GoogleDriveFS(LazyLLMFSBase):
             field = 'name' if query_mode == 'name' else 'fullText'
             terms.append(f"{field} contains '{self._escape_query_literal(query)}'")
         data = self._files_page(' and '.join(terms), drive_id, page_size, page_token)
+        if not isinstance(data, dict):
+            raise ValueError('Invalid Google Drive files page')
+        items = data.get('files', [])
+        if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+            raise ValueError('Invalid Google Drive files page')
         return {
-            'items': [self._item_to_entry(item) for item in data.get('files', [])],
+            'items': [self._item_to_entry(item) for item in items],
             'next_page_token': data.get('nextPageToken') or '',
             'incomplete_search': bool(data.get('incompleteSearch')),
         }
@@ -512,9 +525,11 @@ class GoogleDriveFS(LazyLLMFSBase):
             size=int(item.get('size', 0) or 0),
             ftype=ftype, mtime=mtime,
             title=item.get('name') or '', mime_type=mime,
+            modified_time_raw=ts or '',
             google_drive_path=f'googledrive:/{file_id}',
             web_url=item.get('webViewLink') or '',
             parents=item.get('parents') or [],
+            trashed=item.get('trashed'), version=item.get('version'),
             drive_id=item.get('driveId') or '',
             description=item.get('description') or '',
         )

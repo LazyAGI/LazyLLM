@@ -496,6 +496,33 @@ class FeishuFSBase(LinkDocumentFSBase):
                               oauth_auto=(rt == 'auto'))
         return super()._make_credential(token, dynamic_auth)
 
+    def _folder_page(self, url: str, params: Dict[str, Any], fields: Tuple[str, ...]) -> Dict[str, Any]:
+        payload = self._get(url, params=params)
+        if not isinstance(payload, dict):
+            raise ValueError('Provider returned invalid enumeration response.')
+        if payload.get('code', 0) != 0 or not isinstance(payload.get('data'), dict):
+            raise ValueError(f"Provider rejected enumeration (code={payload.get('code', 'missing')}).")
+        data = payload['data']
+        items = next((data[name] for name in fields if name in data), [])
+        token = data.get('page_token') or data.get('next_page_token') or ''
+        more = data.get('has_more', bool(token))
+        if (not isinstance(items, list) or any(not isinstance(item, dict) for item in items)
+                or (more and (not token or token == params.get('page_token')))):
+            raise ValueError('Provider returned invalid contents or continuation token.')
+        return {'items': items, 'next_page_token': token if more else ''}
+
+    def _all_folder_items(self, folder_token: str, **kwargs) -> List[Dict[str, Any]]:
+        results, seen, token = [], set(), ''
+        while True:
+            page = self.list_page(folder_token, page_token=token, **kwargs)
+            results.extend(page['items'])
+            token = page['next_page_token']
+            if not token:
+                return results
+            if token in seen:
+                raise ValueError('Provider repeated continuation token.')
+            seen.add(token)
+
     @fc_register(host_file='NONE')
     def search(self, query: Union[str, List[str]], space_id: str = '', node_id: str = '',
                page_size: int = 20, page_token: str = '', *, source_type: str = 'all') -> Dict[str, Any]:
@@ -1730,25 +1757,27 @@ class FeishuFS(FeishuFSBase):
                                 skip_instance_cache=skip_instance_cache, loop=loop, dynamic_auth=dynamic_auth)
         return super().__new__(cls)
 
-    def _list_files_raw(self, folder_token: str = '') -> List[Dict[str, Any]]:
-        url = f'{self._base_url}/drive/v1/files'
-        # Root listing does not support pagination; do not send page_size (API returns 400).
-        params: Dict[str, Any] = {}
-        if folder_token:
-            params['folder_token'] = folder_token
-            params['page_size'] = 200
-        results: List[Dict[str, Any]] = []
-        page_token: Optional[str] = None
-        while True:
-            if page_token:
-                params['page_token'] = page_token
-            data = self._get(url, params=params)
-            results.extend(data.get('data', {}).get('files', []) or [])
+    def folder_info(self, folder_token: str) -> Dict[str, Any]:
+        payload = self._get(f'{self._base_url}/drive/explorer/v2/folder/{folder_token}/meta')
+        if (not isinstance(payload, dict) or payload.get('code', 0) != 0
+                or not isinstance(payload.get('data'), dict)):
+            raise ValueError('Folder metadata is inaccessible.')
+        info = payload['data'].get('folder', payload['data'])
+        if not isinstance(info, dict):
+            raise ValueError('Provider returned invalid folder metadata.')
+        return info
+
+    def list_page(self, folder_token: str = '', page_size: int = 200,
+                  page_token: str = '') -> Dict[str, Any]:
+        params = {'folder_token': folder_token, 'page_size': min(max(int(page_size), 1), 200)} if folder_token else {}
+        if page_token:
             if not folder_token:
-                break  # Root: no pagination
-            if not (page_token := data.get('data', {}).get('next_page_token')):
-                break
-        return results
+                raise ValueError('Drive root does not support pagination.')
+            params['page_token'] = page_token
+        return self._folder_page(f'{self._base_url}/drive/v1/files', params, ('files',))
+
+    def _list_files_raw(self, folder_token: str = '') -> List[Dict[str, Any]]:
+        return self._all_folder_items(folder_token)
 
     def _resolve_path_to_token(self, path: str) -> str:
         parts = [p for p in path.strip('/').split('/') if p]
@@ -2082,28 +2111,20 @@ class FeishuWikiFS(FeishuFSBase):
                 "set globals.config['feishu_wiki_space_id'], or use feishu@<space_id>:/ URI"
             )
 
-    def _list_nodes_raw(self, parent_token: str = '', space_id: str = '') -> List[Dict[str, Any]]:
+    def list_page(self, folder_token: str = '', space_id: str = '', page_size: int = 50,
+                  page_token: str = '') -> Dict[str, Any]:
         sid = self._resolve_space_id(space_id)
         if not sid:
-            raise ValueError(
-                'space_id is required for Feishu wiki node listing: pass space_id or '
-                "set globals.config['feishu_wiki_space_id']"
-            )
-        url = f'{self._base_url}/wiki/v2/spaces/{sid}/nodes'
-        params: Dict[str, Any] = {'page_size': 50}
-        if parent_token:
-            params['parent_node_token'] = parent_token
-        results: List[Dict[str, Any]] = []
-        page_token: Optional[str] = None
-        while True:
-            if page_token:
-                params['page_token'] = page_token
-            data = self._get(url, params=params)
-            results.extend(data.get('data', {}).get('items') or data.get('data', {}).get('nodes') or [])
-            page_token = data.get('data', {}).get('page_token') or data.get('data', {}).get('next_page_token')
-            if not page_token:
-                break
-        return results
+            raise ValueError('space_id is required for Feishu wiki node listing')
+        params = {'page_size': min(max(int(page_size), 1), 50)}
+        if folder_token:
+            params['parent_node_token'] = folder_token
+        if page_token:
+            params['page_token'] = page_token
+        return self._folder_page(f'{self._base_url}/wiki/v2/spaces/{sid}/nodes', params, ('items', 'nodes'))
+
+    def _list_nodes_raw(self, parent_token: str = '', space_id: str = '') -> List[Dict[str, Any]]:
+        return self._all_folder_items(parent_token, space_id=space_id)
 
     def _list_spaces_raw(self) -> List[Dict[str, Any]]:
         url = f'{self._base_url}/wiki/v2/spaces'
