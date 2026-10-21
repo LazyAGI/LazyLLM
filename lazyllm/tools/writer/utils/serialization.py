@@ -236,12 +236,9 @@ def parse_markdown_outline_instructions(markdown: str) -> Dict[str, Dict[str, An
     current_heading_id = ''
     fence: Optional[str] = None
     for line in markdown.splitlines():
-        fence_match = re.match(r'^\s*(```+|~~~+)', line)
-        if fence_match:
-            marker = fence_match.group(1)[0]
-            fence = marker if fence is None else None if fence == marker else fence
-            continue
-        if fence is not None:
+        previous_fence = fence
+        fence = _markdown_fence_marker(line, fence)
+        if previous_fence is not None or fence is not None:
             continue
         anchor = re.search(r'<a\s+id=["\']block-([^"\']+)["\'][^>]*>\s*</a>', line)
         if anchor:
@@ -269,10 +266,15 @@ def parse_markdown_outline_instructions(markdown: str) -> Dict[str, Dict[str, An
 def _strip_markdown_outline_instructions(markdown: str) -> str:
     '''Remove outline sidecars before treating Markdown as visible prose.'''
     trailing_newline = markdown.endswith('\n')
-    value = '\n'.join(
-        line for line in markdown.splitlines()
-        if not MARKDOWN_OUTLINE_INSTRUCTION_PREFIX_RE.match(line)
-    )
+    output: List[str] = []
+    fence: Optional[str] = None
+    for line in markdown.splitlines():
+        previous_fence = fence
+        fence = _markdown_fence_marker(line, fence)
+        if previous_fence is None and fence is None and MARKDOWN_OUTLINE_INSTRUCTION_PREFIX_RE.match(line):
+            continue
+        output.append(line)
+    value = '\n'.join(output)
     return f'{value}\n' if trailing_newline else value
 
 
@@ -293,12 +295,9 @@ def apply_markdown_outline_instructions(
     fence: Optional[str] = None
     for line in source.splitlines():
         output.append(line)
-        fence_match = re.match(r'^\s*(```+|~~~+)', line)
-        if fence_match:
-            marker = fence_match.group(1)[0]
-            fence = marker if fence is None else None if fence == marker else fence
-            continue
-        if fence is not None:
+        previous_fence = fence
+        fence = _markdown_fence_marker(line, fence)
+        if previous_fence is not None or fence is not None:
             continue
         anchor = re.search(r'<a\s+id=["\']block-([^"\']+)["\'][^>]*>\s*</a>', line)
         if anchor:
