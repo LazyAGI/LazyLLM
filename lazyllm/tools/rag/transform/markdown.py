@@ -56,8 +56,12 @@ class MarkdownSplitter(_TextSplitterBase):
             splits = self._keep_code_blocks(splits)
         if self.keep_tables:
             splits = self._keep_tables(splits)
+        if self.keep_lists:
+            splits = self._keep_lists(splits)
         if self.keep_images:
             splits = self._keep_images(splits)
+        if self.keep_links:
+            splits = self._keep_links(splits)
         results = []
         for split in splits:
             results.extend(self._sub_split(split, chunk_size))
@@ -275,6 +279,9 @@ class MarkdownSplitter(_TextSplitterBase):
         results = []
 
         for split in splits:
+            if split.type != 'content':
+                results.append(split)
+                continue
             content = split.content
             matches = list(pattern.finditer(content))
             if not matches:
