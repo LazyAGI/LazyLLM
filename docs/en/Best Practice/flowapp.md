@@ -12,7 +12,7 @@
 
 Here is an example of an application built based on LazyLLM:
 
-- [Chatbot](../Cookbook/robot.md)
+- [Chatbot](../Cookbook/chatbot.md)
     - Module：[TrainableModule][lazyllm.module.TrainableModule]
     - Tools：[WebModule][lazyllm.tools.WebModule]
     - Flow：None

@@ -42,6 +42,7 @@ First, submit a batch of initial tasks to the thread pool up to the maximum conc
 For users new to the framework, you only need to know that the `@data_register` decorator can register operators and automatically provide concurrency, storage, and resume capabilities; other details are handled automatically by the framework. For example, if a user wants to register an operator that converts content to lowercase, implementation is as follows:
 
 ```python
+import lazyllm
 from lazyllm.tools.data import data_register # Import registrar
 
 demo = data_register.new_group('demo')  # Create a category for operator grouping
@@ -94,6 +95,8 @@ Operators can be functions or classes. For functions:
 
 Examples are as follows:
 ```python
+from typing import List
+
 # Convert to uppercase, single data processing
 def process_uppercase(data:dict, input_key='content'): # Input single data, specify handling 'content' field
     data[input_key] = data.get(input_key, '').upper()  # Extract content of `content` field in data, convert to uppercase and put back to original field

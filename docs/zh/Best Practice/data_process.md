@@ -43,6 +43,7 @@
 对于刚接触该框架的用户，只用知道`@data_register`装饰器可以注册算子，并自动提供并发、存储和resume能力即可，其他细节框架会自动处理。例如用户想注册一个将内容转为小写的算子，只需如下实现：
 
 ```python
+import lazyllm
 from lazyllm.tools.data import data_register # 导入注册器
 
 demo = data_register.new_group('demo')  # 创建一个类别，用于算子分组
@@ -95,6 +96,8 @@ print('Class result:', res2)
 
 示例如下：
 ```python
+from typing import List
+
 # 转换为全大写，单条数据处理
 def process_uppercase(data:dict, input_key='content'): # 输入单条数据，指定处理'content'字段
     data[input_key] = data.get(input_key, '').upper()  # 提取data中的`content`字段内容，转为大写后塞回原字段
