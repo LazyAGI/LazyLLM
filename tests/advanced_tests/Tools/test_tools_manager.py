@@ -21,7 +21,7 @@ def _gen_wrapped_moduletool(func):
 class TestToolManager:
     def test_annotated_constraints_survive_tool_schema_resolution(self):
         def positive_count(count: Annotated[int, Field(gt=0)]):
-            """Accept a positive count."""
+            '''Accept a positive count.'''
             return count
 
         tool = ToolManager([positive_count]).all_tools[0]
