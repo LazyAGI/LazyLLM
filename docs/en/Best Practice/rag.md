@@ -317,7 +317,7 @@ In each of the `segment_store` and `vector_store`, the `type` field specifies th
         - `index_kwargs` (optional): The configuration parameters for the Qdrant index, a list of dicts keyed by `embed_key` whose `distance` field is the similarity metric (defaulting to `COSINE` for dense and `DOT` for sparse vectors).
 
 
-Here is an example configuration using an in-memory key/value segment store and Chroma as the vector store:
+Here is an example configuration using a MapStore segment store configured with a SQLite file and Chroma as the vector store:
 
 ```python
 store_conf = {
