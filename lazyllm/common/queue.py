@@ -248,9 +248,8 @@ class RedisQueue(FileSystemQueue):
         with self._lock:
             conn = redis.Redis.from_url(self.redis_url)
             if limit:
-                limit = limit + 1
                 vals = conn.lrange(id, 1, limit)
-                conn.ltrim(id, limit, -1)
+                conn.ltrim(id, len(vals), -1)
             else:
                 vals = conn.lrange(id, 1, -1)
                 conn.ltrim(id, 0, 0)
