@@ -248,11 +248,10 @@ class GeneralCodeSplitter(_LanguageSplitterBase):
                         break
 
                     structure_lines.append(next_line)
+                    j += 1
 
                     if len(structure_lines) > 200:
                         break
-
-                    j += 1
                 structure_text = '\n'.join(structure_lines)
                 node = _create_node(structure_text, 'code_structure')
                 if node:
