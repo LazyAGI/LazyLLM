@@ -3080,29 +3080,28 @@ Args:
 ''')
 
 add_english_doc('rag.store.ElasticSearchStore', '''
-Vector store implementation based on Elasticsearch, inheriting from StoreBase. Supports vector insertion, deletion, flexible querying (including scalar filtering).
+Elasticsearch-backed segment store. Stores document content and metadata and supports text search and filtering; it is not a vector store.
 Args:
     uris (List[str]): Elasticsearch connection URIs (e.g., ["http://localhost:9200"]).
     client_kwargs (Optional[Dict]): Additional keyword arguments for Elasticsearch client.
-    index_kwargs (Optional[Union[Dict, List]]): Index creation parameters (e.g., {"index_type": "IVF_FLAT", "metric_type": "COSINE"} or a list of per-embed-key configs).
+    index_kwargs (Optional[Union[Dict, List]]): Elasticsearch index settings and mappings; defaults to the built-in segment mapping.
     **kwargs: Additional keyword arguments.
 ''')
 
 add_chinese_doc('rag.store.ElasticSearchStore', '''
-基于 Elasticsearch 的向量存储实现，继承自 StoreBase。支持向量写入、删除、相似度检索，兼容标量过滤。
+基于 Elasticsearch 的切片存储，保存文档内容和元数据，支持文本搜索与过滤，不是向量存储。
 Args:
     uris (List[str]): Elasticsearch 连接 URI（如 ["http://localhost:9200"]）。
     client_kwargs (Optional[Dict]): 传递给 Elasticsearch 客户端的额外参数。
-    index_kwargs (Optional[Union[Dict, List]]): 索引创建参数（例如 {"index_type": "IVF_FLAT", "metric_type": "CONSINE"} ，支持按向量模型的key配置列表）。
+    index_kwargs (Optional[Union[Dict, List]]): Elasticsearch 索引设置与字段映射，默认使用内置切片映射。
     **kwargs: 预留扩展参数。
 ''')
 
 add_example('rag.store.ElasticSearchStore', '''\
->>> import lazyllm
 >>> from lazyllm.tools.rag.store import ElasticSearchStore
->>> store = ElasticSearchStore(uris=["localhost:9200"], client_kwargs={}, index_kwargs={})
->>> store.connect(embed_dims={"vec_dense": 128, "vec_sparse": 128}, embed_datatypes={"vec_dense": DataType.FLOAT32, "vec_sparse": DataType.FLOAT32}, global_metadata_desc={})
->>> store.upsert(collection_name="test", data=[{"uid": "1", "embedding": {"vec_dense": [0.1, 0.2, 0.3], "vec_sparse": {"1": 0.1, "2": 0.2, "3": 0.3}}, "metadata": {"key1": "value1", "key2": "value2"}}])
+>>> store = ElasticSearchStore(uris=["http://localhost:9200"])
+>>> store.connect(global_metadata_desc={})
+>>> store.upsert(collection_name="test", data=[{"uid": "1", "content": "Example document"}])
 >>> store.get(collection_name="test", criteria={"uid": "1"})
 >>> store.delete(collection_name="test", criteria={"uid": "1"})
 ''')
@@ -3120,20 +3119,16 @@ add_chinese_doc('rag.store.ElasticSearchStore.dir', '''
 ''')
 
 add_english_doc('rag.store.ElasticSearchStore.connect', '''
-Initialize Elasticsearch client, pass in embedding model parameters and global metadata descriptions.
+Initialize the Elasticsearch client and global metadata field descriptions.
 Args:
-    embed_dims (Dict[str, int]): Embedding dimensions per embed key.
-    embed_datatypes (Dict[str, DataType]): Data types for each embed key.
     global_metadata_desc (Dict[str, GlobalMetadataDesc]): Descriptions for metadata fields.
 **Returns:**\n
     bool: True if successful, False otherwise.
 ''')
 
 add_chinese_doc('rag.store.ElasticSearchStore.connect', '''
-初始化 Elasticsearch 客户端，传入向量化模型参数和全局元数据描述。
+初始化 Elasticsearch 客户端和全局元数据字段描述。
 Args:
-    embed_dims (Dict[str, int]): 每个嵌入键对应的向量维度。
-    embed_datatypes (Dict[str, DataType]): 每个嵌入键的数据类型。
     global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据字段的描述。
 **Returns:**\n
     bool: 操作成功返回 True，否则 False。
