@@ -105,29 +105,33 @@ def build_domain_pretrain_pipeline(
 
     with pipeline() as ppl:
 
-        ppl.field_normalization = domain_pretrain.PretrainFieldNormalizer(
-            content_key=content_key,
-            field_mapping=opts.get('field_mapping') or {},
-            concat_fields=opts.get('concat_fields'),
-            concat_separator=opts.get('concat_separator', '\n\n'),
-            fallback_fields=opts.get('fallback_fields'),
-            drop_original=opts.get('drop_original_fields', False),
-        )
-        ppl.text_normalizer = domain_pretrain.text_normalizer(
-            input_key=content_key,
-            unicode_form='NFKC',
-            fix_encoding=True,
-            normalize_whitespace=True,
-        )
+        if enabled.get('field_normalization'):
+            ppl.field_normalization = domain_pretrain.PretrainFieldNormalizer(
+                content_key=content_key,
+                field_mapping=opts.get('field_mapping') or {},
+                concat_fields=opts.get('concat_fields'),
+                concat_separator=opts.get('concat_separator', '\n\n'),
+                fallback_fields=opts.get('fallback_fields'),
+                drop_original=opts.get('drop_original_fields', False),
+            )
 
-        ppl.sensitive_cleaner = domain_pretrain.sensitive_info_cleaner(
-            input_key=content_key,
-            remove_phone=opts.get('remove_phone', True),
-            remove_email=opts.get('remove_email', True),
-            remove_ip=opts.get('remove_ip', True),
-            remove_bank_card=opts.get('remove_bank_card', True),
-            replacement=opts.get('sensitive_replacement', '[REDACTED]'),
-        )
+        if enabled.get('text_normalization'):
+            ppl.text_normalizer = domain_pretrain.text_normalizer(
+                input_key=content_key,
+                unicode_form='NFKC',
+                fix_encoding=True,
+                normalize_whitespace=True,
+            )
+
+        if enabled.get('sensitive_info_cleaning'):
+            ppl.sensitive_cleaner = domain_pretrain.sensitive_info_cleaner(
+                input_key=content_key,
+                remove_phone=opts.get('remove_phone', True),
+                remove_email=opts.get('remove_email', True),
+                remove_ip=opts.get('remove_ip', True),
+                remove_bank_card=opts.get('remove_bank_card', True),
+                replacement=opts.get('sensitive_replacement', '[REDACTED]'),
+            )
 
         if enabled.get('language_filter'):
             ppl.language_filter = domain_pretrain.DocumentLanguageFilter(
@@ -153,12 +157,13 @@ def build_domain_pretrain_pipeline(
                 min_score=opts.get('min_relevance_score', 0.1),
                 language=language,
             )
-        ppl.ngram_filter = domain_pretrain.NGramRepetitionFilter(
-            input_key=content_key,
-            n=opts.get('ngram_n', 10),
-            max_repetition_ratio=opts.get('max_repetition_ratio', 0.3),
-            language=language,
-        )
+        if enabled.get('ngram_repetition_filter'):
+            ppl.ngram_filter = domain_pretrain.NGramRepetitionFilter(
+                input_key=content_key,
+                n=opts.get('ngram_n', 10),
+                max_repetition_ratio=opts.get('max_repetition_ratio', 0.3),
+                language=language,
+            )
 
     return ppl
 
