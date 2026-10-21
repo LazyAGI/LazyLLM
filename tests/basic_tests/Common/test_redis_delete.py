@@ -38,7 +38,7 @@ def test_redis_globals_consumes_its_serialized_entry():
     from lazyllm.common.globals import RedisGlobals
     state = RedisGlobals()
     state['regression'] = 'payload'
-    key = state.pickled_data()
+    key = state.pickled_data
     state.clear()
     state.unpickle_and_update_data(key)
     assert state['regression'] == 'payload'
