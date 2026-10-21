@@ -112,7 +112,7 @@ def _file_to_base64(file_path: str, mime_types: dict) -> Optional[Tuple[str, Opt
     try:
         with open(file_path, 'rb') as f:
             file_base64 = base64.b64encode(f.read()).decode('utf-8')
-            ext = Path(file_path).suffix.lstrip('.')
+            ext = Path(file_path).suffix.lstrip('.').lower()
             mime = mime_types.get(ext)
             return file_base64, mime
     except Exception as e:
