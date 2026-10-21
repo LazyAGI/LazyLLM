@@ -11,6 +11,7 @@ env:
   PYTHON_VERSION: "3.10.9"
   PYPI_PUBLISH_URL: ${{ vars.PYPI_PUBLISH_URL || 'https://upload.pypi.org/legacy/' }}
   PYPI_DOWNLOAD_URL: ${{ vars.PYPI_DOWNLOAD_URL || 'https://pypi.org/simple/' }}
+  PYPI_JSON_URL: ${{ vars.PYPI_JSON_URL || 'https://pypi.org/pypi/' }}
 
 defaults:
   run:
@@ -24,6 +25,7 @@ jobs:
     outputs:
       TAG: ${{ steps.set_tag_var.outputs.tag }}
       pypi_version_exists: ${{ steps.pypi_check.outputs.pypi_version_exists }}
+      is_prerelease: ${{ steps.release_kind.outputs.is_prerelease }}
     steps:
       - name: Extract tag from ref
         id: set_tag_var
@@ -41,13 +43,28 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: Classify release version
+        id: release_kind
+        env:
+          RELEASE_VERSION: ${{ steps.set_tag_var.outputs.tag }}
+        run: |
+          python -m pip install packaging
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import os
+          import sys
+          from packaging.version import Version
+
+          value = Version(os.environ['RELEASE_VERSION']).is_prerelease
+          sys.stdout.write(f'is_prerelease={str(value).lower()}\n')
+          PY
+
       - name: Check PyPI for existing version
         id: pypi_check
         run: |
           TAG=${{ steps.set_tag_var.outputs.tag }}
           echo "TAG: ${TAG}"
           PACKAGE_NAME=$(grep -m 1 'name = "' pyproject.toml | cut -d'"' -f2)
-          RESPONSE=$(curl -s https://test.pypi.org/pypi/$PACKAGE_NAME/json)
+          RESPONSE=$(curl -s "${PYPI_JSON_URL%/}/$PACKAGE_NAME/json")
           if echo "$RESPONSE" | jq -e ".releases | has(\"$TAG\")"; then
             echo "Version $TAG already exists on PyPI. Skipping publish."
             echo "pypi_version_exists=true" >> $GITHUB_OUTPUT
@@ -289,7 +306,7 @@ jobs:
 
   check-release:
     name: check and create GitHub Release
-    needs: publish
+    needs: [publish, check-exists]
     runs-on: ubuntu-latest
     steps:
       - name: Check if GitHub Release exists
@@ -317,7 +334,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           draft: false
-          prerelease: false
+          prerelease: ${{ needs.check-exists.outputs.is_prerelease }}
 
       - name: Set upload_url for new release
         if: env.release_exists == 'false'
