@@ -65,10 +65,10 @@ class Bind(object):
             return self
 
         def __getstate__(self):
-            return self._item_key, self._attr_key, self._source_id, self._target_id
+            return self._item_key, self._attr_key, self._source_id, self._target_id, self._unpack
 
         def __setstate__(self, state):
-            self._item_key, self._attr_key, self._source_id, self._target_id = state
+            self._item_key, self._attr_key, self._source_id, self._target_id, self._unpack = state
 
         def get_arg(self, source):
             if not source or source['source'] != self._source_id:

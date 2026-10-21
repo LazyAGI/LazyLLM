@@ -156,12 +156,20 @@ def dynamic_model_config_context(
         globals['config']['dynamic_model_configs'] = cfg = ConfigsDict()
     elif not isinstance(cfg, ConfigsDict):
         globals['config']['dynamic_model_configs'] = cfg = ConfigsDict(default=dict(cfg))
-    snapshots = {k: (cfg[k] or {}).get(slot, {}) for k in norm if k in cfg}
+    missing = object()
+    created = {k for k in norm if k not in cfg}
+    snapshots = {k: cfg[k].get(slot, missing) for k in norm if k in cfg}
     try:
         for key in norm:
             assert isinstance(cfg.setdefault(key, {}), dict), 'config for module should be a dict'
             cfg[key][slot] = bucket
         yield
     finally:
-        for k in snapshots:
-            cfg[k][slot] = snapshots[k]
+        for k in set(norm):
+            previous = snapshots.get(k, missing)
+            if previous is missing:
+                cfg[k].pop(slot, None)
+                if k in created and not cfg[k]:
+                    del cfg[k]
+            else:
+                cfg[k][slot] = previous
