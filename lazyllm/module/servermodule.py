@@ -137,11 +137,13 @@ class LLMBase(object):
         from .stream_helper import StreamCallHelper
         llm = self.share()
         kwargs.setdefault('stream_output', True)
-        stream = StreamCallHelper(llm).astream(*args, **kwargs)
+        helper = StreamCallHelper(llm)
+        stream = helper.astream(*args, **kwargs)
         try:
             async for item in stream:
                 if item.get('tag', '') in ('text', 'think'):
                     yield item.get('delta', '')
+            helper.future.result()
         finally:
             await stream.aclose()
 
