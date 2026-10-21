@@ -87,7 +87,7 @@ def build_multihop_qa_pipeline(
 ):
     with pipeline() as ppl:
         ppl.load = kbc.KBCLoadChunkFile(input_key=input_key)
-        ppl.preprocess = kbc.KBCPreprocessText(ext_field=ext_field)
+        ppl.preprocess = kbc.KBCPreprocessText(text_field=ext_field)
         ppl.extract = kbc.KBCExtractInfoPairs(lang=lang)
         ppl.generate = kbc.KBCGenerateMultiHopQA(llm=llm, lang=lang)
         ppl.parse = kbc.parse_qa_pairs()

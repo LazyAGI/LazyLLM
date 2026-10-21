@@ -7786,11 +7786,11 @@ add_example('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.K
 ```python
 from lazyllm.tools.data import kbc
 
-processor = kbc.KBCPreprocessText(min_length=50, max_length=10000)
+processor = kbc.KBCPreprocessText(text_field='cleaned_chunk', min_length=50, max_length=10000)
 
 data = {'_chunks_data': [{'cleaned_chunk': 'Short text.'}, {'cleaned_chunk': 'A much longer text that meets the length requirements and will be processed.'}]}
-result = processor(data, text_field='cleaned_chunk')
-# Returns: {'_chunks_data': [...], '_processed_chunks': [{'text': 'A much longer text...', 'original_data': {...}}]}
+result = processor(data)
+# Returns: [{'_chunks_data': [...], '_processed_chunks': [{'text': 'A much longer text...', 'original_data': {...}}]}]
 ```
 """)
 
