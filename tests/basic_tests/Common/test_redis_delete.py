@@ -43,3 +43,24 @@ def test_redis_globals_consumes_its_serialized_entry():
     state.unpickle_and_update_data(key)
     assert state['regression'] == 'payload'
     assert state._redis_client.get(state._get_redis_key(key)) is None
+
+
+def test_backend_ping_passthrough():
+    from lazyllm.common.redis_client import redis_client
+    assert redis_client.ping() is True
+
+
+def test_backend_pipeline_passthrough():
+    from lazyllm.common.redis_client import redis_client
+    key = 'passthrough-' + uuid.uuid4().hex
+    pipeline = redis_client.pipeline()
+    pipeline.set(key, 'value')
+    pipeline.get(key)
+    pipeline.delete(key)
+    assert pipeline.execute() == [True, b'value', 1]
+
+
+def test_missing_backend_attribute_retains_attribute_error():
+    from lazyllm.common.redis_client import redis_client
+    with pytest.raises(AttributeError):
+        redis_client.nonexistent_backend_attribute

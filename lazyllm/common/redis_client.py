@@ -41,7 +41,7 @@ class RedisClient(object):
         _redis_client.delete(*(self._get_key(k) for k in keys))
 
     def __getattr__(self, key):
-        return getattr(redis_client, key)
+        return getattr(_redis_client, key)
 
     def __bool__(self):
         return bool(_redis_client)
