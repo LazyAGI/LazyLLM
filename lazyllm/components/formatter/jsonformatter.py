@@ -9,10 +9,12 @@ class JsonFormatter(JsonLikeFormatter):
         brace_level = 0
         current_json = ''
         in_string = False
+        escaped = False
 
         for char in mixed_str:
-            if char == '"' and (len(current_json) == 0 or current_json[-1] != '\\'):
+            if char == '"' and not escaped:
                 in_string = not in_string
+            escaped = char == '\\' and not escaped
 
             if not in_string:
                 if char in '{[':
@@ -41,7 +43,6 @@ class JsonFormatter(JsonLikeFormatter):
 
     def _load(self, msg: str):
         # Convert str to json format
-        assert msg.count('{') == msg.count('}'), f'{msg} is not a valid json string.'
         try:
             json_objects = self._extract_json_from_string(msg)
             if len(json_objects) == 0:
