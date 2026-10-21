@@ -52,4 +52,4 @@ These templates help:
 
 ## Default Template
 
-If none of the specialized templates fit your needs, use the default template at `.github/pull_request_template.md`. 
+If none of the specialized templates fit your needs, use the [default template](../PULL_REQUEST_TEMPLATE.md).
