@@ -120,7 +120,7 @@ Returns:
 add_tools_example('JsonExtractor', '''
 >>> from lazyllm.tools.tools import JsonExtractor
 >>> from lazyllm import OnlineChatModule
->>> llm = lazyllm.OnlineChatModule()
+>>> llm = OnlineChatModule()
 >>> extractor = JsonExtractor(llm, schema='{"name": "", "age": 0, "city": ""}', field_descriptions={'name': '姓名', 'age': '年龄', 'city': '城市'})
 >>> res = extractor("张三的年龄是20岁，住在北京; 李四的年龄是25岁，住在上海")
 >>> print(res)
@@ -146,7 +146,7 @@ Args:
 add_tools_example('JsonConcentrator', '''
 >>> from lazyllm.tools.tools import JsonConcentrator
 >>> from lazyllm import OnlineChatModule
->>> llm = lazyllm.OnlineChatModule()
+>>> llm = OnlineChatModule()
 >>> concentrator = JsonConcentrator(llm, schema='{"name": "", "age": 0, "city": ""}')
 >>> res = concentrator([{'name': '张三', 'age': 20, 'city': '北京'}, {'name': '李四', 'age': 25, 'city': '上海'}])
 >>> print(res)
