@@ -806,10 +806,9 @@ def _build_tool_from_element(
     if isinstance(element, dict):
         assert 'name' in element, "ToolGroup dict must have a 'name' field"
         assert 'tools' in element, "ToolGroup dict must have a 'tools' field"
-        assert 'desc' in element, "ToolGroup dict must have a 'desc' field"
         key_source = element.get('key_source', None)
         pick_first_valid = element.get('pick_first_valid', False)
-        group = ToolGroup(tools=element['tools'], name=element['name'], desc=element['desc'],
+        group = ToolGroup(tools=element['tools'], name=element['name'], desc=element.get('desc', ''),
                           lazy=element.get('lazy', True), prefix=element.get('prefix', None),
                           _outer_prefix=_outer_prefix, pick_first_valid=pick_first_valid,
                           discoverable=element.get('discoverable', False),
