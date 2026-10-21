@@ -278,7 +278,7 @@ def file_content_hash(value):
     file_path_list = res['files']
 
     hash_obj = hashlib.md5()
-    hash_obj.update(query.encode('utf-8'))
+    hash_obj.update(json.dumps([query, len(file_path_list)], ensure_ascii=False).encode('utf-8'))
 
     search_paths = [
         '',
@@ -296,13 +296,18 @@ def file_content_hash(value):
                     break
             if full_path is None:
                 full_path = file_path
+        file_hash = hashlib.md5()
         try:
             with open(full_path, 'rb') as f:
                 while chunk := f.read(8192):
-                    hash_obj.update(chunk)
+                    file_hash.update(chunk)
         except OSError:
             lazyllm.LOG.debug(f'Error: File not found or cannot be read: {full_path}')
-            hash_obj.update(full_path.encode('utf-8'))
+            hash_obj.update(b'path:')
+            file_hash = hashlib.md5(full_path.encode('utf-8'))
+        else:
+            hash_obj.update(b'file:')
+        hash_obj.update(file_hash.digest())
     return int(hash_obj.hexdigest(), 16)
 
 
