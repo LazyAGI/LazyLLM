@@ -172,7 +172,8 @@ def infer_file_extension(data: bytes) -> str:
     if MAGIC_AVAILABLE:
         try:
             file_type = magic.from_buffer(data, mime=True)
-            return MIME_TO_EXT.get(file_type, '.bin')
+            extension = MIME_TO_EXT.get(file_type)
+            return f'.{extension}' if extension else '.bin'
         except Exception:
             LOG.warning('Magic detection failed, using simple magic detection')
     return simple_magic_detection(data)
