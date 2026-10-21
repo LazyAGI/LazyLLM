@@ -278,13 +278,14 @@ def build_domain_finetune_pipeline(  # noqa: C901
                 min_answer_chars=opts.get('expand_min_a_chars', 50),
             )
 
-        ppl.normalization = domain_finetune.DatasetFormatNormalizer(
-            output_key=input_key,
-            text_key=_filter_text_key,
-            instruction=normalization_instruction,
-            field_mapping=opts.get('field_mapping') or {},
-            keep_system=True,
-        )
+        if has_normalization:
+            ppl.normalization = domain_finetune.DatasetFormatNormalizer(
+                output_key=input_key,
+                text_key=_filter_text_key,
+                instruction=normalization_instruction,
+                field_mapping=opts.get('field_mapping') or {},
+                keep_system=True,
+            )
         if enabled.get('adaptive_normalization') and opts.get('llm') is not None:
             ppl.normalization_llm_map = domain_finetune.LLMFieldMapper(
                 output_key=input_key,
