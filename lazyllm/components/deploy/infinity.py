@@ -37,7 +37,7 @@ class Infinity(LazyLLMDeployBase):
         self.temp_folder = make_log_dir(log_path, 'lmdeploy') if log_path else None
 
     def cmd(self, finetuned_model=None, base_model=None):
-        if not os.path.exists(finetuned_model) or \
+        if not finetuned_model or not os.path.exists(finetuned_model) or \
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(finetuned_model)):
             if not finetuned_model:

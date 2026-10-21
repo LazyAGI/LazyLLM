@@ -107,7 +107,7 @@ class Mindie(LazyLLMDeployBase):
         if self.custom_config is None:
             self.finetuned_model = finetuned_model
             if finetuned_model or base_model:
-                if not os.path.exists(finetuned_model) or \
+                if not finetuned_model or not os.path.exists(finetuned_model) or \
                     not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                             for filename in os.listdir(finetuned_model)):
                     if not finetuned_model:
