@@ -2129,6 +2129,44 @@ Attributes:
     usage (Optional[Dict[str, int]]): Token usage extracted from the partial response.
 ''')
 
+add_chinese_doc('OnlineChatModuleBase.prepare_request', '''\
+在本地准备聊天请求并返回 PreparedModelRequest，不发送网络请求。
+冻结调用输入及模块注入的历史、文件和参数；后续修改不影响快照。
+payload 返回独立副本，estimate_tokens 提供近似 token 估算。
+通过 execute(control=ModelCallControl(...)) 执行同一快照，保留模块 hooks 和缓存行为，
+返回包含 value、terminal 和 usage 的 ModelCallResult。
+output_limit 限制输出并保留更小的已有额度；调用控制参数不发送给供应商。
+''')
+
+add_english_doc('OnlineChatModuleBase.prepare_request', '''\
+Prepare a chat request locally and return PreparedModelRequest without network IO.
+Freeze the input and module-injected history, files and parameters; later changes do not affect the snapshot.
+payload returns an independent copy, and estimate_tokens provides an approximate token estimate.
+execute(control=ModelCallControl(...)) executes the same snapshot while preserving module hooks and caching,
+returning ModelCallResult with value, terminal and usage.
+output_limit preserves a smaller existing output bound; call control parameters are not sent to the provider.
+''')
+
+add_chinese_doc('OnlineChatModuleBase.merge_usage_records', '''\
+将 existing 和 usage 两份用量记录合并到新字典中，累加数值计数并将供应商原始用量汇集到 provider_usages。
+不修改输入记录。任一记录的 prompt_tokens 为 -1 时，合并后的 prompt_tokens 和 completion_tokens 均为 -1。
+''')
+
+add_english_doc('OnlineChatModuleBase.merge_usage_records', '''\
+Merge existing and usage into a new dictionary, adding numeric counters and collecting raw provider usage in provider_usages.
+Leave the input records unchanged. If either prompt_tokens is -1, both merged prompt_tokens and completion_tokens are -1.
+''')
+
+add_chinese_doc('OnlineChatModule.merge_usage_records', '''\
+使用 OnlineChatModuleBase.merge_usage_records 合并 existing 和 usage，返回新用量字典，不修改输入记录。
+累加数值计数，将供应商原始用量汇集到 provider_usages；任一 prompt_tokens 为 -1 时，两个 token 计数均为 -1。
+''')
+
+add_english_doc('OnlineChatModule.merge_usage_records', '''\
+Merge existing and usage through OnlineChatModuleBase.merge_usage_records, returning a new dictionary without changing inputs.
+Add numeric counters and collect raw provider usage in provider_usages; either prompt_tokens of -1 makes both token counts -1.
+''')
+
 add_chinese_doc('OnlineChatModuleBase.set_train_tasks', """\
 设置模型微调训练任务参数。
 
