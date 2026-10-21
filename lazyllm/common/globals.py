@@ -299,13 +299,14 @@ class RedisGlobals(MemoryGlobals):
     def _get_redis_key(self, key: str):
         return f'globals:{self._sid}@{key}'
 
+    @property
     def pickled_data(self):
         key = str(uuid.uuid4().hex)
         self._redis_client.set(self._get_redis_key(key), obj2str(self._data))
         return key
 
     def unpickle_and_update_data(self, data: str) -> dict:
-        self._data.update(str2obj(self._redis_client.get(self._get_redis_key(data))))
+        self._data.update(str2obj(self._redis_client.get(self._get_redis_key(data)).decode('utf-8')))
         self._redis_client.delete(self._get_redis_key(data))
 
 globals = Globals()
