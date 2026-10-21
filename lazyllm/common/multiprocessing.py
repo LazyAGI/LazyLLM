@@ -11,9 +11,11 @@ def _ctx(method='spawn'):
     m = multiprocessing.get_start_method()
     if m != method:
         multiprocessing.set_start_method(method, force=True)
-    yield
-    if m != method:
-        multiprocessing.set_start_method(m, force=True)
+    try:
+        yield
+    finally:
+        if m != method:
+            multiprocessing.set_start_method(m, force=True)
 
 
 class SpawnProcess(multiprocessing.Process):
