@@ -515,8 +515,8 @@ class TempPathGenerator(object):
 
     def __enter__(self) -> List[str]:
         if self._tmpdir: raise RuntimeError('TempPathGenerator is not thread-safe, please create a new object.')
-        self._tmpdir = tempfile.TemporaryDirectory()
-        base = Path(self._tmpdir.name)
+        self._tmpdir = tempfile.mkdtemp() if self._persist else tempfile.TemporaryDirectory()
+        base = Path(self._tmpdir if self._persist else self._tmpdir.name)
 
         self._paths = []
         for i, text in enumerate(self._contents):
