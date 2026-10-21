@@ -31,7 +31,7 @@ Args:
     display_name (Optional[str]): Human-readable display name for this document module. Defaults to the collection name.
     description (Optional[str]): Description of the document collection. Defaults to ``"algorithm description"``.
     schema_extractor (Optional[Union[LLMBase, SchemaExtractor]]): Optional schema extractor used for metadata schema analysis and registration.
-    enable_path_monitoring (Optional[bool]): Whether to watch the local dataset path for file additions and removals. Defaults to enabled only for local documents without ``DocServer``/``DocumentProcessor`` manager mode.
+    enable_path_monitoring (Optional[bool]): Deprecated compatibility parameter with no effect. Explicit values emit a DeprecationWarning. Map-store setups ingest once at initialization; persistent-store setups use DocServer-owned scanning.
 ''')
 
 add_chinese_doc('Document', '''\
@@ -53,7 +53,7 @@ Args:
     display_name (Optional[str]): 文档模块的可读显示名称。默认为集合名称。
     description (Optional[str]): 文档集合的描述。默认为 ``"algorithm description"``。
     schema_extractor (Optional[Union[LLMBase, SchemaExtractor]]): 可选 schema extractor，用于元数据 schema 分析与注册。
-    enable_path_monitoring (Optional[bool]): 是否监控本地数据目录的文件新增和删除。仅在未接入 ``DocServer`` / ``DocumentProcessor`` 的本地模式下默认开启。
+    enable_path_monitoring (Optional[bool]): 已弃用的兼容参数，不再生效；显式传值会发出 DeprecationWarning。MapStore 在初始化时进行一次性导入，持久化存储由 DocServer 负责扫描。
 ''')
 
 add_english_doc('DocServer', '''\
