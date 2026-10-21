@@ -142,14 +142,15 @@ def alpaca2openai(data) -> list:
         historys = item.get('history', [])
         if system:
             openai_item['messages'].append({'role': 'system', 'content': system})
-        openai_item['messages'].extend([
-            {'role': 'user', 'content': item['instruction'] + (INPUT_SPLIT + inp if inp else '')},
-            {'role': 'assistant', 'content': item['output']}
-        ])
         if historys:
             for history in historys:
                 openai_item['messages'].append({'role': 'user', 'content': history[0]})
                 openai_item['messages'].append({'role': 'assistant', 'content': history[1]})
+
+        openai_item['messages'].extend([
+            {'role': 'user', 'content': item['instruction'] + (INPUT_SPLIT + inp if inp else '')},
+            {'role': 'assistant', 'content': item['output']}
+        ])
 
         res.append(openai_item)
 
@@ -170,13 +171,13 @@ def openai2alpaca(data) -> list:
             if item['role'] == 'assistant':
                 outputs.append(item['content'])
         assert len(instructions) == len(outputs)
-        history = [[x, y] for x, y in zip(instructions[1:], outputs[1:])]
-        instruction_input = instructions[0].split(INPUT_SPLIT)
+        history = [[x, y] for x, y in zip(instructions[:-1], outputs[:-1])]
+        instruction_input = instructions[-1].split(INPUT_SPLIT)
         instruction = instruction_input[0]
         inp = ''
         if len(instruction_input) >= 2:
             inp = instruction_input[-1]
-        output = outputs[0]
+        output = outputs[-1]
         alpaca_item = dict()
         if system:
             alpaca_item['system'] = system
