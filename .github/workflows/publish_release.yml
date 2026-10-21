@@ -11,6 +11,7 @@ env:
   PYTHON_VERSION: "3.10.9"
   PYPI_PUBLISH_URL: ${{ vars.PYPI_PUBLISH_URL || 'https://upload.pypi.org/legacy/' }}
   PYPI_DOWNLOAD_URL: ${{ vars.PYPI_DOWNLOAD_URL || 'https://pypi.org/simple/' }}
+  PYPI_JSON_URL: ${{ vars.PYPI_JSON_URL || 'https://pypi.org/pypi/' }}
 
 defaults:
   run:
@@ -47,7 +48,7 @@ jobs:
           TAG=${{ steps.set_tag_var.outputs.tag }}
           echo "TAG: ${TAG}"
           PACKAGE_NAME=$(grep -m 1 'name = "' pyproject.toml | cut -d'"' -f2)
-          RESPONSE=$(curl -s https://test.pypi.org/pypi/$PACKAGE_NAME/json)
+          RESPONSE=$(curl -s "${PYPI_JSON_URL%/}/$PACKAGE_NAME/json")
           if echo "$RESPONSE" | jq -e ".releases | has(\"$TAG\")"; then
             echo "Version $TAG already exists on PyPI. Skipping publish."
             echo "pypi_version_exists=true" >> $GITHUB_OUTPUT
