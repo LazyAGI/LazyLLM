@@ -351,7 +351,7 @@ def path_absolute_to_relative(path):
     if not os.path.isabs(path):
         return path
     temp_dir_abs = os.path.abspath(lazyllm.config['temp_dir'])
-    if path.startswith(temp_dir_abs):
+    if path == temp_dir_abs or path.startswith(os.path.join(temp_dir_abs, '')):
         relative_path = path[len(temp_dir_abs):]
         if relative_path.startswith(os.sep):
             relative_path = relative_path[1:]
