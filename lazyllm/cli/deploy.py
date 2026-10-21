@@ -88,7 +88,7 @@ def deploy(commands):
         args = parser.parse_args(commands)
 
         lazyllm.LOG.info('Starting graphrag server')
-        from lazyllm.tools.servers.graphrag_server_module import GraphRagServerModule
+        from lazyllm.tools.servers.graphrag.graphrag_server_module import GraphRagServerModule
         server = GraphRagServerModule(kg_dir=args.kg_dir)
         server.start()
         server.wait()
