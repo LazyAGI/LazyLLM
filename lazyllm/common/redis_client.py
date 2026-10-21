@@ -37,7 +37,8 @@ class RedisClient(object):
         return _redis_client.set(self._get_key(key), value)
 
     def delete(self, key):
-        redis_client.delete(self._get_key(key) if isinstance(key, str) else [self._get_key(k) for k in key])
+        keys = [key] if isinstance(key, str) else key
+        _redis_client.delete(*(self._get_key(k) for k in keys))
 
     def __getattr__(self, key):
         return getattr(redis_client, key)

@@ -305,7 +305,7 @@ class RedisGlobals(MemoryGlobals):
         return key
 
     def unpickle_and_update_data(self, data: str) -> dict:
-        self._data.update(str2obj(self._redis_client.get(self._get_redis_key(data))))
+        self._data.update(str2obj(self._redis_client.get(self._get_redis_key(data)).decode('utf-8')))
         self._redis_client.delete(self._get_redis_key(data))
 
 globals = Globals()
