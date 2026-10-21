@@ -92,7 +92,7 @@ class LightEngine(Engine):
 
     def stop(self, node_id: Optional[str] = None, task_name: Optional[str] = None):
         if not node_id:
-            for node in self._nodes:
+            for node in list(self._nodes):
                 self.release_node(node)
         elif node := self.build_node(node_id):
             if task_name:
