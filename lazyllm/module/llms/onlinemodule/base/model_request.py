@@ -356,6 +356,7 @@ class _RequestGuard:
 def model_response(url, *, control=None, **kwargs):
     if control is None:
         with requests.post(url, **kwargs) as response:
+            response.raw.enforce_content_length = True
             yield response
         return
     guard = _RequestGuard(control)
@@ -367,6 +368,8 @@ def model_response(url, *, control=None, **kwargs):
             session.mount('https://', guard.adapter())
             kwargs['timeout'] = control.timeout(kwargs.get('timeout'))
             with session.post(url, **kwargs) as response:
+                # urllib3 1.x otherwise accepts a truncated body as a clean EOF.
+                response.raw.enforce_content_length = True
                 guard.check()
                 yield response
                 guard.check()

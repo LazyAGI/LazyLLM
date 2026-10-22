@@ -29,6 +29,29 @@ def serving(server):
         thread.join(2)
 
 
+@pytest.mark.parametrize('controlled', [False, True])
+def test_truncated_response_is_a_transport_failure_even_after_a_terminal_frame(controlled):
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers['Content-Length']))
+            body = b'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"stop"}]}\n\n'
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Content-Length', str(len(body) + 100))
+            self.end_headers()
+            self.wfile.write(body)
+
+    with serving(ThreadingHTTPServer(('127.0.0.1', 0), Handler)) as server:
+        control = ModelCallControl(time.monotonic() + 2) if controlled else None
+        with pytest.raises(requests.exceptions.ChunkedEncodingError):
+            with model_response(f'http://127.0.0.1:{server.server_port}/chat',
+                                json={'model': 'fixture'}, stream=True, control=control) as response:
+                list(response.iter_lines())
+
+
 @pytest.fixture
 def proxy_endpoint(tmp_path, monkeypatch):  # noqa: C901 - local HTTP, CONNECT and SOCKS protocol fixture.
     ca = trustme.CA()
