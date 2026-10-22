@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from lazyllm.tools.rag.doc_service.base import (
     AddFileItem,
+    AddRequest,
     CallbackEventType,
     DeleteRequest,
     DocServiceError,
@@ -290,6 +291,23 @@ def test_manager_upload_callback_and_doc_detail(manager_harness):
     assert detail['doc']['upload_status'] == DocStatus.SUCCESS.value
     assert detail['snapshot']['status'] == DocStatus.SUCCESS.value
     assert detail['latest_task']['task_id'] == task_id
+
+
+@pytest.mark.parametrize('processing_level', ['parsed', 'chunked', 'indexed'])
+def test_manager_add_files_preserves_processing_level(manager_harness, processing_level):
+    manager_harness.manager.create_kb('kb_processing_level', algo_id='__default__')
+    file_path = manager_harness.make_file('paper.txt', 'paper content')
+
+    items = manager_harness.manager.add_files(AddRequest(
+        kb_id='kb_processing_level',
+        items=[AddFileItem(file_path=file_path, doc_id='paper-doc')],
+        processing_level=processing_level,
+    ))
+
+    assert items[0]['accepted'] is True
+    assert manager_harness.add_doc_calls[-1]['processing_level'] == processing_level
+    manager_harness.finish_task(items[0]['task_id'])
+    assert manager_harness.manager.get_doc_detail('paper-doc')['snapshot']['status'] == DocStatus.SUCCESS.value
 
 
 def test_manager_cancel_waiting_add_updates_all_states(manager_harness):
