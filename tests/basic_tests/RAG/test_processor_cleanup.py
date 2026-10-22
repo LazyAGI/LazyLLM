@@ -6,6 +6,41 @@ from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
 from lazyllm.tools.rag.parsing_service import _Processor
 from lazyllm.tools.rag.store import LAZY_IMAGE_GROUP, LAZY_ROOT_NAME
+from lazyllm.tools.rag.transform import TransformArgs
+
+
+def test_rebuild_does_not_replace_cached_children_with_null_nodes():
+    store = MagicMock()
+    store.activated_groups.return_value = ['block']
+    store.get_nodes.return_value = []
+    root = _make_root_node('doc1', 'kb1')
+    root.children['block'] = [DocNode(text='old chunk', parent=root, group='block')]
+    groups = {'block': {'parent': LAZY_ROOT_NAME, 'transform': TransformArgs(f=lambda text: [text])}}
+    processor = _Processor(store=store)
+    try:
+        processor._reparse_group_recursive([root], 'block', groups, ['doc1'], 'kb1')
+        nodes = store.update_nodes.call_args.args[0]
+        assert len(nodes) == 1
+        assert nodes[0].text == 'root'
+        assert not nodes[0].is_null_node
+    finally:
+        processor.close()
+
+
+def test_image_group_without_images_does_not_rebuild_text_document():
+    store = MagicMock()
+    store.get_nodes.return_value = []
+    store.activated_groups.return_value = ['image-description']
+    reader = MagicMock()
+    groups = {'image-description': {'parent': LAZY_IMAGE_GROUP}}
+    processor = _Processor(store=store)
+    try:
+        processor._reparse_docs('image-description', groups, ['doc1'], ['/tmp/doc1.txt'], [{}],
+                                kb_id='kb1', reader=reader)
+        reader.load_data.assert_not_called()
+        store.remove_nodes.assert_called_once_with(group='image-description', kb_id='kb1', doc_ids=['doc1'])
+    finally:
+        processor.close()
 
 
 def _make_root_node(doc_id: str, kb_id: str) -> DocNode:
