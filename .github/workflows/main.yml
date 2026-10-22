@@ -31,6 +31,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  request_control_compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        urllib3: ['urllib3==1.26.20', 'urllib3>=2,<3']
+        requests: ['requests[socks]==2.32.2', 'requests[socks]>=2.32.3,<3']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          allow-unsafe-pr-checkout: true
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install request control test dependencies
+        run: >-
+          pip install . --config-settings=skbuild.wheel.cmake=false
+          '${{ matrix.urllib3 }}' '${{ matrix.requests }}' pytest 'trustme>=1.2.1'
+      - name: Run request control regressions
+        run: >-
+          python -m pytest -q
+          tests/basic_tests/Models/test_model_request_transport.py
+          tests/basic_tests/Models/test_prepared_model_request.py
+
   lint:
     runs-on: ubuntu-latest
     steps:

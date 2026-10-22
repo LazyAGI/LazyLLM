@@ -11,6 +11,7 @@ from pathlib import Path
 from functools import lru_cache
 
 package_name_map = {
+    'socks': 'PySocks',
     'huggingface_hub': 'huggingface-hub',
     'jwt': 'PyJWT',
     'rank_bm25': 'rank-bm25',

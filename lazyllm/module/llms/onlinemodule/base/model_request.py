@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import mimetypes
+import os
 import socket
 import ssl
 import select
@@ -17,13 +18,13 @@ from typing import Any, Callable, Optional
 
 import requests
 from requests.adapters import HTTPAdapter
-from urllib3.connection import HTTPConnection, HTTPSConnection
-from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
+from urllib3 import exceptions as urllib3_errors
 from urllib3.util.connection import allowed_gai_family
 from urllib3.util.ssl_ import create_urllib3_context
-from urllib3.exceptions import ConnectTimeoutError, NameResolutionError, NewConnectionError
+from urllib3.exceptions import ConnectTimeoutError, NewConnectionError
 
 from lazyllm.common.threading import Thread
+from lazyllm.thirdparty import socks
 from .model_outcome import ModelCallTerminal
 from ....module import ModuleExecutionError
 
@@ -142,8 +143,9 @@ class PreparedModelRequest:
 _resolver = ThreadPoolExecutor(max_workers=4, thread_name_prefix='lazyllm-dns')
 
 
-def _resolve_addresses(host, port, check):
-    future = _resolver.submit(socket.getaddrinfo, host, port, allowed_gai_family(), socket.SOCK_STREAM)
+def _resolve_addresses(host, port, check, family=None):
+    future = _resolver.submit(socket.getaddrinfo, host, port,
+                              allowed_gai_family() if family is None else family, socket.SOCK_STREAM)
     try:
         while not future.done():
             check()
@@ -154,15 +156,40 @@ def _resolve_addresses(host, port, check):
         future.cancel()
 
 
+def _connect_socks(sock, target, connection, control, check):
+    options = connection._socks_options
+    host = connection.host.strip('[]')
+    if not options['rdns']:
+        family = socket.AF_INET if options['socks_version'] == socks.SOCKS4 else socket.AF_UNSPEC
+        host = _resolve_addresses(host, connection.port, check, family)[0][4][0]
+    sock.set_proxy(options['socks_version'], target[0], target[1], options['rdns'],
+                   options['username'], options['password'])
+    sock.settimeout(control.timeout(connection.timeout))
+    check()
+    try:
+        # PySocks owns authentication and negotiation; the guard can interrupt
+        # this socket before connect() returns, including a stalled handshake.
+        sock.connect((host, connection.port))
+    except socks.ProxyError as exc:
+        if exc.socket_err is not None:
+            raise exc.socket_err from exc
+        raise
+
+
 def _connect_address(address, connection, control, check, sockets):
     family, kind, protocol, _, target = address
-    sock = socket.socket(family, kind, protocol)
+    is_socks = hasattr(connection, '_socks_options')
+    sock = (socks.socksocket if is_socks else socket.socket)(family, kind, protocol)
     sockets.append(sock)
     try:
         for option in connection.socket_options or []:
             sock.setsockopt(*option)
         if connection.source_address:
             sock.bind(connection.source_address)
+        if is_socks:
+            _connect_socks(sock, target, connection, control, check)
+            check()
+            return sock
         sock.setblocking(False)
         result = sock.connect_ex(target)
         if result not in {0, errno.EINPROGRESS, errno.EWOULDBLOCK, errno.EALREADY}:
@@ -192,7 +219,10 @@ def _controlled_socket(connection, guard):
             raise socket.timeout('Connection timed out.')
 
     try:
-        addresses = _resolve_addresses(connection._dns_host.strip('[]'), connection.port, check)
+        options = getattr(connection, '_socks_options', None)
+        host, port = ((options['proxy_host'], options['proxy_port'] or 1080) if options else
+                      (connection._dns_host, connection.port))
+        addresses = _resolve_addresses(host.strip('[]'), port, check)
         error = None
         for address in addresses:
             check()
@@ -204,7 +234,9 @@ def _controlled_socket(connection, guard):
                 error = exc
         raise error or OSError('No connection address is available.')
     except socket.gaierror as exc:
-        raise NameResolutionError(connection.host, connection, exc) from exc
+        if hasattr(urllib3_errors, 'NameResolutionError'):
+            raise urllib3_errors.NameResolutionError(connection.host, connection, exc) from exc
+        raise NewConnectionError(connection, 'Name resolution failed.') from exc
     except socket.timeout as exc:
         raise ConnectTimeoutError(connection, 'Connection timed out.') from exc
     except OSError as exc:
@@ -227,7 +259,7 @@ class _RequestGuard:
     def watch(self):
         while not self.stopped.wait(0.02):
             try:
-                self.control.check()
+                self.check()
             except BaseException as exc:  # noqa: B036 - re-raised on the request thread by check().
                 self.failure = exc
                 for sock in [*self.sockets, *(conn.sock for conn in self.connections if conn.sock)]:
@@ -235,15 +267,20 @@ class _RequestGuard:
                         sock.shutdown(socket.SHUT_RDWR)
                     except OSError:
                         pass
-                return
+                # A not-yet-connected socket can survive shutdown on macOS.
+                # Keep interrupting until the request thread has exited.
 
     def tls_context(self, verify=None, *, proxy=False):
-        context = ssl.create_default_context() if proxy else create_urllib3_context()
+        context = create_urllib3_context()
+        if proxy:
+            context.check_hostname = True
         if verify is True:
             context.load_verify_locations(cafile=requests.certs.where())
         elif verify is False:
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
+        elif isinstance(verify, str):
+            context.load_verify_locations(**{'capath' if os.path.isdir(verify) else 'cafile': verify})
         original = context.wrap_socket
         guard = self
 
@@ -275,34 +312,42 @@ class _RequestGuard:
             def _new_conn(self):
                 return _controlled_socket(self, guard)
 
-        class ControlledHTTP(TrackedConnection, HTTPConnection):
-            pass
+        def track_pools(manager):
+            pools = {}
+            for scheme, pool in manager.pool_classes_by_scheme.items():
+                class Connection(TrackedConnection, pool.ConnectionCls):
+                    pass
 
-        class ControlledHTTPS(TrackedConnection, HTTPSConnection):
-            pass
+                class Pool(pool):
+                    ConnectionCls = Connection
 
-        class HTTPPool(HTTPConnectionPool):
-            ConnectionCls = ControlledHTTP
-
-        class HTTPSPool(HTTPSConnectionPool):
-            ConnectionCls = ControlledHTTPS
+                pools[scheme] = Pool
+            manager.pool_classes_by_scheme = pools
 
         class Adapter(HTTPAdapter):
+            def get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+                self._proxy_verify = verify
+                pool = super().get_connection_with_tls_context(request, verify, proxies, cert)
+                if pool.scheme == 'https':
+                    # Requests 2.32.2 does not have build_connection_pool_key_attributes().
+                    # Use its shared extension point without mutating the global TLS context.
+                    pool.conn_kw['ssl_context'] = guard.tls_context(verify)
+                return pool
+
             def init_poolmanager(self, *args, **params):
                 params.setdefault('ssl_context', guard.tls_context())
                 super().init_poolmanager(*args, **params)
-                self.poolmanager.pool_classes_by_scheme = {'http': HTTPPool, 'https': HTTPSPool}
+                track_pools(self.poolmanager)
 
-            def proxy_manager_for(self, *args, **params):
-                params.setdefault('proxy_ssl_context', guard.tls_context(proxy=True))
-                manager = super().proxy_manager_for(*args, **params)
-                manager.pool_classes_by_scheme = {'http': HTTPPool, 'https': HTTPSPool}
+            def proxy_manager_for(self, proxy, **params):
+                if proxy in self.proxy_manager:
+                    return self.proxy_manager[proxy]
+                params.setdefault('ssl_context', guard.tls_context())
+                if proxy.lower().startswith('https:'):
+                    params.setdefault('proxy_ssl_context', guard.tls_context(self._proxy_verify, proxy=True))
+                manager = super().proxy_manager_for(proxy, **params)
+                track_pools(manager)
                 return manager
-
-            def build_connection_pool_key_attributes(self, request, verify, cert=None):
-                host, params = super().build_connection_pool_key_attributes(request, verify, cert)
-                params['ssl_context'] = guard.tls_context(verify)
-                return host, params
 
         return Adapter()
 
