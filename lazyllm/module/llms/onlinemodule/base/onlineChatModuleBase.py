@@ -358,7 +358,10 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
     def forward(self, __input=None, *, call_control=None, on_terminal=None, **kwargs):
         data, url, stream, timeout, max_attempts, vision = self._prepare_request(__input, **kwargs)
         if call_control is not None:
-            call_control.validate_request(ModelRequest(json.dumps(data, ensure_ascii=False), self.type, vision))
+            if call_control.request_check is not None:
+                call_control.validate_request(ModelRequest(json.dumps(data, ensure_ascii=False), self.type, vision))
+            else:
+                call_control.check()
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         control_args = {'call_control': call_control} if call_control is not None else {}
         if on_terminal is not None:

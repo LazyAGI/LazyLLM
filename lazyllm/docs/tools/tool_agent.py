@@ -3417,17 +3417,3 @@ through the optional tool_turns keyword to history_compactor callbacks accepting
 remain supported. Callbacks still return (projected_prior, projected_current), preserving the current-message boundary
 to avoid appending tool results twice.
 ''')
-
-
-add_agent_chinese_doc('invoke_history_compactor', '''\
-调用 history_compactor 并返回 (prior, current)。按回调签名过滤可选上下文关键字，兼容旧两参数签名。
-支持显式两列表 tuple、保持总长度的合并列表、以及仅 prior 的列表；仅 prior 返回时保留原 current。
-供 FunctionCall 和独立历史适配器共用。保留消息元数据，发送前由调用方清理；不重试或吞掉回调异常。
-''')
-
-add_agent_english_doc('invoke_history_compactor', '''\
-Invoke a history_compactor and return (prior, current), filtering optional context keywords by its signature.
-Supports legacy two-argument callbacks, explicit pairs of lists, unchanged-length combined lists, and prior-only lists.
-Prior-only results retain the original current messages. Used by FunctionCall and standalone history adapters.
-Preserves message metadata for the caller to strip before sending. Does not retry or suppress callback errors.
-''')
