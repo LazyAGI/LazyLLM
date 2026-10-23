@@ -1,7 +1,5 @@
 import ast
 import copy
-import functools
-import hashlib
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 import json as std_json
@@ -138,6 +136,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return hints
 
     def _load_function_schema(self, func: Callable) -> Type[BaseModel]:
+        self._mcp_input_schema = copy.deepcopy(getattr(func, '__mcp_input_schema__', None))
         parsed_docstring = docstring_parser.parse(self._description)
         doc_type_hints = self._parse_type_from_docstring(parsed_docstring)
 
@@ -145,7 +144,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         # commonly use structured request models that are not imported here.
         annotation_func = inspect.unwrap(func)
         func_type_hints = get_type_hints(
-            annotation_func, getattr(annotation_func, '__globals__', globals()), locals())
+            annotation_func, getattr(annotation_func, '__globals__', globals()), locals(), include_extras=True)
 
         func_return = func_type_hints.get('return')
         doc_return = doc_type_hints.get('return')
@@ -492,6 +491,10 @@ def _build_tool_desc(tool: 'ModuleTool') -> Dict:
         if key not in {'title', 'properties'}
     }
     parameters['properties'] = args
+    if tool._mcp_input_schema is not None:
+        # An MCP schema can contain constraints not representable by a Python
+        # signature, including root unions and references into $defs.
+        parameters = copy.deepcopy(tool._mcp_input_schema)
     return {
         'type': 'function',
         'function': {
@@ -848,46 +851,12 @@ def _resolve_registration_tool(tool):
     return tool
 
 
-def _alias_mcp_tool(tool, name):
-    if isinstance(tool, tuple) and len(tool) == 2:
-        return (_alias_mcp_tool(tool[0], name), tool[1])
-
-    # MCP schemas are cached across requests. Wrap rather than rename the cached
-    # callable; wraps preserves its explicit signature, annotations and metadata.
-    @functools.wraps(tool)
-    def invoke(*args, **kwargs):
-        return tool(*args, **kwargs)
-
-    invoke.__name__ = name
-    return invoke
-
-
-def _disambiguate_mcp_tools(tools):
-    result = []
-    for tool in tools:
-        target = tool[0] if isinstance(tool, tuple) and len(tool) == 2 else tool
-        metadata = _get_tool_runtime_metadata(target)
-        if metadata and metadata.tool_source == 'mcp' and metadata.tool_origin and metadata.tool_identity:
-            # Identity is opaque; only the adapter knows its encoding.
-            # Always alias: adding/removing other tools must not change saved names.
-            wire_name = getattr(target, '__mcp_tool_name__', None) or 'mcp'
-            prefix = re.sub(r'[^a-zA-Z0-9_]', '_', wire_name)
-            if prefix[:1].isdigit():
-                prefix = '_' + prefix
-            digest = hashlib.sha256(metadata.tool_identity.encode()).hexdigest()[:12]
-            suffix = f'_mcp_{digest}'
-            tool = _alias_mcp_tool(tool, f'{prefix[:64 - len(suffix)]}{suffix}')
-        result.append(tool)
-    # Exact final-name collisions are rejected by the normal duplicate validation.
-    return result
-
-
 class ToolManager(ModuleBase):
 
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None):
         super().__init__(return_trace=return_trace)
         tools = [_resolve_registration_tool(tool) for tool in tools]
-        self._tools = [_build_tool_from_element(element) for element in _disambiguate_mcp_tools(tools)]
+        self._tools = [_build_tool_from_element(element) for element in tools]
         self._format_tools()
         self._tools_desc = self._transform_to_openai_function()
         self._sandbox = sandbox

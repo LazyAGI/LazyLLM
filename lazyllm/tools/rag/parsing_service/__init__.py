@@ -1,5 +1,6 @@
 from importlib import import_module
 
+# Importing shared task types must not initialize workers that depend on DocServer.
 _EXPORTS = {
     '_Processor': ('.impl', '_Processor'),
     'DocumentProcessor': ('.server', 'DocumentProcessor'),

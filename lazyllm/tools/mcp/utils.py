@@ -1,6 +1,7 @@
 import asyncio
 import threading
 from functools import wraps
+from contextvars import copy_context
 from typing import Any, Callable
 
 
@@ -25,7 +26,8 @@ def run_async_in_thread(func_async: Callable, *args: Any, **kwargs: Any) -> Any:
         except Exception as e:
             exception = e
 
-    thread = threading.Thread(target=run)
+    context = copy_context()
+    thread = threading.Thread(target=context.run, args=(run,))
     thread.start()
     thread.join()
     if exception:
