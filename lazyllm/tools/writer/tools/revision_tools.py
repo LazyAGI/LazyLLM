@@ -69,6 +69,7 @@ from ..utils import (
     validate_writer_tables,
 )
 from ..utils.serialization import markdown_image_sources, markdown_section_range
+from ..utils.image_groups import ImageGroup
 
 
 def apply_patch_to_ir(
@@ -81,12 +82,17 @@ def apply_patch_to_ir(
     validate_writer_tables(document)
     tools._validate_patch(document, patch_set, media_assets=media_assets)
     if not patch_set.hunks \
-            and (patch_set.new_title is None or patch_set.new_title == document.title):
+            and (patch_set.new_title is None or patch_set.new_title == document.title) \
+            and patch_set.image_groups is None:
         raise ValueError('patch contains no document operations.')
     revised_doc = document.model_copy(deep=True)
     revised_doc.ui_editable = False
     if patch_set.new_title is not None:
         revised_doc.title = patch_set.new_title
+    if patch_set.image_groups is not None:
+        revised_doc.metadata['image_groups'] = [
+            ImageGroup.model_validate(group).model_dump() for group in patch_set.image_groups
+        ]
 
     applied: List[str] = []
     for hunk in patch_set.hunks:
@@ -1339,9 +1345,11 @@ locator kind per reference. Return valid JSON only.
             target_doc_id=source.document_id,
             new_title=revised.title if source.title != revised.title else None,
             hunks=hunks,
+            image_groups=revised.metadata.get('image_groups', [])
+            if source.metadata.get('image_groups', []) != revised.metadata.get('image_groups', []) else None,
             meta={'source': 'document_diff'},
         )
-        if patch.hunks or patch.new_title is not None:
+        if patch.hunks or patch.new_title is not None or patch.image_groups is not None:
             applied, _ = apply_patch_to_ir(source, patch, media_assets=media_assets)
             self._assert_revision_applied(applied, revised)
         else:
@@ -1441,6 +1449,7 @@ locator kind per reference. Return valid JSON only.
             'stage': document.stage,
             'title': document.title,
             'blocks': [cls._visible_block(block) for block in document.blocks],
+            'image_groups': document.metadata.get('image_groups', []),
         }
 
     @classmethod
@@ -1634,12 +1643,12 @@ locator kind per reference. Return valid JSON only.
                     'revision visual preferred_strategy is not supported for its visual_type.'
                 )
 
-        if document is None or instruction.modify_type not in {'update', 'move'}:
+        if document is None or instruction.modify_type != 'update':
             return
         node_id = instruction.content_ref.node_id
         target = document.block_by_id(node_id) if node_id else None
         if target is not None and target.type == 'image':
-            raise ValueError('existing image blocks cannot be updated or moved.')
+            raise ValueError('existing image blocks cannot be updated.')
 
     def _revision_candidates(self, document: WriterDocument | str) -> List[Dict[str, Any]]:
         if isinstance(document, WriterDocument):
@@ -1894,7 +1903,6 @@ locator kind per reference. Return valid JSON only.
             )
 
         hunk_ids: set = set()
-        image_moves = []
         for hunk in patch.hunks:
             if hunk.hunk_id and hunk.hunk_id in hunk_ids:
                 raise ValueError(f'patch contains duplicate hunk_id {hunk.hunk_id!r}.')
@@ -1906,47 +1914,14 @@ locator kind per reference. Return valid JSON only.
                 for block in hunk.block.iter_blocks():
                     if block.type == 'image':
                         self._validate_image_block(block, media_assets)
-            elif hunk.modify_type in {'update', 'move'} \
+            elif hunk.modify_type == 'update' \
                     and target is not None \
                     and target.type == 'image':
-                if hunk.modify_type == 'move':
-                    image_moves.append(target.node_id)
-                else:
-                    raise ValueError('existing image blocks cannot be updated or moved.')
+                raise ValueError('existing image blocks cannot be updated.')
             if hunk.modify_type == 'update' \
                     and hunk.block is not None \
                     and hunk.block.type == 'image':
                 raise ValueError('image blocks cannot be created through an update.')
-        if image_moves and not self._is_heading_reparent_patch(document, patch, image_moves):
-            raise ValueError('existing image blocks cannot be updated or moved.')
-
-    def _is_heading_reparent_patch(
-        self, document: WriterDocument, patch: PatchSet, image_ids: List[str],
-    ) -> bool:
-        revised = document.model_copy(deep=True)
-        for hunk in patch.hunks:
-            self._apply_patch_hunk(revised, hunk)
-        source_ids = self._ordered_node_ids(document)
-        revised_ids = self._ordered_node_ids(revised)
-        source_set, revised_set = set(source_ids), set(revised_ids)
-        if [node_id for node_id in source_ids if node_id in revised_set] != [
-            node_id for node_id in revised_ids if node_id in source_set
-        ]:
-            return False
-        new_headings = {
-            block.node_id for block in revised.iter_blocks()
-            if block.node_id not in source_set and self._heading_level(block) is not None
-        }
-        layout = self._document_layout(revised)
-        for node_id in image_ids:
-            if document.block_by_id(node_id) != revised.block_by_id(node_id):
-                return False
-            parent_id = layout[node_id][0]
-            while parent_id is not None and parent_id not in new_headings:
-                parent_id = layout[parent_id][0]
-            if parent_id is None:
-                return False
-        return True
 
     @classmethod
     def _validate_image_block(

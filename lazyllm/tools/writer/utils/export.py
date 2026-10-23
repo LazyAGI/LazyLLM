@@ -13,6 +13,7 @@ from ..numbering import (
 )
 from .conversion import convert_writer_content, render_document_markdown
 from .tables import validate_writer_tables
+from .image_groups import strip_image_group_markdown
 
 
 _TEX_ESCAPES = {
@@ -186,6 +187,7 @@ def export_writer_document(
                 and block.provider_payload and block.type not in {'divider'}:
             raise ValueError(f'Document block {block.node_id!r} has no portable content.')
     markdown = markdown_source if markdown_source is not None else _export_markdown(document)
+    markdown = strip_image_group_markdown(markdown)
     view = build_numbering_view_from_markdown(markdown)
     markdown = strip_markdown_heading_numbering_config(materialize_markdown(markdown, view, compute_numbering(view)))
     if output_format == 'markdown':
