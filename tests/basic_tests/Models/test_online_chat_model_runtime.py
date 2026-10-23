@@ -35,6 +35,7 @@ from lazyllm.module.llms.onlinemodule.supplier.siliconflow import SiliconFlowCha
 
 class _Response:
     def __init__(self, *, frames=None, status_code=200, body='', headers=None):
+        self.raw = type('Raw', (), {})()
         self.frames = frames or []
         self.status_code = status_code
         self.text = body

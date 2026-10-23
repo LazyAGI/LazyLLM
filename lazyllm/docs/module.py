@@ -2129,6 +2129,51 @@ Attributes:
     usage (Optional[Dict[str, int]]): Token usage extracted from the partial response.
 ''')
 
+add_chinese_doc('OnlineChatModuleBase.forward', '''
+通过正常 Module 调用链发送聊天请求，保留 hooks、缓存、formatter 和 usage。
+timeout 接受单值或 (连接秒数, 无数据读取等待秒数)，不限制持续正常输出的总时长。
+call_control=ModelCallControl(cancel_check=..., request_check=...) 提供取消及发送前校验；
+request_check 接收只读 ModelRequest：payload 为副本，model_type/requires_vision 描述输入，
+estimate_tokens 只提供近似估算。校验不会执行请求；抛出 HandledException 可原样向调用方报告。
+取消在请求前、读取边界、异常返回后、退避等待及缓存返回边界检查；阻塞网络等待由 timeout 结束。
+output_limit 保留更小的已有输出上限；on_terminal 接收 ModelCallTerminal。返回正常模型输出。
+新增调用选项遵循普通 Module hooks 参数传递规则，hook 应接收所使用的关键字参数。
+控制参数不会发送给供应商。没有可执行请求快照，也不提供 DNS/TLS 的即时主动中断。
+''')
+
+add_english_doc('OnlineChatModuleBase.forward', '''
+Use the normal Module lifecycle, preserving hooks, caching, formatters and usage.
+timeout accepts seconds or (connect seconds, idle read seconds), not a total generation deadline.
+call_control=ModelCallControl(cancel_check=..., request_check=...) checks cancellation and validates the final request.
+request_check receives a read-only ModelRequest: payload is a copy; model_type/requires_vision describe the input;
+estimate_tokens is approximate. Validation cannot execute a request. HandledException propagates unchanged.
+Cancellation is checked before requests, at read boundaries, after errors, during retry waits and around cache returns.
+Blocking network waits end through timeout. output_limit preserves smaller existing limits;
+on_terminal receives ModelCallTerminal. The return value remains the normal model output.
+Call options follow ordinary Module hook argument forwarding. Hooks must accept the keywords used by their callers.
+Controls are never sent to providers. There is no executable snapshot or immediate DNS/TLS interruption.
+''')
+
+add_chinese_doc('OnlineChatModuleBase.merge_usage_records', '''\
+将 existing 和 usage 两份用量记录合并到新字典中，累加数值计数并将供应商原始用量汇集到 provider_usages。
+不修改输入记录。任一记录的 prompt_tokens 为 -1 时，合并后的 prompt_tokens 和 completion_tokens 均为 -1。
+''')
+
+add_english_doc('OnlineChatModuleBase.merge_usage_records', '''\
+Merge existing and usage into a new dictionary, adding numeric counters and collecting raw provider usage in provider_usages.
+Leave the input records unchanged. If either prompt_tokens is -1, both merged prompt_tokens and completion_tokens are -1.
+''')
+
+add_chinese_doc('OnlineChatModule.merge_usage_records', '''\
+使用 OnlineChatModuleBase.merge_usage_records 合并 existing 和 usage，返回新用量字典，不修改输入记录。
+累加数值计数，将供应商原始用量汇集到 provider_usages；任一 prompt_tokens 为 -1 时，两个 token 计数均为 -1。
+''')
+
+add_english_doc('OnlineChatModule.merge_usage_records', '''\
+Merge existing and usage through OnlineChatModuleBase.merge_usage_records, returning a new dictionary without changing inputs.
+Add numeric counters and collect raw provider usage in provider_usages; either prompt_tokens of -1 makes both token counts -1.
+''')
+
 add_chinese_doc('OnlineChatModuleBase.set_train_tasks', """\
 设置模型微调训练任务参数。
 

@@ -3,7 +3,7 @@ from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import LOG, globals as lazyllm_globals, pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable, Optional
-from .history import describe_tool_turns
+from .history import describe_tool_turns, invoke_history_compactor
 from .base import (
     LazyLLMAgentBase,
     TOOL_OBSERVATION_KEY,
@@ -54,15 +54,6 @@ class StreamResponse():
 _ROUND_TOOLS_KEY = '_function_call_round_tools'
 _MODEL_CONTEXT_MAX_CHARS = 2048
 _MODEL_CONTEXT_RESERVED_TOKENS = 512
-
-
-def _structured_compact_parts(compacted: Any) -> Optional[tuple]:
-    if not isinstance(compacted, tuple) or len(compacted) != 2:
-        return None
-    prior_part, current_part = compacted
-    if isinstance(prior_part, list) and isinstance(current_part, list):
-        return prior_part, current_part
-    return None
 
 
 def _tool_result_observation(result: Any) -> Any:
@@ -193,7 +184,7 @@ class FunctionCall(ModuleBase):
             remaining_rounds,
         )
 
-    def _compact_history(  # noqa: C901
+    def _compact_history(
         self,
         prior_history: List[Dict[str, Any]],
         current_input: Any = None,
@@ -217,45 +208,11 @@ class FunctionCall(ModuleBase):
         }
         if self._model_context_provider is not None:
             kwargs['reserved_runtime_context_tokens'] = _MODEL_CONTEXT_RESERVED_TOKENS
-        try:
-            signature = inspect.signature(self._history_compactor)
-            accepts_kwargs = any(
-                parameter.kind == inspect.Parameter.VAR_KEYWORD
-                for parameter in signature.parameters.values()
-            )
-            if workspace is not None and (
-                accepts_kwargs or 'runtime_state' in signature.parameters
-            ):
-                kwargs['runtime_state'] = workspace.setdefault('_history_projection_state', {})
-            if remaining_rounds is not None and (
-                accepts_kwargs or 'remaining_rounds' in signature.parameters
-            ):
-                kwargs['remaining_rounds'] = remaining_rounds
-            if not accepts_kwargs and 'tool_turns' not in signature.parameters:
-                kwargs.pop('tool_turns', None)
-            if not accepts_kwargs and 'current_round_messages' not in signature.parameters:
-                kwargs.pop('current_round_messages', None)
-            if not accepts_kwargs and 'current_input' not in signature.parameters:
-                kwargs.pop('current_input', None)
-            if not accepts_kwargs and 'prefix' not in signature.parameters:
-                kwargs.pop('prefix', None)
-            if not accepts_kwargs and 'reserved_runtime_context_tokens' not in signature.parameters:
-                kwargs.pop('reserved_runtime_context_tokens', None)
-        except (TypeError, ValueError):
-            pass
-        compacted = self._history_compactor(
-            prior_history,
-            self._keep_full_turns,
-            **kwargs,
+        prior, current = invoke_history_compactor(
+            self._history_compactor, prior_history, self._keep_full_turns,
+            workspace=workspace, remaining_rounds=remaining_rounds, **kwargs,
         )
-        split = _structured_compact_parts(compacted)
-        if split is not None:
-            return strip_tool_observations(split[0]), strip_tool_observations(split[1])
-        compacted = strip_tool_observations(compacted)
-        prior_len = len(prior_history)
-        if current and len(compacted) == prior_len + len(current):
-            return compacted[:prior_len], compacted[prior_len:]
-        return compacted, strip_tool_observations(current)
+        return strip_tool_observations(prior), strip_tool_observations(current)
 
     def _consume_model_context(self) -> List[Dict[str, str]]:
         if self._model_context_provider is None:

@@ -1,3 +1,4 @@
+import re
 import json
 import os
 import uuid
@@ -52,6 +53,10 @@ class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
 
     def _get_system_prompt(self):
         return 'You are ChatGPT, a large language model trained by OpenAI. You are a helpful assistant.'
+
+    def _output_token_key(self, data):
+        modern = re.match(r'^(o\d+|gpt-[5-9])(?:[.-]|$)', str(data.get('model', '')).lower())
+        return 'max_completion_tokens' if modern else super()._output_token_key(data)
 
     def _prepare_request_headers(self, runtime_url: str) -> Dict[str, str]:
         headers = super()._prepare_request_headers(runtime_url)

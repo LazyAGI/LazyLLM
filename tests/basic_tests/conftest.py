@@ -22,3 +22,16 @@ def pytest_sessionfinish(session, exitstatus):
                 last_failed[item.nodeid] = True
 
         session.config.cache.set('cache/lastfailed', last_failed)
+
+
+@pytest.fixture
+def model_call_session():
+    import uuid
+    import lazyllm
+
+    sid = 'model-call-test-' + uuid.uuid4().hex
+    try:
+        with lazyllm.globals._bind_sid(sid), lazyllm.locals._scope():
+            yield
+    finally:
+        lazyllm.globals._clear_sid(sid)
