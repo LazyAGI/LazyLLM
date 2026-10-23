@@ -1,4 +1,5 @@
 import inspect
+import copy
 import json
 import asyncio
 import re
@@ -32,7 +33,9 @@ def _generate_docstring(tool_desc: str, properties: Dict[str, Any], required: Li
 
         for param, prop in properties.items():
             json_type = prop.get('type', 'Any')
-            doc_type = type_mapping.get(json_type, ('Any', Any))[0]
+            # JSON Schema also accepts a type array, e.g. ['string', 'null'].
+            # This is only a doc hint; the original schema remains authoritative.
+            doc_type = type_mapping.get(json_type, ('Any', Any))[0] if isinstance(json_type, str) else 'Any'
             param_desc = prop.get('description', f'type: {json_type}')
             if param in required:
                 doc_lines.append(f'    {param} ({doc_type}): {param_desc}.')
@@ -41,7 +44,17 @@ def _generate_docstring(tool_desc: str, properties: Dict[str, Any], required: Li
     return '\n'.join(doc_lines)
 
 
-def _handle_tool_result(result, tool_name: str) -> str:
+def _handle_tool_result(result, tool_name: str, result_mode: str = 'text') -> str:
+    if result_mode == 'structured':
+        # Keep the protocol envelope intact even for errors with no text fallback.
+        content = [item.model_dump(mode='json', by_alias=True, exclude_none=True)
+                   for item in (result.content or [])]
+        structured = getattr(result, 'structuredContent', None)
+        if structured is None:
+            structured = getattr(result, 'structured_content', None)
+        is_error = getattr(result, 'isError', getattr(result, 'is_error', False))
+        return json.dumps({'content': content, 'structuredContent': structured,
+                           'isError': bool(is_error)}, ensure_ascii=False)
     if not result.content or len(result.content) == 0:
         return 'No data available for this request.'
     try:
@@ -67,11 +80,39 @@ def _handle_tool_result(result, tool_name: str) -> str:
         return f'Error processing content from MCP tool "{tool_name}": {e!s}'
 
 
+class MCPToolNameError(ValueError):
+    pass
+
+
+def _validate_mcp_tool_names(tools):
+    names = {}
+    for tool in tools:
+        name = tool.__name__
+        wire_name = tool.__mcp_tool_name__
+        if name in names:
+            raise MCPToolNameError(f'MCP tool name collision: {names[name]} and {wire_name} map to {name}')
+        names[name] = wire_name
+    return tools
+
+
+def _model_tool_name(server_name: str, tool_name: str, tool_name_prefix: str = '') -> str:
+    if not isinstance(tool_name, str) or not tool_name:
+        raise MCPToolNameError('MCP tool name must not be empty')
+    if not server_name:
+        name = re.sub(r'\W', '_', tool_name)
+        return '_' + name if name[:1].isdigit() else name
+    server = re.sub(r'[^a-z0-9_]+', '_', server_name.lower()).strip('_')
+    tool = re.sub(r'[^A-Za-z0-9_]+', '_', tool_name.removeprefix(tool_name_prefix)).strip('_')
+    name = f'mcp_{server}_{tool}'
+    if not server or not tool or len(name) > 64:
+        raise MCPToolNameError(f'MCP tool name is empty or exceeds 64 characters: {name}')
+    return name
+
+
 def generate_lazyllm_tool(client, mcp_tool) -> Callable:
     tool_name = mcp_tool.name
-    exposed_tool_name = re.sub(r'\W', '_', tool_name)
-    if exposed_tool_name[:1].isdigit():
-        exposed_tool_name = '_' + exposed_tool_name
+    exposed_tool_name = _model_tool_name(
+        getattr(client, 'server_name', ''), tool_name, getattr(client, 'tool_name_prefix', ''))
     tool_desc = mcp_tool.description
     # MCP's Pydantic models used the JSON alias ``inputSchema`` in older
     # releases and the Pythonic ``input_schema`` attribute in newer ones.
@@ -89,9 +130,9 @@ def generate_lazyllm_tool(client, mcp_tool) -> Callable:
     func_params = []
 
     for param, prop in properties.items():
-        json_type = prop.get('type', 'Any')
-        py_type = type_mapping.get(json_type, ('Any', Any))[1]
-        annotations[param] = py_type
+        # The MCP server validates its JSON Schema; Python coercion would lose
+        # union constraints, explicit nulls, or exact identifier values.
+        annotations[param] = Any
 
         if param not in required:
             defaults[param] = prop.get('default', None)
@@ -114,9 +155,14 @@ def generate_lazyllm_tool(client, mcp_tool) -> Callable:
             else:
                 result = run_async_in_new_loop(client.call_tool, tool_name, kwargs)
         except Exception as e:
+            if getattr(client, 'result_mode', 'text') == 'structured':
+                error_type = type(e).__name__
+                LOG.error(f'Failed to call MCP tool "{tool_name}": {error_type}')
+                return json.dumps({'content': [], 'structuredContent': {
+                    'code': 'MCP_CALL_FAILED', 'error_type': error_type}, 'isError': True})
             LOG.error(f'Failed to call MCP tool "{tool_name}": {e!s}')
             return f'Failed to call MCP tool "{tool_name}": {e!s}'
-        return _handle_tool_result(result, tool_name)
+        return _handle_tool_result(result, tool_name, getattr(client, 'result_mode', 'text'))
 
     # Set function attributes
     # LazyLLM's registry interprets dots as registry-group separators. MCP
@@ -124,6 +170,7 @@ def generate_lazyllm_tool(client, mcp_tool) -> Callable:
     # identifier while retaining the original name in the call closure.
     dynamic_lazyllm_func.__name__ = exposed_tool_name
     dynamic_lazyllm_func.__mcp_tool_name__ = tool_name
+    dynamic_lazyllm_func.__mcp_input_schema__ = copy.deepcopy(input_schema)
     dynamic_lazyllm_func.__doc__ = func_desc
     dynamic_lazyllm_func.__annotations__ = annotations
 

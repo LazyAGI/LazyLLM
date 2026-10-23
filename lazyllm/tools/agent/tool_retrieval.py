@@ -58,7 +58,18 @@ class ToolRetrieval:
         return list(dict.fromkeys(result))
 
     def _reconcile(self, state, catalog):
-        loaded = [name for name in state.get('loaded', []) if name in catalog]
+        bindings = state.get('mcp_bindings', {})
+        loaded = []
+        for name in state.get('loaded', []):
+            if name not in catalog:
+                continue
+            entry = catalog[name]
+            if entry['source'] == 'mcp':
+                if bindings.get(name) != entry['identity']:
+                    continue
+            elif name in bindings:
+                continue
+            loaded.append(name)
         required = [name for name in self.required if name in catalog]
         skills = {}
         for skill in state.get('skills', {}):
@@ -86,6 +97,8 @@ class ToolRetrieval:
     def _commit(self, update, catalog):
         def validated_update(raw):
             state = update(raw)
+            state['mcp_bindings'] = {name: catalog[name]['identity'] for name in state['loaded']
+                                     if catalog[name]['source'] == 'mcp'}
             if self.validate_load is not None:
                 self.validate_load([catalog[name]['schema'] for name in state['loaded']])
             return state

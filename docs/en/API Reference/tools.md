@@ -462,6 +462,15 @@
 
 When `MCPClient` receives a stable `server_id`, `ToolManager` always exposes each MCP tool under an alias derived from its original wire name and immutable `[server_id, wire_name]` identity. The alias contains only ASCII letters, digits and underscores, is at most 64 characters, and stays unchanged when other servers or local tools are added, removed or reordered. A changed display name does not affect the alias or remote routing. Even wire names such as `foo.bar` and `foo-bar` on the same server retain distinct identities. Exact final-name collisions raise the existing duplicate-name error. Clients without `server_id` keep legacy naming; saved optional loads using earlier names must be invalidated by the host. Hosts can read the original declaration through `lazyllm.tools.get_tool_runtime_metadata(callable)`, including wrapped callables.
 
+`get_tools(allowed_tools=None)` discovers all tools; an explicit empty list exposes none and skips discovery. Filtering uses original wire names before registration. Generated model schemas retain the server's original JSON Schema, including nested unions, `$defs`, and explicit nulls; the server remains responsible for JSON Schema validation.
+
+The default `result_mode='text'` keeps the existing text rendering. Opt into `result_mode='structured'` to return a JSON string containing `content`, `structuredContent`, and `isError`, including structured errors without text content. This option affects generated tool outputs; `call_tool` still returns the SDK result.
+
+Trusted hosts can supply an async `request_metadata_provider(tool_name, arguments)` returning request `_meta`, and an async SDK-compatible `progress_callback(progress, total, message)`. Direct callers can override them with `call_tool(name, arguments, metadata=..., progress_callback=...)`. These values are outside the model-visible argument schema. Metadata is resolved once before authorization recovery; the host owns stable operation keys. The MCP SDK must support the `meta` and `progress_callback` keyword arguments when these options are used; unsupported SDK versions fail without silently dropping them.
+
+Authorization recovery retries at most once and only for explicit HTTP 401 failures during session setup. Once the operation is dispatched, errors (including 401, timeouts, or cleanup failures after success) are never automatically replayed.
+
+
 ::: lazyllm.tools.tools.GoogleSearch
     members: forward
 

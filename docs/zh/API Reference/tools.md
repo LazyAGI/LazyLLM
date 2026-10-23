@@ -454,6 +454,15 @@
 
 为 `MCPClient` 提供稳定的 `server_id` 后，`ToolManager` 始终按原始协议工具名和不可变的 `[server_id, wire_name]` 身份生成 MCP 工具别名。别名仅含 ASCII 字母、数字和下划线，长度不超过 64 个字符；增删其他服务或本地工具、调整顺序或修改展示名均不会改变别名和远端路由。同一服务的 `foo.bar` 与 `foo-bar` 也保留不同身份。最终名称完全冲突时，沿用现有重复名称校验报错。不提供 `server_id` 的客户端保持旧命名行为；宿主需使使用旧名称保存的可选加载状态失效。宿主可通过 `lazyllm.tools.get_tool_runtime_metadata(callable)` 读取原始声明，该接口支持包装后的函数。
 
+`get_tools(allowed_tools=None)` 发现全部工具；显式空列表不暴露工具，也不执行发现。注册前按原始协议名称过滤。模型工具描述保留服务端原始 JSON Schema，包括嵌套联合类型、`$defs` 和显式 null；JSON Schema 校验仍由服务端负责。
+
+默认 `result_mode='text'` 保留已有文本格式。设置 `result_mode='structured'` 后，生成的工具返回包含 `content`、`structuredContent`、`isError` 的 JSON 字符串；没有文本内容的结构化错误也会保留。该选项只影响生成工具的输出，`call_tool` 仍返回 SDK 结果对象。
+
+可信宿主可提供异步 `request_metadata_provider(tool_name, arguments)` 返回请求 `_meta`，以及符合 SDK 约定的异步 `progress_callback(progress, total, message)`。直接调用可通过 `call_tool(name, arguments, metadata=..., progress_callback=...)` 覆盖。这些信息不会进入模型参数 schema。元数据在认证恢复前只解析一次，稳定操作键由宿主维护。使用这些选项时 MCP SDK 必须支持 `meta` 和 `progress_callback` 关键字参数；不支持的版本会报错，而非静默丢弃。
+
+认证恢复仅对会话建立阶段明确的 HTTP 401 重试一次。操作发出后，401、超时和成功后的清理错误均不会自动重放请求。
+
+
 ::: lazyllm.tools.tools.GoogleSearch
     members: forward
 
