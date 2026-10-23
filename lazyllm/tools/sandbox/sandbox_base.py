@@ -1,7 +1,7 @@
 import os
 import re
 from dataclasses import asdict, dataclass, field
-from typing import Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 from lazyllm import config
 from lazyllm.module.module import ModuleBase
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
@@ -48,6 +48,64 @@ class LazyLLMSandboxBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
             raise FileNotFoundError(f'Project directory not found: {self._project_dir}')
         self._available_checked = False
         self._return_sandbox_result = return_sandbox_result
+
+    def capabilities(self) -> Dict[str, Any]:
+        '''Return the runtimes and execution features supported by this sandbox.'''
+        return {
+            'status': 'ok',
+            'runtimes': {language: True for language in self.SUPPORTED_LANGUAGES},
+            'commands': [],
+            'profiles': ['default'],
+            'supports': {'script': False, 'command': False, 'declared_outputs': False},
+        }
+
+    def execute_script(
+        self,
+        source_dir: str,
+        rel_path: str,
+        args: Optional[List[str]] = None,
+        cwd: str = '.',
+        env: Optional[Dict[str, str]] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        '''Execute a script from a Skill package.
+
+        Args:
+            source_dir: Local root directory of the Skill package.
+            rel_path: Script path relative to ``source_dir``.
+            args: Literal command-line arguments passed to the script.
+            cwd: Working directory relative to ``source_dir``.
+            env: Environment variables made available to the script.
+            **kwargs: Backend-specific execution options.
+
+        Returns:
+            A structured execution result produced by the sandbox backend.
+        '''
+        del source_dir, rel_path, args, cwd, env, kwargs
+        raise NotImplementedError(f'{self.__class__.__name__} does not support Skill package scripts.')
+
+    def execute_command(
+        self,
+        source_dir: str,
+        argv: List[str],
+        cwd: str = '.',
+        env: Optional[Dict[str, str]] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        '''Execute one argv-based command from a Skill package.
+
+        Args:
+            source_dir: Local root directory of the Skill package.
+            argv: Command and literal arguments. Shell strings are not supported.
+            cwd: Working directory relative to ``source_dir``.
+            env: Environment variables made available to the command.
+            **kwargs: Backend-specific execution options.
+
+        Returns:
+            A structured execution result produced by the sandbox backend.
+        '''
+        del source_dir, argv, cwd, env, kwargs
+        raise NotImplementedError(f'{self.__class__.__name__} does not support Skill package commands.')
 
     def _check_available(self) -> None:
         raise NotImplementedError

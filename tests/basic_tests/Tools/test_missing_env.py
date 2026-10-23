@@ -4,6 +4,7 @@ from lazyllm.tools.agent.missing_env import (
     format_missing_env_message,
     normalize_required_env_names,
 )
+from lazyllm.tools.agent.skill_manager import SkillManager
 from lazyllm.tools.agent.toolError import ToolExecutionError, exception_failure
 
 
@@ -65,3 +66,20 @@ def test_format_missing_env_message_and_exception_failure_keep_original_text():
     assert failure['ok'] is False
     assert failure['missing_env'] == ['REDFOX_API_KEY']
     assert failure['value'] == message
+
+
+def test_exception_failure_preserves_sandbox_output_diagnostics():
+    result = {
+        'error_type': 'EXIT_NON_ZERO',
+        'exit_code': 1,
+        'stdout': 'partial output\n',
+        'stderr': 'cat: owner.txt: No such file or directory\n',
+    }
+    error = SkillManager._script_failure_error('Skill command failed.', result, None)
+
+    failure = exception_failure('run_skill_command', error)
+
+    assert failure['error_type'] == 'EXIT_NON_ZERO'
+    assert failure['exit_code'] == 1
+    assert failure['stdout'] == 'partial output\n'
+    assert failure['stderr'] == 'cat: owner.txt: No such file or directory\n'

@@ -75,6 +75,41 @@ def _tool_result_observation(result: Any) -> Any:
     return _unwrap_tool_result(result)
 
 
+_STRUCTURED_SKILL_FAILURE_TOOLS = frozenset({'run_skill_script', 'run_skill_command'})
+_STRUCTURED_SKILL_FAILURE_FIELDS = (
+    'error_type',
+    'reason_code',
+    'dependency',
+    'exit_code',
+    'duration_ms',
+    'blocked_resource',
+    'missing_env',
+    'available_commands',
+    'stdout',
+    'stderr',
+)
+
+
+def _model_tool_result_content(tool_name: str, result: Any) -> str:
+    observation = _tool_result_observation(result)
+    if (tool_name not in _STRUCTURED_SKILL_FAILURE_TOOLS
+            or not is_tool_result_envelope(result)
+            or result.get('ok') is not False
+            or not any(field in result for field in _STRUCTURED_SKILL_FAILURE_FIELDS)):
+        return str(observation)
+
+    payload = {'ok': False, 'value': result.get('value', '')}
+    for field in _STRUCTURED_SKILL_FAILURE_FIELDS:
+        if field in result:
+            payload[field] = result[field]
+
+    reason_code = result.get('reason_code') or result.get('error_type')
+    if reason_code:
+        payload.setdefault('error_type', reason_code)
+        payload.setdefault('reason_code', reason_code)
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+
+
 def _tool_result_stop_text(result: Any) -> Optional[str]:
     value = _tool_result_observation(result)
     if not isinstance(value, dict):
@@ -301,11 +336,12 @@ class FunctionCall(ModuleBase):
         tool_call_results = []
         for tool_call in workspace['tool_call_trace']:
             raw_result = tool_call['tool_call_result']
+            tool_name = tool_call['function']['name']
             tool_message = {
                 'role': 'tool',
-                'content': str(_tool_result_observation(raw_result)),
+                'content': _model_tool_result_content(tool_name, raw_result),
                 'tool_call_id': tool_call['id'],
-                'name': tool_call['function']['name'],
+                'name': tool_name,
             }
             observation = attachable_tool_observation(raw_result)
             if observation is not None:
