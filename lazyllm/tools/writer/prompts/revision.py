@@ -84,8 +84,7 @@ Plan semantics:
   - visual_instruction.preferred_strategy may be null or "image_generation". For
     "image" and "diagram", it may also be "web_search".
   - A delete instruction targeting an existing image must not include visual_instruction.
-  - Existing image blocks must not be updated or moved. Text blocks continue to support
-    create, update, delete, and move.
+  - Existing image blocks must not be updated.
 - A contiguous insertion uses one create instruction so its blocks share one destination
   and retain their final document order.
 - Every content_ref and destination_ref must be exactly {{"node_id": "<existing node_id>"}}.
