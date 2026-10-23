@@ -29,11 +29,12 @@ def test_recovers_explicit_401_once(operation):
 
     @asynccontextmanager
     async def session():
+        attempts.append(True)
+        if len(attempts) == 1:
+            raise ExceptionGroup('transport', [unauthorized()])
+
         class Session:
             async def list_tools(self):
-                attempts.append(True)
-                if len(attempts) == 1:
-                    raise ExceptionGroup('transport', [unauthorized()])
                 return 'ok'
 
             async def call_tool(self, *args):
@@ -216,6 +217,91 @@ def test_static_api_key_follows_same_origin_redirect_for_discovery_and_call():
         assert [t.name for t in asyncio.run(client.list_tools()).tools] == ['read']
         assert asyncio.run(client.call_tool('read', {})).content[0].text == 'read succeeded'
         assert executed == ['read']
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_dispatched_tool_401_is_not_safe_to_replay():
+    executed = []
+
+    async def recover():
+        pytest.fail('a dispatched mutation must not be replayed')
+
+    client = MCPClient('https://mcp.example', auth_recovery=recover)
+
+    @asynccontextmanager
+    async def session():
+        class Session:
+            async def call_tool(self, *args):
+                executed.append(True)
+                raise unauthorized()
+        yield Session()
+
+    client._run_session = session
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(client.call_tool('write', {}))
+    assert executed == [True]
+
+
+def test_http_metadata_progress_and_structured_result_round_trip():
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    dispatched = []
+    progress = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+            if 'id' not in body:
+                self.send_response(202)
+                self.end_headers()
+                return
+            if body['method'] in ('initialize', 'tools/list'):
+                result = ({'protocolVersion': '2025-03-26', 'capabilities': {},
+                           'serverInfo': {'name': 'test', 'version': '1'}}
+                          if body['method'] == 'initialize' else {'tools': [
+                              {'name': 'write', 'inputSchema': {'type': 'object'}}]})
+                data = json.dumps({'jsonrpc': '2.0', 'id': body['id'], 'result': result}).encode()
+                content_type = 'application/json'
+            else:
+                dispatched.append(body['params'])
+                notification = {'jsonrpc': '2.0', 'method': 'notifications/progress', 'params': {
+                    'progressToken': body['params']['_meta']['progressToken'],
+                    'progress': 1, 'total': 2, 'message': 'Preparing'}}
+                response = {'jsonrpc': '2.0', 'id': body['id'], 'result': {
+                    'content': [], 'structuredContent': {'id': 'created'}, 'isError': False}}
+                data = ''.join('event: message\ndata: ' + json.dumps(item) + '\n\n'
+                               for item in (notification, response)).encode()
+                content_type = 'text/event-stream'
+            self.send_response(200)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Content-Length', str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+    async def metadata(name, arguments):
+        return {'operation_key': 'same-call'}
+
+    async def on_progress(current, total, message):
+        progress.append((current, total, message))
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    client = MCPClient(f'http://127.0.0.1:{server.server_port}/mcp',
+                       request_metadata_provider=metadata, progress_callback=on_progress)
+    try:
+        result = asyncio.run(client.call_tool('write', {'name': 'Papers'}))
+        assert result.structuredContent == {'id': 'created'}
+        assert result.isError is False
+        assert dispatched[0]['arguments'] == {'name': 'Papers'}
+        assert dispatched[0]['_meta']['operation_key'] == 'same-call'
+        assert progress == [(1, 2, 'Preparing')]
     finally:
         server.shutdown()
         server.server_close()

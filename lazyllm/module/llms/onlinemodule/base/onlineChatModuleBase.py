@@ -99,6 +99,9 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
     def _prepare_request_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         return data
 
+    def _prepare_request_headers(self, runtime_url: str) -> Dict[str, str]:
+        return dict(self._header)
+
     def _response_parser(self, stream_output: Union[bool, Dict]) -> _OpenAICompatibleResponseParser:
         emit_message = partial(self._emit_message_content, stream_output=stream_output) if stream_output else None
         return self.RESPONSE_PARSER_CLASS(
@@ -204,9 +207,10 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
                       proxies: Optional[Dict], request_timeout: Optional[Union[float, Tuple[float, float]]],
                       state: Optional[ModelAttemptState] = None, call_control=None,
                       ) -> List[Dict[str, Any]]:
+        headers = self._prepare_request_headers(runtime_url)
         # Always defer body consumption so response_started has the same
         # response-header boundary for provider streaming and non-streaming calls.
-        with model_response(runtime_url, json=data, headers=self._header, stream=True,
+        with model_response(runtime_url, json=data, headers=headers, stream=True,
                             proxies=proxies, timeout=request_timeout, control=call_control) as r:
             if state is not None: state.response_started = True
             raise_for_http_error(r, self.RESPONSE_PROFILE, control=call_control)

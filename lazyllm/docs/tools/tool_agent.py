@@ -333,7 +333,9 @@ Args:
     **options: 传给 ToolRetrieval 的配置。required 为必需原子工具名；groups 为可检索组；
         estimate_tokens 估算工具定义占用；threshold_tokens 限制模型继续新增工具的软阈值。
         可选 group_members 定义动态组到原子成员的映射，group_descriptions 提供组描述；
-        state_store 提供 read/update 持久状态事务，skill_dependencies 解析 Skill 依赖。
+        state_store 提供 read/update 持久状态事务；状态保留 loaded、skills 和 mcp_bindings
+        （已加载 MCP 名称到不透明工具 identity 的映射）。恢复可选 MCP 工具时名称及 identity 必须匹配，
+        缺少绑定或身份改变的记录不会恢复。skill_dependencies 解析 Skill 依赖。
         可选 validate_load 接收候选 schema 列表，在初始化、加载及 Skill 依赖的状态提交前校验；
         抛出异常时不提交状态。Host/Skill 新增不受软阈值限制，但仍接受该校验。
 
@@ -353,7 +355,9 @@ Args:
         searchable groups; estimate_tokens estimates schema usage; threshold_tokens sets the soft
         threshold for further model-initiated additions. Optional group_members maps dynamic groups
         to atomic members, and group_descriptions supplies group descriptions. state_store provides
-        read/update state transactions; skill_dependencies resolves Skill dependencies. Optional
+        read/update state transactions, preserving loaded, skills and mcp_bindings (loaded MCP names
+        mapped to opaque tool identities). Optional MCP tools restore only when both name and identity
+        match; missing or changed bindings do not restore. skill_dependencies resolves Skill dependencies. Optional
         validate_load receives candidate schemas before initialization, load, or Skill state commits;
         raising rejects the transaction. Host/Skill additions bypass the soft threshold but still
         undergo this validation.

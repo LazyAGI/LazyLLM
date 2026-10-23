@@ -4,7 +4,9 @@ import os
 import uuid
 import requests
 from typing import Tuple, List, Dict, Union, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
+
+import lazyllm
 from ..base import (
     ModelFailureCode, OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase
 )
@@ -55,6 +57,15 @@ class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
     def _output_token_key(self, data):
         modern = re.match(r'^(o\d+|gpt-[5-9])(?:[.-]|$)', str(data.get('model', '')).lower())
         return 'max_completion_tokens' if modern else super()._output_token_key(data)
+
+    def _prepare_request_headers(self, runtime_url: str) -> Dict[str, str]:
+        headers = super()._prepare_request_headers(runtime_url)
+        destination = urlparse(runtime_url)
+        if destination.scheme == 'https' and destination.hostname == 'opencode.ai':
+            trace = lazyllm.get_trace_context()
+            session_id = trace.trace_metadata.get('conversation_id') or trace.session_id or lazyllm.globals._sid
+            headers.update({'User-Agent': f'LazyLLM/{lazyllm.__version__}', 'x-opencode-session': session_id})
+        return headers
 
     def _prepare_request_data(self, data: Dict) -> Dict:
         data = dict(data)
