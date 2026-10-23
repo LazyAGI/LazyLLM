@@ -1,4 +1,4 @@
-from .model_request import ModelCallControl, ModelCallResult, PreparedModelRequest
+from .model_request import ModelCallControl, ModelRequest
 from .onlineChatModuleBase import OnlineChatModuleBase
 from .model_outcome import (
     ModelCallError,
@@ -22,8 +22,7 @@ from .onlineMultiModalBase import (
 __all__ = [
     'OnlineChatModuleBase',
     'ModelCallControl',
-    'ModelCallResult',
-    'PreparedModelRequest',
+    'ModelRequest',
     'ModelCallError',
     'ModelCallTerminal',
     'ModelFailure',

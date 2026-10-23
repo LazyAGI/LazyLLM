@@ -54,7 +54,9 @@ jobs:
         run: >-
           python -m pytest -q
           tests/basic_tests/Models/test_model_request_transport.py
-          tests/basic_tests/Models/test_prepared_model_request.py
+          tests/basic_tests/Models/test_model_call_controls.py
+          tests/basic_tests/Models/test_model_call_review.py
+          tests/basic_tests/Models/test_online_chat_model_runtime.py
 
   lint:
     runs-on: ubuntu-latest

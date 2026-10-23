@@ -11,10 +11,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 import requests
-import socks
 import trustme
 
-from lazyllm.module.llms.onlinemodule.base.model_request import ModelCallControl, model_response
+from lazyllm.module.llms.onlinemodule.base.model_request import ModelCallControl, model_response, response_chunks
 
 
 @contextmanager
@@ -45,7 +44,7 @@ def test_truncated_response_is_a_transport_failure_even_after_a_terminal_frame(c
             self.wfile.write(body)
 
     with serving(ThreadingHTTPServer(('127.0.0.1', 0), Handler)) as server:
-        control = ModelCallControl(time.monotonic() + 2) if controlled else None
+        control = ModelCallControl() if controlled else None
         with pytest.raises(requests.exceptions.ChunkedEncodingError):
             with model_response(f'http://127.0.0.1:{server.server_port}/chat',
                                 json={'model': 'fixture'}, stream=True, control=control) as response:
@@ -82,9 +81,9 @@ def proxy_endpoint(tmp_path, monkeypatch):  # noqa: C901 - local HTTP, CONNECT a
                     self.send_response(200)
                     self.end_headers()
                     if phase == 'stream':
-                        while not release.wait(0.01):
-                            self.wfile.write(b'data: partial\n\n')
-                            self.wfile.flush()
+                        self.wfile.write(b'data: partial\n\n')
+                        self.wfile.flush()
+                        release.wait(3)
                     else:
                         self.wfile.write(b'proxied')
                 except (OSError, ssl.SSLError):
@@ -203,7 +202,7 @@ def test_controlled_proxy_request_preserves_routing_and_auth(proxy_endpoint, sch
     start, seen, destinations, credentials, _, _ = proxy_endpoint
     with start(scheme, target_scheme, 'normal') as (proxy, target):
         with model_response(target, data=b'fixture-body', proxies={target_scheme: proxy},
-                            control=ModelCallControl(time.monotonic() + 2) if controlled else None,
+                            control=ModelCallControl() if controlled else None,
                             timeout=3) as response:
             assert response.content == b'proxied'
     assert seen == [b'fixture-body']
@@ -221,7 +220,7 @@ def test_controlled_proxy_request_preserves_routing_and_auth(proxy_endpoint, sch
 @pytest.mark.parametrize('scheme', ['http', 'https', 'socks5h'])
 @pytest.mark.parametrize('phase', ['handshake', 'headers', 'stream'])
 @pytest.mark.parametrize('cancelled', [False, True])
-def test_proxy_deadline_and_cancel_interrupt_blocking_io(proxy_endpoint, scheme, phase, cancelled):
+def test_proxy_timeout_and_cancel_after_blocking_io(proxy_endpoint, scheme, phase, cancelled):
     start, seen, _, _, reached, disconnected = proxy_endpoint
     cancel = threading.Event()
     with start(scheme, 'https', phase) as (proxy, target):
@@ -233,12 +232,12 @@ def test_proxy_deadline_and_cancel_interrupt_blocking_io(proxy_endpoint, scheme,
         if cancelled:
             thread.start()
         started = time.monotonic()
-        control = ModelCallControl(started + (2 if cancelled else 0.2), cancel.is_set)
+        control = ModelCallControl(cancel_check=cancel.is_set)
         try:
-            with pytest.raises(asyncio.CancelledError if cancelled else requests.Timeout):
+            with pytest.raises(asyncio.CancelledError if cancelled else requests.RequestException):
                 with model_response(target, data=b'fixture-body', proxies={'https': proxy},
-                                    control=control, stream=True, timeout=3) as response:
-                    list(response.iter_content(1))
+                                    control=control, stream=True, timeout=(0.2, 0.2)) as response:
+                    list(response_chunks(response, control))
             assert time.monotonic() - started < 1.5
             assert reached.is_set()
             assert disconnected.wait(1)
@@ -266,7 +265,7 @@ def test_proxy_preserves_certificate_verification(proxy_endpoint, monkeypatch, s
     with start(scheme, 'https', 'normal') as (proxy, target):
         def request():
             with model_response(target, data=b'fixture-body', proxies={'https': proxy}, verify=verify,
-                                control=ModelCallControl(time.monotonic() + 2), timeout=3) as response:
+                                control=ModelCallControl(), timeout=3) as response:
                 assert response.content == b'proxied'
 
         if verify:
@@ -276,90 +275,6 @@ def test_proxy_preserves_certificate_verification(proxy_endpoint, monkeypatch, s
         else:
             request()
     assert seen == ([] if verify else [b'fixture-body'])
-
-
-@pytest.mark.parametrize('scheme', ['socks5', 'socks5h'])
-@pytest.mark.parametrize('blocked_host', ['proxy.invalid', 'destination.invalid'])
-@pytest.mark.parametrize('cancelled', [False, True])
-def test_socks_dns_uses_the_control_and_preserves_remote_resolution(
-    proxy_endpoint, monkeypatch, scheme, blocked_host, cancelled,
-):
-    start, seen, _, _, _, _ = proxy_endpoint
-    resolving, release, finished = (threading.Event() for _ in range(3))
-    resolve = socket.getaddrinfo
-    hosts = []
-
-    def controlled_dns(host, *args):
-        hosts.append(host)
-        if host == blocked_host:
-            resolving.set()
-            try:
-                assert release.wait(3)
-            finally:
-                finished.set()
-        return resolve('127.0.0.1' if host in ('proxy.invalid', 'destination.invalid') else host, *args)
-
-    with start(scheme, 'http', 'normal') as (proxy, target):
-        monkeypatch.setattr(socket, 'getaddrinfo', controlled_dns)
-        proxy = proxy.replace('localhost', 'proxy.invalid')
-        target = target.replace('localhost', 'destination.invalid')
-        started = time.monotonic()
-        control = ModelCallControl(started + (2 if cancelled else 0.2),
-                                   resolving.is_set if cancelled else None)
-        try:
-            def request():
-                with model_response(target, data=b'fixture-body', proxies={'http': proxy},
-                                    control=control, timeout=3) as response:
-                    assert response.content == b'proxied'
-
-            if scheme == 'socks5h' and blocked_host == 'destination.invalid':
-                request()
-                assert 'destination.invalid' not in hosts
-                assert seen == [b'fixture-body']
-            else:
-                with pytest.raises(asyncio.CancelledError if cancelled else requests.Timeout):
-                    request()
-                assert resolving.is_set()
-                assert seen == []
-            assert time.monotonic() - started < 1.5
-        finally:
-            release.set()
-            if resolving.is_set():
-                assert finished.wait(1)
-
-
-def test_socks_cancel_before_connect_still_interrupts_negotiation(proxy_endpoint, monkeypatch):
-    start, seen, _, _, reached, disconnected = proxy_endpoint
-    cancel, interrupted = threading.Event(), threading.Event()
-    connect, shutdown = socks.socksocket.connect, socks.socksocket.shutdown
-
-    def connect_after_cancel(sock, *args, **kwargs):
-        cancel.set()
-        assert interrupted.wait(1)
-        return connect(sock, *args, **kwargs)
-
-    def observe_shutdown(sock, *args):
-        try:
-            # macOS leaves an unconnected socket usable after ENOTCONN. Check
-            # the peer first to reproduce that behavior on Linux as well.
-            socket.socket.getpeername(sock)
-            return shutdown(sock, *args)
-        finally:
-            interrupted.set()
-
-    monkeypatch.setattr(socks.socksocket, 'connect', connect_after_cancel)
-    monkeypatch.setattr(socks.socksocket, 'shutdown', observe_shutdown)
-    with start('socks5h', 'http', 'handshake') as (proxy, target):
-        proxy = proxy.replace('localhost', '127.0.0.1')
-        started = time.monotonic()
-        with pytest.raises(asyncio.CancelledError):
-            with model_response(target, data=b'fixture-body', proxies={'http': proxy}, timeout=3,
-                                control=ModelCallControl(cancel_check=cancel.is_set)):
-                pytest.fail('Cancelled request returned a response')
-        assert time.monotonic() - started < 1.5
-        assert seen == []
-        if reached.is_set():
-            assert disconnected.wait(1)
 
 
 @pytest.mark.parametrize('controlled', [False, True])
@@ -373,7 +288,7 @@ def test_https_proxy_uses_only_the_selected_ca_bundle(proxy_endpoint, monkeypatc
         with pytest.raises((requests.exceptions.SSLError, requests.exceptions.ProxyError),
                            match='CERTIFICATE_VERIFY_FAILED'):
             with model_response(target, data=b'fixture-body', proxies={'https': proxy}, timeout=1,
-                                control=ModelCallControl(time.monotonic() + 0.5) if controlled else None):
+                                control=ModelCallControl() if controlled else None):
                 pytest.fail('Proxy certificate outside the selected CA bundle was trusted')
     assert seen == destinations == []
 
@@ -391,6 +306,6 @@ def test_https_proxy_checks_its_hostname(proxy_endpoint, monkeypatch, controlled
         proxy = proxy.replace('localhost', 'wrong.invalid')
         with pytest.raises((requests.exceptions.SSLError, requests.exceptions.ProxyError), match='(?i)hostname'):
             with model_response(target, data=b'fixture-body', proxies={'https': proxy},
-                                control=ModelCallControl(time.monotonic() + 2) if controlled else None, timeout=3):
+                                control=ModelCallControl() if controlled else None, timeout=3):
                 pytest.fail('Proxy certificate with a mismatched hostname was trusted')
     assert seen == destinations == []

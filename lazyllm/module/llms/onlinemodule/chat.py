@@ -1,12 +1,11 @@
 import lazyllm
-import copy
-from dataclasses import replace
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from typing import Any, ContextManager, List, Optional, Tuple, Union
 from lazyllm.common.bind import _MetaBind
 
 from ...servermodule import LLMBase, StaticParams
 from .base import OnlineChatModuleBase
+from .base.model_request import _ControlledModelCall
 from .base.utils import select_source_with_default_key, resolve_online_params
 from .dynamic_router import _DynamicSourceRouterMixin, dynamic_model_config_context
 
@@ -30,7 +29,7 @@ class _ChatModuleMeta(_MetaBind):
         return super().__instancecheck__(__instance)
 
 
-class OnlineChatModule(_DynamicSourceRouterMixin, LLMBase, metaclass=_ChatModuleMeta):
+class OnlineChatModule(_ControlledModelCall, _DynamicSourceRouterMixin, LLMBase, metaclass=_ChatModuleMeta):
     _dynamic_module_slot = 'chat'
     _dynamic_source_error = 'No source is configured for dynamic LLM source.'
     _timeout = 180
@@ -83,20 +82,6 @@ class OnlineChatModule(_DynamicSourceRouterMixin, LLMBase, metaclass=_ChatModule
         supplier.prompt(getattr(self, '_prompt', None))
         supplier.formatter(getattr(self, '_formatter', None))
         return supplier
-
-    def prepare_request(self, *args, **kwargs):
-        args, kwargs = self._prepare_call_args(args, kwargs)
-        args, kwargs = copy.deepcopy((args, kwargs))
-        with lazyllm.globals.stack_enter(self.identities):
-            supplier = self._get_supplier()
-            supplier.used_by(self._used_by_moduleid or self._module_id)
-            prepared = supplier._prepare_request(*args, **self._merge_dynamic_forward_kwargs(kwargs))
-            return replace(prepared, _caller=self, _args=args, _kwargs=kwargs)
-
-    def forward(self, *args, prepared_request=None, **kwargs):
-        if prepared_request is not None:
-            return prepared_request._module.forward(*args, prepared_request=prepared_request, **kwargs)
-        return super().forward(*args, **kwargs)
 
     @classmethod
     def merge_usage_records(cls, existing, usage):

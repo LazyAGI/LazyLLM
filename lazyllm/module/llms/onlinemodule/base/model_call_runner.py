@@ -79,9 +79,9 @@ class _ModelCallRunner:
         for attempt_index in range(1, max_attempts + 1):
             state = ModelAttemptState()
             try:
-                if self._control is not None:
-                    self._control.check()
+                self._check_cancel()
                 result = execute_attempt(state)
+                self._check_cancel()
                 state.frames = result
                 semantic_output = semantic_output or state.semantic_output
                 terminal = ModelCallTerminal(
@@ -102,6 +102,7 @@ class _ModelCallRunner:
             except (ModelCallError, ModuleExecutionError):
                 raise
             except _ModelResponseError as exc:
+                self._check_cancel()
                 semantic_output = semantic_output or state.semantic_output
                 exc.failure.response_started = state.response_started
                 self._report(exc.failure)
@@ -117,6 +118,7 @@ class _ModelCallRunner:
                 self._finish(terminal)
                 raise ModelCallError(str(exc), terminal, state.frames) from exc
             except Exception as exc:
+                self._check_cancel()
                 semantic_output = semantic_output or state.semantic_output
                 retryable = self._is_retryable_transport_error(exc)
                 if retryable and not state.response_started and not semantic_output and attempt_index < max_attempts:
@@ -128,12 +130,8 @@ class _ModelCallRunner:
                         'delay_ms': int(delay * 1000),
                     })
                     if self._control is not None:
-                        try:
-                            self._control.wait(delay)
-                        except requests.Timeout as wait_error:
-                            exc = wait_error
-                        else:
-                            continue
+                        self._control.wait(delay)
+                        continue
                     else:
                         self._sleep(delay)
                         continue
@@ -159,9 +157,15 @@ class _ModelCallRunner:
                 raise ModelCallError('Model transport failed.', terminal, state.frames) from exc
         raise AssertionError('model call runner exhausted without a terminal')
 
+    def _check_cancel(self):
+        if self._control is not None: self._control.check()
+
     def _finish(self, terminal):
         if self._on_terminal is not None:
-            self._on_terminal(terminal)
+            try:
+                self._on_terminal(terminal)
+            except Exception as exc:
+                raise ModuleExecutionError('Model terminal callback failed.') from exc
         self._emit_event('model_call_finished', terminal.public_dict())
 
     def _report(self, failure: ModelFailure) -> None:

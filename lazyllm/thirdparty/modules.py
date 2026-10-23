@@ -7,7 +7,7 @@ modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', '
            'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr',
            'zhipuai', ['dashscope', 'aigc.image_generation'], ['mineru', 'cli.common'], 'opensearchpy',
            ['os', 'path'], 'pkg_resources',
-           'fastapi', 'qdrant_client', 'socks',
+           'fastapi', 'qdrant_client',
            ['fsspec', 'implementations.local'], 'bs4', 'uvicorn', ['elasticsearch', 'helpers'], 'xml', 'deepdiff',
            'mem0', 'memu', ['graphrag', 'api', 'config.load_config', 'config.enums', 'cli.index', 'cli.initialize'],
            'pyobvector', 'charset_normalizer', 'transformers', 'async_timeout', 'openpyxl', 'tiktoken', 'Stemmer',

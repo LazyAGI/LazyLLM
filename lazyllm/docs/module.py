@@ -2129,22 +2129,29 @@ Attributes:
     usage (Optional[Dict[str, int]]): Token usage extracted from the partial response.
 ''')
 
-add_chinese_doc('OnlineChatModuleBase.prepare_request', '''\
-在本地准备聊天请求并返回 PreparedModelRequest，不发送网络请求。
-冻结调用输入及模块注入的历史、文件和参数；后续修改不影响快照。
-payload 返回独立副本，estimate_tokens 提供近似 token 估算。
-通过 execute(control=ModelCallControl(...)) 执行同一快照，保留模块 hooks 和缓存行为，
-返回包含 value、terminal 和 usage 的 ModelCallResult。
-output_limit 限制输出并保留更小的已有额度；调用控制参数不发送给供应商。
+add_chinese_doc('OnlineChatModuleBase.forward', '''
+通过正常 Module 调用链发送聊天请求，保留 hooks、缓存、formatter 和 usage。
+timeout 接受单值或 (连接秒数, 无数据读取等待秒数)，不限制持续正常输出的总时长。
+call_control=ModelCallControl(cancel_check=..., request_check=...) 提供取消及发送前校验；
+request_check 接收只读 ModelRequest：payload 为副本，model_type/requires_vision 描述输入，
+estimate_tokens 只提供近似估算。校验不会执行请求；抛出 HandledException 可原样向调用方报告。
+取消在请求前、读取边界、异常返回后、退避等待及缓存返回边界检查；阻塞网络等待由 timeout 结束。
+output_limit 保留更小的已有输出上限；on_terminal 接收 ModelCallTerminal。返回正常模型输出。
+新增调用选项遵循普通 Module hooks 参数传递规则，hook 应接收所使用的关键字参数。
+控制参数不会发送给供应商。没有可执行请求快照，也不提供 DNS/TLS 的即时主动中断。
 ''')
 
-add_english_doc('OnlineChatModuleBase.prepare_request', '''\
-Prepare a chat request locally and return PreparedModelRequest without network IO.
-Freeze the input and module-injected history, files and parameters; later changes do not affect the snapshot.
-payload returns an independent copy, and estimate_tokens provides an approximate token estimate.
-execute(control=ModelCallControl(...)) executes the same snapshot while preserving module hooks and caching,
-returning ModelCallResult with value, terminal and usage.
-output_limit preserves a smaller existing output bound; call control parameters are not sent to the provider.
+add_english_doc('OnlineChatModuleBase.forward', '''
+Use the normal Module lifecycle, preserving hooks, caching, formatters and usage.
+timeout accepts seconds or (connect seconds, idle read seconds), not a total generation deadline.
+call_control=ModelCallControl(cancel_check=..., request_check=...) checks cancellation and validates the final request.
+request_check receives a read-only ModelRequest: payload is a copy; model_type/requires_vision describe the input;
+estimate_tokens is approximate. Validation cannot execute a request. HandledException propagates unchanged.
+Cancellation is checked before requests, at read boundaries, after errors, during retry waits and around cache returns.
+Blocking network waits end through timeout. output_limit preserves smaller existing limits;
+on_terminal receives ModelCallTerminal. The return value remains the normal model output.
+Call options follow ordinary Module hook argument forwarding. Hooks must accept the keywords used by their callers.
+Controls are never sent to providers. There is no executable snapshot or immediate DNS/TLS interruption.
 ''')
 
 add_chinese_doc('OnlineChatModuleBase.merge_usage_records', '''\
@@ -3917,6 +3924,3 @@ Note:
     - The ``future`` attribute holds the background task; use ``helper.future.result()`` to retrieve the final result.
     - Mirrors the logic of the synchronous ``__call__``, replacing ``time.sleep`` with ``await asyncio.sleep``.
 ''')
-
-add_chinese_doc('OnlineChatModule.prepare_request', '隔离准备一次聊天请求，不发送网络请求。冻结准备时正常模块注入的历史、文件和参数；后续会话变化不影响该快照。执行时原模块 hooks 接收正常输入/输出。启用 Module 缓存时按冻结请求复用完整结果；命中后的 terminal/usage 描述原始实际调用，取消仍被检查。返回 PreparedModelRequest；payload 是独立副本，estimate_tokens 接收文本/消息估算函数，结果仅为估算。execute(control=ModelCallControl(...)) 通过原模块调用路径执行同一快照，返回含 value、terminal、usage 的 ModelCallResult。output_limit 限制输出并保留更小的已有额度。ModelCallControl 使用 monotonic 绝对 deadline 和快速同步 cancel_check，覆盖请求读取和重试等待；取消回调可抛出取消异常。控制参数不发送给供应商。')
-add_english_doc('OnlineChatModule.prepare_request', 'Prepare an isolated chat request without network IO. Session history, files and parameters are resolved before freezing; later session changes do not affect the snapshot. Execution preserves the original module hooks and their input/output values. When Module caching is enabled, the frozen request reuses a complete result; cached terminal/usage describe the original call, and cancellation is still checked. PreparedModelRequest.payload returns a copy; estimate_tokens accepts text/message estimators and is explicitly approximate. execute(control=ModelCallControl(...)) executes that snapshot through the original module call path and returns ModelCallResult(value, terminal), with per-call usage. output_limit preserves a smaller existing output bound. Control accepts an absolute monotonic deadline and a fast synchronous cancellation callback, covering request reads and retry waits; control parameters are not sent to the provider.')

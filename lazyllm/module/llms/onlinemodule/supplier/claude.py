@@ -1,5 +1,4 @@
 import json
-import re
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase, ModelFailureCode, ModelFailureOrigin
@@ -67,6 +66,9 @@ class ClaudeChat(OnlineChatModuleBase):
             })
         return result
 
+    def _output_token_key(self, data):
+        return 'max_tokens'
+
     def _prepare_request_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         data = dict(data)
         data.setdefault('max_tokens', self._DEFAULT_MAX_TOKENS)
@@ -130,9 +132,19 @@ class ClaudeChat(OnlineChatModuleBase):
                     usage[key] = value
         return {**usage, 'provider_usage': dict(usage)}
 
+    def _update_usage(self, message, state):
+        usage = dict(state.usage or {'prompt_tokens': -1, 'completion_tokens': -1})
+        for key, value in (message.get('usage') or {}).items():
+            if key in ('prompt_tokens', 'completion_tokens') and isinstance(value, (int, float)) and value >= 0:
+                usage[key] = value
+        usage['provider_usage'] = {key: usage[key] for key in ('prompt_tokens', 'completion_tokens')}
+        state.usage = usage
+
     def _parse_response_frame(self, msg: Union[str, bytes], stream_output: bool):
-        if isinstance(msg, bytes):
-            msg = re.sub(r'^data:\s*', '', msg.decode('utf-8'))
+        if stream_output:
+            msg = self._response_parser(False).extract_sse_payload(msg)
+            if msg is None:
+                return None
         try:
             raw = json.loads(msg)
         except (ValueError, TypeError) as exc:
