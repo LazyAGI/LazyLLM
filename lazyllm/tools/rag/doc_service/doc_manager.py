@@ -1024,6 +1024,7 @@ class DocManager:
             idempotency_key=request.idempotency_key,
             llm_config=request.llm_config,
             ocr_config=request.ocr_config,
+            processing_level=request.processing_level,
         ))
 
     def reparse(self, request: ReparseRequest) -> List[str]:
