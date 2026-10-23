@@ -796,7 +796,7 @@ arXiv 预印本搜索。无需 API key，直接使用。
 Args:
     timeout (int): 请求超时秒数，默认 15。
     source_name (str): 结果来源标识，默认 "arxiv"。
-    skip_auth (bool): 注册为工具时是否跳过凭据检查，默认 False。
+    skip_auth (bool): 注册为工具时是否跳过凭据检查，默认 True。
 ''')
 
 add_english_doc('ArxivSearch', '''
@@ -807,7 +807,7 @@ No sign-up or token needed; instantiate and call. API docs: https://info.arxiv.o
 Args:
     timeout (int): Request timeout in seconds, default 15.
     source_name (str): Source identifier, default "arxiv".
-    skip_auth (bool): Whether to bypass credential checks when registered as a tool, defaults to False.
+    skip_auth (bool): Whether to bypass credential checks when registered as a tool, defaults to True.
 ''')
 
 add_example('ArxivSearch', '''
@@ -855,7 +855,7 @@ Args:
     base_url (str): 站点根地址，默认 "https://en.wikipedia.org"，可改为 zh.wikipedia.org 等。
     timeout (int): 请求超时秒数，默认 10。
     source_name (str): 结果来源标识，默认 "wikipedia"。
-    skip_auth (bool): 注册为工具时是否跳过凭据检查，默认 False。
+    skip_auth (bool): 注册为工具时是否跳过凭据检查，默认 True。
 ''')
 
 add_english_doc('WikipediaSearch', '''
@@ -867,7 +867,7 @@ Args:
     base_url (str): Site base URL, default "https://en.wikipedia.org"; use e.g. https://zh.wikipedia.org for other languages.
     timeout (int): Request timeout in seconds, default 10.
     source_name (str): Source identifier, default "wikipedia".
-    skip_auth (bool): Whether to bypass credential checks when registered as a tool, defaults to False.
+    skip_auth (bool): Whether to bypass credential checks when registered as a tool, defaults to True.
 ''')
 
 add_example('WikipediaSearch', '''

@@ -52,7 +52,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), format='openai'
     - system: 系统提示，一般会读取模型的归属信息并进行设置，如不设置默认为 ``You are an AI-Agent developed by LazyLLM.`` 。
     - instruction: 任务指令，由 ``InstructionTemplate`` 拼接用户的输入得到。这个是应用开发者需要着重了解的字段。如果 instruction 是字符串，则默认是系统指令，如果是字典，且其键值只能是 ``system`` 和 ``user`` 。``system`` 指定的是系统级指令， ``user`` 指定的是用户级指令。
     - history: 历史对话，由用户的输入得到，格式为 ``[[a, b], [c, d]]`` 或 ``[{"role": "user", "content": ""}, {"role": "assistant", "content": ""}]``
-    - tools: 可以使用的工具，在构造 ``prompter`` 时传入或者由用户使用时传入，当构造 ``prompter`` 时定义了工具之后，将禁止用户使用时再次传入。格式为 ``[{"type": "function",  "function": {"name": "", "description": "", "parameters": {},  "required": []}]``
+    - tools: 可以使用的工具，在构造 ``prompter`` 时传入或者由用户使用时传入，调用时传入的非空 tools 会覆盖构造时的工具；None 或空列表则回退到构造时的工具。格式为 ``[{"type": "function",  "function": {"name": "", "description": "", "parameters": {},  "required": []}]``
     - user: 用户级指令，可选指令，由用户通过 instruction 指定。
     - sos: ``start of system`` , 标志着系统提示的开始，该符号由模型填入，开发者和用户均无需考虑
     - eos: ``end of system`` , 标志着系统提示的结束，该符号由模型填入，开发者和用户均无需考虑
@@ -155,31 +155,31 @@ prompter.generate_prompt(dict(context='背景', input='输入'), format='openai'
 
 ### 使用工具
 
-一般来说，大模型在进行 ``function-call`` 时，需要按照约定的格式定义好一系列工具，然后按照一定的格式传给大模型去使用。工具可以在构造 ``prompter`` 时传入，也可以由用户使用时传入。当构造 ``prompter`` 时定义了工具之后，将禁止用户使用时再次传入。
+一般来说，大模型在进行 ``function-call`` 时，需要按照约定的格式定义好一系列工具，然后按照一定的格式传给大模型去使用。工具可以在构造 ``prompter`` 时传入，也可以由用户使用时传入。调用时传入的非空 tools 会覆盖构造时的工具；None 或空列表则回退到构造时的工具。
 工具的格式一般为:
 
 ```python
-    [
-        {
-            "type": "function",
-            "function": {
-                "name": "",
-                "description": "",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "arg-1": {
-                            "type": "",
-                            "description": "",
-                        },
-                        "arg-2": {}
-                        "arg-3": {}
-                    }
-                },
-                "required": ['arg-1', 'arg-2', 'arg-3']
-            }
-        },
-    ]
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "",
+            "description": "",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "arg-1": {
+                        "type": "",
+                        "description": "",
+                    },
+                    "arg-2": {},
+                    "arg-3": {}
+                }
+            },
+            "required": ['arg-1', 'arg-2', 'arg-3']
+        }
+    },
+]
 ```
 
 下面我们借助一个很简单的工具 ``tools=[dict(type='function', function=dict(name='example'))]`` 来演示 ``Prompter`` 是如何使用工具的。
@@ -246,7 +246,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), format='openai'
 !!! Note "注意"
 
     - 只有 ``ChatPrompter`` 支持传入历史对话
-    - 当输入是 ``[[a, b], ...]`` 格式时，同时支持 ``format`` 为 ``'openai'``（或默认 ``None`` 走字符串拼接），而当输入为 ``[dict, dict]`` 格式时，仅支持 ``format='openai'`` 等 API 消息格式
+    - 成对列表历史（``[[a, b], ...]``）和 role/content 字典历史都支持 ``format='openai'`` 等 API 消息格式，也支持默认 ``format=None`` 的字符串拼接
 
 ### 和 OnlineChatModule 一起使用
 

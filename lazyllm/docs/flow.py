@@ -441,7 +441,7 @@ add_example(
 >>> assert ppl(1) == (2, 4, 0.5), "LAZYLLM_CHECK_FAILED"
 >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3)
 >>> ppl(1)
-{2, 4, 0.5}
+(2, 4, 0.5)
 >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).asdict
 >>> assert  ppl(2) == {'a': 3, 'b': 8, 'c': 1.0}, "LAZYLLM_CHECK_FAILED"
 >>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).astuple
