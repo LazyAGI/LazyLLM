@@ -24,7 +24,7 @@ def _reg_key(obj_name: str, module, append: str) -> Tuple[str, str, str, str]:
     sec = 'BASE' if not append else f'APPEND:{append.strip()}'
     return (lang, getattr(module, '__name__', str(module)), obj_name, sec)
 
-def _guard_register_once(obj_name: str, module, append: str = '') -> None:
+def _guard_register_once(obj_name: str, module, append: str = '') -> Tuple[str, str, str, str]:
     key = _reg_key(obj_name, module, append)
     with _doc_registry_lock:
         if key in _doc_registry:
@@ -32,6 +32,7 @@ def _guard_register_once(obj_name: str, module, append: str = '') -> None:
                 f'Doc for {key[1]}.{obj_name} [{key[0]} / {key[3]}] already added'
             )
         _doc_registry.add(key)
+    return key
 
 
 all_examples = []
@@ -63,33 +64,41 @@ def _set_doc(obj, doc):
         _cpp_add_doc(obj, doc)
 
 def add_doc(obj_name, docstr, module, append=''):
-    _guard_register_once(obj_name, module, append)
-
-    obj = module
-    for n in obj_name.split('.'):
-        if isinstance(obj, type):
-            obj = obj.__dict__[n] if n in obj.__dict__ else getattr(obj, n)
-        else: obj = getattr(obj, n)
-    if isinstance(obj, (classmethod, staticmethod, lazyllm.DynamicDescriptor)): obj = obj.__func__
+    key = _guard_register_once(obj_name, module, append)
+    registered = False
     try:
-        if append:
-            if isinstance(docstr, str):
-                _set_doc(obj, obj.__doc__ + append + docstr)
-            else:
-                cnt = obj.__doc__.count('.. function::')
-                if cnt == len(docstr):
-                    docs = obj.__doc__.rsplit('.. function::', cnt - 1)
-                elif cnt + 1 == len(docstr):
-                    docs = obj.__doc__.rsplit('.. function::', cnt)
+
+        obj = module
+        for n in obj_name.split('.'):
+            if isinstance(obj, type):
+                obj = obj.__dict__[n] if n in obj.__dict__ else getattr(obj, n)
+            else: obj = getattr(obj, n)
+        if isinstance(obj, (classmethod, staticmethod, lazyllm.DynamicDescriptor)): obj = obj.__func__
+        try:
+            if append:
+                if isinstance(docstr, str):
+                    _set_doc(obj, obj.__doc__ + append + docstr)
                 else:
-                    raise ValueError(f'function number {cnt}, doc number{len(docstr)}')
-                _set_doc(obj, '\n.. function::'.join(
-                    [(o + append + a) if a.strip() else o for o, a in zip(docs, docstr)]))
+                    cnt = obj.__doc__.count('.. function::')
+                    if cnt == len(docstr):
+                        docs = obj.__doc__.rsplit('.. function::', cnt - 1)
+                    elif cnt + 1 == len(docstr):
+                        docs = obj.__doc__.rsplit('.. function::', cnt)
+                    else:
+                        raise ValueError(f'function number {cnt}, doc number{len(docstr)}')
+                    _set_doc(obj, '\n.. function::'.join(
+                        [(o + append + a) if a.strip() else o for o, a in zip(docs, docstr)]))
+            else:
+                _set_doc(obj, docstr)
+        except Exception:
+            if lazyllm.config['raise_on_add_doc_error']:
+                raise RuntimeError(f'Failed to add doc for {obj_name} in {module.__name__}') from None
         else:
-            _set_doc(obj, docstr)
-    except Exception:
-        if lazyllm.config['raise_on_add_doc_error']:
-            raise RuntimeError(f'Failed to add doc for {obj_name} in {module.__name__}') from None
+            registered = True
+    finally:
+        if not registered:
+            with _doc_registry_lock:
+                _doc_registry.discard(key)
 
 
 def add_chinese_doc(obj_name, docstr, module=lazyllm):

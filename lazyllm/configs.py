@@ -130,8 +130,10 @@ class Config(metaclass=_ConfigMeta):
     def temp(self, name, value):
         old_value = self[name]
         self[name] = value
-        yield
-        self[name] = old_value
+        try:
+            yield
+        finally:
+            self[name] = old_value
 
     def _update_impl(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None,
                      env: Union[str, dict, list] = None):
@@ -261,15 +263,18 @@ class _NamespaceConfig(object):
     @contextmanager
     def namespace(self, space: str):
         if events._get_running_loop() is not None:
-            old_config = self.__context_var_config.get(None)
-            self.__context_var_config.set(Config(space))
-            yield
-            self.__context_var_config.set(old_config)
+            token = self.__context_var_config.set(Config(space))
+            try:
+                yield
+            finally:
+                self.__context_var_config.reset(token)
         else:
             old_config = getattr(self.__threading_config, 'config', None)
             self.__threading_config.config = Config(space)
-            yield
-            self.__threading_config.config = old_config
+            try:
+                yield
+            finally:
+                self.__threading_config.config = old_config
 
     @property
     def _impl(self): return self._config._impl
