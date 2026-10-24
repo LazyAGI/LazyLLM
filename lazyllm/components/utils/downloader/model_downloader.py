@@ -321,11 +321,12 @@ class _HubDownloader(ABC):
                                               args=(model_dir, total, polling_event, call_back))
             polling_thread.daemon = True
             polling_thread.start()
-        downloaded_path = self._do_download(model_id, model_dir)
-        if call_back and polling_thread:
-            polling_event.set()
-            polling_thread.join()
-        return downloaded_path
+        try:
+            return self._do_download(model_id, model_dir)
+        finally:
+            if call_back and polling_thread:
+                polling_event.set()
+                polling_thread.join()
 
     def verify_hub_token(self):
         self._lazy_init()
