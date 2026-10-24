@@ -81,7 +81,7 @@ class ParameterExtractor(ModuleBase):
 
     def check_int_value(self, res: dict):
         for param_name in self._param_dict:
-            if self._param_dict[param_name] == int.__name__ and param_name in res:
+            if self._param_dict[param_name] is int and param_name in res:
                 if not isinstance(res[param_name], int):
                     try:
                         t = res[param_name]
