@@ -132,7 +132,7 @@ class GitLab(LazyLLMGitBase):
             next_page = r.headers.get('x-next-page', '')
             if not next_page:
                 break
-            params = {'page': int(next_page), 'per_page': params['per_page']}
+            params['page'] = int(next_page)
         return {'success': True, 'list': out}
 
     def get_pr_diff(self, number: int) -> Dict[str, Any]:
