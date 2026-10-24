@@ -244,7 +244,7 @@ class MinHashDeduplicator(Filter):
     def _create_minhash(self, text):
         minhash = datasketch.MinHash(num_perm=self.num_perm)
         if self.use_n_gram:
-            for i in range(len(text) - self.ngram + 1):
+            for i in range(max(1, len(text) - self.ngram + 1)):
                 minhash.update(text[i:i + self.ngram].encode('utf8'))
         else:
             for char in text:

@@ -141,12 +141,28 @@ class EmbeddingTrainTestSplitter(embedding):
 
         # Shuffle and split
         random.seed(self.seed)
-        shuffled = inputs.copy()
-        random.shuffle(shuffled)
-
-        split_idx = int(len(shuffled) * (1 - self.test_size))
-        train_data = shuffled[:split_idx]
-        test_data = shuffled[split_idx:]
+        if self.stratify_key is None:
+            shuffled = inputs.copy()
+            random.shuffle(shuffled)
+            split_idx = int(len(shuffled) * (1 - self.test_size))
+            train_data = shuffled[:split_idx]
+            test_data = shuffled[split_idx:]
+        else:
+            groups = {}
+            for item in inputs:
+                groups.setdefault(item.get(self.stratify_key), []).append(item)
+            strata = list(groups.values())
+            quotas = [len(group) * (1 - self.test_size) for group in strata]
+            train_counts = [int(quota) for quota in quotas]
+            remaining = int(len(inputs) * (1 - self.test_size)) - sum(train_counts)
+            order = sorted(range(len(strata)), key=lambda i: quotas[i] - train_counts[i], reverse=True)
+            for index in order[:remaining]:
+                train_counts[index] += 1
+            train_data, test_data = [], []
+            for group, count in zip(strata, train_counts):
+                random.shuffle(group)
+                train_data.extend(group[:count])
+                test_data.extend(group[count:])
 
         # Add split labels
         for item in train_data:
