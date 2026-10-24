@@ -283,7 +283,7 @@ def generic_process_filters(nodes: List[DocNode], filters: Dict[str, Union[str, 
             if (not isinstance(candidates, list)) and (not isinstance(candidates, set)):
                 if value != candidates:
                     break
-            elif (not value) or (value not in candidates):
+            elif value is None or value not in candidates:
                 break
         else:
             res.append(node)
