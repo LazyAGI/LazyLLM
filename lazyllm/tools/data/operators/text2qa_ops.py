@@ -372,7 +372,7 @@ class IFDScorer(Text2qa):
             logits = outputs.logits
             vocab_size = logits.shape[-1]
             loss_fct = CrossEntropyLoss(reduction='none')
-            token_loss = loss_fct(logits.view(-1, vocab_size), target_ids.view(-1))
+            token_loss = loss_fct(logits[:, :-1, :].reshape(-1, vocab_size), target_ids[:, 1:].reshape(-1))
         return token_loss.cpu().numpy()
 
     def _calc_loss_part(self, context: str, answer: str):
@@ -383,7 +383,7 @@ class IFDScorer(Text2qa):
         end_idx = input_ids.shape[1]
 
         token_loss_full = self._get_token_loss(context, answer)
-        token_loss_answer = token_loss_full[start_idx:end_idx]
+        token_loss_answer = token_loss_full[max(start_idx - 1, 0):end_idx - 1]
         if len(token_loss_answer) == 0:
             return None
         return float(np.mean(token_loss_answer))
