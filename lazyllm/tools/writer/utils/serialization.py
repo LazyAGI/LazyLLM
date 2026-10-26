@@ -25,6 +25,7 @@ from ..numbering import (
 )
 from .markdown_inline import parse_markdown_inline
 from .markdown_ids import markdown_anchor_ids, next_markdown_node_id
+from .image_groups import split_image_group_markdown
 
 
 CALLOUT_MARKER_RE = re.compile(r'^\[!([\w-]+)\]([+-]?)(?:[ \t]+([^\n]*))?(?:\n|$)')
@@ -73,7 +74,8 @@ def _media_reference_variants(value: Any) -> set[str]:
 
     lowered = raw.lower()
     if lowered.startswith(('http://', 'https://')):
-        return {raw}
+        path = unquote(urlparse(raw).path)
+        return {raw, path} if path.startswith('/data/subagent/') else {raw}
     if lowered.startswith('file://'):
         return {raw, unquote(urlparse(raw).path)}
     return {raw, unquote(raw)}
@@ -468,6 +470,7 @@ def parse_document_markdown(  # noqa: C901
     media_assets: Optional[MediaAssetLibrary] = None,
 ) -> WriterDocument:
     '''Convert the drafting Markdown subset into the existing WriterDocument IR.'''
+    markdown, image_groups = split_image_group_markdown(markdown or '')
     outline_instructions = parse_markdown_outline_instructions(markdown or '')
     visible_markdown = _strip_markdown_outline_instructions(markdown or '')
     heading_numbering = parse_markdown_heading_numbering_config(visible_markdown)
@@ -649,7 +652,8 @@ def parse_document_markdown(  # noqa: C901
                     node_id=node_id,
                     type='image',
                     content=image.caption,
-                    references=([{'type': 'media_asset', 'id': asset_id}] if asset_id else []),
+                    references=[{'type': 'media_asset', 'id': asset_id, 'path': image.source}]
+                    if asset_id else [{'type': 'preview_asset', 'url': image.source}],
                     stage=stage,
                 ))
                 continue
@@ -687,7 +691,8 @@ def parse_document_markdown(  # noqa: C901
                     node_id=node_id,
                     type='image',
                     content=alt,
-                    references=([{'type': 'media_asset', 'id': asset_id}] if asset_id else []),
+                    references=[{'type': 'media_asset', 'id': asset_id, 'path': url}]
+                    if asset_id else [{'type': 'preview_asset', 'url': url}],
                     stage=stage,
                 )
                 append_block(block)
@@ -759,6 +764,7 @@ def parse_document_markdown(  # noqa: C901
         ui_editable=False,
         metadata={
             'source': 'parse_document_markdown',
+            **({'image_groups': image_groups} if image_groups else {}),
             'outline_id': outline.document_id if outline else None,
             **({
                 'heading_numbering': {

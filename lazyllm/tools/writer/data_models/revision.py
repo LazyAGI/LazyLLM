@@ -164,6 +164,7 @@ class PatchSet(ArtifactModel):
     patch_id: Optional[str] = None
     target_doc_id: str
     new_title: Optional[str] = None
+    image_groups: Optional[List[Dict[str, Any]]] = None
     hunks: List[PatchHunk] = Field(default_factory=list)
     meta: Dict[str, Any] = Field(default_factory=dict)
 
