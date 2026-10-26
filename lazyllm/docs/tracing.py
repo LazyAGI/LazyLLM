@@ -6,7 +6,11 @@ import lazyllm.tracing.consume.configs
 import lazyllm.tracing.datamodel.raw
 import lazyllm.tracing.datamodel.structured
 import lazyllm.tracing.errors
-import lazyllm.tracing.backends.local.backend
+
+try:
+    import lazyllm.tracing.backends.local.backend as _local_backend
+except ImportError:
+    _local_backend = None
 
 # ============= Tracing helpers
 
@@ -1272,30 +1276,31 @@ Common causes include missing connection configuration, authentication failure, 
 errors, invalid JSON responses, or unexpected backend response shapes.
 ''')
 
-add_chinese_doc_trace('backends.local.backend.LocalFileSpanExporter', '''\
-将 OpenTelemetry spans 按 trace 写入本地 JSONL 文件的导出器。
+if _local_backend is not None:
+    add_chinese_doc_trace('backends.local.backend.LocalFileSpanExporter', '''\
+    将 OpenTelemetry spans 按 trace 写入本地 JSONL 文件的导出器。
 
-Args:
-    storage_dir (Path, optional): 存储目录，省略时使用本地 tracing 配置目录。
-''')
+    Args:
+        storage_dir (Path, optional): 存储目录，省略时使用本地 tracing 配置目录。
+    ''')
 
-add_english_doc_trace('backends.local.backend.LocalFileSpanExporter', '''\
-Export OpenTelemetry spans to local JSONL files grouped by trace.
+    add_english_doc_trace('backends.local.backend.LocalFileSpanExporter', '''\
+    Export OpenTelemetry spans to local JSONL files grouped by trace.
 
-Args:
-    storage_dir (Path, optional): Storage directory; defaults to the configured local tracing directory.
-''')
+    Args:
+        storage_dir (Path, optional): Storage directory; defaults to the configured local tracing directory.
+    ''')
 
-add_chinese_doc_trace('backends.local.backend.LocalConsumeBackend', '''\
-从本地 JSONL trace 文件读取原始 trace 和 spans 的后端。
+    add_chinese_doc_trace('backends.local.backend.LocalConsumeBackend', '''\
+    从本地 JSONL trace 文件读取原始 trace 和 spans 的后端。
 
-Args:
-    storage_dir (Path, optional): 存储目录，省略时使用本地 tracing 配置目录。
-''')
+    Args:
+        storage_dir (Path, optional): 存储目录，省略时使用本地 tracing 配置目录。
+    ''')
 
-add_english_doc_trace('backends.local.backend.LocalConsumeBackend', '''\
-Read raw traces and spans from local JSONL trace files.
+    add_english_doc_trace('backends.local.backend.LocalConsumeBackend', '''\
+    Read raw traces and spans from local JSONL trace files.
 
-Args:
-    storage_dir (Path, optional): Storage directory; defaults to the configured local tracing directory.
-''')
+    Args:
+        storage_dir (Path, optional): Storage directory; defaults to the configured local tracing directory.
+    ''')
