@@ -1,4 +1,5 @@
 import asyncio
+import io
 import os
 import select
 import socket
@@ -6,14 +7,21 @@ import socketserver
 import ssl
 import threading
 import time
+import tracemalloc
+import zlib
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 import requests
 import trustme
+from urllib3.response import HTTPResponse
 
-from lazyllm.module.llms.onlinemodule.base.model_request import ModelCallControl, model_response, response_chunks
+import lazyllm
+from lazyllm.module.llms.onlinemodule.base import ModelCallError, ModelFailureCode
+from lazyllm.module.llms.onlinemodule.base.model_request import (
+    ModelCallControl, model_response, response_chunks, response_frames,
+)
 
 
 @contextmanager
@@ -26,6 +34,155 @@ def serving(server):
         server.shutdown()
         server.server_close()
         thread.join(2)
+
+
+def test_controlled_large_json_does_not_allocate_per_byte_fragments():
+    body = b'{"text":"' + b'x' * (1024 * 1024) + b'"}'
+    response = requests.Response()
+    response.raw = HTTPResponse(body=io.BytesIO(body), preload_content=False)
+    tracemalloc.start()
+    try:
+        assert list(response_frames(response, False, ModelCallControl())) == [body.decode()]
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak < 12 * 1024 * 1024
+
+
+def test_controlled_sse_uses_bounded_reads(monkeypatch):
+    body = b'data: {"text":"' + b'x' * (100 * 1024) + b'"}\n\n'
+    response = requests.Response()
+    response.raw = HTTPResponse(body=io.BytesIO(body), preload_content=False)
+    content = response.iter_content
+    calls = []
+
+    def counted(*args, **kwargs):
+        for chunk in content(*args, **kwargs):
+            calls.append(1)
+            yield chunk
+
+    monkeypatch.setattr(response, 'iter_content', counted)
+    assert list(response_frames(response, True, ModelCallControl())) == [body[:-2], b'']
+    assert len(calls) < 1000
+
+
+def test_available_reader_restores_response_methods_when_closed():
+    response = requests.Response()
+    response.raw = HTTPResponse(body=io.BytesIO(b'x' * 16384), preload_content=False)
+    read, fp_read = response.raw.read, response.raw._fp_read
+    chunks = response_chunks(response, ModelCallControl())
+    assert next(chunks) == b'x' * 8192
+    chunks.close()
+    assert response.raw.read == read and response.raw._fp_read == fp_read
+
+
+def test_small_chunked_sse_frame_arrives_before_next_frame():
+    release = threading.Event()
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = 'HTTP/1.1'
+
+        def log_message(self, *_args): pass
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers['Content-Length']))
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Transfer-Encoding', 'chunked')
+            self.end_headers()
+            self.wfile.write(b'9\r\ndata: x\n\n\r\n')
+            self.wfile.flush()
+            if release.wait(2):
+                self.wfile.write(b'0\r\n\r\n')
+                self.wfile.flush()
+
+    with serving(ThreadingHTTPServer(('127.0.0.1', 0), Handler)) as server:
+        try:
+            control = ModelCallControl()
+            with model_response(f'http://127.0.0.1:{server.server_port}/chat', json={},
+                                stream=True, timeout=(0.5, 0.5), control=control) as response:
+                frames = response_frames(response, True, control)
+                assert next(frames) == b'data: x'
+                release.set()
+                assert list(frames) == [b'']
+        finally:
+            release.set()
+
+
+@pytest.mark.parametrize('framing', ['length', 'close', 'chunked'])
+@pytest.mark.parametrize('compressed', [False, True])
+@pytest.mark.parametrize('outcome', ['finish', 'timeout', 'cancel'])
+def test_small_sse_is_delivered_before_more_data_or_eof(framing, compressed, outcome):  # noqa: C901 - HTTP fixture.
+    release, cancel = threading.Event(), threading.Event()
+    first = b'data: {"choices":[{"delta":{"role":"assistant","content":"first"},"finish_reason":null}]}\n\n'
+    last = b'data: {"choices":[{"delta":{"content":"second"},"finish_reason":"stop"}]}\n\n'
+    if compressed:
+        encoder = zlib.compressobj(wbits=31)
+        first = encoder.compress(first) + encoder.flush(zlib.Z_SYNC_FLUSH)
+        last = encoder.compress(last) + encoder.flush(zlib.Z_FINISH)
+    seen, events = [], []
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = 'HTTP/1.1'
+
+        def log_message(self, *_args): pass
+
+        def do_POST(self):
+            seen.append(self.rfile.read(int(self.headers['Content-Length'])))
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            if compressed:
+                self.send_header('Content-Encoding', 'gzip')
+            if framing == 'length':
+                self.send_header('Content-Length', str(len(first) + len(last)))
+            elif framing == 'chunked':
+                self.send_header('Transfer-Encoding', 'chunked')
+            else:
+                self.send_header('Connection', 'close')
+            self.end_headers()
+            try:
+                for part in (first, last):
+                    if part is last and not release.wait(2):
+                        return
+                    wire = f'{len(part):x}\r\n'.encode() + part + b'\r\n' if framing == 'chunked' else part
+                    self.wfile.write(wire)
+                    self.wfile.flush()
+                if framing == 'chunked':
+                    self.wfile.write(b'0\r\n\r\n')
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            finally:
+                self.close_connection = True
+
+    def sink(event):
+        events.append(event)
+        if event.get('delta') == 'first':
+            if outcome == 'finish': release.set()
+            if outcome == 'cancel': cancel.set()
+
+    with serving(ThreadingHTTPServer(('127.0.0.1', 0), Handler)) as server:
+        model = lazyllm.OnlineChatModule(source='openai', model='fixture', api_key='fixture', stream=True,
+                                         url=f'http://127.0.0.1:{server.server_port}/v1/')
+        try:
+            def call():
+                return model('hello', max_retries=1, timeout=(0.2, 0.2),
+                             call_control=ModelCallControl(cancel_check=cancel.is_set),
+                             stream_output={'_stream_sink': sink})
+
+            if outcome == 'finish':
+                assert call() == 'firstsecond'
+            elif outcome == 'cancel':
+                with pytest.raises(asyncio.CancelledError): call()
+            else:
+                with pytest.raises(ModelCallError) as failure: call()
+                assert failure.value.terminal.failure.code == ModelFailureCode.REQUEST_TIMEOUT
+                assert failure.value.terminal.has_semantic_output
+                assert failure.value.partial_response[0]['choices'][0]['delta']['content'] == 'first'
+            assert [event['delta'] for event in events if event.get('tag') == 'text'][0] == 'first'
+            assert len(seen) == 1
+        finally:
+            release.set()
 
 
 @pytest.mark.parametrize('controlled', [False, True])
@@ -48,7 +205,7 @@ def test_truncated_response_is_a_transport_failure_even_after_a_terminal_frame(c
         with pytest.raises(requests.exceptions.ChunkedEncodingError):
             with model_response(f'http://127.0.0.1:{server.server_port}/chat',
                                 json={'model': 'fixture'}, stream=True, control=control) as response:
-                list(response.iter_lines())
+                list(response_chunks(response, control) if controlled else response.iter_lines())
 
 
 @pytest.fixture
@@ -215,6 +372,18 @@ def test_controlled_proxy_request_preserves_routing_and_auth(proxy_endpoint, sch
         assert credentials == [(b'fixture-user', b'fixture-pass' if scheme.startswith('socks5') else b'')]
     else:
         assert b'Proxy-Authorization: Basic ' in credentials[0]
+
+
+def test_controlled_ip_request_preserves_environment_proxy(proxy_endpoint, monkeypatch):
+    start, seen, destinations, credentials, _, _ = proxy_endpoint
+    monkeypatch.setenv('no_proxy', '')
+    with start('http', 'http', 'normal') as (proxy, target):
+        monkeypatch.setenv('http_proxy', proxy)
+        with model_response(target.replace('localhost', '127.0.0.1'), data=b'fixture-body',
+                            control=ModelCallControl(), timeout=1) as response:
+            assert response.content == b'proxied'
+    assert seen == [b'fixture-body'] and len(destinations) == 1
+    assert b'Proxy-Authorization: Basic ' in credentials[0]
 
 
 @pytest.mark.parametrize('scheme', ['http', 'https', 'socks5h'])

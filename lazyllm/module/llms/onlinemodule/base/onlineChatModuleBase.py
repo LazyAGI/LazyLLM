@@ -264,8 +264,8 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
     def _forward_with_retry(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
                             proxies: Optional[Dict], max_retries: int,
                             request_timeout: Optional[Union[float, Tuple[float, float]]],
-                            call_control=None, on_terminal=None) -> List[Dict[str, Any]]:
-        if self._message_format != 'openai' and call_control is None and on_terminal is None:
+                            call_control=None) -> List[Dict[str, Any]]:
+        if self._message_format != 'openai' and call_control is None:
             max_attempts = max(1, int(max_retries))
             for attempt_index in range(1, max_attempts + 1):
                 state = ModelAttemptState()
@@ -285,7 +285,7 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
             emit_event=lambda event_type, event_data: self._emit_runtime_event(
                 stream_output, event_type, event_data,
             ),
-            report_failure=self._log_failure, on_terminal=on_terminal, control=call_control,
+            report_failure=self._log_failure, control=call_control,
         )
         return runner.run(
             lambda state: self._forward_impl(
@@ -355,7 +355,7 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
         if message.get('usage'):
             state.usage = self._extract_usage([message])
 
-    def forward(self, __input=None, *, call_control=None, on_terminal=None, **kwargs):
+    def forward(self, __input=None, *, call_control=None, **kwargs):
         data, url, stream, timeout, max_attempts, vision = self._prepare_request(__input, **kwargs)
         if call_control is not None:
             if call_control.request_check is not None:
@@ -364,8 +364,6 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
                 call_control.check()
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         control_args = {'call_control': call_control} if call_control is not None else {}
-        if on_terminal is not None:
-            control_args['on_terminal'] = on_terminal
         try:
             msg_json = self._forward_with_retry(
                 data, runtime_url=url, stream_output=stream, proxies=proxies,

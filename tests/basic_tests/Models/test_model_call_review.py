@@ -29,6 +29,10 @@ class Response:
                 raise frame
             yield frame
 
+    def iter_content(self, **kwargs):
+        for frame in self.iter_lines():
+            yield frame + b'\n'
+
 
 def test_model_call_preserves_bound_sink_identity(monkeypatch):
     class Sink:
@@ -99,20 +103,19 @@ def test_claude_usage_processing_is_linear(monkeypatch):
 
 
 def test_claude_failure_keeps_incremental_usage(monkeypatch):
-    from lazyllm.module.llms.onlinemodule.base import ModelCallError, ModelFailureCode
+    from lazyllm.module.llms.onlinemodule.base import ModelCallControl, ModelCallError, ModelFailureCode
 
     model = lazyllm.OnlineChatModule(source='claude', model='claude-test', api_key='fixture', stream=True)
     frames = [b'data: {"type":"message_start","message":{"usage":{"input_tokens":11}}}',
               b'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"partial"}}',
               requests.ConnectionError('fixture disconnect')]
-    monkeypatch.setattr(requests, 'post', lambda *a, **kw: Response(frames))
-    terminals = []
+    monkeypatch.setattr(requests.Session, 'post', lambda *a, **kw: Response(frames))
     with pytest.raises(ModelCallError) as failure:
-        model('hello', on_terminal=terminals.append)
+        model('hello', call_control=ModelCallControl())
     assert failure.value.terminal.failure.code == ModelFailureCode.TRANSPORT_ERROR
     assert failure.value.usage['prompt_tokens'] == 11
     assert failure.value.usage['completion_tokens'] == -1
-    assert len(terminals) == 1 and terminals[0].usage == failure.value.usage
+    assert failure.value.terminal.usage == failure.value.usage
 
 
 @pytest.mark.parametrize('frame,origin', [
@@ -120,12 +123,12 @@ def test_claude_failure_keeps_incremental_usage(monkeypatch):
     (b'data: {"type":"error","error":{"type":"overloaded_error"}}', 'provider'),
 ])
 def test_claude_still_rejects_invalid_payloads_and_provider_errors(monkeypatch, frame, origin):
-    from lazyllm.module.llms.onlinemodule.base import ModelCallError
+    from lazyllm.module.llms.onlinemodule.base import ModelCallControl, ModelCallError
 
     model = lazyllm.OnlineChatModule(source='claude', model='claude-test', api_key='fixture', stream=True)
-    monkeypatch.setattr(requests, 'post', lambda *a, **kw: Response([frame]))
+    monkeypatch.setattr(requests.Session, 'post', lambda *a, **kw: Response([frame]))
     with pytest.raises(ModelCallError) as failure:
-        model('hello', on_terminal=lambda terminal: None)
+        model('hello', call_control=ModelCallControl())
     assert failure.value.terminal.failure.origin.value == origin
 
 
@@ -137,6 +140,39 @@ def test_controlled_reader_handles_decompressed_chunks_and_all_line_endings():
     assert list(response_frames(response, True, ModelCallControl())) == [
         b': comment', 'data: 中文'.encode(), b'', b'id: 1', b'last',
     ]
+
+
+def test_claude_usage_updates_replace_unknowns_without_summing_requests():
+    from lazyllm.module.llms.onlinemodule.base.model_call_runner import ModelAttemptState
+
+    model = lazyllm.OnlineChatModule(source='claude', model='claude-test', api_key='fixture')
+    frames = [{'usage': {'prompt_tokens': 11, 'completion_tokens': -1}},
+              {'usage': {'prompt_tokens': -1, 'completion_tokens': 3}},
+              {'usage': {'prompt_tokens': None, 'completion_tokens': 7}},
+              {'usage': {'prompt_tokens': 'unknown', 'completion_tokens': -1, 'extra': 999}}]
+    state = ModelAttemptState()
+    for frame in frames:
+        model._update_usage(frame, state)
+    expected = {'prompt_tokens': 11, 'completion_tokens': 7,
+                'provider_usage': {'prompt_tokens': 11, 'completion_tokens': 7}}
+    assert state.usage == model._extract_usage(frames) == expected
+
+
+def test_controlled_cancel_does_not_read_another_block():
+    import asyncio
+    from lazyllm.module.llms.onlinemodule.base.model_request import ModelCallControl, response_chunks
+
+    cancel = threading.Event()
+
+    def chunks(**kwargs):
+        yield b'first'
+        pytest.fail('read again after cancellation')
+
+    iterator = response_chunks(SimpleNamespace(iter_content=chunks), ModelCallControl(cancel_check=cancel.is_set))
+    assert next(iterator) == b'first'
+    cancel.set()
+    with pytest.raises(asyncio.CancelledError):
+        next(iterator)
 
 
 @pytest.mark.parametrize('status,code', [(401, 'authentication_failed'), (429, 'rate_limited')])

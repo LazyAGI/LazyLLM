@@ -15,9 +15,11 @@ from lazyllm.module.llms.onlinemodule.base import ModelCallControl, ModelCallErr
 from lazyllm.module.llms.onlinemodule.base.model_call_runner import _ModelCallRunner
 from lazyllm.module.llms.onlinemodule.chat import dynamic_chat_config
 from model_call_test_support import model
+from model_call_test_support import endpoint as _endpoint
 
 
 pytestmark = pytest.mark.usefixtures('model_call_session')
+endpoint = _endpoint
 
 
 def test_request_check_observes_exact_sent_body_without_executing_it(endpoint):
@@ -120,13 +122,20 @@ def test_control_callback_failure_is_local(endpoint):
 @pytest.mark.parametrize('source', ['openai', 'claude'])
 @pytest.mark.parametrize('stream', [False, True])
 def test_public_outcome_and_usage_across_protocols(endpoint, source, stream):
-    terminals = []
+    events = []
     llm = model(endpoint, source=source, stream=stream)
-    assert llm('hello', on_terminal=terminals.append, call_control=ModelCallControl()) == 'prepared'
-    assert len(terminals) == 1
-    terminal = terminals[0]
-    assert terminal.kind == 'finish' and terminal.finish == ModelFinish.STOP and terminal.attempt_count == 1
-    assert terminal.usage['prompt_tokens'] == 11 and terminal.usage['completion_tokens'] == 7
+    llm.used_by('usage-owner')
+    with llm.stream_output({'_stream_sink': events.append}):
+        assert llm('hello', call_control=ModelCallControl()) == 'prepared'
+    usage = lazyllm.globals['usage']['usage-owner']
+    assert usage['prompt_tokens'] == 11 and usage['completion_tokens'] == 7
+    if stream:
+        terminals = [event['runtime_event']['data'] for event in events
+                     if event.get('runtime_event', {}).get('type') == 'model_call_finished']
+        assert len(terminals) == 1
+        terminal = terminals[0]
+        assert terminal['kind'] == 'finish' and terminal['finish'] == 'stop' and terminal['attempt_count'] == 1
+        assert terminal['usage']['prompt_tokens'] == 11 and terminal['usage']['completion_tokens'] == 7
 
 
 @pytest.mark.parametrize('stream', [False, True])
@@ -220,9 +229,31 @@ def test_request_rejection_is_local_and_does_not_send_http(endpoint):
     assert endpoint[1] == []
 
 
-def test_terminal_callback_failure_is_local(endpoint):
-    def broken(terminal): raise RuntimeError('fixture callback failed')
+@pytest.mark.parametrize('stream', [False, True])
+def test_ordinary_native_length_preserves_partial_output(endpoint, stream):
+    assert model(endpoint, source='claude', name='length', stream=stream)('hello') == 'prepared'
+    assert len(endpoint[1]) == 1
 
-    with pytest.raises(ModuleExecutionError, match='terminal callback failed'):
-        model(endpoint)('hello', on_terminal=broken)
+
+@pytest.mark.parametrize('cancelled', [False, True])
+def test_ip_request_with_http_proxy_does_not_hide_a_second_attempt(endpoint, monkeypatch, cancelled):
+    monkeypatch.setenv('http_proxy', endpoint[0])
+    monkeypatch.setenv('no_proxy', '127.0.0.1')
+    cancel = threading.Event()
+
+    def stop():
+        if endpoint[2].wait(1) and cancelled:
+            cancel.set()
+
+    thread = threading.Thread(target=stop)
+    thread.start()
+    try:
+        with pytest.raises(asyncio.CancelledError if cancelled else ModelCallError) as failure:
+            model(endpoint, name='slow-head')(
+                'hello', max_retries=1, timeout=(0.1, 0.1),
+                call_control=ModelCallControl(cancel_check=cancel.is_set))
+        if not cancelled:
+            assert failure.value.terminal.failure.code == ModelFailureCode.REQUEST_TIMEOUT
+    finally:
+        thread.join(2)
     assert len(endpoint[1]) == 1

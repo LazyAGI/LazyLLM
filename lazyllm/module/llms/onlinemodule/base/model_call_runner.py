@@ -61,13 +61,12 @@ class _ModelCallRunner:
                  is_retryable_transport_error: Callable[[Exception], bool] = is_retryable_transport_error,
                  report_failure: Optional[Callable[[ModelFailure], None]] = None,
                  sleep: Callable[[float], None] = time.sleep,
-                 clock: Callable[[], float] = time.monotonic, on_terminal=None, control=None):
+                 clock: Callable[[], float] = time.monotonic, control=None):
         self._emit_event = emit_event
         self._is_retryable_transport_error = is_retryable_transport_error
         self._report_failure = report_failure
         self._sleep = sleep
         self._clock = clock
-        self._on_terminal = on_terminal
         self._control = control
 
     def run(self, execute_attempt: Callable[[ModelAttemptState], List[dict]], *, max_attempts: int) -> List[dict]:
@@ -161,11 +160,6 @@ class _ModelCallRunner:
         if self._control is not None: self._control.check()
 
     def _finish(self, terminal):
-        if self._on_terminal is not None:
-            try:
-                self._on_terminal(terminal)
-            except Exception as exc:
-                raise ModuleExecutionError('Model terminal callback failed.') from exc
         self._emit_event('model_call_finished', terminal.public_dict())
 
     def _report(self, failure: ModelFailure) -> None:

@@ -1,8 +1,9 @@
 import asyncio
 import json
 import mimetypes
+import re
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
@@ -87,15 +88,31 @@ class ModelRequest:
 
 
 def response_chunks(response, control):
-    # One-byte reads expose each arrival without waiting for a large buffer to
-    # fill. Requests retains ownership of decompression and read timeouts.
-    checked_at = time.monotonic()
-    for chunk in response.iter_content(chunk_size=1):
-        now = time.monotonic()
-        if now - checked_at >= 0.02:
+    raw = getattr(response, 'raw', None)
+    read = getattr(raw, 'read', None)
+    fp_read = getattr(raw, '_fp_read', None)
+    # Keep Requests' decoding/error path, but do not wait to fill a buffer for
+    # non-chunked SSE. These changes belong only to this response iterator.
+    if callable(read1 := getattr(raw, 'read1', None)):
+        raw.read = read1
+    elif fp_read is not None and callable(read1 := getattr(getattr(raw, '_fp', None), 'read1', None)):
+        raw._fp_read = read1
+        if hasattr(raw, '_raw_read'):
+            # urllib3 2.0 also fills a decoded buffer; 1.26's read already
+            # returns after one _fp_read. Later 2.x provides read1 directly.
+            def read_available(amt, decode_content=True):
+                raw._init_decoder()
+                data = raw._raw_read(amt)
+                return raw._decode(data, decode_content, not data)
+            raw.read = read_available
+    try:
+        for chunk in response.iter_content(chunk_size=8192):
             control.check()
-            checked_at = now
-        yield chunk
+            yield chunk
+            control.check()
+    finally:
+        if read is not None: raw.read = read
+        if fp_read is not None: raw._fp_read = fp_read
     control.check()
 
 
@@ -107,24 +124,23 @@ def response_frames(response, stream, control):
         content = b''.join(response_chunks(response, control))
         yield content.decode(response.encoding or 'utf-8', errors='replace')
         return
-    pending = bytearray()
+    pending = b''
     for chunk in response_chunks(response, control):
-        for byte in chunk:
-            if byte in (10, 13):
-                control.check()
-                yield bytes(pending)
-                pending.clear()
-            else:
-                pending.append(byte)
+        lines = re.split(b'[\r\n]', pending + chunk)
+        pending = lines.pop()
+        for line in lines:
+            control.check()
+            yield line
     if pending:
-        yield bytes(pending)
+        yield pending
 
 
 @contextmanager
 def model_response(url, *, control=None, **kwargs):
     if control is not None: control.check()
     try:
-        with requests.post(url, **kwargs) as response:
+        with (requests.Session() if control is not None else nullcontext(requests)) as client, \
+                client.post(url, **kwargs) as response:
             # urllib3 1.x otherwise accepts a truncated body as a clean EOF.
             response.raw.enforce_content_length = True
             if control is not None: control.check()

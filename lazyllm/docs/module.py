@@ -2136,7 +2136,7 @@ call_control=ModelCallControl(cancel_check=..., request_check=...) 提供取消�
 request_check 接收只读 ModelRequest：payload 为副本，model_type/requires_vision 描述输入，
 estimate_tokens 只提供近似估算。校验不会执行请求；抛出 HandledException 可原样向调用方报告。
 取消在请求前、读取边界、异常返回后、退避等待及缓存返回边界检查；阻塞网络等待由 timeout 结束。
-output_limit 保留更小的已有输出上限；on_terminal 接收 ModelCallTerminal。返回正常模型输出。
+output_limit 保留更小的已有输出上限。返回正常模型输出。
 新增调用选项遵循普通 Module hooks 参数传递规则，hook 应接收所使用的关键字参数。
 控制参数不会发送给供应商。没有可执行请求快照，也不提供 DNS/TLS 的即时主动中断。
 ''')
@@ -2148,8 +2148,8 @@ call_control=ModelCallControl(cancel_check=..., request_check=...) checks cancel
 request_check receives a read-only ModelRequest: payload is a copy; model_type/requires_vision describe the input;
 estimate_tokens is approximate. Validation cannot execute a request. HandledException propagates unchanged.
 Cancellation is checked before requests, at read boundaries, after errors, during retry waits and around cache returns.
-Blocking network waits end through timeout. output_limit preserves smaller existing limits;
-on_terminal receives ModelCallTerminal. The return value remains the normal model output.
+Blocking network waits end through timeout. output_limit preserves smaller existing limits.
+The return value remains the normal model output.
 Call options follow ordinary Module hook argument forwarding. Hooks must accept the keywords used by their callers.
 Controls are never sent to providers. There is no executable snapshot or immediate DNS/TLS interruption.
 ''')

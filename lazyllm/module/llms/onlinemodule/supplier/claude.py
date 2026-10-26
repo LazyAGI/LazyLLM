@@ -1,7 +1,7 @@
 import json
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urljoin
-from ..base import OnlineChatModuleBase, ModelFailureCode, ModelFailureOrigin
+from ..base import OnlineChatModuleBase, ModelFailureCode
 
 
 class ClaudeChat(OnlineChatModuleBase):
@@ -124,43 +124,24 @@ class ClaudeChat(OnlineChatModuleBase):
         return ''  # ping / content_block_stop / message_stop → filtered out
 
     @staticmethod
-    def _extract_usage(frames):
-        usage = {'prompt_tokens': -1, 'completion_tokens': -1}
-        for frame in frames:
-            for key, value in (frame.get('usage') or {}).items():
-                if key in usage and isinstance(value, (int, float)) and value >= 0:
-                    usage[key] = value
-        return {**usage, 'provider_usage': dict(usage)}
-
-    def _update_usage(self, message, state):
-        usage = dict(state.usage or {'prompt_tokens': -1, 'completion_tokens': -1})
+    def _merge_request_usage(existing, message):
+        usage = dict(existing or {'prompt_tokens': -1, 'completion_tokens': -1})
         for key, value in (message.get('usage') or {}).items():
             if key in ('prompt_tokens', 'completion_tokens') and isinstance(value, (int, float)) and value >= 0:
                 usage[key] = value
         usage['provider_usage'] = {key: usage[key] for key in ('prompt_tokens', 'completion_tokens')}
-        state.usage = usage
+        return usage
+
+    @classmethod
+    def _extract_usage(cls, frames):
+        usage = cls._merge_request_usage(None, {})
+        for frame in frames:
+            usage = cls._merge_request_usage(usage, frame)
+        return usage
+
+    def _update_usage(self, message, state):
+        state.usage = self._merge_request_usage(state.usage, message)
 
     def _parse_response_frame(self, msg: Union[str, bytes], stream_output: bool):
-        if stream_output:
-            msg = self._response_parser(False).extract_sse_payload(msg)
-            if msg is None:
-                return None
-        try:
-            raw = json.loads(msg)
-        except (ValueError, TypeError) as exc:
-            raise self.RESPONSE_PROFILE.error('Invalid model response.', ModelFailureOrigin.PROTOCOL) from exc
-        if not isinstance(raw, dict):
-            raise self.RESPONSE_PROFILE.error('Invalid model response.', ModelFailureOrigin.PROTOCOL)
-        fields = self.RESPONSE_PROFILE.extract_error(raw)
-        if fields is not None:
-            code, error_type = fields
-            raise self.RESPONSE_PROFILE.error('Provider returned a model error.', ModelFailureOrigin.PROVIDER,
-                                              provider_error_code=code, provider_error_type=error_type)
-        message = self._convert_msg_format(raw)
-        if stream_output:
-            color = stream_output.get('color') if isinstance(stream_output, dict) else None
-            for item in (message.get('choices', []) if isinstance(message, dict) else []):
-                delta = item.get('delta', {})
-                if (content := delta.get('content', '')) and not delta.get('tool_calls'):
-                    self._stream_output(content, color)
-        return message
+        parser = self._response_parser(stream_output)
+        return parser.parse_response_frame(msg) if stream_output else parser.parse_json_payload(msg)
