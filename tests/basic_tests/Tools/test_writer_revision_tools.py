@@ -283,7 +283,7 @@ def test_image_update_policy_distinguishes_user_patch_from_persisted_sync():
             block=updated_image,
         )],
     )
-    with pytest.raises(ValueError, match='cannot be updated or moved'):
+    with pytest.raises(ValueError, match='cannot be updated'):
         apply_patch_to_ir(source, update_patch)
 
     persisted = apply_persisted_patch_hunk(source, update_patch.hunks[0])
@@ -303,8 +303,9 @@ def test_image_update_policy_distinguishes_user_patch_from_persisted_sync():
             index=0,
         )],
     )
-    with pytest.raises(ValueError, match='cannot be updated or moved'):
-        apply_patch_to_ir(source, move_patch)
+    moved, _ = apply_patch_to_ir(source, move_patch)
+    assert [block.node_id for block in moved.blocks] == ['image-existing', 'anchor']
+    assert moved.blocks[0] == image
 
 
 def test_document_diff_round_trips_arbitrary_visible_edits():
@@ -411,8 +412,14 @@ def test_locate_revision_target_supports_ir_and_markdown():
         assert located_plain_text.targets[0].content_ref.document_root is True
 
 
-def test_normalize_move_plan_uses_destination_ref():
+@pytest.mark.parametrize('block_type', ['paragraph', 'image'])
+def test_normalize_move_plan_uses_destination_ref(block_type):
     tool = WriterRevisionTools()
+    document = WriterDocument(
+        document_id='doc-1', stage='final',
+        blocks=[_image_block('move') if block_type == 'image' else _block('move', 'Body'),
+                _block('anchor', 'Anchor')],
+    )
     source_ref = ContentRef(node_id='move')
     destination_ref = ContentRef(node_id='anchor')
     plan = ModifyPlan(
@@ -428,9 +435,10 @@ def test_normalize_move_plan_uses_destination_ref():
 
     normalized = tool._normalize_modify_plan(
         plan,
-        WritingTask(query='移动段落', task_type='revise'),
+        WritingTask(query='Move content', task_type='revise'),
         [source_ref],
         {tool._content_ref_key(source_ref), tool._content_ref_key(destination_ref)},
+        document=document,
     )
 
     assert normalized.instructions[0].destination_ref == destination_ref

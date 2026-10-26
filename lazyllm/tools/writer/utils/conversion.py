@@ -20,7 +20,8 @@ from .pandoc import markdown_to_latex
 from .artifact import deserialize_artifact_json, serialize_artifact_json
 from .markdown_inline import MarkdownInlineContent, parse_markdown_inline
 from .markdown_ids import markdown_anchor_ids, next_markdown_node_id
-from .serialization import CALLOUT_MARKER_RE, slice_spans_from
+from .serialization import CALLOUT_MARKER_RE, slice_spans_from, _split_markdown_image_paragraph
+from .image_groups import split_image_group_markdown, image_group_markdown
 from .tables import table_grid
 
 
@@ -67,6 +68,7 @@ def _document_signature(document: WriterDocument) -> str:
     return _signature({
         'title': document.title,
         'blocks': [_block_snapshot(block) for block in document.blocks],
+        'image_groups': document.metadata.get('image_groups', []),
     })
 
 
@@ -100,7 +102,8 @@ def _slice_inline(value: _InlineContent, start: int) -> _InlineContent:
 class _MarkdownParser:
     def __init__(self, markdown: str, document_id: str):
         self.markdown = (markdown or '').replace('\r\n', '\n').replace('\r', '\n')
-        self.parser_markdown = strip_markdown_heading_numbering_config(self.markdown)
+        visible_markdown, self.image_groups = split_image_group_markdown(self.markdown)
+        self.parser_markdown = strip_markdown_heading_numbering_config(visible_markdown)
         self.heading_numbering = parse_markdown_heading_numbering_config(self.markdown)
         self.document_id = _normalize_document_id(document_id)
         self.sequence = 0
@@ -112,7 +115,8 @@ class _MarkdownParser:
         self.parser = mistune.create_markdown(
             renderer='ast', plugins=['table', 'strikethrough', 'math'],
         )
-        self.tokens = self.parser(self.parser_markdown)
+        self.tokens = [part for token in self.parser(self.parser_markdown)
+                       for part in _split_markdown_image_paragraph(token)]
         self.reserved_ids = markdown_anchor_ids(self.tokens)
 
     def next_id(self, block_type: str) -> str:
@@ -406,6 +410,7 @@ class _MarkdownParser:
             metadata={
                 'source': 'lazyllm-markdown-conversion',
                 'markdown_source': self.markdown,
+                **({'image_groups': self.image_groups} if self.image_groups else {}),
                 **({
                     'heading_numbering': {
                         'ordered_style': self.heading_numbering['ordered_style'],
@@ -504,6 +509,9 @@ def _render_styled_range(block: WriterBlock, start: int, end: int) -> str:
 def _render_inline(block: WriterBlock) -> str:  # noqa: C901
     content = block.content
     media = next((item for item in block.references if item.get('type') == 'media_asset'), None)
+    if media is None and block.type == 'image':
+        media = next((item for item in block.references
+                      if item.get('type') in {'preview_asset', 'wechat_image'}), None)
     if media:
         url = str(media.get('url') or media.get('path') or '').replace(' ', '%20')
         if url:
@@ -761,7 +769,7 @@ def render_document_markdown(document: WriterDocument) -> str:
         'ordered_style': ordered_style,
     })
     rendered = '\n\n'.join(filter(None, [numbering_config, title, body])).rstrip()
-    return f'{rendered}\n' if rendered else ''
+    return image_group_markdown(f'{rendered}\n' if rendered else '', document)
 
 
 def writer_document_to_markdown(document: WriterDocument) -> str:
