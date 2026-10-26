@@ -3879,3 +3879,49 @@ Note:
     - The ``future`` attribute holds the background task; use ``helper.future.result()`` to retrieve the final result.
     - Mirrors the logic of the synchronous ``__call__``, replacing ``time.sleep`` with ``await asyncio.sleep``.
 ''')
+
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMTTS', '''\
+智谱语音合成模块，通过 audio/speech 接口生成音频并返回 LazyLLM 文件结果。
+
+Args:
+    model_name (str, optional): 模型名称，默认为 glm-tts。
+    api_key (str, optional): API 密钥，省略时读取配置。
+    base_url (str, optional): API 地址，默认为 https://open.bigmodel.cn/api/paas/v4。
+    return_trace (bool): 是否返回追踪信息，默认为 False。
+    **kwargs: 传递给语音合成基类的其他参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.glm.GLMTTS', '''\
+Zhipu speech synthesis through audio/speech, returning a LazyLLM encoded audio file.
+
+Args:
+    model_name (str, optional): Model name, defaults to glm-tts.
+    api_key (str, optional): API key, read from configuration when omitted.
+    base_url (str, optional): API endpoint, defaults to https://open.bigmodel.cn/api/paas/v4.
+    return_trace (bool): Whether to return trace information, defaults to False.
+    **kwargs: Additional speech synthesis base class parameters.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMText2Video', '''\
+智谱视频生成模块，支持 CogVideoX 和 Vidu 模型，提交任务后轮询结果并返回 LazyLLM 视频文件。
+根据模型支持文本、首帧、首尾帧或参考图输入；image_roles 用于指定输入图片的角色。
+
+Args:
+    model_name (str, optional): 模型名称，默认为 cogvideox-3。
+    api_key (str, optional): API 密钥，省略时读取配置。
+    base_url (str, optional): API 地址，默认为 https://open.bigmodel.cn/api/paas/v4。
+    return_trace (bool): 是否返回追踪信息，默认为 False。
+    **kwargs: 传递给视频生成基类的其他参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.glm.GLMText2Video', '''\
+Zhipu video generation for CogVideoX and Vidu, submitting and polling tasks to return LazyLLM video files.
+Models accept text, first frames, first/last frames, or reference images; image_roles identifies each input image role.
+
+Args:
+    model_name (str, optional): Model name, defaults to cogvideox-3.
+    api_key (str, optional): API key, read from configuration when omitted.
+    base_url (str, optional): API endpoint, defaults to https://open.bigmodel.cn/api/paas/v4.
+    return_trace (bool): Whether to return trace information, defaults to False.
+    **kwargs: Additional video generation base class parameters.
+''')

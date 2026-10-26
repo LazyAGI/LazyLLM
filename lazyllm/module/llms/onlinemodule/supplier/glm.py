@@ -365,42 +365,17 @@ def _glm_request(method, base_url, endpoint, headers, *, binary=False, timeout=1
     url = base_url.rstrip('/')
     if not url.endswith('/' + endpoint):
         url += '/' + endpoint
-    status = None
-    try:
-        # Creation requests are billable: do not automatically retry them.
-        with requests.request(method, url, headers=headers, timeout=timeout,
-                              allow_redirects=False, **kwargs) as response:
-            status = response.status_code
-            if not 200 <= status < 300:
-                raise RuntimeError('GLM provider rejected request')
-            if binary:
-                if 'json' in response.headers.get('Content-Type', '').lower() or not response.content:
-                    raise RuntimeError('GLM returned no audio')
-                return response.content
-            result = response.json()
-            if not isinstance(result, dict) or result.get('error'):
-                raise RuntimeError('GLM returned invalid result')
-            return result
-    except Exception as exc:
-        lazyllm.LOG.error(f'GLM request failed endpoint={endpoint.split("/")[0]} '
-                          f'status={status} error_type={type(exc).__name__}')
-        raise RuntimeError(f'GLM request failed (HTTP {status}, {type(exc).__name__})') from None
+    with requests.request(method, url, headers=headers, timeout=timeout,
+                          allow_redirects=False, **kwargs) as response:
+        response.raise_for_status()
+        return response.content if binary else response.json()
 
 
 def _glm_download(url, media_type):
-    try:
-        # Never send provider credentials to the generated-file host.
-        with requests.get(url, timeout=180) as response:
-            response.raise_for_status()
-            content_type = response.headers.get('Content-Type', '').lower()
-            if content_type and not content_type.startswith((media_type + '/', 'application/octet-stream')):
-                raise ValueError('Unexpected generated media type')
-            if not response.content:
-                raise ValueError('Empty generated media')
-            return response.content
-    except Exception as exc:
-        lazyllm.LOG.error(f'GLM download failed error_type={type(exc).__name__}')
-        raise RuntimeError('GLM generated media download failed') from None
+    # Generated-file hosts must not receive the provider's authorization header.
+    with requests.get(url, timeout=180) as response:
+        response.raise_for_status()
+        return response.content
 
 
 class GLMSTT(LazyLLMOnlineSTTModuleBase):
@@ -496,6 +471,25 @@ class GLMText2Video(LazyLLMOnlineText2VideoModuleBase):
             raise ValueError('timeout must be positive and poll_interval non-negative')
         selected = _glm_model_name(model or self._model_name)
         payload = {'model': selected, 'prompt': input}
+        urls, roles = self._video_images(files, image_roles)
+        self._validate_video_images(selected, urls, roles)
+        if urls:
+            payload['image_url'] = urls[0] if len(urls) == 1 else urls
+        size = self._video_size(selected, size, resolution, ratio)
+        is_vidu = selected.lower().startswith('vidu')
+        for key, value in {'duration': duration, 'size': size}.items():
+            if value is not None:
+                payload[key] = value
+        options = {'aspect_ratio': ratio, 'style': style, 'movement_amplitude': movement_amplitude} if is_vidu else {
+            'quality': quality, 'with_audio': with_audio, 'fps': fps}
+        payload.update({key: value for key, value in options.items() if value is not None})
+        base = url or self._base_url
+        headers = self._header
+        deadline = time.monotonic() + timeout
+        task = _glm_request('POST', base, 'videos/generations', headers, json=payload, timeout=min(60, timeout))
+        return self._wait_video(task['id'], base, headers, deadline, poll_interval)
+
+    def _video_images(self, files, image_roles):
         urls = []
         for path in files or []:
             if path.startswith(('https://', 'http://', 'data:')):
@@ -509,7 +503,10 @@ class GLMText2Video(LazyLLMOnlineText2VideoModuleBase):
         if roles == ['last_frame', 'first_frame']:
             urls.reverse()
             roles.reverse()
-        is_vidu = selected.lower().startswith('vidu')
+        return urls, roles
+
+    @staticmethod
+    def _validate_video_images(selected, urls, roles):
         if selected.endswith('-text') and urls:
             raise ValueError('Vidu text models do not accept images; choose an image or start-end model')
         if selected.endswith('-image') and len(urls) != 1:
@@ -521,10 +518,11 @@ class GLMText2Video(LazyLLMOnlineText2VideoModuleBase):
                 raise ValueError('Vidu reference models require reference images')
         elif roles and roles not in (['first_frame'], ['first_frame', 'last_frame']):
             raise ValueError('This GLM video model accepts first frame or first/last frames')
-        if not is_vidu and len(urls) > 2:
+        if not selected.lower().startswith('vidu') and len(urls) > 2:
             raise ValueError('CogVideoX accepts at most first and last frame')
-        if urls:
-            payload['image_url'] = urls[0] if len(urls) == 1 else urls
+
+    @staticmethod
+    def _video_size(selected, size, resolution, ratio):
         if size is None and resolution:
             sizes = {'720p': ('1280x720', '720x1280'), '1080p': ('1920x1080', '1080x1920'),
                      '4k': ('3840x2160', '2160x3840'), '480p': ('720x480', '480x720')}
@@ -533,19 +531,9 @@ class GLMText2Video(LazyLLMOnlineText2VideoModuleBase):
             # CogVideoX-3 starts at 720p. The tool default is 480p for other providers.
             level = '720p' if selected.lower() == 'cogvideox-3' and resolution.lower() == '480p' else resolution.lower()
             size = '1024x1024' if ratio == '1:1' else sizes[level][ratio == '9:16']
-        for key, value in {'duration': duration, 'size': size}.items():
-            if value is not None:
-                payload[key] = value
-        options = {'aspect_ratio': ratio, 'style': style, 'movement_amplitude': movement_amplitude} if is_vidu else {
-            'quality': quality, 'with_audio': with_audio, 'fps': fps}
-        payload.update({key: value for key, value in options.items() if value is not None})
-        base = url or self._base_url
-        headers = self._header
-        deadline = time.monotonic() + timeout
-        task = _glm_request('POST', base, 'videos/generations', headers, json=payload, timeout=min(60, timeout))
-        task_id = task.get('id')
-        if not isinstance(task_id, str) or not task_id:
-            raise RuntimeError('GLM video task creation returned no task id')
+        return size
+
+    def _wait_video(self, task_id, base, headers, deadline, poll_interval):
         while (remaining := deadline - time.monotonic()) > 0:
             result = _glm_request('GET', base, 'async-result/' + quote(task_id, safe=''), headers,
                                   timeout=min(60, remaining))
