@@ -7,7 +7,7 @@ import random
 import time
 import uuid
 from typing import Tuple, List, Dict, Union, Any, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 from operator import itemgetter as itemget
 
 import lazyllm
@@ -76,9 +76,10 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         return self._get_chat_url(self._base_url)
 
     def _get_chat_url(self, url):
-        if url.rstrip('/').endswith('chat/completions'):
+        parts = urlsplit(url)
+        if parts.path.rstrip('/').endswith('chat/completions'):
             return url
-        return urljoin(url, 'chat/completions')
+        return parts._replace(path=parts.path.rstrip('/') + '/chat/completions').geturl()
 
     def _get_models_list(self):
         url = urljoin(self._base_url, 'models')
