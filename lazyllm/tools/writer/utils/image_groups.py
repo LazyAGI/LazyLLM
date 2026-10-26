@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import json
 from typing import Literal
+from urllib.parse import quote
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 from lazyllm.thirdparty import bs4, mistune
 from ..data_models.writer_ir import WriterBlock, WriterDocument
+
+
+def _normalize_image_source(source: str) -> str:
+    return quote(source, safe=':/?#@!$&()*+,;=%')
 
 
 class ImageReference(BaseModel):
@@ -20,7 +25,7 @@ class ImageGroup(BaseModel):
 
     @model_validator(mode='after')
     def validate_images(self):
-        keys = [(image.source, image.occurrence) for image in self.images]
+        keys = [(_normalize_image_source(image.source), image.occurrence) for image in self.images]
         if len(keys) != len(set(keys)):
             raise ValueError('Image group contains duplicate references.')
         return self
@@ -60,12 +65,12 @@ def image_source(block: WriterBlock) -> str:
     reference = next((ref for ref in block.references if ref.get('type') == 'media_asset'), None)
     if reference is None:
         reference = next((ref for ref in block.references if ref.get('type') in {'preview_asset', 'wechat_image'}), {})
-    return str(reference.get('url') or reference.get('path') or reference.get('id') or '')
+    return _normalize_image_source(str(reference.get('url') or reference.get('path') or reference.get('id') or ''))
 
 
 def sliding_image_groups(document: WriterDocument) -> dict[str, list[str]]:
     settings = [ImageGroup.model_validate(group) for group in document.metadata.get('image_groups', [])]
-    sliding = {frozenset((image.source, image.occurrence) for image in group.images)
+    sliding = {frozenset((_normalize_image_source(image.source), image.occurrence) for image in group.images)
                for group in settings if group.layout == 'sliding'}
     counts: dict[str, int] = {}
     result: dict[str, list[str]] = {}
@@ -83,6 +88,9 @@ def sliding_image_groups(document: WriterDocument) -> dict[str, list[str]]:
         for block in blocks:
             if block.type == 'image' and not block.children:
                 source = image_source(block)
+                if not source:
+                    finish()
+                    continue
                 occurrence = counts.get(source, 0)
                 counts[source] = occurrence + 1
                 members.append(block)
