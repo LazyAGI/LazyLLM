@@ -12,6 +12,8 @@ pytesseract
 openai-whisper
 pydub
 pytest-cov
+requests[socks]>=2.32.2
+trustme>=1.2.1
 rapidfuzz
 dashscope>=1.25.7
 zhipuai>=2.1.5.20250708

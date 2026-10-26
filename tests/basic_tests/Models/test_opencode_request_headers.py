@@ -4,9 +4,11 @@ from threading import Barrier
 
 import pytest
 import requests
+from urllib3.response import HTTPResponse
 
 import lazyllm
 from lazyllm.module.llms.onlinemodule.base.model_call_runner import ModelAttemptState
+from lazyllm.module.llms.onlinemodule.base.model_request import ModelCallControl
 from lazyllm.module.llms.onlinemodule.supplier.claude import ClaudeChat
 from lazyllm.module.llms.onlinemodule.supplier.deepseek import DeepSeekChat
 from lazyllm.module.llms.onlinemodule.supplier.openai import OpenAIChat
@@ -28,18 +30,22 @@ def _respond():
     response._content = json.dumps({
         'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': 'ok'}, 'finish_reason': 'stop'}],
     }).encode()
+    response._content_consumed = True
+    response.raw = HTTPResponse()
     return response
 
 
-def _call(module, url=GO_URL):
+def _call(module, url=GO_URL, call_control=None):
     return module._forward_impl(
         {'model': 'deepseek-v4.1-flash', 'messages': [{'role': 'user', 'content': 'hello'}]},
         runtime_url=url, stream_output=False, proxies=None, request_timeout=10, state=ModelAttemptState(),
+        call_control=call_control,
     )
 
 
 @pytest.mark.parametrize('conversation_metadata', [False, True])
-def test_opencode_uses_stable_conversation_session_without_mutating_auth(monkeypatch, conversation_metadata):
+@pytest.mark.parametrize('controlled', [False, True])
+def test_opencode_uses_stable_conversation_session_without_mutating_auth(monkeypatch, conversation_metadata, controlled):
     module = OpenAIChat(api_key='test-key', stream=False)
     original_headers = dict(module._header)
     sent = []
@@ -55,7 +61,7 @@ def test_opencode_uses_stable_conversation_session_without_mutating_auth(monkeyp
                 'session_id': request_id if conversation_metadata else 'conversation-1',
                 'trace_metadata': {'conversation_id': 'conversation-1'} if conversation_metadata else {},
             })
-            _call(module)
+            _call(module, call_control=ModelCallControl() if controlled else None)
     assert [headers['x-opencode-session'] for headers in sent] == ['conversation-1', 'conversation-1']
     assert all(headers['User-Agent'].startswith('LazyLLM/') for headers in sent)
     assert all(headers['Authorization'] == 'Bearer test-key' for headers in sent)
@@ -141,8 +147,7 @@ def test_native_supplier_keeps_its_authentication_headers(monkeypatch):
 
     def post(url, **kwargs):
         sent.append(kwargs['headers'])
-        response = requests.Response()
-        response.status_code = 200
+        response = _respond()
         response._content = json.dumps({
             'type': 'message', 'role': 'assistant', 'content': [{'type': 'text', 'text': 'ok'}],
             'stop_reason': 'end_turn', 'usage': {'input_tokens': 1, 'output_tokens': 1},

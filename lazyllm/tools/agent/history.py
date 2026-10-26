@@ -1,5 +1,31 @@
 from dataclasses import dataclass
+import inspect
 from typing import Any, Dict, List, Tuple
+
+
+def invoke_history_compactor(compactor, prior, keep_full_turns, *, current_round_messages=None,
+                             workspace=None, remaining_rounds=None, **kwargs):
+    current = list(current_round_messages or [])
+    kwargs['current_round_messages'] = current
+    try:
+        parameters = inspect.signature(compactor).parameters
+        accepts_kwargs = any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
+        if workspace is not None and (accepts_kwargs or 'runtime_state' in parameters):
+            kwargs['runtime_state'] = workspace.setdefault('_history_projection_state', {})
+        if remaining_rounds is not None and (accepts_kwargs or 'remaining_rounds' in parameters):
+            kwargs['remaining_rounds'] = remaining_rounds
+        if not accepts_kwargs:
+            kwargs = {key: value for key, value in kwargs.items() if key in parameters}
+    except (TypeError, ValueError):
+        pass
+    compacted = compactor(prior, keep_full_turns, **kwargs)
+    if isinstance(compacted, tuple) and len(compacted) == 2 \
+            and all(isinstance(part, list) for part in compacted):
+        return compacted
+    compacted = list(compacted)
+    if current and len(compacted) == len(prior) + len(current):
+        return compacted[:len(prior)], compacted[len(prior):]
+    return compacted, current
 
 
 @dataclass(frozen=True)

@@ -9,6 +9,7 @@ import lazyllm
 import requests
 
 from .model_call_runner import ModelAttemptState, is_retryable_transport_error
+from .model_request import response_chunks
 from .model_outcome import (
     ModelFailure,
     ModelFailureCode,
@@ -162,10 +163,11 @@ OPENAI_COMPATIBLE_PROFILE = ProviderResponseProfile(
 )
 
 
-def raise_for_http_error(response: Any, profile: ProviderResponseProfile) -> None:
+def raise_for_http_error(response: Any, profile: ProviderResponseProfile, *, control=None) -> None:
     if response.status_code == 200: return
     try:
-        error_message = response.json()
+        error_message = (json.loads(b''.join(response_chunks(response, control)))
+                         if control is not None else response.json())
     except (TypeError, ValueError, requests.RequestException):
         error_message = {}
     fields = profile.extract_error(error_message) if isinstance(error_message, dict) else None
