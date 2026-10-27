@@ -244,6 +244,7 @@ class SciverseSearch(SearchBase):
             chunk = str(item.get('chunk') or item.get('text') or item.get('content') or '').strip()
             content = chunk or abstract
             extra = {
+                'abstract': abstract,
                 'doc_id': item.get('doc_id') or item.get('document_id') or item.get('id'),
                 'doi': doi,
                 'year': item.get('publication_published_year') or item.get('year') or item.get('published_year'),

@@ -169,6 +169,7 @@ def test_sciverse_preserves_snippet_order(monkeypatch, meta, include_content, ab
               else provider.search('query', include_content=include_content))[0]
     snippet = '\n'.join(part for part in (abstract, chunk) if part)
     assert result['snippet'] == snippet[:700]
+    assert result['extra'].get('abstract', '') == abstract
     assert result['extra'].get('truncated', False) == (len(snippet) > 700)
     if include_content and (chunk or abstract):
         assert result['extra']['content'] == (chunk or abstract)[:700]
