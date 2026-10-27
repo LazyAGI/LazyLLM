@@ -148,6 +148,18 @@ def _skill_script_manager(tmp_path):
     return ToolManager(skill_manager.get_skill_tools()), calls
 
 
+def _skill_command_manager(tmp_path):
+    skill_manager = SkillManager(dir=str(tmp_path), sandbox=object())
+    calls = []
+
+    def execute(**kwargs):
+        calls.append(kwargs)
+        return {key: value for key, value in kwargs.items() if value is not None}
+
+    skill_manager._run_loaded_skill_command = execute
+    return ToolManager(skill_manager.get_skill_tools()), calls
+
+
 def test_unknown_tool_precedes_argument_validation_and_suggests_visible_tool():
     manager = ToolManager([typed_search])
     call = {'function': {'name': 'typed_seach', 'arguments': '{not-json'}}
@@ -322,6 +334,108 @@ def test_run_skill_script_rejects_invalid_json_encoded_args(tmp_path, encoded_ar
     assert result['value'].startswith('Invalid arguments: args: expected a JSON array of strings')
     assert expected in result['value']
     assert 'Example: {"args":["--query","test"]}.' in result['value']
+    assert calls == []
+
+
+def test_run_skill_command_accepts_json_encoded_argv(tmp_path):
+    manager, calls = _skill_command_manager(tmp_path)
+
+    result = manager(_call('run_skill_command', {
+        'name': 'document-converter',
+        'argv': json.dumps(['pandoc', 'input.md', '-o', 'output.html']),
+    }))[0]
+
+    assert result == {'ok': True, 'value': {
+        'name': 'document-converter',
+        'argv': ['pandoc', 'input.md', '-o', 'output.html'],
+    }}
+    assert len(calls) == 1
+    assert calls[0]['argv'] == ['pandoc', 'input.md', '-o', 'output.html']
+
+
+def test_run_skill_command_keeps_native_argv(tmp_path):
+    manager, calls = _skill_command_manager(tmp_path)
+
+    result = manager(_call('run_skill_command', {
+        'name': 'document-converter',
+        'argv': ['jq', '.title', 'input.json'],
+    }))[0]
+
+    assert result['ok'] is True
+    assert result['value']['argv'] == ['jq', '.title', 'input.json']
+    assert len(calls) == 1
+    assert calls[0]['argv'] == ['jq', '.title', 'input.json']
+
+
+def test_run_skill_command_reports_parent_cwd_as_filesystem_denied(tmp_path):
+    skill_dir = tmp_path / 'sandbox-files-output'
+    skill_dir.mkdir()
+    (skill_dir / 'SKILL.md').write_text(
+        '---\n'
+        'name: sandbox-files-output\n'
+        'description: Exercise sandbox file boundaries\n'
+        '---\n',
+        encoding='utf-8',
+    )
+    skill_manager = SkillManager(dir=str(tmp_path), sandbox=object())
+    assert skill_manager.get_skill('sandbox-files-output')['status'] == 'ok'
+    manager = ToolManager(skill_manager.get_skill_tools())
+
+    result = manager(_call('run_skill_command', {
+        'name': 'sandbox-files-output',
+        'argv': ['cat', 'SKILL.md'],
+        'cwd': '..',
+    }))[0]
+
+    assert result['ok'] is False
+    assert result['error_type'] == 'FILESYSTEM_DENIED'
+    assert result['blocked_resource'] == '..'
+    assert 'cwd' in result['value']
+
+
+@pytest.mark.parametrize('tool_name, arguments', [
+    ('run_skill_script', {'rel_path': 'scripts/check.py'}),
+    ('run_skill_command', {'argv': ['python3', '--version']}),
+])
+def test_skill_execution_requires_get_skill_without_false_success(tmp_path, tool_name, arguments):
+    skill_dir = tmp_path / 'guarded-skill'
+    scripts_dir = skill_dir / 'scripts'
+    scripts_dir.mkdir(parents=True)
+    (skill_dir / 'SKILL.md').write_text(
+        '---\n'
+        'name: guarded-skill\n'
+        'description: Verify the loaded Skill execution guard\n'
+        '---\n',
+        encoding='utf-8',
+    )
+    (scripts_dir / 'check.py').write_text('print("ok")\n', encoding='utf-8')
+    skill_manager = SkillManager(dir=str(tmp_path), sandbox=object())
+    manager = ToolManager(skill_manager.get_skill_tools())
+
+    result = manager(_call(tool_name, {'name': 'guarded-skill', **arguments}))[0]
+
+    assert result['ok'] is False
+    assert result['error_type'] == 'SKILL_NOT_LOADED'
+    assert 'get_skill' in result['value']
+
+
+@pytest.mark.parametrize('encoded_argv, expected', [
+    ('pandoc input.md', 'invalid JSON string'),
+    ('{"command": "pandoc"}', 'received dict'),
+    ('[1]', 'non-string item at index 0'),
+])
+def test_run_skill_command_rejects_invalid_json_encoded_argv(tmp_path, encoded_argv, expected):
+    manager, calls = _skill_command_manager(tmp_path)
+
+    result = manager(_call('run_skill_command', {
+        'name': 'document-converter',
+        'argv': encoded_argv,
+    }))[0]
+
+    assert result['ok'] is False
+    assert result['value'].startswith('Invalid arguments: argv: expected a JSON array of strings')
+    assert expected in result['value']
+    assert 'Example: {"argv":["--query","test"]}.' in result['value']
     assert calls == []
 
 
