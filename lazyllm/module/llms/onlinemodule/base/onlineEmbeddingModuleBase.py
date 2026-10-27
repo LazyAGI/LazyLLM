@@ -171,3 +171,7 @@ class LazyLLMOnlineMultimodalEmbedModuleBase(OnlineEmbeddingModuleBase):
 
 class LazyLLMOnlineRerankModuleBase(OnlineEmbeddingModuleBase):
     __lazyllm_registry_key__ = LLMType.RERANK
+
+    @property
+    def type(self):
+        return 'RERANK'

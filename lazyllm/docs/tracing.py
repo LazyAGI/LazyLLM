@@ -7,6 +7,11 @@ import lazyllm.tracing.datamodel.raw
 import lazyllm.tracing.datamodel.structured
 import lazyllm.tracing.errors
 
+try:
+    import lazyllm.tracing.backends.local.backend as _local_backend
+except ImportError:
+    _local_backend = None
+
 # ============= Tracing helpers
 
 add_chinese_doc_trace = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing)
@@ -1270,3 +1275,13 @@ Exception raised when a consume backend request or response parsing fails.
 Common causes include missing connection configuration, authentication failure, network
 errors, invalid JSON responses, or unexpected backend response shapes.
 ''')
+
+if _local_backend is not None:
+    add_chinese_doc_trace('backends.local.backend.LocalFileSpanExporter',
+                          '将 spans 按 trace 写入本地 JSONL 文件；storage_dir 可指定存储目录。')
+    add_english_doc_trace('backends.local.backend.LocalFileSpanExporter',
+                          'Export spans by trace to local JSONL files; storage_dir sets the storage directory.')
+    add_chinese_doc_trace('backends.local.backend.LocalConsumeBackend',
+                          '从本地 JSONL 文件读取 trace 和 spans；storage_dir 可指定存储目录。')
+    add_english_doc_trace('backends.local.backend.LocalConsumeBackend',
+                          'Read traces and spans from local JSONL files; storage_dir sets the storage directory.')

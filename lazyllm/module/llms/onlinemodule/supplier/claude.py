@@ -1,8 +1,7 @@
 import json
-import re
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urljoin
-from ..base import OnlineChatModuleBase
+from ..base import OnlineChatModuleBase, ModelFailureCode
 
 
 class ClaudeChat(OnlineChatModuleBase):
@@ -13,6 +12,17 @@ class ClaudeChat(OnlineChatModuleBase):
     _ANTHROPIC_VERSION = '2023-06-01'
     _DEFAULT_MAX_TOKENS = 4096
     _message_format = 'anthropic'
+    PROVIDER_NAME = 'anthropic'
+    RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(type_map={
+        'authentication_error': ModelFailureCode.AUTHENTICATION_FAILED,
+        'permission_error': ModelFailureCode.PERMISSION_DENIED,
+        'not_found_error': ModelFailureCode.NOT_FOUND,
+        'rate_limit_error': ModelFailureCode.RATE_LIMITED,
+        'overloaded_error': ModelFailureCode.PROVIDER_OVERLOADED,
+        'api_error': ModelFailureCode.PROVIDER_INTERNAL_ERROR,
+    })
+    _FINISH_REASONS = {'end_turn': 'stop', 'stop_sequence': 'stop', 'tool_use': 'tool_calls',
+                       'max_tokens': 'length', 'refusal': 'content_filter'}
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
@@ -56,6 +66,9 @@ class ClaudeChat(OnlineChatModuleBase):
             })
         return result
 
+    def _output_token_key(self, data):
+        return 'max_tokens'
+
     def _prepare_request_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         data = dict(data)
         data.setdefault('max_tokens', self._DEFAULT_MAX_TOKENS)
@@ -76,7 +89,8 @@ class ClaudeChat(OnlineChatModuleBase):
             if tool_calls:
                 message['tool_calls'] = tool_calls
             usage = msg.get('usage', {})
-            return {'choices': [{'message': message}],
+            return {'choices': [{'message': message,
+                                 'finish_reason': ClaudeChat._FINISH_REASONS.get(msg.get('stop_reason'), 'unknown')}],
                     'usage': {'prompt_tokens': usage.get('input_tokens', -1),
                               'completion_tokens': usage.get('output_tokens', -1)}}
         if msg_type == 'content_block_delta':
@@ -103,22 +117,31 @@ class ClaudeChat(OnlineChatModuleBase):
                     'usage': {'prompt_tokens': usage.get('input_tokens', -1), 'completion_tokens': -1}}
         if msg_type == 'message_delta':
             usage = msg.get('usage', {})
-            return {'choices': [{'delta': {'role': 'assistant', 'content': ''}}],
+            return {'choices': [{'delta': {'role': 'assistant', 'content': ''},
+                                 'finish_reason': ClaudeChat._FINISH_REASONS.get(
+                                     msg.get('delta', {}).get('stop_reason'), 'unknown')}],
                     'usage': {'prompt_tokens': -1, 'completion_tokens': usage.get('output_tokens', -1)}}
         return ''  # ping / content_block_stop / message_stop → filtered out
 
+    @staticmethod
+    def _merge_request_usage(existing, message):
+        usage = dict(existing or {'prompt_tokens': -1, 'completion_tokens': -1})
+        for key, value in (message.get('usage') or {}).items():
+            if key in ('prompt_tokens', 'completion_tokens') and isinstance(value, (int, float)) and value >= 0:
+                usage[key] = value
+        usage['provider_usage'] = {key: usage[key] for key in ('prompt_tokens', 'completion_tokens')}
+        return usage
+
+    @classmethod
+    def _extract_usage(cls, frames):
+        usage = cls._merge_request_usage(None, {})
+        for frame in frames:
+            usage = cls._merge_request_usage(usage, frame)
+        return usage
+
+    def _update_usage(self, message, state):
+        state.usage = self._merge_request_usage(state.usage, message)
+
     def _parse_response_frame(self, msg: Union[str, bytes], stream_output: bool):
-        if isinstance(msg, bytes):
-            msg = re.sub(r'^data:\s*', '', msg.decode('utf-8'))
-        try:
-            message = self._convert_msg_format(json.loads(msg))
-            if not stream_output:
-                return message
-            color = stream_output.get('color') if isinstance(stream_output, dict) else None
-            for item in (message.get('choices', []) if isinstance(message, dict) else []):
-                delta = item.get('delta', {})
-                if (content := delta.get('content', '')) and not delta.get('tool_calls'):
-                    self._stream_output(content, color)
-            return message
-        except Exception:
-            return ''
+        parser = self._response_parser(stream_output)
+        return parser.parse_response_frame(msg) if stream_output else parser.parse_json_payload(msg)

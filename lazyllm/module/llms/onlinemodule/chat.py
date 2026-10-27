@@ -5,6 +5,7 @@ from lazyllm.common.bind import _MetaBind
 
 from ...servermodule import LLMBase, StaticParams
 from .base import OnlineChatModuleBase
+from .base.model_request import _ControlledModelCall
 from .base.utils import select_source_with_default_key, resolve_online_params
 from .dynamic_router import _DynamicSourceRouterMixin, dynamic_model_config_context
 
@@ -28,7 +29,7 @@ class _ChatModuleMeta(_MetaBind):
         return super().__instancecheck__(__instance)
 
 
-class OnlineChatModule(_DynamicSourceRouterMixin, LLMBase, metaclass=_ChatModuleMeta):
+class OnlineChatModule(_ControlledModelCall, _DynamicSourceRouterMixin, LLMBase, metaclass=_ChatModuleMeta):
     _dynamic_module_slot = 'chat'
     _dynamic_source_error = 'No source is configured for dynamic LLM source.'
     _timeout = 180
@@ -81,3 +82,7 @@ class OnlineChatModule(_DynamicSourceRouterMixin, LLMBase, metaclass=_ChatModule
         supplier.prompt(getattr(self, '_prompt', None))
         supplier.formatter(getattr(self, '_formatter', None))
         return supplier
+
+    @classmethod
+    def merge_usage_records(cls, existing, usage):
+        return OnlineChatModuleBase.merge_usage_records(existing, usage)
