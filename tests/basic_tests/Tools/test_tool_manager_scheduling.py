@@ -286,3 +286,33 @@ def test_runtime_key_resolution_failure_falls_back_to_exclusive_execution():
     )
     access = snapshots[0].access
     assert access.exclusive is True
+
+
+@pytest.mark.parametrize('gateway', [False, True])
+def test_parallel_same_named_tool_construction_keeps_run_closures_isolated(gateway):
+    from concurrent.futures import ThreadPoolExecutor
+    import sys
+    from lazyllm.tools.agent.toolsManager import ToolGroup
+
+    def check(marker):
+        @fc_register(host_file='NONE')
+        def local_tool():
+            '''Return this run's fixed marker.'''
+            return marker
+
+        if gateway:
+            local_tool.__name__ = f'leaf_{marker}'
+            group = ToolGroup([local_tool], name='parallel_fixed_group', desc='Private tools')
+            value = group.make_gateway_tool()({})
+            assert f'leaf_{marker}' in value
+        else:
+            manager = ToolManager([local_tool])
+            assert manager.all_tools[0]({}) == marker
+
+    interval = sys.getswitchinterval()
+    try:
+        sys.setswitchinterval(0.00001)
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(check, range(64)))
+    finally:
+        sys.setswitchinterval(interval)
