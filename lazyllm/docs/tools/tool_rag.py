@@ -9699,3 +9699,29 @@ Returns:
 """)
 
 
+
+add_chinese_doc('rag.store.MilvusStore.rebuild', '''\
+根据序列化参数重建 MilvusStore，不复制现有连接。
+
+Args:
+    uri (str): Milvus 服务地址或本地存储路径。
+    db_name (str): 数据库名称。
+    index_kwargs (dict or list): 索引参数。
+    client_kwargs (dict): 客户端参数。
+
+Returns:
+    MilvusStore: 重建的存储对象。
+''')
+
+add_english_doc('rag.store.MilvusStore.rebuild', '''\
+Rebuild a MilvusStore from serialized parameters without copying a live connection.
+
+Args:
+    uri (str): Milvus endpoint or local storage path.
+    db_name (str): Database name.
+    index_kwargs (dict or list): Index parameters.
+    client_kwargs (dict): Client parameters.
+
+Returns:
+    MilvusStore: Reconstructed store.
+''')

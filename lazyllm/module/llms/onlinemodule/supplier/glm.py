@@ -1,18 +1,19 @@
 import json
 import os
 import uuid
+import time
 import requests
 from typing import Tuple, List, Dict, Union, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, quote
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
     ModelFailureCode, ModelFinish, OnlineChatModuleBase,
     LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase,
-    LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase
+    LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase,
+    LazyLLMOnlineTTSModuleBase, LazyLLMOnlineText2VideoModuleBase
 )
 from ..fileHandler import FileHandlerBase
-from lazyllm.thirdparty import zhipuai
 from lazyllm.components.utils.file_operate import bytes_to_file
 from lazyllm.components.formatter import encode_query_with_filepaths
 
@@ -75,12 +76,16 @@ class GLMChat(OnlineChatModuleBase, FileHandlerBase):
         finish_map={'sensitive': ModelFinish.CONTENT_FILTER},
     )
     TRAINABLE_MODEL_LIST = ['chatglm3-6b', 'chatglm_12b', 'chatglm_32b', 'chatglm_66b', 'chatglm_130b']
-    VLM_MODEL_PREFIX = ['glm-4.5v', 'glm-4.1v', 'glm-4v']
+    VLM_MODEL_PREFIX = ['glm-4.5v', 'glm-4.6v', 'glm-4.1v', 'glm-4v',
+                        'glm-5v', 'glm-5.3-flash', 'autoglm-phone']
     MODEL_NAME = 'glm-4'
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: str = True, return_trace: bool = False, **kwargs):
         base_url = base_url or 'https://open.bigmodel.cn/api/paas/v4/'
+        model = model or lazyllm.config['glm_model_name'] or GLMChat.MODEL_NAME
+        if any(model.lower().startswith(prefix) for prefix in self.VLM_MODEL_PREFIX):
+            kwargs['type'] = LLMType.VLM
         super().__init__(api_key=api_key or self._default_api_key(),
                          model_name=model or lazyllm.config['glm_model_name'] or GLMChat.MODEL_NAME,
                          base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
@@ -109,8 +114,21 @@ class GLMChat(OnlineChatModuleBase, FileHandlerBase):
         return ('You are ChatGLM, an AI assistant developed based on a language model trained by Zhipu AI. '
                 'Your task is to provide appropriate responses and support for user\'s questions and requests.')
 
+    def _get_chat_url(self, url):
+        return url if url.rstrip('/').endswith('chat/completions') else url.rstrip('/') + '/chat/completions'
+
+    def _prepare_request_data(self, data):
+        data = dict(data)
+        data['model'] = _glm_model_name(data.get('model'))
+        return data
+
+    def _format_vl_chat_image_url(self, image_url, mime):
+        if image_url.startswith(('http://', 'https://', 'data:')):
+            return [{'type': 'image_url', 'image_url': {'url': image_url}}]
+        return super()._format_vl_chat_image_url(image_url, mime)
+
     def _get_models_list(self):
-        return ['glm-4', 'glm-4v', 'glm-3-turbo', 'chatglm-turbo', 'cogview-3', 'embedding-2', 'text-embedding']
+        return list(GLM_MODELS)
 
     def _convert_file_format(self, filepath: str) -> str:
         with open(filepath, 'r', encoding='utf-8') as fr:
@@ -280,6 +298,13 @@ class GLMEmbed(LazyLLMOnlineEmbedModuleBase):
         super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name,
                          batch_size=batch_size, **kw)
 
+    def _set_embed_url(self):
+        self._embed_url = self._get_embed_url(self._embed_url)
+
+    def _encapsulated_data(self, input, **kwargs):
+        kwargs['model'] = _glm_model_name(kwargs.get('model') or self._embed_model_name)
+        return super()._encapsulated_data(input, **kwargs)
+
 
 class GLMRerank(LazyLLMOnlineRerankModuleBase):
     def __init__(self,
@@ -290,12 +315,16 @@ class GLMRerank(LazyLLMOnlineRerankModuleBase):
         embed_model_name = embed_model_name or 'rerank'
         super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name, **kw)
 
+    def _set_embed_url(self):
+        self._embed_url = self._get_embed_url(self._embed_url)
+
     @property
     def type(self):
         return 'RERANK'
 
     def _encapsulated_data(self, query: str, documents: List[str], top_n: int, **kwargs) -> Dict[str, str]:
         json_data = {
+            'model': _glm_model_name(kwargs.pop('model', None) or self._embed_model_name),
             'query': query,
             'documents': documents,
             'top_n': top_n,
@@ -311,30 +340,66 @@ class GLMRerank(LazyLLMOnlineRerankModuleBase):
         return [(result['index'], result['relevance_score']) for result in response['results']]
 
 
-def _zhipu_client(base_url: str, api_key: str) -> 'zhipuai.ZhipuAI':
-    return zhipuai.ZhipuAI(api_key=api_key, base_url=base_url)
+# Public synchronous model APIs; Realtime, layout parsing and voice cloning use
+# separate protocols and are not advertised as ordinary chat/TTS models.
+GLM_MODELS = (
+    'glm-5.3', 'glm-5.3-flash', 'glm-5.3-flashx', 'glm-5.3-flashx-legal',
+    'glm-5.2', 'glm-5.1', 'glm-5', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flashx', 'glm-4.7-flash',
+    'glm-4.6', 'glm-4.5-air', 'glm-4.5-airx', 'glm-4.5-flash', 'glm-4-long',
+    'glm-4-flashx-250414', 'glm-4-flash-250414', 'glm-5v-turbo', 'glm-4.6v', 'glm-4.6v-flash',
+    'autoglm-phone', 'glm-4.1v-thinking-flashx', 'glm-4.1v-thinking-flash', 'glm-4v-flash',
+    'glm-image', 'cogview-4-250304', 'cogview-3-flash', 'glm-asr-2512', 'glm-tts',
+    'cogvideox-3', 'cogvideox-flash', 'viduq1-text', 'viduq1-image', 'viduq1-start-end',
+    'vidu2-image', 'vidu2-start-end', 'vidu2-reference', 'embedding-2', 'embedding-3', 'rerank', 'codegeex-4',
+)
+
+
+def _glm_model_name(model):
+    lowered = str(model or '').lower()
+    if lowered == 'cogview-4':
+        return 'cogview-4-250304'
+    return lowered if lowered in GLM_MODELS else model
+
+
+def _glm_request(method, base_url, endpoint, headers, *, binary=False, timeout=180, **kwargs):
+    url = base_url.rstrip('/')
+    if not url.endswith('/' + endpoint):
+        url += '/' + endpoint
+    with requests.request(method, url, headers=headers, timeout=timeout,
+                          allow_redirects=False, **kwargs) as response:
+        response.raise_for_status()
+        return response.content if binary else response.json()
+
+
+def _glm_download(url, media_type):
+    # Generated-file hosts must not receive the provider's authorization header.
+    with requests.get(url, timeout=180) as response:
+        response.raise_for_status()
+        return response.content
 
 
 class GLMSTT(LazyLLMOnlineSTTModuleBase):
-    MODEL_NAME = 'glm-asr'
+    MODEL_NAME = 'glm-asr-2512'
 
     def __init__(self, model_name: str = None, api_key: str = None,
-                 base_url: Optional[str] = None,
-                 return_trace: bool = False, **kwargs):
-        base_url = base_url or 'https://open.bigmodel.cn/api/paas/v4'
-        super().__init__(model_name=model_name or GLMSTT.MODEL_NAME,
-                         api_key=api_key or self._default_api_key(), return_trace=return_trace,
-                         base_url=base_url, **kwargs)
+                 base_url: Optional[str] = None, return_trace: bool = False, **kwargs):
+        super().__init__(model_name=model_name or self.MODEL_NAME, api_key=api_key or self._default_api_key(),
+                         return_trace=return_trace, base_url=base_url or 'https://open.bigmodel.cn/api/paas/v4',
+                         **kwargs)
 
-    def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006
-        assert len(files) == 1, 'GLMSTT only supports one file'
-        assert os.path.exists(files[0]), f'File {files[0]} not found'
-        client = _zhipu_client(base_url=url or self._base_url, api_key=self._api_key)
-        transcriptResponse = client.audio.transcriptions.create(
-            model=model,
-            file=open(files[0], 'rb'),
-        )
-        return transcriptResponse.text
+    def _forward(self, input=None, files=None, url=None, model=None, hotwords=None, **kwargs):
+        paths = files or ([input] if isinstance(input, str) and input else [])
+        if len(paths) != 1:
+            raise ValueError('GLMSTT requires one local audio file')
+        data = {'model': _glm_model_name(model or self._model_name), 'stream': 'false'}
+        if hotwords is not None:
+            data['hotwords'] = json.dumps(hotwords, ensure_ascii=False)
+        with open(paths[0], 'rb') as audio:
+            result = _glm_request('POST', url or self._base_url, 'audio/transcriptions', self._get_empty_header(),
+                                  data=data, files={'file': (os.path.basename(paths[0]), audio)})
+        if not isinstance(result.get('text'), str):
+            raise RuntimeError('GLM transcription returned no text')
+        return result['text']
 
 
 class GLMText2Image(LazyLLMOnlineText2ImageModuleBase):
@@ -342,24 +407,144 @@ class GLMText2Image(LazyLLMOnlineText2ImageModuleBase):
 
     def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False,
                  base_url: Optional[str] = None, **kwargs):
-        base_url = base_url or 'https://open.bigmodel.cn/api/paas/v4'
-        super().__init__(model_name=model_name or GLMText2Image.MODEL_NAME, api_key=api_key or self._default_api_key(),
-                         return_trace=return_trace, base_url=base_url, **kwargs)
+        super().__init__(model_name=model_name or self.MODEL_NAME, api_key=api_key or self._default_api_key(),
+                         return_trace=return_trace, base_url=base_url or 'https://open.bigmodel.cn/api/paas/v4',
+                         **kwargs)
         if self._type == LLMType.IMAGE_EDITING:
-            raise ValueError('GLM series models do not support image editing now.')
+            raise ValueError('The hosted GLM image API adapter supports text-to-image only; '
+                             'open-source GLM-Image editing requires a separately supported deployment')
 
-    def _forward(self, input: str = None, n: int = 1, size: str = '1024x1024',
-                 url: str = None, model: str = None, **kwargs):
-        runtime_url = url or self._base_url
-        runtime_model = model or self._model_name
-        client = _zhipu_client(base_url=runtime_url, api_key=self._api_key)
-        call_params = {
-            'model': runtime_model,
-            'prompt': input,
-            'n': n,
-            'size': size,
-            **kwargs
-        }
-        response = client.images.generations(**call_params)
-        return encode_query_with_filepaths(None, bytes_to_file([requests.get(result.url).content
-                                                                for result in response.data]))
+    def _forward(self, input=None, n=1, size='1024x1024', url=None, model=None,
+                 image_size=None, batch_size=None, quality=None, watermark_enabled=None, **kwargs):
+        count = batch_size if batch_size is not None else n
+        if not isinstance(count, int) or count < 1:
+            raise ValueError('Image count must be a positive integer')
+        selected = _glm_model_name(model or self._model_name)
+        payload = {'model': selected, 'prompt': input, 'size': image_size or size}
+        if quality is not None:
+            payload['quality'] = quality
+        if watermark_enabled is not None:
+            payload['watermark_enabled'] = watermark_enabled
+        images = []
+        for _ in range(count):
+            result = _glm_request('POST', url or self._base_url, 'images/generations', self._header,
+                                  json=payload, timeout=300)
+            data = result.get('data')
+            if not isinstance(data, list) or not data or not all(isinstance(v, dict) and v.get('url') for v in data):
+                raise RuntimeError('GLM image response contains no image URLs')
+            images.extend(_glm_download(item['url'], 'image') for item in data)
+        return encode_query_with_filepaths(None, bytes_to_file(images))
+
+
+class GLMTTS(LazyLLMOnlineTTSModuleBase):
+    MODEL_NAME = 'glm-tts'
+
+    def __init__(self, model_name=None, api_key=None, base_url=None, return_trace=False, **kwargs):
+        super().__init__(model_name=model_name or self.MODEL_NAME, api_key=api_key or self._default_api_key(),
+                         return_trace=return_trace, base_url=base_url or 'https://open.bigmodel.cn/api/paas/v4',
+                         **kwargs)
+
+    def _forward(self, input=None, voice='female', response_format='wav', speed=1.0, volume=1.0,
+                 url=None, model=None, **kwargs):
+        selected = _glm_model_name(model or self._model_name)
+        if selected.lower() != 'glm-tts':
+            raise ValueError('Use glm-tts for speech synthesis; voice cloning and Realtime require separate APIs')
+        payload = {'model': selected, 'input': input, 'voice': voice, 'response_format': response_format,
+                   'speed': speed, 'volume': volume, 'stream': False}
+        audio = _glm_request('POST', url or self._base_url, 'audio/speech', self._header, json=payload, binary=True)
+        return encode_query_with_filepaths(None, bytes_to_file([audio]))
+
+
+class GLMText2Video(LazyLLMOnlineText2VideoModuleBase):
+    MODEL_NAME = 'cogvideox-3'
+    SUPPORTED_IMAGE_ROLES = True
+
+    def __init__(self, model_name=None, api_key=None, base_url=None, return_trace=False, **kwargs):
+        super().__init__(model_name=model_name or self.MODEL_NAME, api_key=api_key or self._default_api_key(),
+                         return_trace=return_trace, base_url=base_url or 'https://open.bigmodel.cn/api/paas/v4',
+                         **kwargs)
+
+    def _forward(self, input=None, files=None, image_roles=None, duration=None, size=None, resolution=None,
+                 ratio=None, quality=None, with_audio=None, fps=None, style=None, movement_amplitude=None,
+                 url=None, model=None, timeout=900, poll_interval=3, **kwargs):
+        if timeout <= 0 or poll_interval < 0:
+            raise ValueError('timeout must be positive and poll_interval non-negative')
+        selected = _glm_model_name(model or self._model_name)
+        payload = {'model': selected, 'prompt': input}
+        urls, roles = self._video_images(files, image_roles)
+        self._validate_video_images(selected, urls, roles)
+        if urls:
+            payload['image_url'] = urls[0] if len(urls) == 1 else urls
+        size = self._video_size(selected, size, resolution, ratio)
+        is_vidu = selected.lower().startswith('vidu')
+        for key, value in {'duration': duration, 'size': size}.items():
+            if value is not None:
+                payload[key] = value
+        options = {'aspect_ratio': ratio, 'style': style, 'movement_amplitude': movement_amplitude} if is_vidu else {
+            'quality': quality, 'with_audio': with_audio, 'fps': fps}
+        payload.update({key: value for key, value in options.items() if value is not None})
+        base = url or self._base_url
+        headers = self._header
+        deadline = time.monotonic() + timeout
+        task = _glm_request('POST', base, 'videos/generations', headers, json=payload, timeout=min(60, timeout))
+        return self._wait_video(task['id'], base, headers, deadline, poll_interval)
+
+    def _video_images(self, files, image_roles):
+        urls = []
+        for path in files or []:
+            if path.startswith(('https://', 'http://', 'data:')):
+                urls.append(path)
+            else:
+                encoded, _ = self._load_images(path)[0]
+                urls.append(f'data:image/png;base64,{encoded}')
+        roles = list(image_roles or [])
+        if roles and len(roles) != len(urls):
+            raise ValueError('image_roles must have the same length as files')
+        if roles == ['last_frame', 'first_frame']:
+            urls.reverse()
+            roles.reverse()
+        return urls, roles
+
+    @staticmethod
+    def _validate_video_images(selected, urls, roles):
+        if selected.endswith('-text') and urls:
+            raise ValueError('Vidu text models do not accept images; choose an image or start-end model')
+        if selected.endswith('-image') and len(urls) != 1:
+            raise ValueError('Vidu image models require one image')
+        if selected.endswith('-start-end') and len(urls) != 2:
+            raise ValueError('Vidu start-end models require two images')
+        if selected.endswith('-reference'):
+            if not urls or (roles and any(role != 'reference_image' for role in roles)):
+                raise ValueError('Vidu reference models require reference images')
+        elif roles and roles not in (['first_frame'], ['first_frame', 'last_frame']):
+            raise ValueError('This GLM video model accepts first frame or first/last frames')
+        if not selected.lower().startswith('vidu') and len(urls) > 2:
+            raise ValueError('CogVideoX accepts at most first and last frame')
+
+    @staticmethod
+    def _video_size(selected, size, resolution, ratio):
+        if size is None and resolution:
+            sizes = {'720p': ('1280x720', '720x1280'), '1080p': ('1920x1080', '1080x1920'),
+                     '4k': ('3840x2160', '2160x3840'), '480p': ('720x480', '480x720')}
+            if resolution.lower() not in sizes:
+                raise ValueError('Unsupported GLM video resolution; provide size explicitly')
+            # CogVideoX-3 starts at 720p. The tool default is 480p for other providers.
+            level = '720p' if selected.lower() == 'cogvideox-3' and resolution.lower() == '480p' else resolution.lower()
+            size = '1024x1024' if ratio == '1:1' else sizes[level][ratio == '9:16']
+        return size
+
+    def _wait_video(self, task_id, base, headers, deadline, poll_interval):
+        while (remaining := deadline - time.monotonic()) > 0:
+            result = _glm_request('GET', base, 'async-result/' + quote(task_id, safe=''), headers,
+                                  timeout=min(60, remaining))
+            status = result.get('task_status')
+            if status == 'SUCCESS':
+                videos = result.get('video_result') or []
+                if not videos or not all(isinstance(item, dict) and item.get('url') for item in videos):
+                    raise RuntimeError('GLM video task succeeded without video URLs')
+                return encode_query_with_filepaths(None, bytes_to_file([
+                    _glm_download(item['url'], 'video') for item in videos]))
+            if status != 'PROCESSING':
+                raise RuntimeError('GLM video task failed or returned an unknown status')
+            time.sleep(min(poll_interval, max(0, deadline - time.monotonic())))
+        raise TimeoutError('GLM video generation timed out')

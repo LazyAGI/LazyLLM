@@ -560,3 +560,23 @@ _add_bilingual_docs(
          'Return the template CSS property mapping for ordered or unordered list markers for inline rendering.'),
     ],
 )
+
+utils.add_chinese_doc('ImageGroup.validate_images', '''\
+验证图片组中的引用不重复；使用规范化来源地址和出现序号判断唯一性。
+
+Returns:
+    ImageGroup: 当前已验证的图片组。
+
+Raises:
+    ValueError: 包含重复图片引用。
+''', module=importlib.import_module('lazyllm.tools.writer.utils.image_groups'))
+
+utils.add_english_doc('ImageGroup.validate_images', '''\
+Validate unique image references using normalized source URLs and occurrence indices.
+
+Returns:
+    ImageGroup: The validated image group.
+
+Raises:
+    ValueError: The group contains duplicate image references.
+''', module=importlib.import_module('lazyllm.tools.writer.utils.image_groups'))
