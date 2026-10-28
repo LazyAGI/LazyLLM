@@ -1906,6 +1906,64 @@ add_example('llms.onlinemodule.supplier.openrouter.OpenRouterSTT', '''\
 >>> transcript = stt('/path/to/audio.wav')
 ''')
 
+add_chinese_doc('llms.onlinemodule.supplier.runcrate.RuncrateChat', '''\
+Runcrate 在线对话模块，使用 Runcrate 的 OpenAI 兼容接口。默认 API 地址为
+``https://api.runcrate.ai/v1/``，默认模型为 ``deepseek-ai/DeepSeek-V4.1-Flash``。
+
+Args:
+    base_url (str, optional): Runcrate 或兼容服务的 API 根地址。
+    model (str, optional): Runcrate 模型 ID。默认为 ``deepseek-ai/DeepSeek-V4.1-Flash``。
+    api_key (str, optional): Runcrate API Key；未显式传入时从 ``lazyllm.config['runcrate_api_key']`` 读取。
+    skip_auth (bool): 是否跳过鉴权。仅适用于不要求鉴权的自部署兼容服务，默认为 ``False``。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.runcrate.RuncrateChat', '''\
+Online chat module for Runcrate's OpenAI-compatible API. Its default API root is
+``https://api.runcrate.ai/v1/`` and its default model is ``deepseek-ai/DeepSeek-V4.1-Flash``.
+
+Args:
+    base_url (str, optional): API root of Runcrate or a compatible service.
+    model (str, optional): Runcrate model ID. Defaults to ``deepseek-ai/DeepSeek-V4.1-Flash``.
+    api_key (str, optional): Runcrate API key. When omitted, it is read from ``lazyllm.config['runcrate_api_key']``.
+    skip_auth (bool): Whether to omit authentication. Use only with a self-hosted compatible service that requires no authentication. Defaults to ``False``.
+''')
+
+add_example('llms.onlinemodule.supplier.runcrate.RuncrateChat', '''\
+>>> import lazyllm
+>>> # Set environment variable: export LAZYLLM_RUNCRATE_API_KEY=your_api_key
+>>> chat = lazyllm.OnlineChatModule(source='runcrate', model='deepseek-ai/DeepSeek-V4.1-Flash')
+>>> response = chat('Introduce LazyLLM in one sentence.')
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.runcrate.RuncrateEmbed', '''\
+Runcrate 在线文本向量模块，使用 Runcrate 的 OpenAI 兼容 Embeddings 接口。默认模型为
+``Qwen/Qwen3-Embedding-0.6B``。
+
+Args:
+    embed_url (str, optional): Runcrate 或兼容服务的 API 根地址。
+    embed_model_name (str, optional): Runcrate 向量模型 ID。
+    api_key (str, optional): Runcrate API Key；未显式传入时从 ``lazyllm.config['runcrate_api_key']`` 读取。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.runcrate.RuncrateEmbed', '''\
+Online text embedding module for Runcrate's OpenAI-compatible Embeddings API. The default model is
+``Qwen/Qwen3-Embedding-0.6B``.
+
+Args:
+    embed_url (str, optional): API root of Runcrate or a compatible service.
+    embed_model_name (str, optional): Runcrate embedding model ID.
+    api_key (str, optional): Runcrate API key. When omitted, it is read from ``lazyllm.config['runcrate_api_key']``.
+''')
+
+add_example('llms.onlinemodule.supplier.runcrate.RuncrateEmbed', '''\
+>>> import lazyllm
+>>> embed = lazyllm.OnlineEmbeddingModule(
+...     source='runcrate',
+...     model='Qwen/Qwen3-Embedding-0.6B',
+...     api_key='your-api-key')
+>>> vector = embed('LazyLLM routes online models.')
+''')
+
 add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenSTT', '''\
 基于千问多模态接口的语音转文本（STT）模块，默认使用 ``paraformer-v2`` 模型。
 
