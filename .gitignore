@@ -20,8 +20,22 @@ wget-log
 
 # dev tools
 .vscode
-.claude
-.cursor
+
+# Local agent configuration and working files (repository root only).
+/.agent/
+/.agents/
+/.claude/
+/.clinerules/
+/.codex/
+/.cursor/
+/.gemini/
+/.kiro/
+/.opencode/
+/.reasonix/
+/.roo/
+/.superpowers/
+/.trae/
+/.windsurf/
 
 # docs
 lazyllm_chroma/
