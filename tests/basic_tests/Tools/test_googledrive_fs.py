@@ -214,7 +214,7 @@ class TestGoogleDriveSearch(unittest.TestCase):
         self.assertEqual(search_tool._validate_input({'keywords': 'release'}), {'keywords': ['release']})
         self.assertEqual(search_tool._validate_input({'query': 'release'}), {'keywords': ['release']})
 
-    def test_google_drive_links_and_product_names_auto_expand_toolkit(self):
+    def test_google_drive_requires_explicit_toolkit_loading(self):
         load_fs_docs_only(GoogleDriveFS.search)
         matching_queries = (
             '读取 https://drive.google.com/file/d/file-id/view',
@@ -235,6 +235,12 @@ class TestGoogleDriveSearch(unittest.TestCase):
 
                 manager.sync_active_groups(query)
 
+                names = {item['function']['name'] for item in manager.tools_description}
+                self.assertEqual(names, {'get_CloudFileToolkit_methods'})
+                for gateway in ('get_CloudFileToolkit_methods', 'get_GoogleDriveFS_methods'):
+                    result = manager([{'id': gateway, 'function': {'name': gateway, 'arguments': '{}'}}])
+                    self.assertTrue(result[0]['ok'])
+                manager.sync_active_groups('继续')
                 names = {item['function']['name'] for item in manager.tools_description}
                 self.assertIn('GoogleDriveFS_search', names)
                 self.assertIn('GoogleDriveFS_read', names)

@@ -1735,10 +1735,6 @@ class FeishuFSBase(LinkDocumentFSBase):
                 self._write_cell_text(document_id, cell_id, elements)
 
 class FeishuFS(FeishuFSBase):
-    __tool_auto_activate__ = [
-        r'https?://[^\s/]+\.(?:feishu\.(?:cn|com)|larksuite\.com)(?:[/:?#]|$)',
-        r'飞书|(?<!\w)feishu(?!\w)',
-    ]
     __public_apis__ = LazyLLMFSBase.__public_apis__ + ['create_document', 'search']
 
     def __new__(cls, base_url: Optional[str] = None, app_id: Optional[str] = None, app_secret: Optional[str] = None,
@@ -2004,10 +2000,6 @@ class FeishuWikiFile(CloudFSBufferedFile):
 
 
 class FeishuWikiFS(FeishuFSBase):
-    __tool_auto_activate__ = [
-        r'https?://[^\s/]+\.(?:feishu\.(?:cn|com)|larksuite\.com)(?:[/:?#]|$)',
-        r'飞书|(?<!\w)feishu(?!\w)',
-    ]
     '''Read and manage authenticated Feishu/Lark Wiki spaces and documents.
 
     Select this Toolkit for Feishu or Lark browser URLs, especially `/wiki/`
