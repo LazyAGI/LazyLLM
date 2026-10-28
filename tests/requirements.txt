@@ -19,3 +19,5 @@ dashscope>=1.25.7
 zhipuai>=2.1.5.20250708
 huggingface-hub==0.35.3
 pypdf<=6.5.0
+
+mcp>=1.12,<2
