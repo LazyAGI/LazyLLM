@@ -54,6 +54,16 @@ def test_sciverse_default_search_has_one_preview(monkeypatch, meta):
     assert search()[0]['snippet'] == 'a' * 700
 
 
+@pytest.mark.parametrize('year,expected', [(2024.0, 2024), ('2024', 2024), (None, None), ('unknown', None)])
+def test_sciverse_metadata_year_is_an_integer(monkeypatch, year, expected):
+    payload = {'hits': [{'title': 'Paper', 'publication_published_year': year}]}
+    monkeypatch.setattr(sciverse_search, 'httpx', SimpleNamespace(post=lambda *a, **k: response(payload)))
+    item = SciverseSearch(api_key='test').meta_search('query')['items'][0]
+    assert item.get('extra', {}).get('year') == expected
+    if expected is not None:
+        assert type(item['extra']['year']) is int
+
+
 @pytest.mark.parametrize('kwargs,offset,limit', [
     ({}, 0, 16384), ({'offset': 700, 'limit': 200}, 700, 200),
 ])
