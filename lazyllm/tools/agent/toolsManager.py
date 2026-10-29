@@ -13,7 +13,6 @@ from lazyllm.common.utils import SecurityVisitor
 from lazyllm.flow.flow import FlowException
 from typing import Callable, Any, Union, Optional, get_type_hints, List, Dict, Type, Set
 import inspect
-import re
 import time
 import threading
 import uuid
@@ -509,7 +508,6 @@ class ToolContainer:
     def get_flat_tools(self) -> Dict[str, 'ModuleTool']: raise NotImplementedError
     def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]: raise NotImplementedError
     def get_leaf_names(self) -> List[str]: raise NotImplementedError
-    def get_auto_active_groups(self, text: str) -> Set[str]: return set()
     def get_activation_path(self, group_name: str) -> Set[str]: return set()
 
 
@@ -517,18 +515,11 @@ class ToolGroup(ToolContainer):
     def __init__(self, tools: List[Any], name: str, desc: str = '', lazy: bool = True,
                  prefix: Optional[Union[bool, str]] = True, _outer_prefix: Optional[str] = None,
                  pick_first_valid: bool = False,
-                 discoverable: bool = False,
-                 auto_activate: Optional[List[Union[str, Callable[[str], bool]]]] = None):
+                 discoverable: bool = False):
         self._name, self._desc, self._lazy = name, desc, lazy and not pick_first_valid
         self._discoverable = discoverable
         self._activate = None
         self._pick_first_valid = pick_first_valid
-        self._auto_activate = list(auto_activate) if isinstance(auto_activate, (list, tuple)) \
-            else [auto_activate] if auto_activate else []
-        for rule in self._auto_activate:
-            if not callable(rule) and not isinstance(rule, str):
-                raise TypeError('auto_activate rules must be regex strings or callables')
-            if isinstance(rule, str): re.compile(rule)
         own_prefix: Optional[str] = name if prefix is True or prefix == '' \
             else None if prefix is False or prefix is None else prefix
         effective_prefix = f'{_outer_prefix}_{own_prefix}' if _outer_prefix and own_prefix \
@@ -603,20 +594,6 @@ class ToolGroup(ToolContainer):
 
     def get_leaf_names(self) -> List[str]:
         return [self._gateway_tool.name] if self._lazy else self._leaf_names
-
-    def get_auto_active_groups(self, text: str) -> Set[str]:
-        matched = any(
-            bool(rule(text)) if callable(rule) else bool(re.search(rule, text, re.IGNORECASE))
-            for rule in self._auto_activate
-        )
-        child_groups = {
-            group_name
-            for child in self._children if isinstance(child, ToolContainer)
-            for group_name in child.get_auto_active_groups(text)
-        }
-        if matched or child_groups:
-            return child_groups | ({self._name} if self._lazy else set())
-        return set()
 
     def get_activation_path(self, group_name: str) -> Set[str]:
         if self._name == group_name:
@@ -737,9 +714,8 @@ class InstanceToolGroup(SkipMixin, ToolGroup):
         ]
         name = instance.__class__.__name__
         desc = getattr(type(instance), '__doc__', '') or ''
-        auto_activate = getattr(type(instance), '__tool_auto_activate__', None)
         ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=lazy, prefix=False,
-                           auto_activate=auto_activate, discoverable=discoverable)
+                           discoverable=discoverable)
 
     @property
     def _tools(self) -> Dict[str, 'ModuleTool']:
@@ -767,10 +743,6 @@ class ToolGroupWrapper(SkipMixin, ToolContainer):
         if self.should_skip(): return []
         return self._inner.get_description(active_groups) if isinstance(self._inner, ToolContainer) \
             else [_build_tool_desc(self._inner)]
-
-    def get_auto_active_groups(self, text: str) -> Set[str]:
-        if self.should_skip() or not isinstance(self._inner, ToolContainer): return set()
-        return self._inner.get_auto_active_groups(text)
 
     def get_activation_path(self, group_name: str) -> Set[str]:
         if self.should_skip() or not isinstance(self._inner, ToolContainer): return set()
@@ -815,8 +787,7 @@ def _build_tool_from_element(
         group = ToolGroup(tools=element['tools'], name=element['name'], desc=element['desc'],
                           lazy=element.get('lazy', True), prefix=element.get('prefix', None),
                           _outer_prefix=_outer_prefix, pick_first_valid=pick_first_valid,
-                          discoverable=element.get('discoverable', False),
-                          auto_activate=element.get('auto_activate'))
+                          discoverable=element.get('discoverable', False))
         if key_source is not None:
             return ToolGroupWrapper(group, key_source)
         return group

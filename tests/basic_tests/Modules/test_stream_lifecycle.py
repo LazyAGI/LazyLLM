@@ -110,8 +110,11 @@ def test_async_repeated_cancel_waits_for_producer_and_preserves_first_reason():
         helper = lazyllm.StreamCallHelper(work, interval=0.001, init_sid=False, on_cancel=cancel)
 
         async def consume():
-            async for _ in helper.astream():
-                ready.set()
+            # Python 3.10 Task propagation can discard the cancellation message.
+            with pytest.raises(asyncio.CancelledError, match='first cancellation') as caught:
+                async for _ in helper.astream():
+                    ready.set()
+            raise caught.value
 
         task = asyncio.create_task(consume())
         try:
@@ -124,7 +127,7 @@ def test_async_repeated_cancel_waits_for_producer_and_preserves_first_reason():
             assert not helper.future.done()
         finally:
             release.set()
-        with pytest.raises(asyncio.CancelledError, match='first cancellation'):
+        with pytest.raises(asyncio.CancelledError):
             await task
         assert helper.future.done()
         assert calls == [True]
@@ -175,7 +178,15 @@ def test_async_close_waits_and_preserves_exit_reason(reason):
         original = ValueError('consumer failed')
         operation = (iterator.athrow(original) if reason == 'error' else
                      helper.aclose() if reason == 'explicit_cancel' else iterator.aclose())
-        task = asyncio.create_task(operation)
+
+        async def close():
+            if reason == 'explicit_cancel':
+                with pytest.raises(asyncio.CancelledError, match='cancel during close') as caught:
+                    await operation
+                raise caught.value
+            await operation
+
+        task = asyncio.create_task(close())
         try:
             await asyncio.wait_for(notified.wait(), 2)
             assert not task.done()
@@ -189,7 +200,7 @@ def test_async_close_waits_and_preserves_exit_reason(reason):
                 await task
             assert raised.value is original
         elif reason == 'explicit_cancel':
-            with pytest.raises(asyncio.CancelledError, match='cancel during close'):
+            with pytest.raises(asyncio.CancelledError):
                 await task
         else:
             await task
