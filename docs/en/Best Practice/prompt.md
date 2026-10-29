@@ -52,7 +52,7 @@ In the example above, the ``generate_prompt`` function accepts a ``dict`` as inp
     - system: System prompt typically reads the model's ownership information and sets it accordingly. If not set, it defaults to: ``You are an AI-Agent developed by LazyLLM.`` .
     - instruction: Task instruction, obtained by concatenating the user's input with the ``InstructionTemplate``. This is an important field for application developers to understand. If the instruction is a string, it is considered a system instruction by default. If it is a dictionary, the keys can only be ``system`` and ``user``. ``system`` specifies system-level instructions, while ``user`` specifies user-level instructions.
     - history: Historical conversation, derived from user input, formatted as ``[[a, b], [c, d]]`` or ``[{"role": "user", "content": ""}, {"role": "assistant", "content": ""}]``
-    - tools: Tools that can be used, passed in when constructing the ``prompter`` or by the user when using it. Defining tools when constructing the ``prompter`` will prohibit users from passing them in again when using it. The format is  ``[{"type": "function",  "function": {"name": "", "description": "", "parameters": {},  "required": []}]``
+    - tools: Tools that can be used, passed in when constructing the ``prompter`` or by the user when using it. A nonempty call-time tools value overrides the constructor tools; None or an empty list falls back to the constructor tools. The format is  ``[{"type": "function",  "function": {"name": "", "description": "", "parameters": {},  "required": []}]``
     - user: User-level instructions, optional instructions specified by the user through instruction.
     - sos: ``start of system``, signifies the beginning of system prompts. This symbol is filled in by the model, and developers and users don't need to consider it.
     - eos: ``end of system``, signifies the end of system prompts. This symbol is filled in by the model, and developers and users don't need to consider it.
@@ -155,32 +155,32 @@ When the user's input is a string, we allow at most one slot in the ``Prompter``
 
 #### Use the tools
 
-In general, when using large models for ``function-call``, it is necessary to define a set of tools according to a specific format and pass them to the large model in a certain format. Tools can be passed in when constructing the ``prompter``, or they can be passed in by the user during usage. Once tools are defined when constructing the ``prompter``, it will prevent the user from passing them in again during usage.
+In general, when using large models for ``function-call``, it is necessary to define a set of tools according to a specific format and pass them to the large model in a certain format. Tools can be passed in when constructing the ``prompter``, or they can be passed in by the user during usage. A nonempty call-time tools value overrides the constructor tools; None or an empty list falls back to the constructor tools.
 The format of tools is generally as follows:
 
 ```python
 
-    [
-        {
-            "type": "function",
-            "function": {
-                "name": "",
-                "description": "",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "arg-1": {
-                            "type": "",
-                            "description": "",
-                        },
-                        "arg-2": {}
-                        "arg-3": {}
-                    }
-                },
-                "required": ['arg-1', 'arg-2', 'arg-3']
-            }
-        },
-    ]
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "",
+            "description": "",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "arg-1": {
+                        "type": "",
+                        "description": "",
+                    },
+                    "arg-2": {},
+                    "arg-3": {}
+                }
+            },
+            "required": ['arg-1', 'arg-2', 'arg-3']
+        }
+    },
+]
 ```
 
 let's demonstrate how ``Prompter`` uses tools through a simple tool tools=[dict(type='function', function=dict(name='example'))].
@@ -246,7 +246,7 @@ The conversation history will be read in step 4 of [Prompt Generation Process An
 !!! Note
 
     - Only ``ChatPrompter`` supports passing in conversation history.
-    - When the input is in the format ``[[a, b], ...]``, both ``format='openai'`` (or default ``None`` for string concatenation) are supported, whereas when the input is in the format ``[dict, dict]``, only API message formats such as ``format='openai'`` are supported.
+    - Both paired-list histories (``[[a, b], ...]``) and role/content dictionary histories support API message formats such as ``format='openai'`` and the default ``format=None`` for string concatenation.
 
 #### Used with OnlineChatModule
 

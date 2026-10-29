@@ -1874,7 +1874,7 @@ Args:
 ''')
 
 add_example('ResponseRelevancy', ['''\
->>> from lazyllm.components import ResponseRelevancy
+>>> from lazyllm.tools import ResponseRelevancy
 >>> relevancy = ResponseRelevancy(
 ...     llm=YourLLM(),
 ...     embedding=YourEmbedding(),
@@ -1917,7 +1917,7 @@ Args:
 ''')
 
 add_example('Faithfulness', ['''\
->>> from lazyllm.components import Faithfulness
+>>> from lazyllm.tools import Faithfulness
 >>> evaluator = Faithfulness(llm=YourLLM(), prompt_lang="en")
 >>> data = {
 ...     "question": "What is the role of ATP in cells?",
@@ -1957,7 +1957,7 @@ Args:
 ''')
 
 add_example('LLMContextRecall', ['''\
->>> from lazyllm.components import LLMContextRecall
+>>> from lazyllm.tools import LLMContextRecall
 >>> evaluator = LLMContextRecall(llm=YourLLM(), prompt_lang="en")
 >>> data = {
 ...     "question": "What is Photosynthesis?",
@@ -1997,7 +1997,7 @@ Args:
 ''')
 
 add_example('NonLLMContextRecall', ['''\
->>> from lazyllm.components import NonLLMContextRecall
+>>> from lazyllm.tools import NonLLMContextRecall
 >>> evaluator = NonLLMContextRecall(th=0.8, binary=True)
 >>> data = {
 ...     "context_retrieved": [
@@ -2037,7 +2037,7 @@ Args:
 ''')
 
 add_example('ContextRelevance', ['''\
->>> from lazyllm.components import ContextRelevance
+>>> from lazyllm.tools import ContextRelevance
 >>> evaluator = ContextRelevance(splitter='.')
 >>> data = {
 ...     "context_retrieved": [

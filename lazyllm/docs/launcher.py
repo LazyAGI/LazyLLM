@@ -314,7 +314,7 @@ Args:
 
 Notes: 
     - ``RemoteLauncher`` is not a direct launcher but dynamically creates a launcher based on the configuration. 
-    - The ``lazyllm.config['launcher']`` in the configuration file specifies a launcher class name present in the ``lazyllm.launchers`` module. This configuration can be set by setting the environment variable ``LAZYLLM_DEAULT_LAUNCHER``. For example: ``export LAZYLLM_DEAULT_LAUNCHER=sco``, ``export LAZYLLM_DEAULT_LAUNCHER=slurm``.
+    - The ``lazyllm.config['launcher']`` in the configuration file specifies a launcher class name present in the ``lazyllm.launchers`` module. This configuration can be set by setting the environment variable ``LAZYLLM_DEFAULT_LAUNCHER``. For example: ``export LAZYLLM_DEFAULT_LAUNCHER=sco``, ``export LAZYLLM_DEFAULT_LAUNCHER=slurm``.
 ''')
 
 add_example('RemoteLauncher', '''\
