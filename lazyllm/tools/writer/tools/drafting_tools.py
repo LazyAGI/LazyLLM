@@ -122,31 +122,23 @@ class WriterDraftingTools(WriterToolBase):
     def stream_whole_document(
         self, task: Any, context: Any, instructions: Any = None,
         visual_plan: Any = None, media_assets: Any = None,
-        *, idle_timeout: Optional[float] = None,
+        *, idle_timeout: Optional[float] = None, defer_media: bool = False,
     ) -> DraftMarkdownStream:
         writing_task = self._unified_model(task, WritingTask)
         writing_context = self._unified_model(context, WritingContext)
         plan = self._unified_model(instructions, SectionInstructionList) if instructions else SectionInstructionList()
-        context_data = writing_context.model_dump(exclude_defaults=True)
-        for key in ('context_id', 'doc_id', 'query', 'meta'):
-            context_data.pop(key, None)
-        if (context_data.get('document_summary') or {}).get('summary') == writing_task.query:
-            context_data['document_summary'].pop('summary', None)
-        chapter_inputs = []
-        for instruction in plan.instructions:
-            local = self._draft_prompt_inputs(writing_task, instruction, writing_context)
-            data = json.loads(local['section_instruction_json'])
-            if data.get('expected_blocks') == data.get('required_points'):
-                data.pop('expected_blocks', None)
-            chapter_inputs.append(data)
-        visuals = self._short_document_visuals(visual_plan, media_assets, allow_sections=True)
+        context_data = writing_context.prompt_data()
+        chapter_inputs = [instruction.model_dump(exclude_defaults=True) for instruction in plan.instructions]
+        visuals = self._short_document_visuals(
+            visual_plan, media_assets, allow_sections=True, allow_pending=defer_media,
+        )
         for visual in visuals:
             caption = re.sub(r'[\[\]\r\n]+', ' ', visual['purpose']).strip() or '图'
             visual['markdown'] = f"![{caption}](media-placeholder://{visual['need_id']})"
         prompt = GENERATE_WHOLE_DOCUMENT_MARKDOWN_PROMPT.format(
             task_json=to_prompt_json({
-                'query': writing_task.query, 'constraints': writing_task.constraints,
-                'output': writing_task.output, 'target_document': writing_task.target_document,
+                key: value for key, value in writing_task.prompt_data().items()
+                if key in {'query', 'constraints', 'output', 'target_document'}
             }),
             context_json=to_prompt_json(context_data),
             instructions_json=to_prompt_json(chapter_inputs),
@@ -180,8 +172,8 @@ class WriterDraftingTools(WriterToolBase):
             ).model_dump()
 
         return DraftMarkdownStream(
-            call=lambda sink: self._call_llm_text(
-                prompt, stream_output={'_stream_sink': sink}, max_tokens=32768,
+            call=lambda sink, call_control: self._call_llm_text(
+                prompt, stream_output={'_stream_sink': sink}, call_control=call_control, max_tokens=32768,
             ),
             finalize=finalize, prefix='',
             idle_timeout=resolve_stream_idle_timeout(self.llm, idle_timeout),
@@ -215,9 +207,9 @@ class WriterDraftingTools(WriterToolBase):
         prompt = self._short_document_prompt(writing_task, plan, writing_context, short_visuals)
         prefix = f'# {strip_heading_numbering(plan.section_title.strip())}\n\n'
         return DraftMarkdownStream(
-            call=lambda sink: self._call_llm_text(
+            call=lambda sink, call_control: self._call_llm_text(
                 prompt,
-                stream_output={'_stream_sink': sink},
+                stream_output={'_stream_sink': sink}, call_control=call_control,
             ),
             finalize=lambda body: self._finalize_short_markdown_document(
                 body,
@@ -247,9 +239,9 @@ class WriterDraftingTools(WriterToolBase):
         self._validate_short_writing_plan(plan, representation='ir')
         short_visuals = self._short_document_ir_visuals(visual_plan, media_assets)
         prompt = GENERATE_SHORT_DOCUMENT_IR_PROMPT.format(
-            task_json=to_prompt_json(writing_task),
+            task_json=to_prompt_json(writing_task.prompt_data()),
             short_writing_plan_json=to_prompt_json(plan),
-            context_json=to_prompt_json(writing_context),
+            context_json=to_prompt_json(writing_context.prompt_data()),
             short_visuals_json=to_prompt_json(short_visuals),
         )
         document_id = f'draft-document-{writing_context.context_id}'
@@ -288,10 +280,10 @@ class WriterDraftingTools(WriterToolBase):
             return result.model_dump()
 
         return OutlineIRStream(
-            call=lambda sink: self._call_llm_structured(
+            call=lambda sink, call_control: self._call_llm_structured(
                 prompt,
                 WriterDocument,
-                stream_output={'_stream_sink': sink},
+                stream_output={'_stream_sink': sink}, call_control=call_control,
             ),
             normalize=normalize,
             finalize=finalize,
@@ -325,9 +317,9 @@ class WriterDraftingTools(WriterToolBase):
         prefix = self._markdown_draft_prefix(instruction, heading)
         timeout = resolve_stream_idle_timeout(self.llm, idle_timeout)
         return DraftMarkdownStream(
-            call=lambda sink: self._call_llm_text(
+            call=lambda sink, call_control: self._call_llm_text(
                 prompt,
-                stream_output={'_stream_sink': sink},
+                stream_output={'_stream_sink': sink}, call_control=call_control,
             ),
             finalize=lambda body: self._finalize_markdown_draft_section(
                 body, instruction, result_extra,
@@ -346,6 +338,7 @@ class WriterDraftingTools(WriterToolBase):
         media_assets: Any = None,
         *,
         idle_timeout: Optional[float] = None,
+        defer_media: bool = False,
     ) -> DraftIRStream:
         writing_task = self._unified_model(task, WritingTask)
         instruction = self._unified_model(section_instruction, SectionInstruction)
@@ -362,34 +355,74 @@ class WriterDraftingTools(WriterToolBase):
             writing_context,
             previous_blocks,
             visual_plan,
-            media_assets,
+            media_assets, defer_media=defer_media,
         )
         return DraftIRStream(
-            call=lambda sink: self._call_llm_structured(
+            call=lambda sink, call_control: self._call_llm_structured(
                 prompt,
                 WriterBlock,
-                stream_output={'_stream_sink': sink},
+                stream_output={'_stream_sink': sink}, call_control=call_control,
             ),
             normalize=lambda block: self._normalize_draft_block(
                 block, instruction, allow_deferred_create=True,
             ),
             finalize=lambda block: self._save_ir_draft_section(
-                self._normalize_draft_block(
+                self._normalize_draft_block(block, instruction, allow_deferred_create=True)
+                if defer_media else self._normalize_draft_block(
                     self._restore_rewrite_images(
-                        self._attach_section_media(
-                            block, instruction, visual_plan, media_assets,
-                        ),
-                        instruction,
-                        media_assets,
-                    ),
-                    instruction,
+                        self._attach_section_media(block, instruction, visual_plan, media_assets),
+                        instruction, media_assets,
+                    ), instruction,
                 ),
                 result_extra,
-                media_assets,
+                None if defer_media else media_assets,
             ),
             instruction=instruction,
             idle_timeout=resolve_stream_idle_timeout(self.llm, idle_timeout),
         )
+
+    def finalize_section_media(
+        self, block: Any, instruction: Any, visual_plan: Any, media_assets: Any,
+    ) -> WriterBlock:
+        block = self._unified_model(block, WriterBlock).model_copy(deep=True)
+        instruction = self._unified_model(instruction, SectionInstruction)
+        block = self._attach_section_media(block, instruction, visual_plan, media_assets)
+        plan = self._unified_optional_model(visual_plan, VisualPlan) or VisualPlan()
+        library = self._unified_optional_model(media_assets, MediaAssetLibrary)
+        for need in plan.instructions:
+            if need.content_ref.node_id != instruction.content_ref.node_id:
+                continue
+            ids = library.visual_need_asset_ids.get(need.need_id, []) if library else []
+            ids = [asset_id for asset_id in ids if asset_id in library.assets]
+            if not ids:
+                if need.required:
+                    raise ValueError(f'Required visual {need.need_id!r} has no resolved media.')
+
+                def remove_pending(parent):
+                    parent.children = [child for child in parent.children if child.node_id != need.need_id]
+                    for child in parent.children:
+                        remove_pending(child)
+                remove_pending(block)
+                continue
+            image = next((item for item in block.iter_blocks() if item.node_id == need.need_id), None)
+            if image is None:
+                image = WriterBlock(node_id=need.need_id, type='image', content=need.purpose, stage='draft')
+                block.children.append(image)
+            if image.type != 'image':
+                raise ValueError(f'Visual {need.need_id!r} conflicts with a non-image block.')
+            image.references = [{'type': 'media_asset', 'id': asset_id} for asset_id in ids]
+        block = self._restore_rewrite_images(block, instruction, media_assets)
+        block = self._normalize_draft_block(block, instruction)
+        for image in block.iter_blocks():
+            if image.type != 'image':
+                continue
+            for ref in image.references:
+                asset = library.assets.get(ref.get('id')) if library else None
+                if ref.get('type') == 'media_asset':
+                    if asset is None:
+                        raise ValueError(f'Unknown media asset {ref.get("id")!r}.')
+                    ref['path'] = asset.local_path or asset.uri
+        return block
 
     def _generate_ir_draft_section(
         self,
@@ -675,9 +708,9 @@ class WriterDraftingTools(WriterToolBase):
         short_visuals: List[Dict[str, Any]],
     ) -> str:
         return GENERATE_SHORT_DOCUMENT_MARKDOWN_PROMPT.format(
-            task_json=to_prompt_json(task),
+            task_json=to_prompt_json(task.prompt_data()),
             short_writing_plan_json=to_prompt_json(plan),
-            context_json=to_prompt_json(context),
+            context_json=to_prompt_json(context.prompt_data()),
             short_visuals_json=to_prompt_json(short_visuals),
         )
 
@@ -685,7 +718,7 @@ class WriterDraftingTools(WriterToolBase):
         self,
         visual_plan: Any,
         media_assets: Any,
-        *, allow_sections: bool = False,
+        *, allow_sections: bool = False, allow_pending: bool = False,
     ) -> List[Dict[str, Any]]:
         plan = self._unified_optional_model(visual_plan, VisualPlan) or VisualPlan()
         library = self._unified_optional_model(media_assets, MediaAssetLibrary)
@@ -696,7 +729,7 @@ class WriterDraftingTools(WriterToolBase):
                 raise ValueError('Short visual plan must target only content_ref.document_root.')
             asset_ids = library.visual_need_asset_ids.get(need.need_id, []) if library else []
             resolved = [asset_id for asset_id in asset_ids if asset_id in library.assets] if library else []
-            if not resolved:
+            if not resolved and not allow_pending:
                 if need.required:
                     raise ValueError(f'Required short visual {need.need_id!r} has no resolved media.')
                 continue
@@ -827,27 +860,10 @@ class WriterDraftingTools(WriterToolBase):
     @staticmethod
     def _draft_prompt_inputs(task: WritingTask, instruction: SectionInstruction,
                              context: WritingContext) -> dict:
-        '''Remove exact duplicates only; preserve each request's global context.'''
-        context_data = context.model_dump(exclude_defaults=True)
-        if context.query == task.query:
-            context_data.pop('query', None)
+        context_data = context.prompt_data()
         instruction_data = instruction.model_dump(exclude_defaults=True)
-        shared_facts = {f'{fact.key}: {fact.value}' for fact in context.facts
-                        if not fact.applies_to or instruction.content_ref in fact.applies_to}
-        shared_style = set()
-        if context.style_profile is not None:
-            style = context.style_profile
-            shared_style.update(f'{key}: {value}' for key, value in (
-                ('tone', style.tone), ('formality', style.formality), ('audience', style.audience),
-            ) if value)
-            shared_style.update(style.notes)
-        for key, shared in (('fact_constraints', shared_facts), ('style_constraints', shared_style)):
-            if key in instruction_data:
-                instruction_data[key] = list(dict.fromkeys(
-                    value for value in instruction_data[key] if value not in shared
-                ))
         return {
-            'task_json': to_prompt_json(task),
+            'task_json': to_prompt_json(task.prompt_data()),
             'section_instruction_json': to_prompt_json(instruction_data),
             'context_json': to_prompt_json(context_data),
         }
@@ -860,6 +876,7 @@ class WriterDraftingTools(WriterToolBase):
         previous_blocks: Any,
         visual_plan: Any,
         media_assets: Any,
+        *, defer_media: bool = False,
     ) -> str:
         previous_data = self._unified_raw_data(previous_blocks)
         resolved_visual_plan = self._unified_optional_model(
@@ -869,6 +886,8 @@ class WriterDraftingTools(WriterToolBase):
         section_media = self._media_assets_for_section(
             instruction, resolved_visual_plan, media_library,
         )
+        if defer_media:
+            section_media['defer_media'] = True
         return GENERATE_DRAFT_SECTION_PROMPT.format(
             **self._draft_prompt_inputs(task, instruction, context),
             previous_blocks_json=to_prompt_json(previous_data),

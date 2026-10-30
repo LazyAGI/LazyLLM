@@ -188,7 +188,7 @@ class WriterRevisionTools(WriterToolBase):
             REWRITE_MARKDOWN_BLOCK_PROMPT.format(
                 instruction=requested,
                 markdown_block=old_markdown,
-                context_json=to_prompt_json(writing_context),
+                context_json=to_prompt_json(writing_context.prompt_data()),
             ),
             StringReplace,
         )
@@ -331,7 +331,7 @@ class WriterRevisionTools(WriterToolBase):
         else:
             prompt_template = LOCATE_REVISION_TARGET_MARKDOWN_PROMPT if is_markdown else LOCATE_REVISION_TARGET_PROMPT
             prompt = prompt_template.format(
-                task_json=to_prompt_json(writing_task),
+                task_json=to_prompt_json(writing_task.prompt_data()),
                 document_content=to_prompt_json(candidates),
                 document_title_json=to_prompt_json(source_doc.title) if not is_markdown else 'null',
             )
@@ -440,7 +440,7 @@ node_id must be a string. Do not include heading_path or nest objects inside nod
                 raise ValueError(f'locate_result has references absent from document: {missing}.')
 
             prompt = prompt_template.format(
-                task_json=to_prompt_json(writing_task),
+                task_json=to_prompt_json(writing_task.prompt_data()),
                 document_content=(
                     to_prompt_json(self._visible_document(source_doc))
                     if isinstance(source_doc, WriterDocument)
@@ -451,7 +451,7 @@ node_id must be a string. Do not include heading_path or nest objects inside nod
                     self._visible_block(source_doc.block_by_id(content_ref.node_id))
                     for content_ref in located_refs
                 ]) if not is_markdown else 'null',
-                context_json=to_prompt_json(writing_context),
+                context_json=to_prompt_json(writing_context.prompt_data()),
             )
             modify_plan = self._call_llm_structured(prompt, plan_schema)
             invalid_shapes = invalid_plan_refs(modify_plan)
@@ -520,6 +520,7 @@ locator kind per reference. Return valid JSON only.
         media_assets: Any = None,
         *,
         prompt: Optional[str] = None,
+        task: Any = None,
     ) -> dict:
         source_doc = self._unified_model(document, WriterDocument)
         plan = self._unified_model(modify_plan, ModifyPlan)
@@ -535,7 +536,7 @@ locator kind per reference. Return valid JSON only.
             prompt = prompt if prompt is not None else GENERATE_PATCH_SET_PROMPT.format(
                 document_json=to_prompt_json(self._visible_document(source_doc)),
                 modify_plan_json=to_prompt_json(plan),
-                context_json=to_prompt_json(writing_context),
+                context_json=self._task_context_prompt(writing_context, task),
             )
             content_instructions = [item for item in plan.instructions
                                     if item.modify_type in {'create', 'update'}]
@@ -574,18 +575,20 @@ locator kind per reference. Return valid JSON only.
         modify_plan: Any,
         context: Any,
         media_assets: Any = None,
+        *, task: Any = None,
     ) -> dict:
         source = self._unified_document(document)
         if isinstance(source, WriterDocument):
             return self.generate_patch_set(
-                source, modify_plan, context, media_assets=media_assets)
-        return self.generate_string_replace_set(source, modify_plan, context)
+                source, modify_plan, context, media_assets=media_assets, task=task)
+        return self.generate_string_replace_set(source, modify_plan, context, task=task)
 
     def generate_string_replace_set(
         self,
         document: Any,
         modify_plan: Any,
         context: Any,
+        *, task: Any = None,
     ) -> dict:
         source = self._unified_document(document)
         if isinstance(source, WriterDocument):
@@ -602,13 +605,13 @@ locator kind per reference. Return valid JSON only.
         if plan.instructions or plan.title_instruction:
             if len(plan.instructions) == 1 and plan.instructions[0].modify_type == 'move' \
                     and not plan.title_instruction:
-                replace_set = self._generate_markdown_move_replacements(source, plan, writing_context)
+                replace_set = self._generate_markdown_move_replacements(source, plan, writing_context, task=task)
             elif any(instr.modify_type in {'create', 'delete'}
                      or (instr.target_scope != 'fragment' and instr.modify_type == 'update')
                      for instr in plan.instructions):
-                replace_set = self._generate_scoped_markdown_replacements(source, plan, writing_context)
+                replace_set = self._generate_scoped_markdown_replacements(source, plan, writing_context, task=task)
             else:
-                replace_set = self._generate_model_markdown_replacements(source, plan, writing_context)
+                replace_set = self._generate_model_markdown_replacements(source, plan, writing_context, task=task)
             replace_set.replace_set_id = (
                 replace_set.replace_set_id or f'replace-{writing_context.context_id}'
             )
@@ -627,12 +630,12 @@ locator kind per reference. Return valid JSON only.
         ).model_dump()
 
     def _generate_model_markdown_replacements(
-        self, source: str, plan: MarkdownModifyPlan, context: WritingContext,
+        self, source: str, plan: MarkdownModifyPlan, context: WritingContext, task: Any = None,
     ) -> StringReplaceSet:
         prompt = GENERATE_STRING_REPLACE_SET_PROMPT.format(
             document_content=source,
             modify_plan_json=to_prompt_json(plan),
-            context_json=to_prompt_json(context),
+            context_json=self._task_context_prompt(context, task),
         )
         generated = self._call_llm_structured(prompt, StringReplaceSet)
         try:
@@ -684,7 +687,7 @@ locator kind per reference. Return valid JSON only.
         return content + anchor if instruction.position == 'before' else anchor + content
 
     def _generate_markdown_move_replacements(
-        self, source: str, plan: MarkdownModifyPlan, context: WritingContext,
+        self, source: str, plan: MarkdownModifyPlan, context: WritingContext, task: Any = None,
     ) -> StringReplaceSet:
         instruction, = plan.instructions
         try:
@@ -726,7 +729,7 @@ locator kind per reference. Return valid JSON only.
             self._execute_markdown_replacements(source, result)
             return result
         except ValueError:
-            return self._generate_model_markdown_replacements(source, plan, context)
+            return self._generate_model_markdown_replacements(source, plan, context, task=task)
 
     def _prepare_markdown_fragment_move(
         self, source: str, removal: StringReplace, insertion: StringReplace, position: str,
@@ -808,7 +811,7 @@ locator kind per reference. Return valid JSON only.
         return current
 
     def _generate_scoped_markdown_replacements(  # noqa: C901
-        self, source: str, plan: MarkdownModifyPlan, context: WritingContext,
+        self, source: str, plan: MarkdownModifyPlan, context: WritingContext, task: Any = None,
     ) -> StringReplaceSet:
         instructions = {f'instruction-{index}': instruction
                         for index, instruction in enumerate(plan.instructions, start=1)}
@@ -824,7 +827,7 @@ locator kind per reference. Return valid JSON only.
                 except ValueError:
                     pass
         if not located:
-            return self._generate_model_markdown_replacements(source, plan, context)
+            return self._generate_model_markdown_replacements(source, plan, context, task=task)
 
         update_keys = {key for key in located if instructions[key].modify_type == 'update'}
         insertion_keys = {key for key in located if instructions[key].modify_type == 'create'}
@@ -842,7 +845,7 @@ locator kind per reference. Return valid JSON only.
                 prompt = template.format(
                     instruction_json=to_prompt_json(instructions[key]),
                     markdown_block=located[key],
-                    context_json=to_prompt_json(context),
+                    context_json=self._task_context_prompt(context, task),
                 )
                 if is_create:
                     generated.insertions[key] = self._call_llm_structured(prompt, MarkdownInsertionContent)
@@ -856,7 +859,7 @@ locator kind per reference. Return valid JSON only.
                         for key, instruction in instructions.items()
                     ]),
                     title_instruction_json=to_prompt_json(plan.title_instruction),
-                    context_json=to_prompt_json(context),
+                    context_json=self._task_context_prompt(context, task),
                 )
                 generated = self._call_llm_structured(prompt, MarkdownRevisionBatch)
             if set(generated.contents) != update_keys or set(generated.insertions) != insertion_keys \
@@ -895,7 +898,7 @@ locator kind per reference. Return valid JSON only.
         except ValueError:
             pass
         # Overlap, changed heading references, or invalid batch output use the whole-plan model path.
-        return self._generate_model_markdown_replacements(source, plan, context)
+        return self._generate_model_markdown_replacements(source, plan, context, task=task)
 
     def _markdown_replacements_are_independent(self, source: str, replacements: StringReplaceSet) -> bool:
         ranges = sorted(
@@ -1716,7 +1719,7 @@ locator kind per reference. Return valid JSON only.
         if not missing:
             return plan
         prompt = COMPLETE_IR_ANCHOR_SCOPES_PROMPT.format(
-            task_json=to_prompt_json(task), previous_plan_json=to_prompt_json(plan),
+            task_json=to_prompt_json(task.prompt_data()), previous_plan_json=to_prompt_json(plan),
             missing_indexes_json=to_prompt_json(sorted(missing)),
             document_content=to_prompt_json(self._visible_document(document)),
         )

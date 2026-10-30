@@ -141,7 +141,8 @@ def test_stream_short_document(representation, tmp_path):
         task.constraints['max_chars'] = 3
         plan.meta['max_chars'] = 3
 
-        def stream_text(_prompt, stream_output=False):
+        def stream_text(_prompt, stream_output=False, call_control=None):
+            assert call_control is not None
             sink = stream_output['_stream_sink']
             sink({'tag': 'text', 'delta': '第一段。'})
             sink({'tag': 'text', 'delta': '\n\n第二段。'})

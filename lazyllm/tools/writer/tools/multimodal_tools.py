@@ -238,7 +238,9 @@ class WriterMultimodalTools(WriterToolBase):
                 continue
             try:
                 asset = self._materialize_input_resource(self._unified_model(resource, InputResource))
-                asset = library.assets.setdefault(asset.media_asset_id, asset)
+                existing = library.assets.get(asset.media_asset_id)
+                if existing is None or not self._asset_is_available(existing):
+                    library.assets[asset.media_asset_id] = asset
                 library.visual_need_asset_ids[need.need_id] = [asset.media_asset_id]
             except Exception as exc:
                 warnings.append(f'Failed to materialize {need.need_id!r}: {type(exc).__name__}: {exc}')
