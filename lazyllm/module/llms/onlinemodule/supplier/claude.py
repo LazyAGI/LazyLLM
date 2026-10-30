@@ -66,6 +66,56 @@ class ClaudeChat(OnlineChatModuleBase):
             })
         return result
 
+    @staticmethod
+    def _parse_tool_arguments(arguments: Any) -> Dict[str, Any]:
+        if isinstance(arguments, dict):
+            return arguments
+        if isinstance(arguments, str) and arguments.strip():
+            try:
+                parsed = json.loads(arguments)
+            except ValueError:
+                return {}
+            return parsed if isinstance(parsed, dict) else {}
+        return {}
+
+    @staticmethod
+    def _convert_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        # Agents build their history in OpenAI format, but the Messages API has no `tool` role and rejects
+        # extra message fields (tool_calls, reasoning_content, ...), so tool loops fail with 400 after the
+        # first call. Map tool_calls to `tool_use` blocks and group consecutive tool results into one user
+        # message of `tool_result` blocks, as Anthropic expects.
+        result = []
+        for msg in messages:
+            role = msg.get('role')
+            if role == 'tool':
+                content = msg.get('content')
+                if content is None:
+                    content = ''
+                elif not isinstance(content, (str, list)):
+                    content = json.dumps(content, ensure_ascii=False)
+                block = {'type': 'tool_result', 'tool_use_id': msg.get('tool_call_id'), 'content': content}
+                last = result[-1] if result else None
+                if (last and last['role'] == 'user' and isinstance(last['content'], list)
+                        and last['content'] and all(b.get('type') == 'tool_result' for b in last['content'])):
+                    last['content'].append(block)
+                else:
+                    result.append({'role': 'user', 'content': [block]})
+                continue
+            content = msg.get('content')
+            if role == 'assistant' and msg.get('tool_calls'):
+                if isinstance(content, list):
+                    blocks = list(content)
+                else:
+                    blocks = [{'type': 'text', 'text': content}] if content else []
+                for call in msg['tool_calls']:
+                    fn = call.get('function', {})
+                    blocks.append({'type': 'tool_use', 'id': call.get('id'), 'name': fn.get('name'),
+                                   'input': ClaudeChat._parse_tool_arguments(fn.get('arguments'))})
+                result.append({'role': 'assistant', 'content': blocks})
+                continue
+            result.append({'role': role, 'content': '' if content is None else content})
+        return result
+
     def _output_token_key(self, data):
         return 'max_tokens'
 
@@ -74,6 +124,8 @@ class ClaudeChat(OnlineChatModuleBase):
         data.setdefault('max_tokens', self._DEFAULT_MAX_TOKENS)
         if data.get('tools'):
             data['tools'] = self._convert_tools(data['tools'])
+        if isinstance(data.get('messages'), list):
+            data['messages'] = self._convert_messages(data['messages'])
         return data
 
     def _convert_msg_format(self, msg: Dict[str, Any]):
