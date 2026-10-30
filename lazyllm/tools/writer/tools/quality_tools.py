@@ -32,6 +32,7 @@ class WriterQualityTools(WriterToolBase):
         draft_block: Any,
         section_instruction: Any,
         context: Any,
+        *, task: Any = None,
     ) -> dict:
         draft = self._unified_section(draft_block)
         instruction_list = self._unified_model(section_instruction, SectionInstructionList)
@@ -51,7 +52,7 @@ class WriterQualityTools(WriterToolBase):
         prompt = VALIDATE_SECTION_PROMPT.format(
             section_content=section_content,
             instruction_json=to_prompt_json(instruction),
-            context_json=to_prompt_json(writing_context),
+            context_json=self._task_context_prompt(writing_context, task),
         )
         audit_result = self._call_llm_structured(prompt, AuditResult)
 
@@ -95,6 +96,7 @@ class WriterQualityTools(WriterToolBase):
         self,
         draft_document: Any,
         context: Any,
+        *, task: Any = None,
     ) -> dict:
         document = self._unified_document(draft_document)
         writing_context = self._unified_model(context, WritingContext)
@@ -113,7 +115,7 @@ class WriterQualityTools(WriterToolBase):
 
         prompt = VALIDATE_DRAFT_DOCUMENT_PROMPT.format(
             draft_document_content=document_content,
-            context_json=to_prompt_json(writing_context),
+            context_json=self._task_context_prompt(writing_context, task),
         )
         audit_result = self._call_llm_structured(prompt, AuditResult)
 

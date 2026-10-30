@@ -1,4 +1,6 @@
 import json
+import asyncio
+from threading import Event, Thread
 import time
 from copy import copy
 from pathlib import Path
@@ -27,6 +29,177 @@ from lazyllm.tools.writer.utils import (
     load_artifact_json,
     render_document_markdown,
 )
+
+
+@pytest.mark.parametrize('action', ['timeout', 'close'])
+def test_stream_cancellation_returns_before_uncooperative_worker_and_never_saves(action):
+    entered, release, returned = Event(), Event(), Event()
+    saved, errors = [], []
+
+    def call(sink):
+        entered.set()
+        release.wait(3)
+        sink({'tag': 'text', 'delta': 'late body'})
+        return 'late body'
+
+    stream = DraftMarkdownStream(call, lambda body: saved.append(body), '', .02)
+    assert entered.wait(1)
+
+    def consume():
+        try:
+            list(stream) if action == 'timeout' else stream.close()
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            returned.set()
+
+    consumer = Thread(target=consume)
+    consumer.start()
+    try:
+        assert returned.wait(1), 'stream waited for the blocked model after cancellation'
+        assert not stream._future.done()
+    finally:
+        release.set()
+        consumer.join(3)
+        with pytest.raises(asyncio.CancelledError):
+            stream._future.result(timeout=3)
+    assert saved == []
+    assert stream._queue.empty()
+    if action == 'timeout':
+        assert len(errors) == 1 and isinstance(errors[0], TimeoutError)
+        with pytest.raises(TimeoutError):
+            stream.result()
+    else:
+        assert not errors
+
+
+@pytest.mark.parametrize('inline', [False, True])
+def test_continuous_reasoning_survives_idle_timeout_and_saves_body(inline):
+    saved = []
+
+    def call(sink):
+        if inline:
+            sink({'tag': 'text', 'delta': '<think>'})
+        for _ in range(20):
+            time.sleep(.02)
+            sink({'tag': 'text' if inline else 'think', 'delta': 'reasoning'})
+        sink({'tag': 'text', 'delta': '</think>body' if inline else 'body'})
+        return 'body'
+
+    stream = DraftMarkdownStream(call, lambda body: saved.append(body) or {'body': body}, '', .15)
+    with stream:
+        assert ''.join(stream) == 'body\n'
+        assert stream.result() == {'body': 'body'}
+    assert saved == ['body']
+    assert stream.timings['first_visible_ms'] > 150
+
+
+def test_reasoning_then_stall_times_out_despite_non_content_events():
+    payloads = [
+        {'tag': 'runtime_event', 'delta': 'heartbeat'},
+        {'tag': 'think', 'delta': ''},
+        {'tag': 'text', 'delta': ' \n'},
+        {'tag': 'unexpected', 'delta': 'heartbeat'},
+    ]
+    saved = []
+
+    def call(sink, call_control):
+        for _ in range(20):
+            call_control.wait(.02)
+            sink({'tag': 'think', 'delta': 'reasoning'})
+        while True:
+            call_control.wait(.02)
+            for payload in payloads:
+                sink(payload)
+
+    stream = DraftMarkdownStream(call, lambda body: saved.append(body), '', .15)
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        list(stream)
+    assert .4 < time.monotonic() - started < 2
+    with pytest.raises(asyncio.CancelledError):
+        stream._future.result(timeout=1)
+    assert saved == []
+
+
+def test_stream_forwards_cancellation_to_cooperative_model():
+    from lazyllm.tools.writer.tools.base import WriterToolBase
+
+    entered, stopped = Event(), Event()
+
+    def model(prompt, *, call_control):
+        entered.set()
+        try:
+            call_control.wait(3)
+        finally:
+            stopped.set()
+
+    def call(sink, call_control):
+        return WriterToolBase._call_model(model, 'prompt', call_control=call_control)
+
+    stream = DraftMarkdownStream(call, lambda body: {'body': body}, '', .02)
+    assert entered.wait(1)
+    with pytest.raises(TimeoutError):
+        list(stream)
+    assert stopped.wait(1)
+    with pytest.raises(asyncio.CancelledError):
+        stream._future.result(timeout=1)
+
+
+def test_repeated_stream_timeouts_release_http_connection_and_single_worker(monkeypatch):
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import lazyllm
+    from lazyllm.common import ThreadPoolExecutor
+    from lazyllm.tools.writer.tools import stream_tools
+    from lazyllm.tools.writer.tools.base import WriterToolBase
+
+    closed = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers['Content-Length']))
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Content-Length', '10000')
+            self.end_headers()
+            self.wfile.write(b'data: {"choices":[{"delta":{"content":"Partial body"},"finish_reason":null}]}\n\n')
+            self.wfile.flush()
+            self.connection.settimeout(2)
+            if self.rfile.read(1) == b'':
+                closed.append(True)
+
+    with ThreadingHTTPServer(('127.0.0.1', 0), Handler) as server, \
+            ThreadPoolExecutor(max_workers=1, local_scope='inherit') as executor:
+        monkeypatch.setattr(stream_tools, '_WRITER_STREAM_EXECUTOR', executor)
+        thread = Thread(target=lambda: server.serve_forever(poll_interval=.01), daemon=True)
+        thread.start()
+        try:
+            model = lazyllm.OnlineChatModule(
+                source='openai', model='fixture', api_key='fixture',
+                url=f'http://127.0.0.1:{server.server_port}/v1/',
+            )
+            tool = WriterToolBase(llm=model)
+            saved = []
+            for _ in range(3):
+                stream = DraftMarkdownStream(
+                    lambda sink, call_control: tool._call_llm_text(
+                        'fixture', stream_output={'_stream_sink': sink}, call_control=call_control,
+                        timeout=(.2, .2), max_retries=1),
+                    lambda body: saved.append(body), '', .05,
+                )
+                with pytest.raises(TimeoutError):
+                    list(stream)
+                with pytest.raises(asyncio.CancelledError):
+                    stream._future.result(timeout=2)
+            assert executor.submit(lambda: 'available').result(timeout=1) == 'available'
+            assert not saved
+        finally:
+            server.shutdown()
+            thread.join(2)
+    assert len(closed) == 3
 
 
 def _instruction(title='Section'):
@@ -115,6 +288,8 @@ def test_draft_markdown_stream_filters_tags_and_normalizes_body():
 
     def call(sink):
         sink({'tag': 'think', 'delta': 'provider reasoning'})
+        sink({'tag': 'runtime_event'})
+        sink({'tag': 'unexpected', 'delta': 'private event'})
         sink({'tag': 'text', 'delta': '  <thi'})
         sink({'tag': 'text', 'delta': 'nk>inline reasoning</think>\n\n body '})
         sink({'tag': 'text', 'delta': '\nnext  '})
@@ -129,11 +304,19 @@ def test_draft_markdown_stream_filters_tags_and_normalizes_body():
         finalize=finalize,
         prefix='## Section\n\n',
         idle_timeout=1,
+        preview=lambda body: body.replace('next', 'N'),
     )
 
-    assert ''.join(stream) == '## Section\n\nbody \nnext\n'
+    assert ''.join(stream) == '## Section\n\nbody \nN\n'
     assert finalized == ['body \nnext']
     assert stream.result() == {'body': 'body \nnext'}
+    stats = stream.timings
+    assert stats['think_events'] == stats['runtime_event_events'] == stats['other_events'] == 1
+    assert stats['text_events'] == 3
+    assert stats['text_chars'] > stats['normalized_chars'] == len('body \nnext')
+    assert stats['visible_chars'] == len('body \nN\n')
+    assert stats['first_text_ms'] is not None
+    assert 'reasoning' not in json.dumps(stats) and 'private' not in json.dumps(stats)
 
 
 def test_draft_markdown_stream_rejects_response_mismatch():

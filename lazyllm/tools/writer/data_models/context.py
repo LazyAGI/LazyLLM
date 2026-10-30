@@ -33,10 +33,6 @@ class StyleProfile(BaseModel):
     notes: List[str] = Field(default_factory=list)
 
 
-class BlockRelationGraph(BaseModel):
-    relations: List[Dict[str, Any]] = Field(default_factory=list)
-
-
 class WritingContext(ArtifactModel):
     context_id: str
     doc_id: Optional[str] = None
@@ -44,6 +40,10 @@ class WritingContext(ArtifactModel):
     block_summaries: List[BlockSummary] = Field(default_factory=list)
     facts: List[DocumentFact] = Field(default_factory=list)
     style_profile: Optional[StyleProfile] = None
-    relation_graph: Optional[BlockRelationGraph] = None
-    query: Optional[str] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
+
+    def prompt_data(self) -> Dict[str, Any]:
+        data = self.model_dump(exclude_defaults=True, exclude={'context_id', 'doc_id', 'meta'})
+        if self.document_summary and self.meta.get('document_summary_kind'):
+            data['meta'] = {'document_summary_kind': self.meta['document_summary_kind']}
+        return data

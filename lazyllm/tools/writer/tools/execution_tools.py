@@ -32,6 +32,7 @@ class WriterExecutionTools(WriterToolBase):
         outline: Any,
         context: Any,
         *,
+        task: Any = None,
         max_retries: int = 1,
         retry_failed: bool = False,
         on_progress: Optional[Callable[[List[Dict[str, Any]]], None]] = None,
@@ -76,7 +77,7 @@ class WriterExecutionTools(WriterToolBase):
                 futures = [
                     executor.submit(
                         self._execute_subtask,
-                        subtask, block, writing_context, max_retries, publish, retrieve,
+                        subtask, block, writing_context, max_retries, publish, retrieve, task,
                     )
                     for subtask, block in pending
                 ]
@@ -135,6 +136,7 @@ class WriterExecutionTools(WriterToolBase):
         max_retries: int,
         publish: Callable[[], None],
         retrieve: Optional[Callable[[str], Any]],
+        task: Any = None,
     ) -> None:
         retries_this_run = 0
         while True:
@@ -159,7 +161,7 @@ class WriterExecutionTools(WriterToolBase):
                 self._record_tool(subtask, 'llm')
                 publish()
                 resolution = self._call_llm_structured(
-                    self._subtask_prompt(subtask, block, context, retrieval_result),
+                    self._subtask_prompt(subtask, block, context, retrieval_result, task),
                     _WritingSubTaskResolution,
                 )
                 subtask.result_summary = resolution.result_summary.strip()
@@ -185,12 +187,13 @@ class WriterExecutionTools(WriterToolBase):
         if tool_name not in subtask.tools_used:
             subtask.tools_used.append(tool_name)
 
-    @staticmethod
     def _subtask_prompt(
+        self,
         subtask: WritingSubTask,
         block: Dict[str, Any],
         context: WritingContext,
         retrieval_result: Any = None,
+        task: Any = None,
     ) -> str:
         return '''Resolve one writing subtask using the supplied writing context and outline node.
 
@@ -212,6 +215,6 @@ Knowledge retrieval result (null unless subtask_type is retrieve):
 '''.format(
             subtask_json=to_prompt_json(subtask),
             block_json=to_prompt_json(block),
-            context_json=to_prompt_json(context),
+            context_json=self._task_context_prompt(context, task),
             retrieval_result_json=to_prompt_json(retrieval_result),
         )

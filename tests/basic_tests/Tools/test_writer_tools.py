@@ -649,7 +649,6 @@ def test_update_writing_context_tool_result_from_paths():
 
         updated = load_artifact_json(result['context_path'], WritingContext)
         assert updated.document_summary.summary == '最终稿 这是最终输出内容。'
-        assert updated.meta['context_updates'][0]['summary'] == '最终稿 这是最终输出内容。'
 
 
 # ---------------------------------------------------------------------------
@@ -812,7 +811,7 @@ def test_create_context_writer_ir_none():
         )
 
         context = load_artifact_json(result['context_path'], WritingContext)
-        assert context.document_summary.structure_summary is None
+        assert context.document_summary is None
         assert context.block_summaries == []
 
 
@@ -896,8 +895,10 @@ def test_create_context_multiple_profiles():
         )
 
         context = load_artifact_json(result['context_path'], WritingContext)
-        assert context.document_summary.key_points == ['需求规格', '市场数据', '范文']
-        assert len(context.facts) == 3
+        assert context.document_summary is None
+        assert [fact.value for fact in context.facts] == [
+            '私有化部署', 'SaaS', '需求规格', '市场增长', '市场数据', '范文',
+        ]
         assert context.style_profile.notes == ['技术', '正式']
 
 
@@ -931,7 +932,7 @@ def test_update_context_first_update():
         updated = load_artifact_json(result['context_path'], WritingContext)
         assert updated.document_summary is not None
         assert updated.document_summary.summary == '第一章 这是第一章的内容。'
-        assert len(updated.meta.get('context_updates', [])) >= 1
+        assert 'context_updates' not in updated.meta
 
 
 def test_update_context_second_update():
@@ -962,7 +963,7 @@ def test_update_context_second_update():
 
         updated = load_artifact_json(result['context_path'], WritingContext)
         assert updated.document_summary.summary == '第二章 第二次更新的内容。'
-        assert len(updated.meta.get('context_updates', [])) >= 1
+        assert 'context_updates' not in updated.meta
 
 
 def test_update_context_writer_ir_as_pydantic():

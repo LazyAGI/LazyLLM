@@ -44,7 +44,10 @@ Requirements:
   insert an independent child WriterBlock with type="image" at the appropriate reading position.
   Its content is the final Chinese caption and references must contain exactly one
   {{"type": "media_asset", "id": "..."}} entry from section_media. Do not invent asset IDs,
-  paths, URLs, tokens, placeholders, or image blocks for unresolved needs.
+  paths, URLs, or tokens. If section_media.defer_media=true, images are being acquired in parallel:
+  create planned image blocks using need_id as node_id, purpose for the caption, and empty references.
+  The system binds their assets after generation. Do not infer factual claims from unseen images.
+  Otherwise do not create image blocks for unresolved needs.
   The image block node_id is both the visual need_id and cross-reference target; its
   media_asset id is separate and must be copied from section_media.
 - Omit provider_binding and provider_payload; the system manages them.
