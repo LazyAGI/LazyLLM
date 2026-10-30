@@ -48,7 +48,7 @@ def test_stream_cancellation_returns_before_uncooperative_worker_and_never_saves
     def consume():
         try:
             list(stream) if action == 'timeout' else stream.close()
-        except BaseException as exc:
+        except Exception as exc:
             errors.append(exc)
         finally:
             returned.set()
@@ -177,8 +177,10 @@ def test_repeated_stream_timeouts_release_http_connection_and_single_worker(monk
         thread = Thread(target=lambda: server.serve_forever(poll_interval=.01), daemon=True)
         thread.start()
         try:
-            model = lazyllm.OnlineChatModule(source='openai', model='fixture', api_key='fixture',
-                                           url=f'http://127.0.0.1:{server.server_port}/v1/')
+            model = lazyllm.OnlineChatModule(
+                source='openai', model='fixture', api_key='fixture',
+                url=f'http://127.0.0.1:{server.server_port}/v1/',
+            )
             tool = WriterToolBase(llm=model)
             saved = []
             for _ in range(3):

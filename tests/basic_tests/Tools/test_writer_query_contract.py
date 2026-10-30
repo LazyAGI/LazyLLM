@@ -200,9 +200,10 @@ def test_merging_section_context_update_preserves_document_and_all_context_field
         outline = WriterDocument(document_id='outline', stage='outline', title='Report', blocks=[
             WriterBlock(node_id='section', type='heading', content='Findings', numbering={'level': 1}),
         ])
-        block = WriterBlock(node_id='section', type='heading', content='Findings', stage='draft', numbering={'level': 1}, children=[
-            WriterBlock(node_id='paragraph', type='paragraph', content=text, stage='draft'),
-        ])
+        block = WriterBlock(
+            node_id='section', type='heading', content='Findings', stage='draft', numbering={'level': 1},
+            children=[WriterBlock(node_id='paragraph', type='paragraph', content=text, stage='draft')],
+        )
 
     outputs = []
     for intermediate in [True, False]:
@@ -247,8 +248,9 @@ def test_naive_write_updates_outline_and_assembled_document_only(tmp_path):
     )
     with patch.object(workflow.planning, 'generate_outline', return_value={'artifact_path': str(outline_path)}), \
             patch.object(workflow.drafting, '_call_llm_text', return_value='Evidence. ' * 50):
-        result = workflow.write(WritingTask(query='Write', task_type='write',
-                                           output={'representation': 'markdown'}))
+        result = workflow.write(WritingTask(
+            query='Write', task_type='write', output={'representation': 'markdown'},
+        ))
     assert summary.call_count == 2
     assert 'Describe evidence.' in summary.call_args_list[0].args[0]
     assert 'Evidence.' in summary.call_args_list[1].args[0]

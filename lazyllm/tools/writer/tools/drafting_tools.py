@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from typing import Any, Dict, List, Optional
 
@@ -398,11 +397,7 @@ class WriterDraftingTools(WriterToolBase):
                 if need.required:
                     raise ValueError(f'Required visual {need.need_id!r} has no resolved media.')
 
-                def remove_pending(parent):
-                    parent.children = [child for child in parent.children if child.node_id != need.need_id]
-                    for child in parent.children:
-                        remove_pending(child)
-                remove_pending(block)
+                self._remove_pending_visual(block, need.need_id)
                 continue
             image = next((item for item in block.iter_blocks() if item.node_id == need.need_id), None)
             if image is None:
@@ -423,6 +418,11 @@ class WriterDraftingTools(WriterToolBase):
                         raise ValueError(f'Unknown media asset {ref.get("id")!r}.')
                     ref['path'] = asset.local_path or asset.uri
         return block
+
+    def _remove_pending_visual(self, block: WriterBlock, need_id: str) -> None:
+        block.children = [child for child in block.children if child.node_id != need_id]
+        for child in block.children:
+            self._remove_pending_visual(child, need_id)
 
     def _generate_ir_draft_section(
         self,
