@@ -3,6 +3,9 @@ import re
 import functools
 from typing import Optional, Dict
 MODEL_MAPPING = {
+    # ===== MiniMax =====
+    'minimax-h3': 'text2video',
+
     # ===== OpenAI (LLM) =====
     'gpt-5': 'vlm',
     'gpt-5-mini': 'vlm',

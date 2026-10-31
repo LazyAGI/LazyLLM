@@ -3598,6 +3598,30 @@ Args:
     **kwargs: Additional optional parameters passed to the parent classes
 """)
 
+add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxText2Video', '''
+Generate a video from text with MiniMax using the v2 task API.
+
+Args:
+    api_key (str, optional): API key; defaults to the configured minimax_api_key.
+    model (str, optional): Model name; defaults to MiniMax-H3.
+    url (str, optional): Base URL including /v2; overrides the regional endpoint.
+    region (str, optional): Either global (default) or cn.
+    return_trace (bool, optional): Whether to return trace information.
+
+Call parameters:
+    input (str): Non-empty prompt, at most 7000 characters.
+    resolution (str): 2K.
+    duration (int): Video length from 4 to 15 seconds; defaults to 4.
+    ratio (str): A concrete aspect ratio; defaults to 16:9.
+    callback_url (str, optional): Callback URL for task status changes.
+    aigc_watermark (bool, optional): Available only for region cn.
+    poll_interval (float): Seconds between polls; defaults to 3.
+    timeout (float): Generation and download deadline in seconds; defaults to 900.
+
+Returns:
+    str: The generated video encoded as a LazyLLM file result.
+''')
+
 add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxText2Image', """\
 Minimax 文生图模块，继承自 OnlineMultiModalBase。
 
