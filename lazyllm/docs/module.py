@@ -3574,7 +3574,7 @@ Minimax 模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
 
 Args:
     base_url (str, optional): API 基础地址。默认使用国际站 "https://api.minimax.io/v1/"。
-    model (str, optional): 使用的模型名称，默认为 "MiniMax-M3"
+    model (str, optional): Model name, defaults to "MiniMax-M3.1-Flash"; "MiniMax-M3" is also supported.
     api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['minimax_api_key'] 中读取
     region (str, optional): API 区域，可选 ``global`` 或 ``cn``。中国站使用 "https://api.minimaxi.com/v1/"。
     stream (bool, optional): 是否启用流式输出，默认为 True；启用时会自动设置请求参数
@@ -3589,7 +3589,8 @@ Provides large language model chat capabilities based on the Minimax platform.
 
 Args:
     base_url (str, optional): Base API URL, defaults to the global endpoint "https://api.minimax.io/v1/".
-    model (str, optional): Model name to use, defaults to "MiniMax-M3"
+    model (str, optional): Model name, defaults to "MiniMax-M3.1-Flash"; "MiniMax-M3" is also supported.
+        Explicit legacy and custom model names are forwarded unchanged.
     api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
     region (str, optional): API region, either ``global`` or ``cn``. The China endpoint is
         "https://api.minimaxi.com/v1/".
