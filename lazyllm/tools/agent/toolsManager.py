@@ -350,6 +350,7 @@ print(f'{SANDBOX_TOOL_RESULT_PREFIX}{{result}}')  # noqa print
 '''
 
 _base_fc_register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool')
+_TEMP_TOOL_REGISTRATION_LOCK = threading.RLock()
 _RUNTIME_METADATA_FIELDS = {
     'execute_in_sandbox',
     'input_files_parm',
@@ -632,11 +633,13 @@ class ToolGroup(ToolContainer):
         )
         _gateway_apply.__name__ = f'get_{group_name}_methods'
 
-        register('tmp_tool')(_gateway_apply)
-        tool_cls = lazyllm.tmp_tool.resolve(_gateway_apply.__name__)
-        tool = tool_cls()
-        lazyllm.tmp_tool.remove(_gateway_apply.__name__)
-        return tool
+        with _TEMP_TOOL_REGISTRATION_LOCK:
+            register('tmp_tool')(_gateway_apply)
+            try:
+                tool_cls = lazyllm.tmp_tool.resolve(_gateway_apply.__name__)
+                return tool_cls()
+            finally:
+                lazyllm.tmp_tool.remove(_gateway_apply.__name__)
 
 
 class SkipMixin:
@@ -793,14 +796,16 @@ def _build_tool_from_element(
         return group
     if callable(element):
         schema_func = element
-        register('tmp_tool')(element)
-        try:
-            # The registry wraps callables in a generated method whose module globals
-            # differ from the callable's defining module. Keep the original callable
-            # as the schema source so forward references and structured models resolve.
-            return lazyllm.tmp_tool.resolve(element.__name__)(schema_func=schema_func)
-        finally:
-            lazyllm.tmp_tool.remove(element.__name__)
+        # Registrations are process-global, while closures belong to one run.
+        # Resolve and remove atomically so parallel same-named tools cannot
+        # reuse another run's callable or remove its pending registration.
+        with _TEMP_TOOL_REGISTRATION_LOCK:
+            register('tmp_tool')(element)
+            try:
+                # Preserve the original callable's schema globals.
+                return lazyllm.tmp_tool.resolve(element.__name__)(schema_func=schema_func)
+            finally:
+                lazyllm.tmp_tool.remove(element.__name__)
     raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, got {type(element)}')
 
 
