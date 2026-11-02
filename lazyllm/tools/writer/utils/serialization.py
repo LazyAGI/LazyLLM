@@ -54,13 +54,7 @@ class MarkdownSelectionError(ValueError):
         self.details = details
 
 
-_NUMBERED_HEADING_RE = re.compile(
-    r'^\s*(?:[（(](?:\d+|[a-zA-Z]+|[ivxlcdmIVXLCDM]+|[一二三四五六七八九十百]+)[）)]\s*'
-    r'|[①-⑳]\s*'
-    r'|\d+(?:\.\d+)*(?!\s*年)(?:\s*[、.．：:]\s*|\s+)'
-    r'|第\s*(?:\d+(?:\.\d+)*|[一二三四五六七八九十百千万零〇两]+)\s*[章节部分篇]\s*[：:、.．]?\s*'
-    r'|[一二三四五六七八九十百千万零〇两]+\s*[、.．：:]\s*)'
-)
+_NUMBERED_HEADING_RE = re.compile(r'^[0-9]+(?:\.[0-9]+)*\.\s+')
 _NUMBERED_CAPTION_RE = re.compile(
     r'^\s*(?:图|表|代码)\s*\d+(?:\.\d+)*\s*[：:.\s]?\s*'
 )
@@ -82,10 +76,7 @@ def _media_reference_variants(value: Any) -> set[str]:
 
 
 def strip_heading_numbering(value: str) -> str:
-    '''Remove visible heading numbering from generated/persisted heading text.'''
-    text = (value or '').strip()
-    match = _NUMBERED_HEADING_RE.match(text)
-    return text[match.end():].strip() if match else text
+    return _NUMBERED_HEADING_RE.sub('', (value or '').strip(), count=1)
 
 
 def strip_caption_numbering(value: str) -> str:
