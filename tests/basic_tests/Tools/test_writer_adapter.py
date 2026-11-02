@@ -513,9 +513,12 @@ def _cell_edit(document, node_id, value, hunk_id=None):
 
 
 @pytest.mark.parametrize('content,expected', [
-    ('1. 3.3V 电源', '3.3V 电源'),
-    ('3.3V 电源', '3.3V 电源'),
-    ('第三部分 支付', '第三部分 支付'),
+    ('1. 3.3V 电源', '3.3V 电源'), ('1.1. 背景', '背景'), ('十一、背景', '背景'),
+    ('（一）背景', '背景'), ('（12）背景', '背景'), ('⑳背景', '背景'),
+    ('(1) 背景', '背景'), ('(aa) 背景', '背景'), ('(iv) 背景', '背景'),
+    ('(A) 背景', '背景'), ('(IV) 背景', '背景'), ('3.3V 电源', '3.3V 电源'),
+    ('第一章 3.3V 电源', '3.3V 电源'), ('第一篇 ：背景', '背景'), ('第三部分 支付', '支付'),
+    ('第 2 页｜背景', '背景'), ('第一章程', '第一章程'), ('第一产业', '第一产业'), ('第一章', '第一章'),
 ])
 def test_feishu_load_document_records_remote_revision(content, expected):
     provider = FeishuWriterProvider()
