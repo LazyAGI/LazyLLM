@@ -548,12 +548,12 @@ def test_stream_markdown_outline_returns_the_authoritative_artifact(tmp_path):
     artifact = Path(result['artifact_path']).read_text(encoding='utf-8')
     assert artifact == preview.replace(
         '## 第一章 项目背景',
-        '<a id="block-sec-001"></a>\n## 项目背景\n'
+        '<a id="block-sec-001"></a>\n## 第一章 项目背景\n'
         '<!-- writer:outline {"node_id":"sec-001","target_chars":200,'
         '"context_relations":[],"subtasks":[]} -->',
     ).replace(
         '## 第二章 方案设计',
-        '<a id="block-sec-002"></a>\n## 方案设计\n'
+        '<a id="block-sec-002"></a>\n## 第二章 方案设计\n'
         '<!-- writer:outline {"node_id":"sec-002","target_chars":200,'
         '"context_relations":[{"target_node_id":"sec-001",'
         '"relation":"continuity",'
