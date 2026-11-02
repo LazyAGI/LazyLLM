@@ -83,8 +83,8 @@ class WriterPlanningTools(WriterToolBase):
 
         if resolved_representation == 'markdown':
             prompt = GENERATE_OUTLINE_MARKDOWN_PROMPT.format(
-                task_json=to_prompt_json(writing_task),
-                context_json=to_prompt_json(writing_context),
+                task_json=to_prompt_json(writing_task.prompt_data()),
+                context_json=to_prompt_json(writing_context.prompt_data()),
                 resource_profiles_json=to_prompt_json(profiles),
                 execution_results_json=to_prompt_json(execution_data),
             )
@@ -114,9 +114,9 @@ class WriterPlanningTools(WriterToolBase):
 
         document_id = f'{writing_context.context_id}-outline'
         prompt = GENERATE_OUTLINE_PROMPT.format(
-            task_json=to_prompt_json(writing_task),
+            task_json=to_prompt_json(writing_task.prompt_data()),
             document_id=document_id,
-            context_json=to_prompt_json(writing_context),
+            context_json=to_prompt_json(writing_context.prompt_data()),
             resource_profiles_json=to_prompt_json(profiles),
             execution_results_json=to_prompt_json(execution_data),
         )
@@ -168,8 +168,8 @@ class WriterPlanningTools(WriterToolBase):
         # Give the completion model final character budgets, not relative weights.
         self._ensure_outline_fields(document, writing_task)
         prompt = COMPLETE_OUTLINE_INSTRUCTIONS_PROMPT.format(
-            task_json=to_prompt_json(writing_task),
-            context_json=to_prompt_json(writing_context),
+            task_json=to_prompt_json(writing_task.prompt_data()),
+            context_json=to_prompt_json(writing_context.prompt_data()),
             outline_json=to_prompt_json(document),
         )
         proposed = self._call_llm_structured(prompt, WriterDocument)
@@ -252,9 +252,9 @@ class WriterPlanningTools(WriterToolBase):
         writing_context = self._unified_model(context, WritingContext)
         document_id = f'{writing_context.context_id}-rewrite-outline'
         prompt = GENERATE_REWRITE_OUTLINE_PROMPT.format(
-            task_json=to_prompt_json(writing_task),
+            task_json=to_prompt_json(writing_task.prompt_data()),
             document_id=document_id,
-            context_json=to_prompt_json(writing_context),
+            context_json=to_prompt_json(writing_context.prompt_data()),
             source_document_json=render_document_markdown(source),
         )
         outline = self._call_llm_structured(prompt, WriterDocument)
@@ -290,10 +290,10 @@ class WriterPlanningTools(WriterToolBase):
         representation, source_title, source_sections = self._rewrite_source_sections(source)
         prompt = GENERATE_REWRITE_SECTION_INSTRUCTIONS_PROMPT.format(
             representation=representation,
-            task_json=to_prompt_json(writing_task),
+            task_json=to_prompt_json(writing_task.prompt_data()),
             source_title=source_title,
             source_sections_json=to_prompt_json(source_sections),
-            context_json=to_prompt_json(writing_context),
+            context_json=to_prompt_json(writing_context.prompt_data()),
         )
         instructions = self._call_llm_structured(prompt, SectionInstructionList)
         instructions = self._normalize_rewrite_section_instructions(
@@ -374,9 +374,9 @@ class WriterPlanningTools(WriterToolBase):
         writing_plan = self._unified_model(short_writing_plan, ShortWritingPlan)
         writing_context = self._unified_model(context, WritingContext)
         prompt = GENERATE_SHORT_VISUAL_PLAN_PROMPT.format(
-            task_json=to_prompt_json(writing_task),
+            task_json=to_prompt_json(writing_task.prompt_data()),
             short_writing_plan_json=to_prompt_json(writing_plan),
-            context_json=to_prompt_json(writing_context),
+            context_json=to_prompt_json(writing_context.prompt_data()),
         )
         visual_plan = self._normalize_short_visual_plan(
             self._call_llm_structured(
@@ -410,8 +410,8 @@ class WriterPlanningTools(WriterToolBase):
         visual_plan = VisualPlan()
         if isinstance(writing_outline, WriterDocument):
             prompt = GENERATE_VISUAL_PLAN_PROMPT.format(
-                task_json=to_prompt_json(writing_task),
-                context_json=to_prompt_json(writing_context),
+                task_json=to_prompt_json(writing_task.prompt_data()),
+                context_json=to_prompt_json(writing_context.prompt_data()),
                 outline_json=to_prompt_json(writing_outline),
             )
             visual_plan = self._normalize_visual_plan(
@@ -427,8 +427,8 @@ class WriterPlanningTools(WriterToolBase):
                 for level, heading_path, occurrence, _ in targets
             ]
             prompt = GENERATE_VISUAL_PLAN_MARKDOWN_PROMPT.format(
-                task_json=to_prompt_json(writing_task),
-                context_json=to_prompt_json(writing_context),
+                task_json=to_prompt_json(writing_task.prompt_data()),
+                context_json=to_prompt_json(writing_context.prompt_data()),
                 outline_json=writing_outline,
                 target_sections_json=to_prompt_json(target_payload),
             )
@@ -637,7 +637,6 @@ class WriterPlanningTools(WriterToolBase):
                 fact_constraints=[f'{fact.key}: {fact.value}' for fact in context.facts
                                   if _IMAGE_RESOURCE_FACT_PATTERN.match(f'{fact.key}: {fact.value}')],
                 relation_constraints=relations,
-                expected_blocks=points,
                 meta={
                     'target_chars': max(1, cls._deterministic_target_weight(target, points)),
                     'cross_references': [],
@@ -1087,7 +1086,6 @@ class WriterPlanningTools(WriterToolBase):
                         '覆盖大纲要点并遵守全文约束。'
                     ),
                     required_points=points,
-                    expected_blocks=points,
                     meta={
                         'target_chars': max(
                             1, self._deterministic_target_weight(target, points),

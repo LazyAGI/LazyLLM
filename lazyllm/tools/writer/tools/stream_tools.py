@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import inspect
 import re
 import time
 import asyncio
-from concurrent.futures import CancelledError
+from concurrent.futures import CancelledError, TimeoutError as FutureTimeoutError
 from threading import Event
 from queue import Empty, Queue
 from typing import Any, Callable, Dict, Iterator, List, Literal, Optional, Tuple
@@ -12,6 +13,7 @@ from typing import Any, Callable, Dict, Iterator, List, Literal, Optional, Tuple
 from lazyllm import LOG
 from lazyllm.common import ThreadPoolExecutor
 from lazyllm.configs import config
+from lazyllm.module.llms.onlinemodule.base.model_request import ModelCallControl
 
 from ..data_models.context import WritingContext
 from ..data_models.planning import SectionInstruction
@@ -147,6 +149,11 @@ class DraftPreviewStream(Iterator[str]):
             'first_response_ms': None,
             'first_visible_ms': None,
             'generation_finished_ms': None,
+            'first_text_ms': None,
+            'last_event_ms': None,
+            'visible_chars': 0,
+            **{f'{tag}_{metric}': 0 for tag in ('text', 'think', 'runtime_event', 'other')
+               for metric in ('events', 'chars')},
         }
         self._future = _WRITER_STREAM_EXECUTOR.submit(self._call, call)
         self._iterator = self._iterate()
@@ -162,9 +169,10 @@ class DraftPreviewStream(Iterator[str]):
         not HTTP headers. First visible excludes synthetic prefixes and thinking.
         Generation finished is successful model-call return, before artifact saving.
         '''
-        return dict(self._timings)
+        return {**self._timings, 'observed_elapsed_ms': self._elapsed_ms()}
 
     def _record_visible(self, deltas: List[str]) -> None:
+        self._timings['visible_chars'] += sum(len(delta) for delta in deltas)
         if self._timings['first_visible_ms'] is None and any(delta.strip() for delta in deltas):
             self._timings['first_visible_ms'] = self._elapsed_ms()
 
@@ -191,16 +199,16 @@ class DraftPreviewStream(Iterator[str]):
         try:
             self._iterator.close()
         finally:
-            self._stop_and_wait()
+            self._stop()
             self._drain_queue()
 
-    def _stop_and_wait(self) -> None:
+    def _stop(self) -> None:
         if not self._future.done():
             self._cancelled.set()
             self._future.cancel()
         try:
-            self._future.exception()
-        except CancelledError:
+            self._future.exception(timeout=0)
+        except (CancelledError, FutureTimeoutError):
             pass
 
     def _check_cancelled(self) -> None:
@@ -210,7 +218,12 @@ class DraftPreviewStream(Iterator[str]):
     def _call(self, call):
         self._check_cancelled()
         self._timings['call_started_ms'] = self._elapsed_ms()
-        response = call(self._sink)
+        control = ModelCallControl(cancel_check=self._cancelled.is_set)
+        if 'call_control' in inspect.signature(call).parameters:
+            response = call(self._sink, call_control=control)
+        else:
+            response = call(self._sink)
+        self._check_cancelled()
         self._timings['generation_finished_ms'] = self._elapsed_ms()
         return response
 
@@ -218,6 +231,19 @@ class DraftPreviewStream(Iterator[str]):
         self._check_cancelled()
         if self._timings['first_response_ms'] is None and payload.get('delta'):
             self._timings['first_response_ms'] = self._elapsed_ms()
+        # Count only metadata; never retain document or reasoning content in diagnostics.
+        tag = payload.get('tag')
+        tag = tag if tag in ('text', 'think', 'runtime_event') else 'other'
+        delta = payload.get('delta')
+        size = len(delta) if isinstance(delta, str) else 0
+        # Model progress includes reasoning, even when preview normalization hides it.
+        if tag in ('text', 'think') and isinstance(delta, str) and delta.strip():
+            self._last_activity = time.monotonic()
+        self._timings[f'{tag}_events'] += 1
+        self._timings[f'{tag}_chars'] += size
+        self._timings['last_event_ms'] = self._elapsed_ms()
+        if tag == 'text' and size and self._timings['first_text_ms'] is None:
+            self._timings['first_text_ms'] = self._elapsed_ms()
         self._queue.put(dict(payload))
 
     def _iterate(self) -> Iterator[str]:
@@ -231,17 +257,12 @@ class DraftPreviewStream(Iterator[str]):
                     continue
                 deltas = self._consume(payload)
                 self._record_visible(deltas)
-                if any(delta for delta in deltas):
-                    self._last_activity = time.monotonic()
-                else:
-                    self._raise_if_idle()
+                self._raise_if_idle()
                 yield from deltas
 
             for payload in self._drain_queue():
                 deltas = self._consume(payload)
                 self._record_visible(deltas)
-                if any(delta for delta in deltas):
-                    self._last_activity = time.monotonic()
                 yield from deltas
 
             final_deltas, self._result = self._finalize(self._future.result())
@@ -252,7 +273,7 @@ class DraftPreviewStream(Iterator[str]):
             raise
         finally:
             if self._result is None:
-                self._stop_and_wait()
+                self._stop()
                 self._drain_queue()
 
     def _poll_timeout(self) -> float:
@@ -261,6 +282,8 @@ class DraftPreviewStream(Iterator[str]):
 
     def _raise_if_idle(self) -> None:
         if not self._future.done() and time.monotonic() - self._last_activity >= self._idle_timeout:
+            LOG.warning('[WriterStreamDiagnostics] ' + json.dumps(
+                {'label': self._label, 'status': 'idle_timeout', **self.timings}))
             raise TimeoutError(f'{self._label} stream was idle for {self._idle_timeout:g} seconds.')
 
     def _drain_queue(self) -> List[Dict[str, Any]]:
@@ -298,7 +321,9 @@ class DraftMarkdownStream(DraftPreviewStream):
         def consume(payload: Dict[str, Any]) -> List[str]:
             if payload.get('tag') != 'text':
                 return []
-            return project(normalizer.feed(str(payload.get('delta') or '')))
+            deltas = normalizer.feed(str(payload.get('delta') or ''))
+            self._timings['normalized_chars'] = len(normalizer.body)
+            return project(deltas)
 
         def finish(response: Any) -> Tuple[List[str], dict]:
             body = str(response).strip()
@@ -938,8 +963,8 @@ def build_outline_stream(
 
     if resolved_representation == 'markdown':
         prompt = GENERATE_OUTLINE_MARKDOWN_PROMPT.format(
-            task_json=to_prompt_json(writing_task),
-            context_json=to_prompt_json(writing_context),
+            task_json=to_prompt_json(writing_task.prompt_data()),
+            context_json=to_prompt_json(writing_context.prompt_data()),
             resource_profiles_json=to_prompt_json(profiles),
             execution_results_json=to_prompt_json(execution_data),
         )
@@ -963,9 +988,9 @@ def build_outline_stream(
             ).model_dump()
 
         return DraftMarkdownStream(
-            call=lambda sink: tools._call_llm_text(
+            call=lambda sink, call_control: tools._call_llm_text(
                 prompt,
-                stream_output={'_stream_sink': sink},
+                stream_output={'_stream_sink': sink}, call_control=call_control,
             ),
             finalize=finalize_markdown,
             prefix='',
@@ -976,9 +1001,9 @@ def build_outline_stream(
 
     document_id = f'{writing_context.context_id}-outline'
     prompt = GENERATE_OUTLINE_PROMPT.format(
-        task_json=to_prompt_json(writing_task),
+        task_json=to_prompt_json(writing_task.prompt_data()),
         document_id=document_id,
-        context_json=to_prompt_json(writing_context),
+        context_json=to_prompt_json(writing_context.prompt_data()),
         resource_profiles_json=to_prompt_json(profiles),
         execution_results_json=to_prompt_json(execution_data),
     )
@@ -1008,10 +1033,10 @@ def build_outline_stream(
         ).model_dump()
 
     return OutlineIRStream(
-        call=lambda sink: tools._call_llm_structured(
+        call=lambda sink, call_control: tools._call_llm_structured(
             prompt,
             WriterDocument,
-            stream_output={'_stream_sink': sink},
+            stream_output={'_stream_sink': sink}, call_control=call_control,
         ),
         normalize=normalize_ir,
         finalize=finalize_ir,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 import os
 from typing import Any, List, Optional
 
@@ -39,18 +38,16 @@ class WriterContextTools(WriterToolBase):
         source_content = self._unified_context_content(document)
         source_doc = source_content if isinstance(source_content, WriterDocument) else None
 
+        metadata = {'source': 'create_writing_context'}
+        document_summary = self._build_document_summary(source_content, metadata=metadata)
         context = WritingContext(
             context_id=writing_task.task_id or 'writer-context',
             doc_id=source_doc.document_id if source_doc else None,
-            document_summary=self._build_document_summary(writing_task, profiles, source_content),
+            document_summary=document_summary,
             block_summaries=self._build_block_summaries(source_content),
             facts=self._build_facts(profiles),
             style_profile=self._build_style_profile(profiles),
-            query=writing_task.query,
-            meta={
-                'source': 'create_writing_context',
-                'document_summary_kind': 'summary' if self.llm is not None else 'excerpt',
-            },
+            meta=metadata,
         )
 
         return self._save_artifacts(
@@ -97,32 +94,18 @@ class WriterContextTools(WriterToolBase):
         content_kind: Optional[str] = None
         for artifact in artifacts:
             raw = self._unified_context_content(artifact)
-            writing_context.meta.update({
-                'document_summary_kind': 'summary' if self.llm is not None else 'excerpt',
-            })
 
             if isinstance(raw, str):
-                summary = self._ensure_document_summary(writing_context, raw)
+                self._ensure_document_summary(writing_context, raw)
                 writing_context.block_summaries = self._build_block_summaries(raw)
-                self._append_context_update(
-                    writing_context,
-                    summary,
-                    content_kind='Markdown',
-                )
                 content_kind = 'Markdown'
                 continue
 
             if isinstance(raw, WriterBlock):
-                block = raw
-                if block.stage != 'draft':
+                if raw.stage != 'draft':
                     raise ValueError('context updates only accept draft-stage WriterBlock')
-                summary = self._ensure_document_summary(writing_context, block)
-                writing_context.block_summaries = self._build_block_summaries(block)
-                self._append_context_update(
-                    writing_context,
-                    summary,
-                    content_kind='WriterBlock:draft',
-                )
+                self._ensure_document_summary(writing_context, raw)
+                writing_context.block_summaries = self._build_block_summaries(raw)
                 content_kind = 'WriterBlock:draft'
                 continue
 
@@ -131,19 +114,9 @@ class WriterContextTools(WriterToolBase):
                     'artifacts must contain WriterDocument, WriterBlock, or Markdown values, '
                     f'got {type(artifact).__name__}.'
                 )
-
-            writer_document = raw
-            stage_kind = f'WriterDocument:{writer_document.stage}'
-            summary = self._ensure_document_summary(writing_context, writer_document)
-            writing_context.block_summaries = self._build_block_summaries(writer_document)
-            self._append_context_update(
-                writing_context,
-                summary,
-                content_kind=stage_kind,
-                document=writer_document,
-            )
-
-            content_kind = stage_kind
+            self._ensure_document_summary(writing_context, raw)
+            writing_context.block_summaries = self._build_block_summaries(raw)
+            content_kind = f'WriterDocument:{raw.stage}'
 
         writing_context.meta.update({
             'source': 'update_writing_context',
@@ -183,7 +156,7 @@ class WriterContextTools(WriterToolBase):
                 if item.content.strip()
             )
             structure_summary = None
-        content_summary = self._summarize_content_data(text)
+        content_summary = self._summarize_content_data(text, metadata=writing_context.meta)
         if writing_context.document_summary is None:
             writing_context.document_summary = DocumentSummary(
                 summary=content_summary,
@@ -195,21 +168,6 @@ class WriterContextTools(WriterToolBase):
             if isinstance(content, (WriterDocument, str)):
                 writing_context.document_summary.structure_summary = structure_summary
         return content_summary
-
-    def _append_context_update(
-        self,
-        writing_context: WritingContext,
-        summary: str,
-        content_kind: str,
-        document: Optional[WriterDocument] = None,
-    ) -> None:
-        writing_context.meta.setdefault('context_updates', []).append({
-            'summary': summary,
-            'content_kind': content_kind,
-            'document_id': document.document_id if document else None,
-            'revision': document.revision if document else None,
-            'timestamp': datetime.now().astimezone().isoformat(),
-        })
 
     def _unified_context_content(self, value: Any) -> Optional[WriterDocument | WriterBlock | str]:
         if value is None or isinstance(value, (WriterDocument, WriterBlock)):
@@ -231,23 +189,17 @@ class WriterContextTools(WriterToolBase):
 
     def _build_document_summary(
         self,
-        task: WritingTask,
-        profiles: List[ResourceProfile],
         content: Optional[WriterDocument | str],
-    ) -> DocumentSummary:
-        key_points = [profile.summary for profile in profiles if profile.summary]
-        structure_summary = self._build_structure_summary(content)
-
-        summary = task.query
-        if content:
-            text = content if isinstance(content, str) else self._document_text(content)
-            if text.strip():
-                summary = self._summarize_content_data(text)
-
+        *, metadata: Optional[dict] = None,
+    ) -> Optional[DocumentSummary]:
+        if not content:
+            return None
+        text = content if isinstance(content, str) else self._document_text(content)
+        if not text.strip():
+            return None
         return DocumentSummary(
-            summary=summary,
-            key_points=key_points,
-            structure_summary=structure_summary,
+            summary=self._summarize_content_data(text, metadata=metadata),
+            structure_summary=self._build_structure_summary(content),
         )
 
     def _build_structure_summary(
@@ -316,7 +268,10 @@ class WriterContextTools(WriterToolBase):
     def _build_facts(self, profiles: List[ResourceProfile]) -> List[DocumentFact]:
         facts: List[DocumentFact] = []
         for profile in profiles:
-            for fact in profile.key_facts:
+            values = list(profile.key_facts)
+            if profile.summary and profile.summary not in values:
+                values.append(profile.summary)
+            for fact in values:
                 facts.append(
                     DocumentFact(
                         fact_id=f'fact-{len(facts) + 1}',
@@ -351,7 +306,9 @@ class WriterContextTools(WriterToolBase):
         )
         return '\n'.join(parts)
 
-    def _summarize_content_data(self, text: str) -> str:
+    def _summarize_content_data(self, text: str, *, metadata: Optional[dict] = None) -> str:
+        if metadata is not None:
+            metadata['document_summary_kind'] = 'excerpt'
         if not text.strip():
             return 'No content summary available.'
 
@@ -360,9 +317,13 @@ class WriterContextTools(WriterToolBase):
             try:
                 import json as _json
                 prompt = CONTENT_SUMMARY_PROMPT.format(content=text[:3000])
-                response = str(self.llm(prompt))
+                response = self._strip_leading_think_blocks(str(self.llm(prompt)))
                 parsed = _json.loads(response)
-                result = parsed.get('summary') or result
+                summary = parsed.get('summary')
+                if isinstance(summary, str) and summary.strip():
+                    result = summary
+                    if metadata is not None:
+                        metadata['document_summary_kind'] = 'summary'
             except Exception:
                 LOG.warning('update_writing_context: LLM summary failed, using truncation fallback')
         return result
