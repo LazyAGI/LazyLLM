@@ -19,7 +19,7 @@
     - post_process_result
     exclude-members:
 
-::: lazyllm.tools.Document
+::: lazyllm.tools.rag.document.Document
     members: [connect_sql_manager, get_sql_manager, extract_db_schema, update_database, create_kb_group, activate_group, activate_groups, get_store, get_embed, register_index, find, clear_cache, create_node_group, find_parent, find_children, register_global_reader, add_reader]
     exclude-members:
 
@@ -85,7 +85,7 @@
         - insert_values
     exclude-members:
 
-::: lazyllm.tools.Reranker
+::: lazyllm.tools.rag.rerank.Reranker
     members:
     exclude-members:
 
@@ -157,11 +157,11 @@
         - query
     exclude-members:
 
-::: lazyllm.tools.Reranker
+::: lazyllm.tools.rag.rerank.Reranker
     members: [register_reranker]
     exclude-members: forward
 
-::: lazyllm.tools.Retriever
+::: lazyllm.tools.rag.retriever.Retriever
     members:
     exclude-members: forward
 
@@ -397,15 +397,15 @@
     members:
     exclude-members:
 
-::: lazyllm.tools.rag.IndexBase.update
+::: lazyllm.tools.rag.index_base.IndexBase.update
     members:
 	exclude-members:
 
-::: lazyllm.tools.rag.IndexBase.remove
+::: lazyllm.tools.rag.index_base.IndexBase.remove
     members:
 	exclude-members:
 
-::: lazyllm.tools.rag.IndexBase.query
+::: lazyllm.tools.rag.index_base.IndexBase.query
     members:
 	exclude-members:
 
@@ -490,7 +490,7 @@ Authorization recovery retries at most once and only for explicit HTTP 401 failu
     members: [split_text]
     exclude-members:
 
-::: lazyllm.tools.rag.LazyLLMStoreBase
+::: lazyllm.tools.rag.store.store_base.LazyLLMStoreBase
     members: [connect, upsert, delete, get, search]
     exclude-members:
 
@@ -522,6 +522,6 @@ Authorization recovery retries at most once and only for explicit HTTP 401 failu
     members: correct, correct_batch
     exclude-members:
 
-::: lazyllm.tools.rag.QueryEnhACProcessor
+::: lazyllm.tools.rag.query_enh_ac.QueryEnhACProcessor
     members: __call__, get_matches, update_data_source, update_discriminator
     exclude-members:
