@@ -68,6 +68,9 @@ _MARKDOWN_BIBLIOGRAPHY_ENTRY_RE = re.compile(
     r'^[ \t]*\\\[(?P<number>[1-9]\d*)\][ \t]+(?P<content>\S.*?)[ \t]*$'
 )
 _MARKDOWN_CITATION_RE = re.compile(r'\\\[(?P<number>[1-9]\d*)\]')
+_PAPER_ANCHOR_RE = re.compile(r'''^\s*<a\s+id=(["'])(paper-[\w.-]+)\1\s*>\s*</a>\s*$''')
+_PAPER_ENTRY_RE = re.compile(r'^\[([1-9]\d*)\]\s+(\S.*)$')
+_PAPER_CITATION_RE = re.compile(r'\[\\\[[1-9]\d*\\\]\]\(#paper-ref-([\w.-]+)\)')
 _GENERATED_ANCHOR_KIND = {
     'section': 'sec',
     'figure': 'figure',
@@ -409,17 +412,24 @@ def _citation_link(number: int) -> str:
     return f'[\\[{number}\\]](#writer-cite-ref-{number:03d})'
 
 
-def _rewrite_line_citations(line: str, entry_numbers: set[int]) -> str:
+def _rewrite_line_citations(line: str, entry_numbers: set[int], *, source_numbers=None) -> str:
+    def rewrite(prose):
+        if source_numbers is not None:
+            return _PAPER_CITATION_RE.sub(
+                lambda match: _citation_link(source_numbers[match[1]])
+                if match[1] in source_numbers else match[0], prose,
+            )
+        return _MARKDOWN_CITATION_RE.sub(
+            lambda match: _citation_link(int(match.group('number')))
+            if int(match.group('number')) in entry_numbers else match.group(0), prose,
+        )
+
     parts: list[str] = []
     cursor = 0
     while cursor < len(line):
         opening = line.find('`', cursor)
         prose_end = len(line) if opening < 0 else opening
-        parts.append(_MARKDOWN_CITATION_RE.sub(
-            lambda match: _citation_link(int(match.group('number')))
-            if int(match.group('number')) in entry_numbers else match.group(0),
-            line[cursor:prose_end],
-        ))
+        parts.append(rewrite(line[cursor:prose_end]))
         if opening < 0:
             break
         fence_end = opening
@@ -436,11 +446,70 @@ def _rewrite_line_citations(line: str, entry_numbers: set[int]) -> str:
     return ''.join(parts)
 
 
+def _unfenced_lines(lines: Sequence[str]):
+    fence_marker = None
+    for index, line in enumerate(lines):
+        fence = _MARKDOWN_FENCE_RE.match(line)
+        if fence:
+            marker = fence['fence']
+            if fence_marker is None:
+                fence_marker = marker
+            elif marker[0] == fence_marker[0] and len(marker) >= len(fence_marker) \
+                    and not line[fence.end():].strip():
+                fence_marker = None
+        elif fence_marker is None:
+            yield index, line
+
+
+def _normalize_paper_bibliography(lines: Sequence[str]) -> Optional[list[str]]:
+    # Only the explicitly delimited, published bibliography owns stable source IDs.
+    anchors = [(i, anchor[2]) for i, line in _unfenced_lines(lines)
+               if (anchor := _PAPER_ANCHOR_RE.fullmatch(line))]
+    starts = [i for i, name in anchors if name == 'paper-references-start']
+    ends = [i for i, name in anchors if name == 'paper-references-end']
+    if not starts and not ends:
+        return None
+    if len(starts) != 1 or len(ends) != 1 or starts[0] >= ends[0]:
+        raise ValueError('Invalid paper bibliography boundaries.')
+    start, end = starts[0], ends[0]
+    content = [line.strip() for line in lines[start + 1:end] if line.strip()]
+    if not content or content[0] != '**参考文献**' or len(content) % 2 != 1:
+        raise ValueError('Invalid paper bibliography entries.')
+    source_numbers = {}
+    entries = []
+    for offset in range(1, len(content), 2):
+        anchor = _PAPER_ANCHOR_RE.fullmatch(content[offset])
+        entry = _PAPER_ENTRY_RE.fullmatch(content[offset + 1])
+        if not anchor or not anchor[2].startswith('paper-ref-') or not entry:
+            raise ValueError('Invalid paper bibliography entry.')
+        source_id = anchor[2].removeprefix('paper-ref-')
+        number = int(entry[1])
+        if not source_id or source_id in source_numbers or number != len(entries) + 1:
+            raise ValueError('Duplicate or unordered paper bibliography entry.')
+        source_numbers[source_id] = number
+        entries.append((number, entry[2]))
+    if not entries:
+        raise ValueError('Empty paper bibliography.')
+
+    body = list(lines)
+    for index, line in _unfenced_lines(lines):
+        if not start <= index <= end:
+            body[index] = _rewrite_line_citations(line, set(), source_numbers=source_numbers)
+    bibliography = ['<a data-writer-bibliography="begin" data-title="参考文献"></a>', '']
+    for number, citation in entries:
+        bibliography.extend([f'<a data-writer-bibitem="ref-{number:03d}"></a>', '', citation, ''])
+    bibliography.extend(['<a data-writer-bibliography="end"></a>', ''])
+    return body[:start] + bibliography + body[end + 1:]
+
+
 def _normalize_numbered_bibliography(
     lines: Sequence[str],
     *,
     materialized_numbering: bool,
 ) -> list[str]:
+    paper = _normalize_paper_bibliography(lines)
+    if paper is not None:
+        return paper
     bibliography = _find_numbered_bibliography(
         lines, materialized_numbering=materialized_numbering,
     )

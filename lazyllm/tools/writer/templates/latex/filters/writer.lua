@@ -121,6 +121,10 @@ local function render_numbered_bibliography(doc)
       index = index + 1
       while index <= #doc.blocks do
         local item_opening = empty_anchor_opening(doc.blocks[index])
+        if item_opening and html_attribute(item_opening, 'data%-writer%-bibliography') == 'end' then
+          index = index + 1
+          break
+        end
         local key = item_opening and html_attribute(
           item_opening, 'data%-writer%-bibitem'
         ) or nil
