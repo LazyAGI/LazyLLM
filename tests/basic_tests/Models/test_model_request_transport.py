@@ -20,7 +20,7 @@ from urllib3.response import HTTPResponse
 import lazyllm
 from lazyllm.module.llms.onlinemodule.base import ModelCallError, ModelFailureCode
 from lazyllm.module.llms.onlinemodule.base.model_request import (
-    ModelCallControl, model_response, response_chunks, response_frames,
+    ModelCallControl, _ModelCallDeadlineExceeded, model_response, response_chunks, response_frames,
 )
 
 
@@ -34,6 +34,53 @@ def serving(server):
         server.shutdown()
         server.server_close()
         thread.join(2)
+
+
+@pytest.mark.parametrize('phase', ['headers', 'silent-body', 'continuous-body'])
+@pytest.mark.parametrize('keep_alive', [False, True])
+def test_deadline_interrupts_request_instead_of_leaving_a_running_worker(phase, keep_alive):
+    release = threading.Event()
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = 'HTTP/1.1'
+
+        def log_message(self, *_args):
+            pass
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers['Content-Length']))
+            if phase == 'headers':
+                release.wait(2)
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Connection', 'keep-alive' if keep_alive else 'close')
+            if keep_alive:
+                self.send_header('Content-Length', '100000')
+            self.end_headers()
+            try:
+                if phase == 'silent-body':
+                    self.wfile.flush()
+                    release.wait(2)
+                elif phase == 'continuous-body':
+                    while not release.wait(0.01):
+                        self.wfile.write(b'data: partial\n\n')
+                        self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            finally:
+                self.close_connection = True
+
+    with serving(ThreadingHTTPServer(('127.0.0.1', 0), Handler)) as server:
+        started = time.monotonic()
+        control = ModelCallControl(deadline=started + 0.15)
+        try:
+            with pytest.raises(_ModelCallDeadlineExceeded):
+                with model_response(f'http://127.0.0.1:{server.server_port}/chat', json={},
+                                    stream=True, timeout=2, control=control) as response:
+                    list(response_frames(response, True, control))
+            assert time.monotonic() - started < 0.8
+        finally:
+            release.set()
 
 
 def test_controlled_large_json_does_not_allocate_per_byte_fragments():

@@ -2,6 +2,8 @@ import asyncio
 import json
 import mimetypes
 import re
+import socket
+import threading
 import time
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
@@ -13,12 +15,19 @@ from lazyllm.common import HandledException
 from ....module import ModuleExecutionError
 
 
+class _ModelCallDeadlineExceeded(ModuleExecutionError):
+    pass
+
+
 @dataclass(frozen=True)
 class ModelCallControl:
     cancel_check: Optional[Callable[[], bool]] = field(default=None, repr=False)
     request_check: Optional[Callable] = field(default=None, repr=False)
+    deadline: Optional[float] = None
 
     def check(self):
+        if self.deadline is not None and time.monotonic() >= self.deadline:
+            raise _ModelCallDeadlineExceeded('Model call deadline exceeded.')
         if self.cancel_check is not None:
             try:
                 cancelled = self.cancel_check()
@@ -136,16 +145,57 @@ def response_frames(response, stream, control):
 
 
 @contextmanager
+def _response_deadline(response, control):
+    if control is None or control.deadline is None:
+        yield
+        return
+    connection = getattr(response.raw, 'connection', None)
+    active_socket = getattr(connection, 'sock', None)
+    if active_socket is None:
+        fp = getattr(getattr(response.raw, '_fp', None), 'fp', None)
+        active_socket = getattr(getattr(fp, 'raw', None), '_sock', None)
+
+    def interrupt_read():
+        if active_socket is not None:
+            try:
+                active_socket.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass  # The response may have closed at the deadline.
+
+    timer = threading.Timer(max(0, control.deadline - time.monotonic()), interrupt_read)
+    timer.daemon = True
+    timer.start()
+    try:
+        yield
+    finally:
+        # Finish the callback before the response returns its socket to the pool.
+        timer.cancel()
+        timer.join()
+
+
+@contextmanager
 def model_response(url, *, control=None, **kwargs):
     if control is not None: control.check()
+    if control is not None and control.deadline is not None:
+        remaining = control.deadline - time.monotonic()
+        timeout = kwargs.get('timeout')
+        if isinstance(timeout, requests.adapters.TimeoutSauce):
+            timeout = timeout.clone()
+        elif isinstance(timeout, tuple):
+            timeout = requests.adapters.TimeoutSauce(connect=timeout[0], read=timeout[1])
+        else:
+            timeout = requests.adapters.TimeoutSauce.from_float(timeout)
+        timeout.total = min(timeout.total, remaining) if timeout.total is not None else remaining
+        kwargs['timeout'] = timeout
     try:
         with (requests.Session() if control is not None else nullcontext(requests)) as client, \
                 client.post(url, **kwargs) as response:
             # urllib3 1.x otherwise accepts a truncated body as a clean EOF.
             response.raw.enforce_content_length = True
             if control is not None: control.check()
-            yield response
-            if control is not None: control.check()
+            with _response_deadline(response, control):
+                yield response
+                if control is not None: control.check()
     except BaseException:
         if control is not None: control.check()
         raise
