@@ -17,6 +17,14 @@ from lazyllm.module.llms.onlinemodule.supplier.openai import OpenAIChat
 GO_URL = 'https://opencode.ai/zen/go/v1/chat/completions'
 
 
+@pytest.fixture(autouse=True)
+def no_external_requests(monkeypatch):
+    def unexpected_send(*args, **kwargs):
+        pytest.fail('Request-header tests must mock every HTTP request')
+
+    monkeypatch.setattr(requests.Session, 'send', unexpected_send)
+
+
 class RequestHeaderChat(OpenAIChat):
     def _prepare_request_headers(self, runtime_url):
         headers = super()._prepare_request_headers(runtime_url)
@@ -55,6 +63,7 @@ def test_opencode_uses_stable_conversation_session_without_mutating_auth(monkeyp
         return _respond()
 
     monkeypatch.setattr(requests, 'post', post)
+    monkeypatch.setattr(requests.Session, 'post', lambda self, url, **kwargs: post(url, **kwargs))
     for request_id in ['request-1', 'request-2']:
         with lazyllm.new_session(request_id):
             lazyllm.set_trace_context({

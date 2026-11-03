@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import inspect
 import os
 import re
 from copy import deepcopy
@@ -9,6 +10,8 @@ from lazyllm.components.formatter import JsonFormatter
 from lazyllm.module import ModuleBase
 from lazyllm.thirdparty import json_repair
 from lazyllm.tracing import finish_span, set_span_attributes, set_span_error, set_span_output, start_span
+from ..data_models.task import WritingTask
+from ..utils.serialization import to_prompt_json
 from ..data_models.planning import SectionInstructionList
 from ..data_models.writer_ir import WriterBlock, WriterDocument
 from ..prompts.structured_output import STRUCTURED_OUTPUT_SYSTEM_PROMPT
@@ -58,6 +61,13 @@ class WriterToolBase(ModuleBase):
         self.llm = llm
         self.artifact_store = artifact_store or ''
         self.adapters = adapters or {}
+
+    def _task_context_prompt(self, context, task=None):
+        writing_task = self._unified_model(task, WritingTask) if task is not None else None
+        return to_prompt_json({
+            'task': writing_task.prompt_data() if writing_task else None,
+            'context': context.prompt_data(),
+        })
 
     def _load_artifact(
         self,
@@ -255,6 +265,7 @@ class WriterToolBase(ModuleBase):
         stream_output: Any = False,
         *,
         trace_label: Optional[str] = None,
+        call_control=None,
     ) -> T:
         if self.llm is None:
             raise ValueError('llm is not set')
@@ -281,7 +292,7 @@ class WriterToolBase(ModuleBase):
                 )
             failure_stage = 'model_call'
             try:
-                response = model(prompt)
+                response = self._call_model(model, prompt, call_control=call_control)
                 if span:
                     set_span_output(span, response)
                     set_span_attributes(span, {
@@ -335,9 +346,21 @@ class WriterToolBase(ModuleBase):
                 model = model.share()
         elif stream_output:
             raise TypeError('llm must support share(stream=...) for text streaming.')
-        response = model(prompt, **generation_params)
+        response = self._call_model(model, prompt, **generation_params)
         text = response if isinstance(response, str) else str(response)
         return self._strip_leading_think_blocks(text)
+
+    @staticmethod
+    def _call_model(model, prompt, *, call_control=None, **kwargs):
+        if call_control is not None:
+            call_control.check()
+            target = model.forward if isinstance(model, ModuleBase) else model
+            if 'call_control' in inspect.signature(target).parameters:
+                kwargs['call_control'] = call_control
+        response = model(prompt, **kwargs)
+        if call_control is not None:
+            call_control.check()
+        return response
 
     @staticmethod
     def _strip_leading_think_blocks(text: str) -> str:

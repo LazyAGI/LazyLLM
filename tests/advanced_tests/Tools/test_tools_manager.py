@@ -444,7 +444,6 @@ class TestToolGroup:
         t1 = self._tool('alpha')
         tm = ToolManager([dict(
             name='grp', desc='Group', tools=[t1],
-            auto_activate=[r'邮箱|飞书|https?://'],
         )])
 
         tm.sync_active_groups(input)
@@ -458,7 +457,7 @@ class TestToolGroup:
     def test_nested_keywords_do_not_expand_ancestors(self):
         t1 = self._tool('alpha')
         tm = ToolManager([dict(name='outer', desc='Outer', tools=[
-            dict(name='inner', desc='Inner', tools=[t1], auto_activate='special-link'),
+            dict(name='inner', desc='Inner', tools=[t1]),
         ])])
 
         tm.sync_active_groups('open special-link')
@@ -503,7 +502,7 @@ class TestToolGroup:
     def test_react_execution_and_context_inspection_prepare_identical_tools(self):
         t1 = self._tool('alpha')
         tm = ToolManager([dict(
-            name='grp', desc='Group', tools=[t1], auto_activate='special-link',
+            name='grp', desc='Group', tools=[t1],
         )])
         agent = object.__new__(ReactAgent)
         object.__setattr__(agent, '_tools_manager', tm)

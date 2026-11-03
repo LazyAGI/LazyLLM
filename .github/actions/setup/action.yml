@@ -16,6 +16,30 @@ runs:
       env:
         PYTHON_VERSION: "3.10.9"
 
+    - name: Install ripgrep for basic tests
+      if: inputs.tests_dir == 'tests/basic_tests'
+      shell: bash
+      run: |
+        case "$RUNNER_OS" in
+          Linux)
+            sudo apt-get update
+            sudo apt-get install -y ripgrep
+            ;;
+          macOS)
+            brew install ripgrep
+            ;;
+          Windows)
+            choco install ripgrep --yes --no-progress
+            ;;
+        esac
+        rg --version
+
+    - name: Install Pandoc for basic tests
+      if: inputs.tests_dir == 'tests/basic_tests'
+      uses: r-lib/actions/setup-pandoc@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
+      with:
+        pandoc-version: '3.11'
+
     - name: Build project
       shell: bash
       run: |

@@ -87,12 +87,9 @@ class NaiveWriterWorkflow:
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
         section_review = self.quality.validate_section(
+            task=task,
             draft_block=self._artifact_ref(draft_block, 'draft_block'),
             section_instruction=self._artifact_ref(section_instructions, 'section_instructions'),
-            context=self._artifact_ref(writing_context, 'writing_context'),
-        )
-        writing_context = self.context.update_writing_context(
-            artifacts=self._artifact_ref(draft_block, 'draft_block'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
         draft_document = self.drafting.generate_draft_document(
@@ -105,6 +102,7 @@ class NaiveWriterWorkflow:
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
         draft_document_review = self.quality.validate_draft_document(
+            task=task,
             draft_document=self._artifact_ref(draft_document, 'draft_document'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
@@ -156,6 +154,7 @@ class NaiveWriterWorkflow:
             context=context_ref,
         )
         revision_set = self.revision.generate_revision_set(
+            task=task,
             document=document,
             modify_plan=self._artifact_ref(modify_plan, 'modify_plan'),
             context=context_ref,

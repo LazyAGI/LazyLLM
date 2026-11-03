@@ -86,7 +86,7 @@ def test_controlled_normal_calls_cache_and_check_cancel_on_hits(endpoint, dynami
     llm = lazyllm.OnlineChatModule(source='dynamic' if dynamic else 'openai', model='gpt-test', type='llm',
                                    api_key='auto' if dynamic else 'fixture', url=endpoint[0], stream=False)
     llm.use_cache('call-test-' + uuid.uuid4().hex)
-    with lazyllm.config.temp('openai_api_key', 'fixture'), dynamic_chat_config(
+    with lazyllm.config.temp('cache_mode', 'RW'), lazyllm.config.temp('openai_api_key', 'fixture'), dynamic_chat_config(
         modules=llm, source='openai', model='gpt-test', url=endpoint[0],
     ):
         for _ in range(3):

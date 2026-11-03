@@ -112,9 +112,9 @@ def test_generated_outline_has_description_and_budget_after_one_call(tmp_path, r
     assert value.blocks[0].outline_description == 'Introduce the village (about 3000 characters).'
 
 
-def test_prompt_dedup_preserves_global_constraints_and_does_not_mutate_inputs():
+def test_prompt_preserves_explicit_local_constraints_and_does_not_mutate_inputs():
     task = WritingTask(query='Write the story', task_type='write')
-    context = WritingContext(context_id='ctx', query=task.query,
+    context = WritingContext(context_id='ctx',
                              facts=[DocumentFact(fact_id='f', key='name', value='Lin')],
                              style_profile=StyleProfile(tone='quiet', notes=['Keep the ending open']))
     instruction = SectionInstruction(
@@ -127,14 +127,14 @@ def test_prompt_dedup_preserves_global_constraints_and_does_not_mutate_inputs():
     payload = WriterDraftingTools._draft_prompt_inputs(task, instruction, context)
     local = json.loads(payload['section_instruction_json'])
     shared = json.loads(payload['context_json'])
-    assert local['fact_constraints'] == ['time: night']
-    assert local['style_constraints'] == ['Use short sentences']
+    assert local['fact_constraints'] == instruction.fact_constraints
+    assert local['style_constraints'] == instruction.style_constraints
     assert local['heading_structure'] == []
     assert shared['facts'][0]['value'] == 'Lin'
     assert shared['style_profile']['tone'] == 'quiet'
     assert 'query' not in shared
     assert instruction.model_dump() == before
-    assert context.query == task.query
+    assert 'query' not in context.prompt_data()
 
 
 def test_constraint_dedup_keeps_explicit_override_of_other_section_fact():
@@ -155,11 +155,11 @@ def test_whole_document_stream_keeps_chapters_and_global_facts_once(tmp_path):
     from lazyllm.tools.writer.data_models.planning import SectionInstructionList
     task = WritingTask(query='Write a three chapter story', task_type='write',
                        constraints={'target_chars': 5000}, output={'representation': 'markdown'})
-    context = WritingContext(context_id='ctx', query=task.query,
+    context = WritingContext(context_id='ctx',
                              facts=[DocumentFact(fact_id='name', key='name', value='林舟', locked=True)])
     plan = SectionInstructionList(instructions=[SectionInstruction(
         instruction_id=str(i), content_ref=ContentRef(heading_path=['Story', title]),
-        section_title=title, section_goal='Develop the story', fact_constraints=['name: 林舟'],
+        section_title=title, section_goal='Develop the story',
     ) for i, title in enumerate(['A', 'B', 'C'])])
     output = '# Story\n\n## A\n\nOpening.\n\n## B\n\nConflict.\n\n## C\n\nResolution.\n'
     tool = WriterDraftingTools(artifact_store=str(tmp_path))
@@ -263,3 +263,13 @@ def test_whole_document_repairs_only_unambiguous_image_reference(tmp_path, plann
     assert tool._MARKDOWN_MEDIA_PLACEHOLDER_RE.findall(actual) == expected
     assert actual.split('## Ending')[0].count('![Harbor]') == len(emitted)
     assert model.call_count == 1
+
+
+def test_section_builder_does_not_copy_global_facts_or_duplicate_points():
+    context = WritingContext(context_id='ctx', facts=[DocumentFact(fact_id='f', key='result', value='Full evidence')])
+    plan = WriterPlanningTools._build_deterministic_section_instructions([
+        {'section_title': 'Method', 'content_ref': {'node_id': 'm'}, 'outline_body': 'Discuss limitations'},
+    ], context, WritingTask(query='Write', task_type='write'))
+    assert plan.instructions[0].fact_constraints == []
+    assert plan.instructions[0].expected_blocks == []
+    assert plan.instructions[0].required_points

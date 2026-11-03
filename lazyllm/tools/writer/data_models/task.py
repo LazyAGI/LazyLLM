@@ -46,3 +46,13 @@ class WritingTask(ArtifactModel):
     constraints: Dict[str, Any] = Field(default_factory=dict)
     output: Dict[str, Any] = Field(default_factory=dict)
     meta: Dict[str, Any] = Field(default_factory=dict)
+
+    def prompt_data(self) -> Dict[str, Any]:
+        data = self.model_dump(exclude_defaults=True, exclude={'task_id', 'meta'})
+        for key in ('constraints', 'output'):
+            if key in data:
+                data[key] = {name: value for name, value in data[key].items()
+                             if value is not None and value != ''}
+                if not data[key]:
+                    data.pop(key)
+        return data

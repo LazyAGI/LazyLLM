@@ -34,7 +34,11 @@ def test_cancelled_execution_is_not_traced_as_success(exporter, kind):
     async def consume():
         iterator = lazyllm.enable_trace(astream)
         assert await anext(iterator) == 'ready'
-        await anext(iterator)
+        # Check identity before asyncio.run crosses the Python 3.10 Task boundary.
+        with pytest.raises(asyncio.CancelledError) as caught:
+            await anext(iterator)
+        assert caught.value is cancelled
+        raise caught.value
 
     with pytest.raises(asyncio.CancelledError) as caught:
         if kind == 'module':
@@ -45,7 +49,8 @@ def test_cancelled_execution_is_not_traced_as_success(exporter, kind):
             list(lazyllm.enable_trace(stream))
         else:
             asyncio.run(consume())
-    assert caught.value is cancelled
+    if kind != 'async_generator':
+        assert caught.value is cancelled
     assert_not_success(exporter)
 
 

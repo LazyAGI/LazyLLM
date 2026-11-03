@@ -78,6 +78,16 @@ add_writer_execution_english_doc('WriterExecutionTools.execute_writing_subtasks'
 Execute writing subtasks from an outline in parallel while recording retries, progress, and results.
 ''')
 
+add_writer_models_chinese_doc('WritingContext.prompt_data', '''
+返回用于模型提示词和上下文缓存指纹的有效内容，排除存储标识和诊断元数据。
+保留事实、来源、摘要、风格，以及存在文档摘要时的摘要类型。
+''')
+
+add_writer_models_english_doc('WritingContext.prompt_data', '''
+Return effective content for model prompts and context cache fingerprints, excluding storage IDs and diagnostic metadata.
+Preserve facts, sources, summaries, style, and summary kind when a document summary exists.
+''')
+
 add_writer_models_chinese_doc('WriterDocument.iter_blocks', '''
 按文档顺序遍历全部内容块。
 ''')
@@ -305,6 +315,10 @@ _add_bilingual_docs(
     [
         ('WriterDraftingTools.generate_short_document', '根据整篇短文写作计划生成无章节标题的 Markdown 或 Writer IR 草稿。',
          'Generate a flat Markdown or Writer IR draft from a whole-document short writing plan.'),
+        ('WriterDraftingTools.finalize_section_media',
+         '根据章节指令和配图计划，在草稿副本中绑定已生成素材、移除缺失的可选配图并恢复原文图片；必需素材缺失时报错。',
+         'Bind resolved media, remove missing optional visuals, and restore source images in a draft copy; '
+         'raise an error if required media is missing.'),
         ('WriterDraftingTools.stream_short_document', '流式生成无章节标题的 Markdown 或 Writer IR 短文预览。',
          'Stream a flat Markdown or Writer IR short-document preview.'),
         ('WriterDraftingTools.stream_short_document_ir', '流式生成无章节标题的 Writer IR 短文及其 Markdown 预览。',
@@ -580,3 +594,6 @@ Returns:
 Raises:
     ValueError: The group contains duplicate image references.
 ''', module=importlib.import_module('lazyllm.tools.writer.utils.image_groups'))
+
+add_writer_models_chinese_doc('WritingTask.prompt_data', '''返回模型使用的任务要求，移除顶层任务标识、元数据和可省略的空值；保留资源与选区信息。''')
+add_writer_models_english_doc('WritingTask.prompt_data', '''Return task requirements without top-level tracking IDs, metadata or optional empty values; preserve resources and selections.''')

@@ -1,6 +1,8 @@
 mkdocs
 mkdocs-material
 mkdocstrings
+# pymdown-extensions 12.2+ requires an md argument not passed by mkdocstrings.
+pymdown-extensions<12.2
 mkdocstrings-python
 mkdocs-static-i18n
 mkdocs-section-index
