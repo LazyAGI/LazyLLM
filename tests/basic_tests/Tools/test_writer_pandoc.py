@@ -255,3 +255,47 @@ def test_markdown_contract_renders_numbered_bibliography():
     assert '\\begin{thebibliography}{9}' in result.stdout
     assert '\\bibitem{ref-001}' in result.stdout
     assert '\\bibitem{ref-002}' in result.stdout
+
+
+def _paper_bibliography():
+    return ('<a id="paper-references-start"></a>\n\n**参考文献**\n\n'
+            '<a id="paper-ref-SRC-甲.v2"></a>\n\n[1] A &amp; B. Study \\[x\\].\n\n'
+            '<a id="paper-ref-SRC-b"></a>\n\n[2] Second study.\n\n'
+            '<a id="paper-references-end"></a>')
+
+
+def test_stable_bibliography_resolves_identity_before_display_number():
+    citation = r'[\[9\]](#paper-ref-SRC-甲.v2)'
+    code = '`' + citation + '`\n\n```md\n' + citation + '\n```'
+    markdown = '# Title\n\n' + citation + ' and ' + citation + '\n\n' + code
+    markdown += '\n\n' + _paper_bibliography() + '\n\n## Appendix\n\nAfter bibliography.'
+    normalized = normalize_writer_markdown_for_latex(markdown)
+    assert normalized.count(r'[\[1\]](#writer-cite-ref-001)') == 2
+    assert '`' + citation + '`' in normalized
+    assert '```md\n' + citation + '\n```' in normalized
+    assert normalize_writer_markdown_for_latex(normalized) == normalized
+    result = _run_filter(normalized)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count(r'\cite{ref-001}') == 2
+    assert r'\bibitem{ref-001}' in result.stdout
+    assert r'\bibitem{ref-002}' in result.stdout
+    assert r'A \& B. Study {[}x{]}' in result.stdout
+    assert result.stdout.index(r'\end{thebibliography}') < result.stdout.index('After bibliography.')
+
+
+@pytest.mark.parametrize('invalid', [
+    lambda source: source.replace('paper-references-end', 'missing-end'),
+    lambda source: source.replace('paper-ref-SRC-b', 'paper-ref-SRC-甲.v2'),
+    lambda source: source.replace('[2] Second', '[1] Second'),
+])
+def test_malformed_stable_bibliography_is_not_silently_exported(invalid):
+    with pytest.raises(ValueError, match='bibliography'):
+        normalize_writer_markdown_for_latex(invalid(_paper_bibliography()))
+
+
+def test_fenced_bibliography_and_plain_numbers_remain_examples():
+    source = '# Title\n\n[1] is ordinary prose.\n\n```md\n' + _paper_bibliography() + '\n```'
+    normalized = normalize_writer_markdown_for_latex(source)
+    assert '[1] is ordinary prose.' in normalized
+    assert '```md\n' + _paper_bibliography() + '\n```' in normalized
+    assert 'data-writer-bibliography' not in normalized
