@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from lazyllm.common import BearerTokenStrategy, KeyAuthError
+from lazyllm.common import AllKeysExhaustedError, BearerTokenStrategy, KeyAuthError
 from lazyllm.tools.agent.toolsManager import fc_register
 from .base import SearchBase, _make_result
 
@@ -136,9 +136,11 @@ class FirecrawlSearch(SearchBase):
             markdown = data.get('data', {}).get('markdown') if isinstance(data, dict) else None
             if isinstance(markdown, str) and markdown.strip():
                 return markdown
-        except KeyAuthError:
+        except (KeyAuthError, AllKeysExhaustedError):
             # A rejected key stays visible: degrading to the shared HTML reader here would
-            # turn a misconfiguration into quietly worse content.
+            # turn a misconfiguration into quietly worse content. The pool error is raised by
+            # _request() instead of KeyAuthError when every key of a pool was rejected, so it
+            # has to be listed explicitly.
             raise
         except Exception:
             pass

@@ -1,7 +1,7 @@
 import pytest
 
 import lazyllm.tools.tools.search.base as search_base
-from lazyllm.common import KeyAuthError
+from lazyllm.common import AllKeysExhaustedError, KeyAuthError
 from lazyllm.tools.tools import FirecrawlSearch
 
 
@@ -178,6 +178,19 @@ def test_get_content_keeps_auth_error_visible(fake_http):
 
     with pytest.raises(KeyAuthError):
         FirecrawlSearch(api_key='fc-bad').get_content(
+            {'title': 'Page', 'url': 'https://example.test/page', 'snippet': '', 'source': 'firecrawl'})
+
+
+def test_get_content_keeps_exhausted_key_pool_visible(monkeypatch):
+    provider = FirecrawlSearch(api_key='fc-test')
+
+    def exhaust(method, url, **kwargs):
+        raise AllKeysExhaustedError('FirecrawlSearch: all keys exhausted')
+
+    monkeypatch.setattr(provider, '_request', exhaust)
+
+    with pytest.raises(AllKeysExhaustedError):
+        provider.get_content(
             {'title': 'Page', 'url': 'https://example.test/page', 'snippet': '', 'source': 'firecrawl'})
 
 
