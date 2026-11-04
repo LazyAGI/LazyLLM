@@ -36,7 +36,22 @@ def serving(server):
         thread.join(2)
 
 
-@pytest.mark.parametrize('phase', ['headers', 'silent-body', 'continuous-body'])
+def send_trickling_headers(handler, release):
+    try:
+        handler.wfile.write(b'HTTP/1.1 200 OK\r\nX-Progress: ')
+        handler.wfile.flush()
+        for _ in range(100):
+            if release.wait(0.02):
+                break
+            handler.wfile.write(b'x')
+            handler.wfile.flush()
+    except OSError:
+        pass
+    finally:
+        handler.close_connection = True
+
+
+@pytest.mark.parametrize('phase', ['headers', 'slow-headers', 'silent-body', 'continuous-body'])
 @pytest.mark.parametrize('keep_alive', [False, True])
 def test_deadline_interrupts_request_instead_of_leaving_a_running_worker(phase, keep_alive):
     release = threading.Event()
@@ -49,6 +64,9 @@ def test_deadline_interrupts_request_instead_of_leaving_a_running_worker(phase, 
 
         def do_POST(self):
             self.rfile.read(int(self.headers['Content-Length']))
+            if phase == 'slow-headers':
+                send_trickling_headers(self, release)
+                return
             if phase == 'headers':
                 release.wait(2)
             self.send_response(200)
@@ -282,6 +300,9 @@ def proxy_endpoint(tmp_path, monkeypatch):  # noqa: C901 - local HTTP, CONNECT a
                 if phase == 'headers':
                     release.wait(3)
                 try:
+                    if phase == 'slow-headers':
+                        send_trickling_headers(self, release)
+                        return
                     self.send_response(200)
                     self.end_headers()
                     if phase == 'stream':
@@ -401,12 +422,13 @@ def proxy_endpoint(tmp_path, monkeypatch):  # noqa: C901 - local HTTP, CONNECT a
 
 @pytest.mark.parametrize('scheme', ['http', 'https', 'socks4', 'socks4a', 'socks5', 'socks5h'])
 @pytest.mark.parametrize('target_scheme', ['http', 'https'])
-@pytest.mark.parametrize('controlled', [False, True])
+@pytest.mark.parametrize('controlled', [False, True, 'deadline'])
 def test_controlled_proxy_request_preserves_routing_and_auth(proxy_endpoint, scheme, target_scheme, controlled):
     start, seen, destinations, credentials, _, _ = proxy_endpoint
     with start(scheme, target_scheme, 'normal') as (proxy, target):
+        control = ModelCallControl(deadline=time.monotonic() + 3 if controlled == 'deadline' else None)
         with model_response(target, data=b'fixture-body', proxies={target_scheme: proxy},
-                            control=ModelCallControl() if controlled else None,
+                            control=control if controlled else None,
                             timeout=3) as response:
             assert response.content == b'proxied'
     assert seen == [b'fixture-body']
@@ -419,6 +441,19 @@ def test_controlled_proxy_request_preserves_routing_and_auth(proxy_endpoint, sch
         assert credentials == [(b'fixture-user', b'fixture-pass' if scheme.startswith('socks5') else b'')]
     else:
         assert b'Proxy-Authorization: Basic ' in credentials[0]
+
+
+@pytest.mark.parametrize('scheme', ['http', 'https', 'socks5h'])
+def test_deadline_interrupts_slow_headers_through_tls_proxy(proxy_endpoint, scheme):
+    start, _, _, _, _, _ = proxy_endpoint
+    with start(scheme, 'https', 'slow-headers') as (proxy, target):
+        started = time.monotonic()
+        control = ModelCallControl(deadline=started + 0.3)
+        with pytest.raises(_ModelCallDeadlineExceeded):
+            with model_response(target, data=b'fixture-body', proxies={'https': proxy},
+                                stream=True, control=control, timeout=2):
+                pytest.fail('Incomplete headers were accepted')
+        assert time.monotonic() - started < 1
 
 
 def test_controlled_ip_request_preserves_environment_proxy(proxy_endpoint, monkeypatch):
@@ -493,7 +528,7 @@ def test_proxy_preserves_certificate_verification(proxy_endpoint, monkeypatch, s
     assert seen == ([] if verify else [b'fixture-body'])
 
 
-@pytest.mark.parametrize('controlled', [False, True])
+@pytest.mark.parametrize('controlled', [False, True, 'deadline'])
 def test_https_proxy_uses_only_the_selected_ca_bundle(proxy_endpoint, monkeypatch, tmp_path, controlled):
     start, seen, destinations, _, _, _ = proxy_endpoint
     monkeypatch.setenv('SSL_CERT_FILE', os.environ['REQUESTS_CA_BUNDLE'])
@@ -501,15 +536,16 @@ def test_https_proxy_uses_only_the_selected_ca_bundle(proxy_endpoint, monkeypatc
     trustme.CA().cert_pem.write_to_path(other_ca)
     monkeypatch.setenv('REQUESTS_CA_BUNDLE', str(other_ca))
     with start('https', 'https', 'normal') as (proxy, target):
+        control = ModelCallControl(deadline=time.monotonic() + 3 if controlled == 'deadline' else None)
         with pytest.raises((requests.exceptions.SSLError, requests.exceptions.ProxyError),
                            match='CERTIFICATE_VERIFY_FAILED'):
             with model_response(target, data=b'fixture-body', proxies={'https': proxy}, timeout=1,
-                                control=ModelCallControl() if controlled else None):
+                                control=control if controlled else None):
                 pytest.fail('Proxy certificate outside the selected CA bundle was trusted')
     assert seen == destinations == []
 
 
-@pytest.mark.parametrize('controlled', [False, True])
+@pytest.mark.parametrize('controlled', [False, True, 'deadline'])
 def test_https_proxy_checks_its_hostname(proxy_endpoint, monkeypatch, controlled):
     start, seen, destinations, _, _, _ = proxy_endpoint
     resolve = socket.getaddrinfo
@@ -519,9 +555,10 @@ def test_https_proxy_checks_its_hostname(proxy_endpoint, monkeypatch, controlled
 
     monkeypatch.setattr(socket, 'getaddrinfo', resolve_wrong_name)
     with start('https', 'https', 'normal') as (proxy, target):
+        control = ModelCallControl(deadline=time.monotonic() + 3 if controlled == 'deadline' else None)
         proxy = proxy.replace('localhost', 'wrong.invalid')
         with pytest.raises((requests.exceptions.SSLError, requests.exceptions.ProxyError), match='(?i)hostname'):
             with model_response(target, data=b'fixture-body', proxies={'https': proxy},
-                                control=ModelCallControl() if controlled else None, timeout=3):
+                                control=control if controlled else None, timeout=3):
                 pytest.fail('Proxy certificate with a mismatched hostname was trusted')
     assert seen == destinations == []
