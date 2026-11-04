@@ -1018,3 +1018,124 @@ res = tavily('latest AI research', search_depth='advanced', include_answer=True)
 # 新闻搜索
 res = tavily('AI news', topic='news', days=1, max_results=5)
 ''')
+
+
+add_chinese_doc('FirecrawlSearch', '''
+Firecrawl Search API 封装。Firecrawl 在搜索时可直接返回渲染后的页面 Markdown，适合需要正文而不只是摘要的检索。
+
+如何申请 API Key：
+1. 打开 https://www.firecrawl.dev/ ，注册并登录。
+2. 进入 Dashboard 的 API Keys 页面创建密钥。
+3. 得到 fc- 开头的 key，用于请求头 Authorization: Bearer <api_key>。
+4. API 文档：https://docs.firecrawl.dev/api-reference/endpoint/search 。
+
+特点：
+- sources 支持 web（通用网页）和 news（新闻），按传入顺序输出结果。
+- include_domains / exclude_domains 控制域名范围，两者互斥。
+- tbs 支持时间范围过滤（如 "qdr:d" 表示最近一天）。
+- scrape_markdown=True 时请求 Firecrawl 同时抓取正文，结果 extra 中带 raw_content（最多 700 字符的 Markdown 预览）。
+- get_content() 通过 Firecrawl 抓取接口取渲染后的 Markdown 全文，失败时回退到通用 HTML 读取。
+
+Args:
+    api_key (str, optional): Firecrawl API key；为空时从 dynamic_tool_auth["firecrawl"] 读取。
+    base_url (str): API 根地址，默认 https://api.firecrawl.dev/v2。
+    timeout (int): 请求超时秒数，默认 60。
+    source_name (str): 结果来源标识，默认 "firecrawl"。
+''')
+
+add_english_doc('FirecrawlSearch', '''
+Firecrawl Search API wrapper. Firecrawl can return rendered page Markdown alongside the
+hits, which suits retrieval that needs page text rather than snippets alone.
+
+How to get an API key:
+1. Go to https://www.firecrawl.dev/ , sign up and log in.
+2. Create a key on the API Keys page of the Dashboard.
+3. Use the fc- prefixed key as Authorization: Bearer <api_key>.
+4. API docs: https://docs.firecrawl.dev/api-reference/endpoint/search .
+
+Features:
+- sources accepts web (general pages) and news, returned in the order you pass them.
+- include_domains / exclude_domains narrow or block domains; they are mutually exclusive.
+- tbs supports time filters such as "qdr:d" for the last day.
+- scrape_markdown=True asks Firecrawl to scrape each hit, adding raw_content to extra
+  (a Markdown preview of at most 700 characters).
+- get_content() reads full rendered Markdown through the Firecrawl scrape endpoint and
+  falls back to the shared HTML reader when scraping fails.
+
+Args:
+    api_key (str, optional): Firecrawl API key; when omitted, reads dynamic_tool_auth["firecrawl"].
+    base_url (str): API base URL, default https://api.firecrawl.dev/v2.
+    timeout (int): Request timeout in seconds, default 60.
+    source_name (str): Source identifier in results, default "firecrawl".
+''')
+
+add_example('FirecrawlSearch', '''
+from lazyllm.tools.tools import FirecrawlSearch
+firecrawl = FirecrawlSearch(api_key='<your_firecrawl_api_key>')
+res = firecrawl('lazy agent framework', limit=5)
+''')
+
+add_chinese_doc('FirecrawlSearch.search', f'''
+执行 Firecrawl 网页或新闻搜索。
+
+{_GENERAL_SEARCH_GUIDANCE_ZH}
+
+Args:
+    query (str): 搜索关键词或自然语言问题，最长 500 字符。
+    limit (int): 每个来源返回条数，默认 10，取值 1~100。
+    sources (List[str], optional): 来源类型，可选 "web"（默认）和 "news"。
+    include_domains (List[str], optional): 限定搜索域名，如 ["docs.python.org"]。
+    exclude_domains (List[str], optional): 排除搜索域名；与 include_domains 互斥。
+    tbs (str, optional): 时间范围过滤，如 "qdr:d"（最近一天）、"qdr:w"（最近一周）。
+    country (str, optional): 国家/地区代码，如 "US"。
+    safe (bool, optional): 是否过滤成人内容。
+    scrape_markdown (bool): 是否同时抓取正文，默认 False；开启后每条结果 extra 带 raw_content。
+
+Returns:
+    List[Dict[str, Any]]: 统一格式的搜索结果。每条包含 title、url、snippet（映射自 description）、source；
+    extra 中可能包含 raw_content（Markdown 预览）、published_at（新闻发布时间）和 result_type（非 web 来源的类型）。
+
+Raises:
+    ValueError: sources 含不支持的类型、limit 越界，或同时传入 include_domains 与 exclude_domains。
+    RuntimeError: Firecrawl 返回 success=false。
+    以上异常由 search() 直接抛出；经模块调用（__call__）时默认转成空列表，需要感知错误时传 raise_on_error=True。
+''')
+
+add_english_doc('FirecrawlSearch.search', f'''
+Execute a Firecrawl web or news search.
+
+{_GENERAL_SEARCH_GUIDANCE_EN}
+
+Args:
+    query (str): Search keywords or natural language question, at most 500 characters.
+    limit (int): Results per source type, default 10, between 1 and 100.
+    sources (List[str], optional): Source types, "web" (default) and "news".
+    include_domains (List[str], optional): Restrict search to these domains, e.g. ["docs.python.org"].
+    exclude_domains (List[str], optional): Exclude these domains; mutually exclusive with include_domains.
+    tbs (str, optional): Time filter such as "qdr:d" (last day) or "qdr:w" (last week).
+    country (str, optional): Country/region code, e.g. "US".
+    safe (bool, optional): Whether to filter explicit content.
+    scrape_markdown (bool): Whether to scrape each hit, default False; adds raw_content to extra.
+
+Returns:
+    List[Dict[str, Any]]: Search results in the unified format. Each item has title, url,
+    snippet (mapped from description) and source; extra may contain raw_content (Markdown
+    preview), published_at (news timestamp) and result_type (for non-web sources).
+
+Raises:
+    ValueError: unsupported source type, out-of-range limit, or both domain filters supplied.
+    RuntimeError: Firecrawl answered with success=false.
+    search() raises these directly; through a module call (__call__) they become an empty
+    list unless raise_on_error=True is passed.
+''')
+
+add_example('FirecrawlSearch.search', '''
+from lazyllm.tools.tools import FirecrawlSearch
+firecrawl = FirecrawlSearch(api_key='<your_key>')
+# 基础搜索
+res = firecrawl('what is retrieval augmented generation', limit=5)
+# 带正文预览
+res = firecrawl('agent framework comparison', limit=3, scrape_markdown=True)
+# 新闻 + 时间过滤
+res = firecrawl('AI release', sources=['news'], tbs='qdr:d', limit=5)
+''')
