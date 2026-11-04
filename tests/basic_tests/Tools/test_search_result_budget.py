@@ -49,6 +49,7 @@ def test_sciverse_default_search_has_one_preview(monkeypatch, meta):
     assert item['extra']['content'] == 'c' * 700
     assert item['extra']['offset'] == 0
     assert item['extra']['doc_id'] == 'doc'
+    assert item['url'] == 'https://doi.org/10.1/test'
     assert 'content' not in search(include_content=False)[0]['extra']
     payload['hits'][0].pop('chunk')
     assert search()[0]['snippet'] == 'a' * 700

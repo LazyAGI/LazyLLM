@@ -141,7 +141,7 @@ class SciverseSearch(SearchBase):
         if not isinstance(data, dict):
             return []
 
-        return self._normalize_items(_items(data)[:limit], include_content=include_content, search_type='agentic')
+        return self._normalize_items(_items(data)[:limit], include_content=include_content)
 
     @fc_register(host_file='NONE')
     def meta_search(
@@ -212,7 +212,6 @@ class SciverseSearch(SearchBase):
             'items': self._normalize_items(
                 _items(data),
                 include_content=include_content,
-                search_type='meta',
             ),
             'total_count': data.get('total_count'),
             'total_pages': data.get('total_pages'),
@@ -239,14 +238,13 @@ class SciverseSearch(SearchBase):
         items: List[Dict[str, Any]],
         *,
         include_content: bool,
-        search_type: str,
     ) -> List[dict]:
         out: List[dict] = []
         for item in items:
             title = str(item.get('title') or item.get('paper_title') or item.get('name') or '').strip()
             doi = str(item.get('doi') or item.get('publication_doi') or '').strip()
             url = str(item.get('url') or item.get('paper_url') or item.get('source_url') or '').strip()
-            if not url and doi and search_type == 'meta':
+            if not url and doi:
                 url = f'https://doi.org/{doi}'
 
             abstract = str(item.get('abstract') or item.get('summary') or item.get('description') or '').strip()
