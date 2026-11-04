@@ -42,6 +42,15 @@ def _authors(value: Any) -> List[str]:
     return names
 
 
+def _publication_year(value: Any) -> Optional[int]:
+    # Sciverse serializes numeric metadata as floats (for example, 2024.0).
+    try:
+        number = float(value)
+        return int(number) if number.is_integer() and 1 <= number <= 9999 else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 class SciverseSearch(SearchBase):
     __public_apis__ = SearchBase.__public_apis__ + ['meta_search', 'meta_catalog']
 
@@ -244,9 +253,11 @@ class SciverseSearch(SearchBase):
             chunk = str(item.get('chunk') or item.get('text') or item.get('content') or '').strip()
             content = chunk or abstract
             extra = {
+                'abstract': abstract,
                 'doc_id': item.get('doc_id') or item.get('document_id') or item.get('id'),
                 'doi': doi,
-                'year': item.get('publication_published_year') or item.get('year') or item.get('published_year'),
+                'year': _publication_year(item.get('publication_published_year')
+                                          or item.get('year') or item.get('published_year')),
                 'venue': item.get('publication_venue_name_unified') or item.get('publication_venue_name')
                 or item.get('venue') or item.get('journal'),
                 'authors': _authors(item.get('author') or item.get('authors') or item.get('author_names')),

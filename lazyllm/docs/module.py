@@ -2132,7 +2132,8 @@ Attributes:
 add_chinese_doc('OnlineChatModuleBase.forward', '''
 通过正常 Module 调用链发送聊天请求，保留 hooks、缓存、formatter 和 usage。
 timeout 接受单值或 (连接秒数, 无数据读取等待秒数)，不限制持续正常输出的总时长。
-call_control=ModelCallControl(cancel_check=..., request_check=...) 提供取消及发送前校验；
+call_control=ModelCallControl(cancel_check=..., request_check=..., deadline=...) 提供取消及发送前校验；
+deadline 是 time.monotonic() 的绝对时刻，覆盖请求、重试和流式生成总时长；到期会中断响应读取。
 request_check 接收只读 ModelRequest：payload 为副本，model_type/requires_vision 描述输入，
 estimate_tokens 只提供近似估算。校验不会执行请求；抛出 HandledException 可原样向调用方报告。
 取消在请求前、读取边界、异常返回后、退避等待及缓存返回边界检查；阻塞网络等待由 timeout 结束。
@@ -2144,7 +2145,8 @@ output_limit 保留更小的已有输出上限。返回正常模型输出。
 add_english_doc('OnlineChatModuleBase.forward', '''
 Use the normal Module lifecycle, preserving hooks, caching, formatters and usage.
 timeout accepts seconds or (connect seconds, idle read seconds), not a total generation deadline.
-call_control=ModelCallControl(cancel_check=..., request_check=...) checks cancellation and validates the final request.
+call_control=ModelCallControl(cancel_check=..., request_check=..., deadline=...) checks cancellation and validates requests.
+deadline is an absolute time.monotonic() timestamp covering requests, retries and streaming; it interrupts response reads.
 request_check receives a read-only ModelRequest: payload is a copy; model_type/requires_vision describe the input;
 estimate_tokens is approximate. Validation cannot execute a request. HandledException propagates unchanged.
 Cancellation is checked before requests, at read boundaries, after errors, during retry waits and around cache returns.

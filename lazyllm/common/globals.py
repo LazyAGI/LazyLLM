@@ -135,7 +135,6 @@ class Globals(metaclass=SingletonABCMeta):
         usage={},
         trace={},
         config={},
-        call_stack=[],
         key_pool_state={},
     )
 
@@ -145,6 +144,7 @@ class Globals(metaclass=SingletonABCMeta):
 
     def __init__(self):
         self.__sid = contextvars.ContextVar('local_var')
+        self.__call_stack = contextvars.ContextVar('module_call_stack', default=(None, ()))
         self._init_sid()
 
     def _init_sid(self, sid: Optional[str] = None):
@@ -226,24 +226,30 @@ class Globals(metaclass=SingletonABCMeta):
     def config(self):
         return global_config
 
+    def _current_call_stack(self):
+        sid, stack = self.__call_stack.get()
+        return stack if sid == self._sid else ()
+
     def push_stack(self, module_id):
-        self['call_stack'] = self['call_stack'] + [module_id]
+        return self.__call_stack.set((self._sid, self._current_call_stack() + (module_id,)))
 
     def pop_stack(self):
-        r = self['call_stack'][-1]
-        self['call_stack'] = self['call_stack'][:-1]
+        stack = self._current_call_stack()
+        r = stack[-1]
+        self.__call_stack.set((self._sid, stack[:-1]))
         return r
 
     def current_stack(self):
-        return self['call_stack'][-1] if self['call_stack'] else None
+        stack = self._current_call_stack()
+        return stack[-1] if stack else None
 
     @contextmanager
     def stack_enter(self, module_id):
-        self.push_stack(module_id)
+        token = self.push_stack(module_id)
         try:
             yield
         finally:
-            self.pop_stack()
+            self.__call_stack.reset(token)
 
 class MemoryGlobals(Globals):
     def __init__(self):

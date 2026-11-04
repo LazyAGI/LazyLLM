@@ -1,9 +1,12 @@
 import asyncio
+import json
 from contextvars import ContextVar
 import threading
 import uuid
+from types import SimpleNamespace
 
 import pytest
+import requests
 
 import lazyllm
 from lazyllm.flow.flow import Parallel
@@ -253,3 +256,144 @@ def test_parallel_retains_shallow_workspace_feedback():
 
     assert tuple(lazyllm.diverter(activate, activate)(('A', 'B'))) == ('A', 'B')
     assert sorted(workspace['activated']) == ['A', 'B']
+
+
+@pytest.mark.parametrize('background_error', [False, True])
+def test_concurrent_background_model_does_not_change_retry_credentials(monkeypatch, background_error):
+    from lazyllm.module.llms.model_config_inject import inject_model_config
+
+    role_key, default_key = 'synthetic-role-key', 'synthetic-default-key'
+    inject_model_config({'llm': {'source': 'openai', 'model': 'test-model',
+                                 'base_url': 'https://provider.invalid/v1/', 'api_key': role_key}})
+    lazyllm.globals['config']['openai_api_key']['default'] = default_key
+    model = lazyllm.OnlineChatModule(source='dynamic', dynamic_auth=True, name='llm', type='llm')
+    display_started, main_started, display_done = threading.Event(), threading.Event(), threading.Event()
+    main_credentials = []
+
+    class MainAgent(lazyllm.ModuleBase):
+        def __init__(self):
+            super().__init__(name='agent-bridge')
+            self.model = model.share()
+
+        def forward(self, text):
+            return self.model(text, max_retries=2, stream=False)
+
+    def send(adapter, request, **kwargs):
+        data = json.loads(request.body)
+        if 'main-marker' in str(data['messages']):
+            main_credentials.append(request.headers.get('Authorization') == 'Bearer ' + role_key)
+            if len(main_credentials) == 1:
+                main_started.set()
+                assert display_done.wait(timeout=5)
+                raise requests.ReadTimeout('synthetic pre-response failure')
+        else:
+            display_started.set()
+            assert main_started.wait(timeout=5)
+        response = requests.Response()
+        response.status_code, response.url, response.request = 200, request.url, request
+        response.raw = SimpleNamespace(enforce_content_length=True)
+        response._content = json.dumps({'choices': [
+            {'message': {'content': 'done'}, 'finish_reason': 'stop'}]}).encode()
+        response._content_consumed = True
+        return response
+
+    def display():
+        try:
+            result = model.share(prompt='', format=lambda value: value, stream=False)('display-marker')
+            if background_error:
+                raise RuntimeError('background completed with an error')
+            return result
+        finally:
+            display_done.set()
+
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, 'send', send)
+    with lazyllm.ThreadPoolExecutor(2, local_scope='inherit') as pool:
+        background = pool.submit(display)
+        assert display_started.wait(timeout=5)
+        main = pool.submit(MainAgent(), 'main-marker')
+        assert main.result(timeout=5) == {'content': 'done'}
+        if background_error:
+            with pytest.raises(RuntimeError, match='background completed'):
+                background.result(timeout=5)
+        else:
+            background.result(timeout=5)
+    assert main_credentials == [True, True]
+    assert lazyllm.globals.current_stack() is None
+
+
+def test_async_siblings_keep_independent_dynamic_roles_and_restore_parent():
+    async def run():
+        a_entered, b_entered, a_exited = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+        async def first():
+            with lazyllm.globals.stack_enter(['a', 'llm']):
+                a_entered.set()
+                await b_entered.wait()
+                assert lazyllm.globals.current_stack() == ['a', 'llm']
+            a_exited.set()
+
+        async def second():
+            await a_entered.wait()
+            with lazyllm.globals.stack_enter(['b', 'vlm']):
+                b_entered.set()
+                await a_exited.wait()
+                assert lazyllm.globals.current_stack() == ['b', 'vlm']
+
+        with lazyllm.globals.stack_enter(['parent']):
+            await asyncio.wait_for(asyncio.gather(first(), second()), timeout=5)
+            assert lazyllm.globals.current_stack() == ['parent']
+        assert lazyllm.globals.current_stack() is None
+
+    asyncio.run(run())
+
+
+def test_call_stack_sid_switch_and_nested_exception_restore_authentication():
+    from lazyllm.module.llms.model_config_inject import inject_model_config
+
+    inject_model_config({'llm': {'source': 'openai', 'model': 'test-model', 'api_key': 'session-a-key'},
+                         'vlm': {'source': 'openai', 'model': 'test-model', 'api_key': 'nested-vision-key'}})
+    provider = lazyllm.online.chat.openai(api_key='dynamic', model='test-model')
+    with lazyllm.globals.stack_enter(['caller', 'llm']):
+        assert provider._header['Authorization'] == 'Bearer session-a-key'
+        with pytest.raises(RuntimeError, match='nested failure'):
+            with lazyllm.globals.stack_enter(['child', 'vlm']):
+                assert provider._header['Authorization'] == 'Bearer nested-vision-key'
+                raise RuntimeError('nested failure')
+        assert provider._header['Authorization'] == 'Bearer session-a-key'
+        with lazyllm.globals._bind_sid('test-other-session'):
+            assert lazyllm.globals.current_stack() is None
+            inject_model_config({'llm': {'source': 'openai', 'model': 'test-model', 'api_key': 'session-b-key'}})
+            with lazyllm.globals.stack_enter(['other', 'llm']):
+                assert provider._header['Authorization'] == 'Bearer session-b-key'
+            assert lazyllm.globals.current_stack() is None
+            lazyllm.globals.clear()
+        assert provider._header['Authorization'] == 'Bearer session-a-key'
+    assert lazyllm.globals.current_stack() is None
+
+
+def test_concurrent_different_sessions_do_not_inherit_parent_authentication_roles():
+    from lazyllm.module.llms.model_config_inject import inject_model_config
+
+    inject_model_config({'llm': {'source': 'openai', 'model': 'test-model', 'api_key': 'parent-key'}})
+    provider = lazyllm.online.chat.openai(api_key='dynamic', model='test-model')
+    barrier = threading.Barrier(2)
+
+    def run(value):
+        lazyllm.globals._init_sid('test-child-' + value)
+        assert lazyllm.globals.current_stack() is None
+        inject_model_config({'llm': {'source': 'openai', 'model': 'test-model', 'api_key': value}})
+        try:
+            with lazyllm.globals.stack_enter([value, 'llm']):
+                barrier.wait(timeout=5)
+                assert provider._header['Authorization'] == 'Bearer ' + value
+            assert lazyllm.globals.current_stack() is None
+        finally:
+            lazyllm.globals.clear()
+
+    with lazyllm.globals.stack_enter(['parent', 'llm']):
+        with lazyllm.ThreadPoolExecutor(2) as pool:
+            results = [pool.submit(run, value) for value in ('session-a-key', 'session-b-key')]
+            for result in results:
+                result.result(timeout=5)
+        assert provider._header['Authorization'] == 'Bearer parent-key'
+    assert lazyllm.globals.current_stack() is None

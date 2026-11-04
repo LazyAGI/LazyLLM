@@ -2,23 +2,33 @@ import asyncio
 import json
 import mimetypes
 import re
+import socket
+import threading
 import time
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 import requests
+from urllib3.util.ssltransport import SSLTransport
 
 from lazyllm.common import HandledException
 from ....module import ModuleExecutionError
+
+
+class _ModelCallDeadlineExceeded(ModuleExecutionError):
+    pass
 
 
 @dataclass(frozen=True)
 class ModelCallControl:
     cancel_check: Optional[Callable[[], bool]] = field(default=None, repr=False)
     request_check: Optional[Callable] = field(default=None, repr=False)
+    deadline: Optional[float] = None
 
     def check(self):
+        if self.deadline is not None and time.monotonic() >= self.deadline:
+            raise _ModelCallDeadlineExceeded('Model call deadline exceeded.')
         if self.cancel_check is not None:
             try:
                 cancelled = self.cancel_check()
@@ -136,16 +146,99 @@ def response_frames(response, stream, control):
 
 
 @contextmanager
+def _socket_deadline(active_socket, control):
+    if control is None or control.deadline is None:
+        yield
+        return
+    # HTTPS proxies wrap the proxy socket in a second TLS layer.
+    while isinstance(active_socket, SSLTransport):
+        active_socket = active_socket.socket
+
+    def interrupt_read():
+        if active_socket is not None:
+            try:
+                active_socket.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass  # The response may have closed at the deadline.
+
+    timer = threading.Timer(max(0, control.deadline - time.monotonic()), interrupt_read)
+    timer.daemon = True
+    timer.start()
+    try:
+        yield
+    finally:
+        # Finish the callback before the response returns its socket to the pool.
+        timer.cancel()
+        timer.join()
+
+
+def _response_deadline(response, control):
+    connection = getattr(response.raw, 'connection', None)
+    active_socket = getattr(connection, 'sock', None)
+    if active_socket is None:
+        fp = getattr(getattr(response.raw, '_fp', None), 'fp', None)
+        active_socket = getattr(getattr(fp, 'raw', None), '_sock', None)
+    return _socket_deadline(active_socket, control)
+
+
+class _DeadlineHTTPAdapter(requests.adapters.HTTPAdapter):
+    def __init__(self, control):
+        self._control = control
+        self._connection_classes = {}
+        super().__init__()
+
+    def _deadline_pool(self, pool):
+        base = pool.ConnectionCls
+        if base not in self._connection_classes.values():
+            if base not in self._connection_classes:
+                control = self._control
+
+                class DeadlineConnection(base):
+                    def getresponse(self, *args, **kwargs):
+                        control.check()
+                        # Socket idle timeouts alone do not bound a trickling status line or headers.
+                        with _socket_deadline(self.sock, control):
+                            return super().getresponse(*args, **kwargs)
+
+                self._connection_classes[base] = DeadlineConnection
+            # Pools belong to this request's Session, including proxy/SOCKS pools.
+            pool.ConnectionCls = self._connection_classes[base]
+        return pool
+
+    def get_connection(self, *args, **kwargs):
+        return self._deadline_pool(super().get_connection(*args, **kwargs))
+
+    def get_connection_with_tls_context(self, *args, **kwargs):
+        return self._deadline_pool(super().get_connection_with_tls_context(*args, **kwargs))
+
+
+@contextmanager
 def model_response(url, *, control=None, **kwargs):
     if control is not None: control.check()
+    if control is not None and control.deadline is not None:
+        remaining = control.deadline - time.monotonic()
+        timeout = kwargs.get('timeout')
+        if isinstance(timeout, requests.adapters.TimeoutSauce):
+            timeout = timeout.clone()
+        elif isinstance(timeout, tuple):
+            timeout = requests.adapters.TimeoutSauce(connect=timeout[0], read=timeout[1])
+        else:
+            timeout = requests.adapters.TimeoutSauce.from_float(timeout)
+        timeout.total = min(timeout.total, remaining) if timeout.total is not None else remaining
+        kwargs['timeout'] = timeout
     try:
-        with (requests.Session() if control is not None else nullcontext(requests)) as client, \
-                client.post(url, **kwargs) as response:
-            # urllib3 1.x otherwise accepts a truncated body as a clean EOF.
-            response.raw.enforce_content_length = True
-            if control is not None: control.check()
-            yield response
-            if control is not None: control.check()
+        with (requests.Session() if control is not None else nullcontext(requests)) as client:
+            if control is not None and control.deadline is not None:
+                adapter = _DeadlineHTTPAdapter(control)
+                client.mount('http://', adapter)
+                client.mount('https://', adapter)
+            with client.post(url, **kwargs) as response:
+                # urllib3 1.x otherwise accepts a truncated body as a clean EOF.
+                response.raw.enforce_content_length = True
+                if control is not None: control.check()
+                with _response_deadline(response, control):
+                    yield response
+                    if control is not None: control.check()
     except BaseException:
         if control is not None: control.check()
         raise
