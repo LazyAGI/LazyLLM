@@ -62,6 +62,19 @@ class TestCommon(object):
         ret = lazyllm.LazyLLMCMD('python a --a=b --c=d', no_displays=['d'])
         assert str(ret) == 'python a --a=b --c=d'
 
+    @pytest.mark.parametrize('command,key,expected', [
+        ('run --epochs=50 --batch-size=32', 'epochs', '50'),
+        ('run --epochs=50 --batch-size=32', 'batch-size', '32'),
+        ('python train.py --epochs 50', 'epochs', '50'),
+        ('-e=50', 'e', '50'),
+        ('run -e 50', 'e', '50'),
+        ('run --epochs-extra=99 --epochs=50', 'epochs', '50'),
+        ('run --a.b=32', 'a.b', '32'),
+        ('run\t--epochs\t50', 'epochs', '50'),
+    ])
+    def test_common_cmd_get_args(self, command, key, expected):
+        assert lazyllm.LazyLLMCMD(command).get_args(key) == expected
+
     def test_common_timeout(self):
         from lazyllm.common.common import TimeoutException
 

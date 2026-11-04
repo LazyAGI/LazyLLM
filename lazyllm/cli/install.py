@@ -7,6 +7,7 @@ import os
 import argparse
 import importlib.metadata
 import logging
+import re
 
 from collections import OrderedDict
 
@@ -37,7 +38,7 @@ def load_local_pyproject():
             return toml.load(f)
     except (FileNotFoundError, toml.TomlDecodeError):
         logging.error('Could not find or parse the local pyproject.toml file.')
-        sys.exit(1)
+        return None
 
 def load_remote_pyproject():
     try:
@@ -94,11 +95,11 @@ def install_packages(packages):
 
 def parse_caret_to_tilde_version(version):
     if version.startswith('^'):
-        version_parts = version[1:].split('.')
-        if len(version_parts) > 1:
-            return f'~={version_parts[0]}.{version_parts[1]}'
-        else:
-            return f'~={version_parts[0]}'
+        version_parts = [int(part) for part in re.match(r'\d+(?:\.\d+)*', version[1:]).group().split('.')]
+        index = next((i for i, part in enumerate(version_parts) if part), len(version_parts) - 1)
+        upper = version_parts[:index] + [version_parts[index] + 1] + [0] * (len(version_parts) - index - 1)
+        upper_version = '.'.join(str(part) for part in upper)
+        return f'>={version[1:]},<{upper_version}'
     return version
 
 def process_package(package_name_with_version, dependencies):
