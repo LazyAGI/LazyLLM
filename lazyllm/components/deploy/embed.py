@@ -183,7 +183,7 @@ class EmbeddingDeploy(LazyLLMDeployBase):
         self._port = port
 
     def _get_model_path(self, finetuned_model=None, base_model=None):
-        if not os.path.exists(finetuned_model) or \
+        if not finetuned_model or not os.path.exists(finetuned_model) or \
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(finetuned_model)):
             if not finetuned_model:
