@@ -168,7 +168,10 @@ class TestSkills(object):
             }]
             assert result['has_more'] is False
             names = [tool.__name__ for tool in manager.get_skill_tools()]
-            assert names == ['search_skill', 'get_skill', 'read_skill_resource', 'run_skill_script']
+            assert names == [
+                'search_skill', 'get_skill', 'read_skill_resource',
+                'run_skill_script', 'run_skill_command',
+            ]
             assert 'filters' not in captured['request']
 
     def test_search_skill_uses_local_catalog_without_backend(self):

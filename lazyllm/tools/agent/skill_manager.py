@@ -1,4 +1,5 @@
 import json
+import inspect
 import math
 import os
 import posixpath
@@ -11,7 +12,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import yaml
 
-from lazyllm import config, LOG, ModuleBase
+from lazyllm import config, globals as lazyllm_globals, LOG, ModuleBase
 from lazyllm.thirdparty import fsspec
 from .missing_env import collect_missing_env_hints, format_missing_env_message
 from .toolError import ToolExecutionError
@@ -1093,21 +1094,127 @@ class SkillManager(ModuleBase):
     def _script_failure_error(
         reason: str, result: Dict, skill_info: Optional[Dict],
     ) -> ToolExecutionError:
-        if result.get('status') == 'missing':
-            return ToolExecutionError(reason)
         raw_meta = (skill_info or {}).get('raw_meta') or {}
-        missing_env = collect_missing_env_hints(
+        missing_env = list(result.get('missing_env') or []) or collect_missing_env_hints(
             reason,
             result.get('stderr'),
             result.get('stdout'),
             declared_required=raw_meta.get('required_env'),
         )
-        if not missing_env:
+        diagnostics = {
+            'error_type': result.get('error_type') or result.get('reason_code'),
+            'dependency': result.get('dependency'),
+            'exit_code': result.get('exit_code'),
+            'duration_ms': result.get('duration_ms'),
+            'missing_env': missing_env,
+            'blocked_resource': result.get('blocked_resource'),
+            'available_commands': result.get('available_commands') or [],
+            'stdout': result.get('stdout'),
+            'stderr': result.get('stderr'),
+        }
+        if not any(value not in (None, [], ()) for value in diagnostics.values()):
             return ToolExecutionError(reason)
-        return ToolExecutionError.with_missing_env(
-            format_missing_env_message(reason, missing_env),
-            missing_env,
+        return ToolExecutionError.with_diagnostics(
+            format_missing_env_message(reason, missing_env) if missing_env else reason,
+            **diagnostics,
         )
+
+    @staticmethod
+    def _declared_values(value: Any) -> List[str]:
+        if isinstance(value, dict):
+            value = list(value)
+        elif isinstance(value, str):
+            value = [item.strip() for item in value.split(',')]
+        if not isinstance(value, (list, tuple, set)):
+            return []
+        result = []
+        for item in value:
+            text = str(item or '').strip()
+            if text and text not in result:
+                result.append(text)
+        return result
+
+    @classmethod
+    def _skill_execution_policy(cls, skill_info: Optional[Dict]) -> Dict[str, Any]:
+        raw = (skill_info or {}).get('raw_meta') or {}
+        metadata = raw.get('metadata') if isinstance(raw.get('metadata'), dict) else {}
+        openclaw = metadata.get('openclaw') if isinstance(metadata.get('openclaw'), dict) else {}
+        if not openclaw and isinstance(raw.get('openclaw'), dict):
+            openclaw = raw['openclaw']
+        requires = openclaw.get('requires') if isinstance(openclaw.get('requires'), dict) else {}
+        security = metadata.get('security') if isinstance(metadata.get('security'), dict) else {}
+        if not security and isinstance(raw.get('security'), dict):
+            security = raw['security']
+
+        def merged(*values):
+            result = []
+            for value in values:
+                for item in cls._declared_values(value):
+                    if item not in result:
+                        result.append(item)
+            return result
+
+        return {
+            'required_bins': merged(raw.get('required_bins'), requires.get('bins')),
+            'any_bins': merged(requires.get('anyBins'), requires.get('any_bins')),
+            'required_env': merged(raw.get('required_env'), requires.get('env')),
+            'allowed_domains': merged(
+                raw.get('allowed_domains'), security.get('allowed_domains'), security.get('allowedDomains'),
+            ),
+            'input_files': merged(raw.get('input_files'), security.get('input_files')),
+            'declared_outputs': merged(
+                raw.get('declared_outputs'), raw.get('output_files'),
+                security.get('declared_outputs'), security.get('output_files'),
+            ),
+            'runtime_profile': str(
+                raw.get('runtime_profile') or requires.get('profile') or 'base'
+            ).strip(),
+            'skill_key': str((skill_info or {}).get('key') or ''),
+            'revision': str(raw.get('version') or (skill_info or {}).get('version') or 'latest'),
+        }
+
+    @staticmethod
+    def _execution_options(policy: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            'policy': policy,
+            'session_id': SkillManager._execution_session_id(),
+            'input_files': list(policy.get('input_files') or []),
+            'declared_outputs': list(policy.get('declared_outputs') or []),
+            'skill_id': str(policy.get('skill_key') or ''),
+            'revision': str(policy.get('revision') or 'latest'),
+        }
+
+    @staticmethod
+    def _sandbox_call(method: Callable, kwargs: Dict[str, Any], optional: Dict[str, Any]) -> Dict:
+        try:
+            parameters = inspect.signature(method).parameters.values()
+            accepts_kwargs = any(param.kind is inspect.Parameter.VAR_KEYWORD for param in parameters)
+            accepted_names = {param.name for param in parameters}
+        except (TypeError, ValueError):
+            accepts_kwargs = False
+            accepted_names = set()
+        for key, value in optional.items():
+            if accepts_kwargs or key in accepted_names:
+                kwargs[key] = value
+        return method(**kwargs)
+
+    @staticmethod
+    def _execution_session_id() -> str:
+        try:
+            return str(getattr(lazyllm_globals, '_sid', '') or '')
+        except Exception:
+            return ''
+
+    @staticmethod
+    def _execution_env(policy: Dict[str, Any]) -> Dict[str, str]:
+        del policy
+        from lazyllm.tools.tool_config_inject import get_dynamic_env_vars
+        dynamic = dict(get_dynamic_env_vars())
+        return {
+            str(name): str(value)
+            for name, value in dynamic.items()
+            if value is not None
+        }
 
     def run_script(self, name: str, rel_path: str, args: Optional[List[str]] = None,
                    cwd: Optional[str] = None) -> Dict[str, str]:
@@ -1143,14 +1250,17 @@ class SkillManager(ModuleBase):
                     f'The configured sandbox does not support executing skill {name} script '
                     f'{normalized_rel_path!r}.'
                 )
-            from lazyllm.tools.tool_config_inject import get_dynamic_env_vars
-            script_env = dict(get_dynamic_env_vars())
-            result = self._sandbox.execute_script(
-                source_dir=base,
-                rel_path=normalized_rel_path,
-                args=args,
-                cwd=os.path.relpath(run_cwd, os.path.realpath(os.path.abspath(base))),
-                env=script_env,
+            policy = self._skill_execution_policy(info)
+            result = self._sandbox_call(
+                self._sandbox.execute_script,
+                {
+                    'source_dir': base,
+                    'rel_path': normalized_rel_path,
+                    'args': args,
+                    'cwd': os.path.relpath(run_cwd, os.path.realpath(os.path.abspath(base))),
+                    'env': self._execution_env(policy),
+                },
+                self._execution_options(policy),
             )
             return self._normalize_script_result(result, info)
         except ToolExecutionError:
@@ -1160,6 +1270,76 @@ class SkillManager(ModuleBase):
         finally:
             if temp_dir is not None:
                 temp_dir.cleanup()
+
+    def run_command(self, name: str, argv: List[str], cwd: Optional[str] = None) -> Dict[str, Any]:
+        '''Run an argv-based CLI command for a visible Skill.
+
+        Args:
+            name: Skill key or unique Skill name.
+            argv: Command name followed by literal arguments.
+            cwd: Optional working directory relative to the Skill package.
+
+        Returns:
+            The sandbox's structured execution result.
+
+        Raises:
+            ToolExecutionError: If the Skill, arguments, path, or execution fails.
+        '''
+        info, error = self._get_visible_skill_info(name)
+        if error:
+            self._raise_skill_lookup_error(name, error)
+        if not info:
+            raise ToolExecutionError(f'Skill not found: {name}')
+        if not isinstance(argv, list) or not argv or any(not isinstance(item, str) for item in argv):
+            raise ToolExecutionError('run_command argv must be a non-empty list of strings.')
+        base = info['path']
+        temp_dir = None
+        run_cwd = None
+        try:
+            base, temp_dir = self._materialize_script_base(base, 'SKILL.md')
+            try:
+                run_cwd = self._resolve_run_cwd(base, cwd)
+            except ValueError as exc:
+                raise ToolExecutionError.with_diagnostics(
+                    f'Invalid run_command cwd for skill {name}: {exc}',
+                    error_type='FILESYSTEM_DENIED',
+                    blocked_resource=str(cwd),
+                ) from exc
+            if self._sandbox is None or not hasattr(self._sandbox, 'execute_command'):
+                raise ToolExecutionError(
+                    f'The configured sandbox does not support executing CLI commands for skill {name}.'
+                )
+            policy = self._skill_execution_policy(info)
+            result = self._sandbox_call(
+                self._sandbox.execute_command,
+                {
+                    'source_dir': base,
+                    'argv': list(argv),
+                    'cwd': os.path.relpath(run_cwd, os.path.realpath(os.path.abspath(base))),
+                    'env': self._execution_env(policy),
+                },
+                self._execution_options(policy),
+            )
+            return self._normalize_script_result(result, info)
+        except ToolExecutionError:
+            raise
+        except Exception as exc:
+            self._raise_run_command_exception(name, exc)
+        finally:
+            if temp_dir is not None:
+                temp_dir.cleanup()
+
+    @staticmethod
+    def _raise_run_command_exception(name: str, exc: Exception) -> None:
+        if isinstance(exc, ValueError):
+            raise ToolExecutionError(f'Invalid run_command argument for skill {name}: {exc}') from exc
+        if isinstance(exc, FileNotFoundError):
+            raise ToolExecutionError(f'run_command filesystem path not found for skill {name}: {exc}') from exc
+        if isinstance(exc, subprocess.TimeoutExpired):
+            raise ToolExecutionError(
+                f'run_command timed out after {exc.timeout} seconds for skill {name}.'
+            ) from exc
+        raise ToolExecutionError(f'run_command execution failed for skill {name}: {exc}') from exc
 
     def read_reference(self, name: str, rel_path: str, **kwargs) -> Dict[str, str]:
         result = self.read_file(name=name, rel_path=rel_path, **kwargs)
@@ -1174,6 +1354,7 @@ class SkillManager(ModuleBase):
             tools.extend([
                 self._build_read_skill_resource_tool(),
                 self._build_run_skill_script_tool(),
+                self._build_run_skill_command_tool(),
             ])
         return tools
 
@@ -1254,6 +1435,24 @@ class SkillManager(ModuleBase):
             '''
             return self._run_loaded_skill_script(name=name, rel_path=rel_path, args=args, cwd=cwd)
         return run_skill_script
+
+    def _build_run_skill_command_tool(self):
+        @fc_register(host_file='OPAQUE', exclusive=True, tool_source='skill')
+        def run_skill_command(name: str, argv: List[str], cwd: Optional[str] = None) -> dict:
+            '''Run an argv-based CLI command in the loaded skill sandbox.
+
+            The skill must already be loaded with get_skill. The command is
+            resolved from the sandbox image allowlist. Shell strings and
+            shell interpolation are not supported; use run_skill_script for
+            a declared Bash script.
+
+            Args:
+                name (str): Skill key or unique skill name.
+                argv (list[str]): Command name followed by literal arguments.
+                cwd (str, optional): Working directory inside the skill workspace.
+            '''
+            return self._run_loaded_skill_command(name=name, argv=argv, cwd=cwd)
+        return run_skill_command
 
     def _build_read_reference_tool(self):
         return self._build_read_skill_resource_tool()
@@ -1368,6 +1567,23 @@ class SkillManager(ModuleBase):
             return error
         return self.read_reference(name=name, rel_path=normalized, **kwargs)
 
+    @staticmethod
+    def _raise_skill_execution_guard_error(name: str, error: Dict[str, Any]) -> None:
+        code = str(error.get('error') or 'skill_execution_denied')
+        if code == 'skill_not_loaded':
+            raise ToolExecutionError.with_diagnostics(
+                f'Skill {name!r} must be loaded with get_skill before execution.',
+                error_type='SKILL_NOT_LOADED',
+            )
+        if code == 'resource_not_declared':
+            blocked_resource = str(error.get('rel_path') or '')
+            raise ToolExecutionError.with_diagnostics(
+                f'Skill resource {blocked_resource!r} is not declared for {name!r}.',
+                error_type='FILESYSTEM_DENIED',
+                blocked_resource=blocked_resource or None,
+            )
+        raise ToolExecutionError(f'Skill execution was denied: {code}')
+
     def _run_loaded_skill_script(
         self,
         name: str,
@@ -1377,8 +1593,25 @@ class SkillManager(ModuleBase):
     ) -> Dict[str, Any]:
         normalized, error = self._loaded_skill_guard(name, rel_path)
         if error:
-            return error
+            self._raise_skill_execution_guard_error(name, error)
         return self.run_script(name=name, rel_path=normalized, args=args, cwd=cwd)
+
+    def _run_loaded_skill_command(
+        self,
+        name: str,
+        argv: List[str],
+        cwd: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        info, error = self._get_visible_skill_info(name)
+        if error:
+            self._raise_skill_lookup_error(name, error)
+        if not info:
+            raise ToolExecutionError(f'Skill not found: {name}')
+        if info['key'] not in self._loaded_skills:
+            self._raise_skill_execution_guard_error(
+                name, {'status': 'error', 'error': 'skill_not_loaded', 'retry': False},
+            )
+        return self.run_command(name=name, argv=argv, cwd=cwd)
 
 
 def inherit_skill_scope(

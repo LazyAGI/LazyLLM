@@ -294,6 +294,7 @@ def test_skill_tools_have_explicit_capabilities(tmp_path):
         'get_skill': HostFileAccess.NONE,
         'read_skill_resource': HostFileAccess.NONE,
         'run_skill_script': HostFileAccess.OPAQUE,
+        'run_skill_command': HostFileAccess.OPAQUE,
     }
 
 

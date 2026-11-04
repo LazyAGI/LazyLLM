@@ -13,7 +13,7 @@ from lazyllm.tools.agent.base import (
     is_tool_result_envelope,
     normalize_tool_observation,
 )
-from lazyllm.tools.agent.functionCall import FunctionCall
+from lazyllm.tools.agent.functionCall import FunctionCall, _model_tool_result_content
 from lazyllm.tools.agent.toolsManager import ToolManager
 
 
@@ -294,6 +294,83 @@ def test_function_call_does_not_bypass_legacy_delegating_manager_wrapper():
 
 
 class TestReactAgentEvents(object):
+    def test_skill_failure_diagnostics_are_model_visible_without_changing_other_tools(self):
+        def run_skill_command(name: str) -> str:
+            '''Run a Skill command.
+
+            Args:
+                name (str): Skill name.
+            '''
+            del name
+            raise ToolExecutionError.with_diagnostics(
+                'CLI command is not allowed in the sandbox: sudo',
+                error_type='COMMAND_DENIED',
+                blocked_resource='sudo',
+            )
+
+        fc_register(host_file='NONE')(run_skill_command)
+        failure = {
+            'ok': False,
+            'value': 'CLI command is not allowed in the sandbox: sudo',
+            'error_type': 'COMMAND_DENIED',
+            'blocked_resource': 'sudo',
+            'duration_ms': 42,
+            'stdout': 'partial output',
+            'stderr': 'sudo: command denied',
+        }
+
+        skill_content = _model_tool_result_content('run_skill_command', failure)
+        assert json.loads(skill_content) == {
+            'ok': False,
+            'value': 'CLI command is not allowed in the sandbox: sudo',
+            'error_type': 'COMMAND_DENIED',
+            'reason_code': 'COMMAND_DENIED',
+            'blocked_resource': 'sudo',
+            'duration_ms': 42,
+            'stdout': 'partial output',
+            'stderr': 'sudo: command denied',
+        }
+        assert _model_tool_result_content('run_skill_script', failure) == skill_content
+        assert _model_tool_result_content('unrelated_tool', failure) == failure['value']
+
+        unstructured = {'ok': False, 'value': 'legacy failure'}
+        assert _model_tool_result_content('run_skill_command', unstructured) == 'legacy failure'
+        success = {'ok': True, 'value': {'status': 'ok'}}
+        assert _model_tool_result_content('run_skill_command', success) == str(success['value'])
+
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'Run the check.',
+                'tool_calls': [{
+                    'id': 'call-skill-command',
+                    'type': 'function',
+                    'function': {
+                        'name': 'run_skill_command',
+                        'arguments': '{"name": "sandbox-policy-boundary"}',
+                    },
+                }],
+            },
+            {'role': 'assistant', 'content': 'Done.'},
+        ])
+        agent = ReactAgent(
+            llm=llm,
+            tools=[run_skill_command],
+            max_retries=3,
+            stream=True,
+            enable_builtin_tools=False,
+        )
+
+        assert agent('run denied command') == 'Done.'
+        tool_message = llm.inputs[1]['input'][0]
+        assert json.loads(tool_message['content'].split('\n\n', 1)[0]) == {
+            'ok': False,
+            'value': 'CLI command is not allowed in the sandbox: sudo',
+            'error_type': 'COMMAND_DENIED',
+            'reason_code': 'COMMAND_DENIED',
+            'blocked_resource': 'sudo',
+        }
+
     def test_force_summary_is_emitted_after_streamed_tool_progress(self):
         llm = _SharedCursorLLM([
             {

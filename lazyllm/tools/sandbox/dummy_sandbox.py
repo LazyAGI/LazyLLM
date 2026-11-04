@@ -23,6 +23,16 @@ class DummySandbox(LazyLLMSandboxBase):
     def _check_available(self) -> bool:
         return True
 
+    def capabilities(self) -> Dict[str, Any]:
+        return {
+            'status': 'ok',
+            'runtimes': {'python': True},
+            'commands': [],
+            'profiles': ['development'],
+            'supports': {'script': True, 'command': False, 'declared_outputs': False},
+            'isolation': 'none',
+        }
+
     def _check_code_safety(self, code: str) -> Tuple[bool, Optional[str]]:
         try:
             tree = ast.parse(code)

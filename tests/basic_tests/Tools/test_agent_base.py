@@ -52,12 +52,14 @@ class TestLazyLLMAgentBase(object):
             self._build_get_skill_tool(),
             self._build_read_skill_resource_tool(),
             self._build_run_skill_script_tool(),
+            self._build_run_skill_command_tool(),
         ])
         agent = _DummyAgent(skills=['demo-skill'], enable_builtin_tools=False)
         assert agent._skill_manager is not None
         assert agent._builtin_tool_names == set()
         assert agent._skill_tool_names == {
-            'search_skill', 'get_skill', 'read_skill_resource', 'run_skill_script',
+            'search_skill', 'get_skill', 'read_skill_resource',
+            'run_skill_script', 'run_skill_command',
         }
         assert all(not (isinstance(tool, str) and tool.startswith('builtin_tools.')) for tool in agent._tools)
         assert all(

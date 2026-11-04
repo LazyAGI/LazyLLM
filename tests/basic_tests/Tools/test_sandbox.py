@@ -312,6 +312,49 @@ class TestToolManagerSandboxIntegration:
 
 
 class TestSandboxFusion:
+    def test_skill_package_script_uses_unified_contract(self, tmp_path, monkeypatch):
+        skill = tmp_path / 'skill'
+        (skill / 'scripts').mkdir(parents=True)
+        (skill / 'SKILL.md').write_text('demo', encoding='utf-8')
+        (skill / 'scripts' / 'run.sh').write_text('printf ok\n', encoding='utf-8')
+        captured = {}
+        sandbox = SandboxFusion(base_url='http://sandbox.test')
+        monkeypatch.setattr(
+            sandbox,
+            '_call_endpoint',
+            lambda url, request: captured.update(url=url, request=request) or {
+                'status': 'ok', 'stdout': 'ok', 'stderr': '', 'exit_code': 0, 'output_files': [],
+            },
+        )
+
+        result = sandbox.execute_script(
+            str(skill), 'scripts/run.sh', args=['--safe'],
+            declared_outputs=['output/*.txt'], skill_id='demo', revision='v1',
+        )
+
+        assert result['status'] == 'ok'
+        assert captured['url'] == 'http://sandbox.test/v1/skill/execute'
+        request = captured['request']
+        assert request['runtime'] == 'bash'
+        assert request['entrypoint'] == 'scripts/run.sh'
+        assert request['argv'] == ['--safe']
+        assert request['declared_outputs'] == ['output/*.txt']
+        assert request['version'] == 1
+        assert request['action'] == 'execute'
+        assert request['network_policy'] == {'mode': 'deny'}
+        assert request['limits']['timeout_seconds'] == 10
+        assert set(request['files']) == {'SKILL.md', 'scripts/run.sh'}
+        assert len(request['tree_hash']) == 64
+
+    def test_skill_package_rejects_symlink(self, tmp_path):
+        skill = tmp_path / 'skill'
+        skill.mkdir()
+        (skill / 'SKILL.md').write_text('demo', encoding='utf-8')
+        (skill / 'escape').symlink_to('/etc/passwd')
+
+        with pytest.raises(ValueError, match='symbolic links'):
+            SandboxFusion(base_url='http://sandbox.test').execute_command(str(skill), ['jq', '--version'])
+
     @pytest.mark.skipif(
         not os.getenv('LAZYLLM_SANDBOX_FUSION_BASE_URL'),
         reason='LAZYLLM_SANDBOX_FUSION_BASE_URL is not set'
