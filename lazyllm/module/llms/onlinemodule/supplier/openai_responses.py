@@ -1,6 +1,7 @@
 '''OpenAI Responses transport for the existing LazyLLM chat contract.'''
 
 import json
+import re
 from urllib.parse import urlsplit
 
 from ..base.model_request import model_response, response_frames
@@ -27,11 +28,30 @@ def _content(content, role):
     return result
 
 
+def _normalize_sampling_params(body, chat):
+    reasoning = body.get('reasoning')
+    effort = reasoning.get('effort') if isinstance(reasoning, dict) else None
+    model = str(body.get('model') or '').lower()
+    reasoning_model = bool(re.match(r'^(?:gpt-[56]|o[134])(?:[.-]|$)', model))
+    if reasoning_model and effort != 'none':
+        for key in ('temperature', 'top_p', 'top_logprobs'):
+            body.pop(key, None)
+        if isinstance(body.get('include'), list):
+            body['include'] = [item for item in body['include'] if item != 'message.output_text.logprobs']
+            if not body['include']:
+                body.pop('include')
+    elif chat.get('logprobs') is True:
+        include = list(body.get('include') or [])
+        if 'message.output_text.logprobs' not in include:
+            include.append('message.output_text.logprobs')
+        body['include'] = include
+
+
 def chat_to_responses_request(chat):
     '''Translate chat messages and function definitions without losing call IDs.'''
     body = {key: value for key, value in chat.items() if key not in {
         'messages', 'tools', 'max_tokens', 'max_completion_tokens', 'reasoning_effort',
-        'stream_options', 'response_format', 'n', 'functions', 'function_call',
+        'stream_options', 'response_format', 'n', 'functions', 'function_call', 'logprobs',
     }}
     items = []
     for message in chat.get('messages', []):
@@ -58,6 +78,7 @@ def chat_to_responses_request(chat):
         body['max_output_tokens'] = limit
     if chat.get('reasoning_effort') is not None:
         body['reasoning'] = {'effort': chat['reasoning_effort']}
+    _normalize_sampling_params(body, chat)
     if chat.get('response_format'):
         response_format = chat['response_format']
         if response_format.get('type') == 'json_schema':

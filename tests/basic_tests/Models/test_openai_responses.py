@@ -38,6 +38,39 @@ def test_responses_request_flattens_forced_function_choice():
     assert body['tool_choice'] == {'type': 'function', 'name': 'weather'}
 
 
+def test_responses_request_drops_sampling_for_default_gpt6_reasoning():
+    body = chat_to_responses_request({
+        'model': 'gpt-6-sol', 'messages': [{'role': 'user', 'content': 'title?'}],
+        'temperature': 0, 'top_p': 0.7, 'top_logprobs': 3, 'logprobs': True,
+        'include': ['reasoning.encrypted_content', 'message.output_text.logprobs'],
+    })
+    assert all(key not in body for key in ('temperature', 'top_p', 'top_logprobs', 'logprobs'))
+    assert body['include'] == ['reasoning.encrypted_content']
+
+
+def test_responses_request_preserves_sampling_with_no_reasoning():
+    body = chat_to_responses_request({
+        'model': 'gpt-6-sol', 'messages': [{'role': 'user', 'content': 'title?'}],
+        'reasoning_effort': 'none', 'temperature': 0, 'top_p': 0.7,
+        'top_logprobs': 3, 'logprobs': True,
+    })
+    assert body['reasoning'] == {'effort': 'none'}
+    assert body['temperature'] == 0
+    assert body['top_p'] == 0.7
+    assert body['top_logprobs'] == 3
+    assert 'logprobs' not in body
+    assert body['include'] == ['message.output_text.logprobs']
+
+
+def test_responses_request_preserves_gpt4o_sampling():
+    body = chat_to_responses_request({
+        'model': 'gpt-4o', 'messages': [{'role': 'user', 'content': 'title?'}],
+        'temperature': 0, 'top_p': 0.7,
+    })
+    assert body['temperature'] == 0
+    assert body['top_p'] == 0.7
+
+
 def test_responses_output_preserves_function_calls_and_usage():
     response = {'output': [
         {'type': 'message', 'content': [{'type': 'output_text', 'text': 'Checking.'}]},
