@@ -1,4 +1,4 @@
-"""OpenAI Responses transport for the existing LazyLLM chat contract."""
+'''OpenAI Responses transport for the existing LazyLLM chat contract.'''
 
 import json
 from urllib.parse import urlsplit
@@ -28,7 +28,7 @@ def _content(content, role):
 
 
 def chat_to_responses_request(chat):
-    """Translate chat messages and function definitions without losing call IDs."""
+    '''Translate chat messages and function definitions without losing call IDs.'''
     body = {key: value for key, value in chat.items() if key not in {
         'messages', 'tools', 'max_tokens', 'max_completion_tokens', 'reasoning_effort',
         'stream_options', 'response_format', 'n', 'functions', 'function_call',

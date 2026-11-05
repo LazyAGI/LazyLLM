@@ -54,7 +54,7 @@ def test_responses_output_preserves_function_calls_and_usage():
 def test_responses_json_schema_format_is_flattened():
     body = chat_to_responses_request({'messages': [], 'response_format': {
         'type': 'json_schema', 'json_schema': {'name': 'answer', 'strict': True,
-                                              'schema': {'type': 'object'}}}})
+                                               'schema': {'type': 'object'}}}})
     assert body['text']['format'] == {'type': 'json_schema', 'name': 'answer', 'strict': True,
                                       'schema': {'type': 'object'}}
 
@@ -73,9 +73,10 @@ def test_responses_nonstream_http_result(monkeypatch):
         status_code = 200
         headers = {}
         raw = type('Raw', (), {})()
-        text = json.dumps({'output': [{'type': 'message', 'content': [
-            {'type': 'output_text', 'text': 'Hello'}]}],
-                           'usage': {'input_tokens': 2, 'output_tokens': 3, 'total_tokens': 5}})
+        text = json.dumps({
+            'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Hello'}]}],
+            'usage': {'input_tokens': 2, 'output_tokens': 3, 'total_tokens': 5},
+        })
 
         def __enter__(self): return self
         def __exit__(self, *args): return None
