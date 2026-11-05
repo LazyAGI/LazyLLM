@@ -461,7 +461,9 @@ def _unfenced_lines(lines: Sequence[str]):
             yield index, line
 
 
-def _normalize_paper_bibliography(lines: Sequence[str]) -> Optional[list[str]]:
+def _normalize_paper_bibliography(
+    lines: Sequence[str], *, materialized_numbering: bool,
+) -> Optional[list[str]]:
     # Only the explicitly delimited, published bibliography owns stable source IDs.
     anchors = [(i, anchor[2]) for i, line in _unfenced_lines(lines)
                if (anchor := _PAPER_ANCHOR_RE.fullmatch(line))]
@@ -473,7 +475,14 @@ def _normalize_paper_bibliography(lines: Sequence[str]) -> Optional[list[str]]:
         raise ValueError('Invalid paper bibliography boundaries.')
     start, end = starts[0], ends[0]
     content = [line.strip() for line in lines[start + 1:end] if line.strip()]
-    if not content or content[0] != '**参考文献**' or len(content) % 2 != 1:
+    if content and _MARKDOWN_ANCHOR_RE.fullmatch(content[0]) and _MARKDOWN_ANCHOR_ID_RE.search(content[0]):
+        content.pop(0)
+    heading = _MARKDOWN_ATX_HEADING_RE.fullmatch(content[0]) if content else None
+    bold_heading = re.fullmatch(r'\*\*(.+)\*\*', content[0]) if content else None
+    title = _clean_heading_caption(heading['title'], materialized_numbering) if heading else (
+        bold_heading[1].strip() if bold_heading else ''
+    )
+    if not title or len(content) % 2 != 1:
         raise ValueError('Invalid paper bibliography entries.')
     source_numbers = {}
     entries = []
@@ -495,7 +504,7 @@ def _normalize_paper_bibliography(lines: Sequence[str]) -> Optional[list[str]]:
     for index, line in _unfenced_lines(lines):
         if not start <= index <= end:
             body[index] = _rewrite_line_citations(line, set(), source_numbers=source_numbers)
-    bibliography = ['<a data-writer-bibliography="begin" data-title="参考文献"></a>', '']
+    bibliography = [f'<a data-writer-bibliography="begin" data-title="{escape(title, quote=True)}"></a>', '']
     for number, citation in entries:
         bibliography.extend([f'<a data-writer-bibitem="ref-{number:03d}"></a>', '', citation, ''])
     bibliography.extend(['<a data-writer-bibliography="end"></a>', ''])
@@ -507,7 +516,7 @@ def _normalize_numbered_bibliography(
     *,
     materialized_numbering: bool,
 ) -> list[str]:
-    paper = _normalize_paper_bibliography(lines)
+    paper = _normalize_paper_bibliography(lines, materialized_numbering=materialized_numbering)
     if paper is not None:
         return paper
     bibliography = _find_numbered_bibliography(

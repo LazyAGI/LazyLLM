@@ -283,6 +283,27 @@ def test_stable_bibliography_resolves_identity_before_display_number():
     assert result.stdout.index(r'\end{thebibliography}') < result.stdout.index('After bibliography.')
 
 
+@pytest.mark.parametrize(('heading', 'title'), [
+    ('**参考文献**', '参考文献'),
+    ('**References**', 'References'),
+    ('## 参考文献', '参考文献'),
+    ('## References', 'References'),
+    ('### Bibliography', 'Bibliography'),
+    ('## Références', 'Références'),
+    ('## 8. References ##', 'References'),
+])
+@pytest.mark.parametrize('anchor', ['', '<a id="block-paper-references"></a>\n\n'])
+def test_stable_bibliography_preserves_heading_language(heading, title, anchor):
+    source = '# Title\n\n' + _paper_bibliography().replace('**参考文献**', anchor + heading)
+    normalized = normalize_writer_markdown_for_latex(source)
+    assert f'data-title="{title}"' in normalized
+    assert normalize_writer_markdown_for_latex(normalized) == normalized
+    result = _run_filter(normalized)
+    assert result.returncode == 0, result.stderr
+    assert f'\\renewcommand{{\\refname}}{{{title}}}' in result.stdout
+    assert result.stdout.count(r'\bibitem{') == 2
+
+
 @pytest.mark.parametrize('invalid', [
     lambda source: source.replace('paper-references-end', 'missing-end'),
     lambda source: source.replace('paper-ref-SRC-b', 'paper-ref-SRC-甲.v2'),
