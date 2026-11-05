@@ -50,6 +50,9 @@ def chat_to_responses_request(chat):
     if chat.get('tools'):
         body['tools'] = [dict(tool.get('function') or {}, type='function') if tool.get('type') == 'function'
                          else tool for tool in chat['tools']]
+    choice = chat.get('tool_choice')
+    if isinstance(choice, dict) and choice.get('type') == 'function' and isinstance(choice.get('function'), dict):
+        body['tool_choice'] = {'type': 'function', 'name': choice['function']['name']}
     limit = chat.get('max_completion_tokens', chat.get('max_tokens'))
     if limit is not None:
         body['max_output_tokens'] = limit

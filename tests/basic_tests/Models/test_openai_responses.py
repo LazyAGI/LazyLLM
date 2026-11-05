@@ -29,6 +29,15 @@ def test_responses_request_preserves_tool_conversation():
     assert 'messages' not in body and 'max_completion_tokens' not in body
 
 
+def test_responses_request_flattens_forced_function_choice():
+    body = chat_to_responses_request({
+        'messages': [{'role': 'user', 'content': 'weather?'}],
+        'tool_choice': {'type': 'function', 'function': {'name': 'weather'}},
+        'tools': [{'type': 'function', 'function': {'name': 'weather', 'parameters': {'type': 'object'}}}],
+    })
+    assert body['tool_choice'] == {'type': 'function', 'name': 'weather'}
+
+
 def test_responses_output_preserves_function_calls_and_usage():
     response = {'output': [
         {'type': 'message', 'content': [{'type': 'output_text', 'text': 'Checking.'}]},
