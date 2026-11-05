@@ -46,6 +46,24 @@ Academic retrieval guidance:
 - Use get_content(item) when the abstract or metadata is not enough to support the answer.
 '''
 
+_SCIVERSE_SEARCH_GUIDANCE_ZH = '''
+- 主题探索可用 query；定位某篇已知论文请用 meta_search 的字段过滤，不要把完整标题放进全文模糊 query 当成精确检索。
+- 已有可靠 DOI 时，省略 query，使用 filters=[{"field":"doi","operator":"FILTER_OP_EQ","value":"已核实的 DOI"}]；只有标题时，改为 title 字段的 FILTER_OP_EQ。
+- 精确过滤命中后仍须核对返回的标题和已知标识符，有歧义时查作者和年份。即使 DOI 一致，标题指向其他论文的记录也不能引用为原论文。
+- 精确查询无结果或论文身份不符时，可用 title 的 FILTER_OP_CONTAINS 按辨识性名称补查一次。有已核实的 DOI 或 arXiv ID 时，可直接核对其原始页面。
+- 不编造 DOI，不无限翻页。只找到衍生基准、综述或评测时，说明未找到原论文，并注明间接来源的身份。
+- total_count 是接口报告的总命中数，不是本次获取或确认相关的论文数；本次返回数量以 items 为准。
+'''
+
+_SCIVERSE_SEARCH_GUIDANCE_EN = '''
+- Use query for topic discovery. To locate a known paper, use meta_search field filters; a full title in the fuzzy full-text query is not an exact lookup.
+- With a verified DOI, omit query and use filters=[{"field":"doi","operator":"FILTER_OP_EQ","value":"verified DOI"}]. With only a title, use FILTER_OP_EQ on title.
+- Verify the returned title and known identifiers even after an exact match. Check authors and year if ambiguous. Reject a record whose title belongs to a different paper, even if the DOI matches.
+- If exact lookup returns no matching paper, try FILTER_OP_CONTAINS on title with a distinctive name once. With a verified DOI or arXiv ID, consult its original page directly.
+- Never invent a DOI or paginate indefinitely. If only a derivative benchmark, survey, or evaluation was found, state that the original was not found and identify the indirect source.
+- total_count is the API-reported total match count, not the number retrieved or verified relevant. Count items for this response.
+'''
+
 add_chinese_doc('SearchBase', '''
 所有搜索工具的基类，定义统一接口与返回格式。混入 CredentialMixin 提供统一的 API key 管理。
 
@@ -654,6 +672,7 @@ add_chinese_doc('SciverseSearch.search', f'''
 搜索 Sciverse 科研文献。
 
 {_ACADEMIC_SEARCH_GUIDANCE_ZH}
+{_SCIVERSE_SEARCH_GUIDANCE_ZH}
 
 Sciverse search_type 选择:
 - "agentic" 返回适合问答的文献片段，适合需要快速回答研究问题的场景。
@@ -675,6 +694,7 @@ add_english_doc('SciverseSearch.search', f'''
 Search Sciverse scientific literature.
 
 {_ACADEMIC_SEARCH_GUIDANCE_EN}
+{_SCIVERSE_SEARCH_GUIDANCE_EN}
 
 Sciverse search_type selection:
 - "agentic" returns passage-oriented results for question answering.
@@ -720,15 +740,17 @@ Returns:
     Dict[str, Any]: title, url, snippet, source, extra, and content. extra.content_read includes content_type, offset, limit, truncated, and fallback. A fallback returns cached passage/summary text with offset=null, not the requested page. truncated indicates local clipping, not whether another page exists. Valid server pagination is exposed as more and next_offset. When more=True, use next_offset for the next request; do not calculate it from returned text length. Full reading requires continuous coverage from the start until more=False. These fields are omitted on local clipping, fallback, or missing/invalid pagination; pagination_error identifies a pagination protocol error; report incomplete reading rather than assuming completion.
 ''')
 
-add_chinese_doc('SciverseSearch.meta_search', '''
+add_chinese_doc('SciverseSearch.meta_search', f'''
 调用 Sciverse /meta-search 做高级论文元数据检索。
 
 search() 返回统一搜索列表，适合普通 Agent 检索；meta_search() 保留分页和统计信息，适合论文列表、筛选、排序、导出和深翻页场景。query 与 sort 不能同时使用；cursor 与 page>1 不能同时使用。
 
+{_SCIVERSE_SEARCH_GUIDANCE_ZH}
+
 Args:
     query (str): 全文模糊检索词；可为空，仅用 filters / sort 精确检索。
-    filters (List[Dict[str, Any]], optional): 字段过滤条件，例如 {field, operator, value}。
-    sort (List[Dict[str, Any]], optional): 排序字段集合，例如 {field, order}。
+    filters (List[Dict[str, Any]], optional): 字段过滤条件，例如 {{field, operator, value}}。
+    sort (List[Dict[str, Any]], optional): 排序字段集合，例如 {{field, order}}。
     fields (List[str], optional): 返回字段投影；为空时使用默认字段。
     page (int): 页码，默认 1。
     page_size (int): 每页条数，默认 25，范围 1-200。
@@ -742,15 +764,17 @@ Returns:
     Dict[str, Any]: 包含 items、total_count、total_pages、page、page_size、next_cursor、search_time_ms。
 ''')
 
-add_english_doc('SciverseSearch.meta_search', '''
+add_english_doc('SciverseSearch.meta_search', f'''
 Run advanced Sciverse /meta-search for literature metadata.
 
 search() returns the unified SearchBase result list for simple agent retrieval. meta_search() preserves pagination and statistics, making it better for paper lists, filtering, sorting, export, and deep pagination. query cannot be used together with sort; cursor cannot be used together with page > 1.
 
+{_SCIVERSE_SEARCH_GUIDANCE_EN}
+
 Args:
     query (str): Full-text fuzzy query; may be empty when using filters / sort only.
-    filters (List[Dict[str, Any]], optional): Field filters, e.g. {field, operator, value}.
-    sort (List[Dict[str, Any]], optional): Sort clauses, e.g. {field, order}.
+    filters (List[Dict[str, Any]], optional): Field filters, e.g. {{field, operator, value}}.
+    sort (List[Dict[str, Any]], optional): Sort clauses, e.g. {{field, order}}.
     fields (List[str], optional): Field projection; defaults to the built-in field list.
     page (int): Page number, default 1.
     page_size (int): Items per page, default 25, clamped to 1-200.
