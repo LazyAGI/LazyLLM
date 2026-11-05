@@ -1,126 +1,181 @@
 import json
 
-import pytest
+import requests
 
-from lazyllm.module.llms.onlinemodule.base.openai_responses import responses_request
 from lazyllm.module.llms.onlinemodule.base.model_call_runner import ModelAttemptState
-from lazyllm.module.llms.onlinemodule.base.model_outcome import ModelFinish, _ModelResponseError
-from lazyllm.module.llms.onlinemodule.supplier.openai import OpenAIChat
+from lazyllm.module.llms.onlinemodule.supplier.openai_responses import (
+    OpenAIResponsesChat, _response_stream_as_chat, chat_to_responses_request, responses_to_chat_chunk,
+)
 
 
-def module(model='gpt-6.1-sol', url='https://api.openai.com/v1/'):
-    return OpenAIChat(model=model, base_url=url, api_key='test-key', stream=False)
+def test_responses_request_preserves_tool_conversation():
+    chat = {
+        'model': 'gpt-5.6-sol', 'stream': False, 'max_completion_tokens': 128,
+        'messages': [
+            {'role': 'user', 'content': 'weather?'},
+            {'role': 'assistant', 'content': None, 'tool_calls': [
+                {'id': 'call_1', 'type': 'function', 'function': {'name': 'weather', 'arguments': '{"city":"Taipei"}'}}
+            ]},
+            {'role': 'tool', 'tool_call_id': 'call_1', 'content': 'sunny'},
+        ],
+        'tools': [{'type': 'function', 'function': {'name': 'weather', 'parameters': {'type': 'object'}}}],
+    }
+    body = chat_to_responses_request(chat)
+    assert body['input'][1] == {'type': 'function_call', 'call_id': 'call_1', 'name': 'weather',
+                                'arguments': '{"city":"Taipei"}'}
+    assert body['input'][2] == {'type': 'function_call_output', 'call_id': 'call_1', 'output': 'sunny'}
+    assert body['tools'][0] == {'type': 'function', 'name': 'weather', 'parameters': {'type': 'object'}}
+    assert body['max_output_tokens'] == 128
+    assert 'messages' not in body and 'max_completion_tokens' not in body
 
 
-def test_request_routes_and_converts_tools_history_and_options():
-    llm = module()
-    data, url, *_ = llm._prepare_request(
-        'continue', temperature=0.2, top_p=0.8, max_tokens=500,
-        tools=[{'type': 'function', 'function': {'name': 'read', 'parameters': {'type': 'object'}}}],
-        llm_chat_history=[{'role': 'assistant', 'content': None, 'tool_calls': [
-            {'id': 'call_1', 'type': 'function', 'function': {'name': 'read', 'arguments': '{}'}}]},
-            {'role': 'tool', 'tool_call_id': 'call_1', 'content': 'saved'}])
-    assert url == 'https://api.openai.com/v1/responses'
-    assert data['max_output_tokens'] == 500
-    assert not {'messages', 'temperature', 'top_p', 'max_tokens', 'stream_options'} & data.keys()
-    assert data['tools'][0]['name'] == 'read'
-    assert data['tools'][0]['strict'] is False
-    assert {'type': 'function_call_output', 'call_id': 'call_1', 'output': 'saved'} in data['input']
-    assert any(x.get('type') == 'function_call' for x in data['input'])
+def test_responses_request_flattens_forced_function_choice():
+    body = chat_to_responses_request({
+        'messages': [{'role': 'user', 'content': 'weather?'}],
+        'tool_choice': {'type': 'function', 'function': {'name': 'weather'}},
+        'tools': [{'type': 'function', 'function': {'name': 'weather', 'parameters': {'type': 'object'}}}],
+    })
+    assert body['tool_choice'] == {'type': 'function', 'name': 'weather'}
 
 
-@pytest.mark.parametrize(('model_name', 'url'), [
-    ('gpt-4o', 'https://api.openai.com/v1/'), ('gpt-6.1-sol', 'http://provider.test/v1/'),
-])
-def test_existing_chat_routes_unchanged(model_name, url):
-    data, endpoint, *_ = module(model_name, url)._prepare_request('hi', temperature=0.2)
-    assert endpoint.endswith('/chat/completions')
-    assert 'messages' in data and data['temperature'] == 0.2
+def test_responses_request_drops_sampling_for_default_gpt6_reasoning():
+    body = chat_to_responses_request({
+        'model': 'gpt-6-sol', 'messages': [{'role': 'user', 'content': 'title?'}],
+        'temperature': 0, 'top_p': 0.7, 'top_logprobs': 3, 'logprobs': True,
+        'include': ['reasoning.encrypted_content', 'message.output_text.logprobs'],
+    })
+    assert all(key not in body for key in ('temperature', 'top_p', 'top_logprobs', 'logprobs'))
+    assert body['include'] == ['reasoning.encrypted_content']
 
 
-def frames(events):
-    return [('data: ' + json.dumps(e)).encode() for e in events]
+def test_responses_request_preserves_sampling_with_no_reasoning():
+    body = chat_to_responses_request({
+        'model': 'gpt-6-sol', 'messages': [{'role': 'user', 'content': 'title?'}],
+        'reasoning_effort': 'none', 'temperature': 0, 'top_p': 0.7,
+        'top_logprobs': 3, 'logprobs': True,
+    })
+    assert body['reasoning'] == {'effort': 'none'}
+    assert body['temperature'] == 0
+    assert body['top_p'] == 0.7
+    assert body['top_logprobs'] == 3
+    assert 'logprobs' not in body
+    assert body['include'] == ['message.output_text.logprobs']
 
 
-def test_stream_tool_arguments_merge_and_usage():
-    llm = module()
+def test_responses_request_preserves_gpt4o_sampling():
+    body = chat_to_responses_request({
+        'model': 'gpt-4o', 'messages': [{'role': 'user', 'content': 'title?'}],
+        'temperature': 0, 'top_p': 0.7,
+    })
+    assert body['temperature'] == 0
+    assert body['top_p'] == 0.7
+
+
+def test_responses_output_preserves_function_calls_and_usage():
+    response = {'output': [
+        {'type': 'message', 'content': [{'type': 'output_text', 'text': 'Checking.'}]},
+        {'type': 'function_call', 'call_id': 'call_2', 'name': 'weather', 'arguments': '{}'},
+    ], 'usage': {'input_tokens': 12, 'output_tokens': 8}}
+    chunk = responses_to_chat_chunk(response)
+    assert chunk['choices'][0]['message']['content'] == 'Checking.'
+    assert chunk['choices'][0]['message']['tool_calls'][0]['id'] == 'call_2'
+    assert chunk['choices'][0]['finish_reason'] == 'tool_calls'
+    assert chunk['usage']['prompt_tokens'] == 12
+    assert chunk['usage']['completion_tokens'] == 8
+
+
+def test_responses_json_schema_format_is_flattened():
+    body = chat_to_responses_request({'messages': [], 'response_format': {
+        'type': 'json_schema', 'json_schema': {'name': 'answer', 'strict': True,
+                                               'schema': {'type': 'object'}}}})
+    assert body['text']['format'] == {'type': 'json_schema', 'name': 'answer', 'strict': True,
+                                      'schema': {'type': 'object'}}
+
+
+def test_responses_completed_event_supplies_text_without_deltas():
+    event = {'type': 'response.completed', 'response': {'output': [
+        {'type': 'message', 'content': [{'type': 'output_text', 'text': 'Hello'}]}]}}
+    chunks = [json.loads(frame[6:]) for frame in _response_stream_as_chat(
+        [('data: ' + json.dumps(event)).encode()]) if frame != 'data: [DONE]']
+    assert chunks[0]['choices'][0]['delta']['content'] == 'Hello'
+    assert chunks[-1]['choices'][0]['finish_reason'] == 'stop'
+
+
+def test_responses_nonstream_http_result(monkeypatch):
+    class Response:
+        status_code = 200
+        headers = {}
+        raw = type('Raw', (), {})()
+        text = json.dumps({
+            'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Hello'}]}],
+            'usage': {'input_tokens': 2, 'output_tokens': 3, 'total_tokens': 5},
+        })
+
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+
+    monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: Response())
+    module = OpenAIResponsesChat(base_url='https://provider.test/v1/', model='gpt-5.6-sol',
+                                 api_key='test-key', stream=False)
     state = ModelAttemptState()
-    output = llm._response_parser(False).collect(frames([
-        {'type': 'response.output_item.added', 'output_index': 1,
-         'item': {'type': 'function_call', 'call_id': 'call_1', 'name': 'read'}},
-        {'type': 'response.function_call_arguments.delta', 'output_index': 1, 'delta': '{"key":'},
-        {'type': 'response.function_call_arguments.delta', 'output_index': 1, 'delta': '"prompt"}'},
-        {'type': 'response.completed', 'response': {'status': 'completed',
-         'output': [{'type': 'function_call'}], 'usage': {'input_tokens': 10, 'output_tokens': 5}}},
-    ]), state)
-    merged = llm._extract_specified_key_fields(llm._merge_stream_result(output))
-    call = merged['tool_calls'][0] if isinstance(merged['tool_calls'], list) else merged['tool_calls']
-    assert call['function']['arguments'] == '{"key":"prompt"}'
-    assert call['id'] == 'call_1'
-    assert state.finish == ModelFinish.TOOL_CALLS
-    assert llm._extract_usage(output)['prompt_tokens'] == 10
+    result = module._forward_impl({'model': 'gpt-5.6-sol', 'input': [], 'stream': False},
+                                  runtime_url=module._chat_url, stream_output=False,
+                                  proxies=None, request_timeout=1, state=state)
+    assert module._chat_url == 'https://provider.test/v1/responses'
+    assert result[0]['choices'][0]['message']['content'] == 'Hello'
+    assert state.usage['prompt_tokens'] == 2
+    assert state.usage['completion_tokens'] == 3
 
 
-def test_nonstream_text_and_incomplete():
-    llm = module()
+def test_responses_module_call_uses_responses_wire_format(monkeypatch):
+    class Response:
+        status_code = 200
+        headers = {}
+        raw = type('Raw', (), {})()
+        text = json.dumps({'output': [{'type': 'message', 'content': [
+            {'type': 'output_text', 'text': 'Hello'}]}]})
+
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+
+    sent = []
+    monkeypatch.setattr(requests, 'post', lambda url, **kwargs: (sent.append((url, kwargs['json'])), Response())[1])
+    model = OpenAIResponsesChat(base_url='https://provider.test/v1/', model='gpt-5.6-sol',
+                                api_key='test-key', stream=False)
+    assert model('Hi', stream_output=False) == 'Hello'
+    assert sent[0][0] == 'https://provider.test/v1/responses'
+    assert sent[0][1]['input'][-1] == {'role': 'user', 'content': 'Hi'}
+    assert 'messages' not in sent[0][1]
+
+
+def test_responses_stream_yields_text_and_tool_call(monkeypatch):
+    class Response:
+        status_code = 200
+        headers = {}
+        raw = type('Raw', (), {})()
+
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+
+        def iter_lines(self):
+            for event in [
+                {'type': 'response.output_text.delta', 'delta': 'Checking.'},
+                {'type': 'response.completed', 'response': {'output': [
+                    {'type': 'message', 'content': [{'type': 'output_text', 'text': 'Checking.'}]},
+                    {'type': 'function_call', 'call_id': 'call_2', 'name': 'weather', 'arguments': '{}'},
+                ], 'usage': {'input_tokens': 12, 'output_tokens': 8}}},
+            ]:
+                yield ('data: ' + json.dumps(event)).encode()
+
+    sent = []
+    monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: (sent.append(kwargs['json']), Response())[1])
+    module = OpenAIResponsesChat(base_url='https://provider.test/v1/', model='gpt-5.6-sol',
+                                 api_key='test-key', stream=True)
     state = ModelAttemptState()
-    result = llm._response_parser(False).collect([json.dumps({
-        'object': 'response', 'status': 'incomplete',
-        'incomplete_details': {'reason': 'max_output_tokens'},
-        'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'partial'}]}]})], state)
-    assert result[0]['choices'][0]['delta']['content'] == 'partial'
-    assert state.finish == ModelFinish.LENGTH
-
-
-def test_failed_response_and_missing_terminal_are_errors():
-    llm = module()
-    with pytest.raises(_ModelResponseError):
-        llm._response_parser(False).collect(frames([{'type': 'response.failed', 'response': {
-            'error': {'code': 'server_error', 'type': 'server_error'}}}]), ModelAttemptState())
-    with pytest.raises(_ModelResponseError):
-        llm._response_parser(False).collect(frames([{'type': 'response.output_text.delta', 'delta': 'partial'}]),
-                                            ModelAttemptState())
-
-
-def test_image_and_named_tool_conversion():
-    data = responses_request({'messages': [{'role': 'user', 'content': [
-        {'type': 'text', 'text': 'look'}, {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,abc'}}]}],
-        'tool_choice': {'type': 'function', 'function': {'name': 'read'}}})
-    assert data['input'][0]['content'][1]['type'] == 'input_image'
-    assert data['tool_choice'] == {'type': 'function', 'name': 'read'}
-
-
-def test_stream_text_is_not_duplicated_by_completed_snapshot():
-    llm = module()
-    state = ModelAttemptState()
-    result = llm._response_parser(False).collect(frames([
-        {'type': 'response.output_text.delta', 'delta': 'hello '},
-        {'type': 'response.output_text.delta', 'delta': 'world'},
-        {'type': 'response.completed', 'response': {'status': 'completed', 'output': [
-            {'type': 'message', 'content': [{'type': 'output_text', 'text': 'hello world'}]}]}},
-    ]), state)
-    assert llm._extract_specified_key_fields(llm._merge_stream_result(result))['content'] == 'hello world'
-    assert state.finish == ModelFinish.STOP
-
-
-def test_nonstream_failure_does_not_look_successful():
-    with pytest.raises(_ModelResponseError):
-        module()._response_parser(False).collect([json.dumps({
-            'object': 'response', 'status': 'failed',
-            'error': {'code': 'server_error'}})], ModelAttemptState())
-
-
-def test_html_survives_default_formatter_without_dict_stringification():
-    llm = module()
-    html = "<!DOCTYPE html>\n<html><style>body {font-family: 'Arial';}</style><body>正文</body></html>"
-    for events in [
-        [{'type': 'response.output_text.delta', 'delta': html},
-         {'type': 'response.completed', 'response': {'status': 'completed', 'output': []}}],
-        [{'object': 'response', 'status': 'completed', 'output': [
-            {'type': 'message', 'content': [{'type': 'output_text', 'text': html}]}]}],
-    ]:
-        result = llm._response_parser(False).collect(frames(events), ModelAttemptState())
-        message = llm._extract_specified_key_fields(llm._merge_stream_result(result))
-        output = llm._formatter(message)
-        assert isinstance(output, str)
-        assert output == html
+    result = module._forward_impl({'model': 'gpt-5.6-sol', 'input': [], 'stream': True},
+                                  runtime_url='https://provider.test/v1/responses', stream_output=False,
+                                  proxies=None, request_timeout=1, state=state)
+    assert sent[0]['stream'] is True
+    assert result[0]['choices'][0]['delta']['content'] == 'Checking.'
+    assert result[-1]['choices'][0]['delta']['tool_calls'][0]['id'] == 'call_2'
+    assert state.usage['prompt_tokens'] == 12

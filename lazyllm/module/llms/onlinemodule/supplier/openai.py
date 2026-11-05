@@ -11,12 +11,10 @@ from ..base import (
     ModelFailureCode, OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase
 )
 from ..fileHandler import FileHandlerBase
-from ..base.openai_responses import OpenAIResponsesParser, responses_message, responses_request
 
 
 class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
     PROVIDER_NAME = 'openai'
-    RESPONSE_PARSER_CLASS = OpenAIResponsesParser
     RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(
         code_map={
             'credit_balance_exhausted': ModelFailureCode.BALANCE_EXHAUSTED,
@@ -52,20 +50,6 @@ class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
             }
         }
         self.fine_tuning_job_id = None
-
-    def _prepare_request(self, *args, **kwargs):
-        prepared = list(super()._prepare_request(*args, **kwargs))
-        data, url = prepared[:2]
-        # Only official GPT-6 endpoints use Responses automatically. Compatible
-        # third-party providers retain their existing Chat Completions contract.
-        if urlparse(url).hostname == 'api.openai.com' and re.match(r'^gpt-6(?:[.-]|$)', data['model']):
-            prepared[0] = responses_request(data)
-            prepared[1] = url.replace('/responses/chat/completions', '/responses')
-            prepared[1] = prepared[1].replace('/chat/completions', '/responses')
-        return tuple(prepared)
-
-    def _convert_msg_format(self, msg):
-        return responses_message(msg)
 
     def _get_system_prompt(self):
         return 'You are ChatGPT, a large language model trained by OpenAI. You are a helpful assistant.'
