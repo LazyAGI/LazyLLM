@@ -49,6 +49,7 @@ if TYPE_CHECKING:
     from .sql import SqlManager, MongoDBManager, DBResult, DBStatus, DBManager
     from .sql_call import SqlCall
     from .tools.http_tool import HttpTool
+    from .tools.search import ParallelSearch
     from .servers.graphrag.graphrag_server_module import GraphRagServerModule
     from .mcp.client import MCPClient  # noqa NID002
     from .actors import ParameterExtractor, QustionRewrite, CodeGenerator
@@ -153,6 +154,7 @@ _SUBMOD_MAP = {
     ],
     'sql_call': ['SqlCall'],
     'tools.http_tool': ['HttpTool'],
+    'tools.search': ['ParallelSearch'],
     'servers.graphrag.graphrag_server_module': ['GraphRagServerModule'],
     'mcp.client': ['MCPClient'],
     'actors': [
