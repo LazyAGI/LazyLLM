@@ -99,6 +99,7 @@ class _DynamicSourceRouterMixin(ModuleBase):
             with self._lock:
                 if supplier_key not in self._suppliers:
                     supplier = self._build_supplier(source, skip_auth)
+                    supplier.used_by(self._module_id)
                     self._suppliers[supplier_key] = supplier
                     LOG.info(
                         f'[LazyLLM] [DYNAMIC_MODEL_SUPPLIER] '

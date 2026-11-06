@@ -326,6 +326,9 @@ class WriterToolBase(ModuleBase):
                     set_span_error(span, exc)
                 if attempt + 1 >= attempts:
                     raise
+                if failure_stage == 'validation':
+                    detail = str(exc.__cause__ or exc)[:4000]
+                    prompt += '\n\nReturn corrected JSON satisfying the schema.\nValidation feedback\n' + detail
                 # Keep transient calls and malformed structured output local to the
                 # Writer tool instead of repeating completed Workspace steps.
             finally:

@@ -201,6 +201,12 @@ def _markdown_source_blocks(markdown: str) -> List[str]:
             continue
         if fence_match:
             fence = fence_match.group(1)
+        if fence is None and re.match(r'^[ \t]{0,3}#{1,6}(?:[ \t]+|$)', line):
+            if start is not None:
+                blocks.append(markdown[start:match.start()].rstrip('\r\n'))
+            blocks.append(line.rstrip('\r\n'))
+            start = None
+            continue
         if line.strip():
             start = match.start() if start is None else start
             continue

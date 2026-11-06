@@ -5,11 +5,13 @@ from pathlib import Path
 import pytest
 
 from lazyllm.tools.writer.utils import conversion
+from lazyllm.tools.writer.provider.base import WriterProviderBase
 from lazyllm.tools.writer.utils.pandoc import (
     PandocError,
     build_pandoc_command,
     check_pandoc_version,
     normalize_writer_markdown_for_latex,
+    markdown_to_latex,
     run_pandoc,
 )
 
@@ -283,6 +285,27 @@ def test_stable_bibliography_resolves_identity_before_display_number():
     assert result.stdout.index(r'\end{thebibliography}') < result.stdout.index('After bibliography.')
 
 
+@pytest.mark.parametrize(('heading', 'title'), [
+    ('**参考文献**', '参考文献'),
+    ('**References**', 'References'),
+    ('## 参考文献', '参考文献'),
+    ('## References', 'References'),
+    ('### Bibliography', 'Bibliography'),
+    ('## Références', 'Références'),
+    ('## 8. References ##', 'References'),
+])
+@pytest.mark.parametrize('anchor', ['', '<a id="block-paper-references"></a>\n\n'])
+def test_stable_bibliography_preserves_heading_language(heading, title, anchor):
+    source = '# Title\n\n' + _paper_bibliography().replace('**参考文献**', anchor + heading)
+    normalized = normalize_writer_markdown_for_latex(source)
+    assert f'data-title="{title}"' in normalized
+    assert normalize_writer_markdown_for_latex(normalized) == normalized
+    result = _run_filter(normalized)
+    assert result.returncode == 0, result.stderr
+    assert f'\\renewcommand{{\\refname}}{{{title}}}' in result.stdout
+    assert result.stdout.count(r'\bibitem{') == 2
+
+
 @pytest.mark.parametrize('invalid', [
     lambda source: source.replace('paper-references-end', 'missing-end'),
     lambda source: source.replace('paper-ref-SRC-b', 'paper-ref-SRC-甲.v2'),
@@ -299,3 +322,58 @@ def test_fenced_bibliography_and_plain_numbers_remain_examples():
     assert '[1] is ordinary prose.' in normalized
     assert '```md\n' + _paper_bibliography() + '\n```' in normalized
     assert 'data-writer-bibliography' not in normalized
+
+
+@pytest.mark.parametrize('bibliography_title', [
+    'References', '参考文献',
+])
+def test_english_paper_export_preserves_math_abstract_references_and_vector_paths(monkeypatch, bibliography_title):
+    executable, _, _ = _pandoc_paths()
+    monkeypatch.setenv('LAZYMIND_PANDOC_PATH', str(executable))
+    source = r'''# Document-State Writing
+
+## Abstract
+
+A compact academic abstract describing the method and findings.
+
+## Introduction
+
+The state is \(S_t\). Prior work [\[1\]](#paper-ref-source-a) motivates the method.
+
+\[
+T_t=(S_t,\Omega_t)
+\]
+
+![Recorded resource profile](/static-files/chart.svg)
+
+<a id="paper-references-start"></a>
+
+<a id="block-paper-references"></a>
+
+## References
+
+<a id="paper-ref-source-a"></a>
+
+[1] Author. A real source\[EB/OL\]. 2026\[2026-11-04\].
+
+<a id="paper-references-end"></a>
+'''
+    latex = WriterProviderBase.convert_common_document(
+        source.replace('## References', '## ' + bibliography_title), output_format='latex').content
+    assert r'\documentclass[11pt,a4paper]{article}' in latex
+    assert r'\begin{abstract}' in latex and r'\section{Abstract}' not in latex
+    assert r'\(S_t\)' in latex and r'\Omega_t' in latex
+    assert r'\textbackslash' not in latex
+    assert r'\cite{ref-001}' in latex
+    assert r'\bibitem{ref-001}' in latex
+    assert f'\\renewcommand{{\\refname}}{{{bibliography_title}}}' in latex
+    assert '{assets/chart.pdf}' in latex
+    assert r'\[2026-11-04\]' not in latex
+
+
+def test_chinese_paper_export_selects_chinese_template():
+    executable, _, _ = _pandoc_paths()
+    latex = markdown_to_latex('# 中文论文\n\n## 摘要\n\n研究问题与方法。\n\n## 引言\n\n研究背景。',
+                              pandoc_path=executable)
+    assert r'\documentclass[UTF8,zihao=-4]{ctexart}' in latex
+    assert r'\begin{abstract}' in latex

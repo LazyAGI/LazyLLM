@@ -292,6 +292,15 @@ class WriterRevisionTools(WriterToolBase):
         )
         return result.model_dump()
 
+    def _validate_revision_location(self, result, candidate_refs, is_markdown):
+        validate_ref = self._markdown_ref_is_exclusive if is_markdown else self._revision_ref_is_exclusive
+        invalid = [target.content_ref.model_dump(exclude_none=True) for target in result.targets
+                   if not validate_ref(target.content_ref)
+                   or self._content_ref_key(target.content_ref) not in candidate_refs]
+        if invalid:
+            raise ValueError(f'locate_result contains references not in candidates: {invalid}.')
+        return result
+
     def locate_revision_target(
         self,
         task: Any,
@@ -319,6 +328,7 @@ class WriterRevisionTools(WriterToolBase):
             if not candidates:
                 raise ValueError('selection.content_refs contains no valid content references.')
 
+        candidate_refs = {self._content_ref_key(candidate['content_ref']) for candidate in candidates}
         if user_selection and user_selection.content_refs and writing_task.scope == 'selection' \
                 and not (user_selection.text or user_selection.anchor_start or user_selection.anchor_end):
             if len(candidates) != len(selected_refs):
@@ -336,8 +346,9 @@ class WriterRevisionTools(WriterToolBase):
                 document_title_json=to_prompt_json(source_doc.title) if not is_markdown else 'null',
             )
             try:
-                locate_result = self._call_llm_structured(prompt, LocateResult)
-            except (ModuleExecutionError, ValueError):
+                locate_result = self._validate_revision_location(
+                    self._call_llm_structured(prompt, LocateResult), candidate_refs, is_markdown)
+            except (ModuleExecutionError, ValueError) as error:
                 retry_prompt = RETRY_LOCATE_REVISION_TARGET_MARKDOWN_PROMPT if is_markdown else '''
 
 Your previous response could not be parsed.
@@ -346,23 +357,10 @@ For Writer IR, every content_ref must be exactly:
 {"node_id": "<node_id copied from a candidate>"}
 node_id must be a string. Do not include heading_path or nest objects inside node_id.
 '''
-                locate_result = self._call_llm_structured(
-                    prompt + retry_prompt,
+                locate_result = self._validate_revision_location(self._call_llm_structured(
+                    prompt + retry_prompt + '\nValidation feedback\n' + str(error)[:4000],
                     LocateResult,
-                )
-        candidate_refs = {
-            self._content_ref_key(candidate['content_ref'])
-            for candidate in candidates
-        }
-        validate_ref = self._markdown_ref_is_exclusive if is_markdown else self._revision_ref_is_exclusive
-        invalid = [
-            target.content_ref.model_dump(exclude_none=True)
-            for target in locate_result.targets
-            if not validate_ref(target.content_ref)
-            or self._content_ref_key(target.content_ref) not in candidate_refs
-        ]
-        if invalid:
-            raise ValueError(f'locate_result contains references not in candidates: {invalid}.')
+                ), candidate_refs, is_markdown)
         located: List[LocatedContent] = []
         seen_refs = set()
         for target in locate_result.targets:
@@ -371,8 +369,6 @@ node_id must be a string. Do not include heading_path or nest objects inside nod
                 seen_refs.add(key)
                 located.append(target)
         locate_result.targets = located
-        if not locate_result.targets and not locate_result.target_title:
-            raise ValueError('locate_result contains no revision targets.')
         locate_result.task_id = writing_task.task_id
         locate_result.doc_id = (
             source_doc.document_id if isinstance(source_doc, WriterDocument) else None
@@ -413,6 +409,7 @@ node_id must be a string. Do not include heading_path or nest objects inside nod
         located = self._unified_model(locate_result, LocateResult)
         writing_context = self._unified_model(context, WritingContext)
         is_markdown = isinstance(source_doc, str)
+        prompt = ''
         plan_schema = MarkdownModifyPlan if is_markdown else ModifyPlan
         prompt_template = GENERATE_MODIFY_PLAN_MARKDOWN_PROMPT if is_markdown else GENERATE_MODIFY_PLAN_PROMPT
         invalid_plan_refs = self._invalid_markdown_plan_refs if is_markdown else self._invalid_plan_refs
@@ -486,14 +483,8 @@ locator kind per reference. Return valid JSON only.
         else:
             modify_plan = self._complete_ir_anchor_scopes(writing_task, source_doc, modify_plan)
 
-        modify_plan = self._normalize_modify_plan(
-            modify_plan,
-            writing_task,
-            located_refs,
-            valid_refs,
-            document=source_doc if isinstance(source_doc, WriterDocument) else None,
-            target_title=located.target_title,
-        )
+        modify_plan = self._normalize_generated_modify_plan(
+            modify_plan, writing_task, located, valid_refs, source_doc, prompt)
 
         result = self._save_artifacts(
             {'modify_plan': modify_plan},
@@ -511,6 +502,24 @@ locator kind per reference. Return valid JSON only.
             },
         )
         return result.model_dump()
+
+    def _normalize_generated_modify_plan(self, plan, task, located, valid_refs, document, prompt):
+        located_refs = [target.content_ref for target in located.targets]
+        try:
+            return self._normalize_modify_plan(
+                plan, task, located_refs, valid_refs,
+                document=document if isinstance(document, WriterDocument) else None,
+                target_title=located.target_title,
+            )
+        except ValueError as error:
+            if not isinstance(document, str) or not located_refs:
+                raise
+            retry_prompt = RETRY_MODIFY_PLAN_MARKDOWN_PROMPT.format(
+                invalid_shapes=to_prompt_json([{'error': str(error)}]), previous_plan_json=to_prompt_json(plan))
+            corrected = self._unified_markdown_modify_plan(
+                self._call_llm_structured(prompt + retry_prompt, MarkdownModifyPlan))
+            return self._normalize_modify_plan(
+                corrected, task, located_refs, valid_refs, document=None, target_title=located.target_title)
 
     def generate_patch_set(
         self,

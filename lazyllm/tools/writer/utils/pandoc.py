@@ -21,7 +21,7 @@ PANDOC_PATH_ENV = 'LAZYMIND_PANDOC_PATH'
 RUNTIME_ROOT_ENV = 'LAZYMIND_RUNTIME_ROOT'
 PANDOC_REQUIRED_VERSION = '3.11'
 # LazyMind Markdown is GFM with tables, strikeout, task lists, footnotes,
-# dollar-delimited math, autolinks, emoji, and raw HTML parsing. YAML metadata
+# dollar/backslash-delimited math, autolinks, emoji, and raw HTML parsing. YAML metadata
 # is disabled so document input cannot override controlled template metadata.
 # GFM does not enable raw TeX, so LaTeX commands in Markdown remain plain text.
 PANDOC_READER = 'gfm-yaml_metadata_block'
@@ -424,6 +424,10 @@ def _rewrite_line_citations(line: str, entry_numbers: set[int], *, source_number
             if int(match.group('number')) in entry_numbers else match.group(0), prose,
         )
 
+    return _rewrite_inline_prose(line, rewrite)
+
+
+def _rewrite_inline_prose(line, rewrite):
     parts: list[str] = []
     cursor = 0
     while cursor < len(line):
@@ -446,6 +450,27 @@ def _rewrite_line_citations(line: str, entry_numbers: set[int], *, source_number
     return ''.join(parts)
 
 
+def _normalize_math_delimiters(lines):
+    opening = None
+    previous = -1
+    for index, line in _unfenced_lines(lines):
+        if index != previous + 1:
+            opening = None
+        previous = index
+        if line.strip() == r'\[':
+            opening = index
+        elif line.strip() == r'\]' and opening is not None:
+            lines[opening] = lines[opening].replace(r'\[', '$$')
+            lines[index] = line.replace(r'\]', '$$')
+            opening = None
+        elif opening is None:
+            display = re.fullmatch(r'([ \t]{0,3})\\\[(.+)\\\]([ \t]*)', line)
+            lines[index] = (display[1] + '$$' + display[2] + '$$' + display[3] if display else
+                            _rewrite_inline_prose(line, lambda text: re.sub(
+                                r'(?<!\\)\\\((.+?)\\\)', lambda match: '$' + match[1] + '$', text)))
+    return lines
+
+
 def _unfenced_lines(lines: Sequence[str]):
     fence_marker = None
     for index, line in enumerate(lines):
@@ -461,7 +486,9 @@ def _unfenced_lines(lines: Sequence[str]):
             yield index, line
 
 
-def _normalize_paper_bibliography(lines: Sequence[str]) -> Optional[list[str]]:
+def _normalize_paper_bibliography(
+    lines: Sequence[str], *, materialized_numbering: bool,
+) -> Optional[list[str]]:
     # Only the explicitly delimited, published bibliography owns stable source IDs.
     anchors = [(i, anchor[2]) for i, line in _unfenced_lines(lines)
                if (anchor := _PAPER_ANCHOR_RE.fullmatch(line))]
@@ -473,7 +500,14 @@ def _normalize_paper_bibliography(lines: Sequence[str]) -> Optional[list[str]]:
         raise ValueError('Invalid paper bibliography boundaries.')
     start, end = starts[0], ends[0]
     content = [line.strip() for line in lines[start + 1:end] if line.strip()]
-    if not content or content[0] != '**参考文献**' or len(content) % 2 != 1:
+    if content and _MARKDOWN_ANCHOR_RE.fullmatch(content[0]) and _MARKDOWN_ANCHOR_ID_RE.search(content[0]):
+        content.pop(0)
+    heading = _MARKDOWN_ATX_HEADING_RE.fullmatch(content[0]) if content else None
+    bold_heading = re.fullmatch(r'\*\*(.+)\*\*', content[0]) if content else None
+    title = _clean_heading_caption(heading['title'], materialized_numbering) if heading else (
+        bold_heading[1].strip() if bold_heading else ''
+    )
+    if not title or len(content) % 2 != 1:
         raise ValueError('Invalid paper bibliography entries.')
     source_numbers = {}
     entries = []
@@ -487,7 +521,7 @@ def _normalize_paper_bibliography(lines: Sequence[str]) -> Optional[list[str]]:
         if not source_id or source_id in source_numbers or number != len(entries) + 1:
             raise ValueError('Duplicate or unordered paper bibliography entry.')
         source_numbers[source_id] = number
-        entries.append((number, entry[2]))
+        entries.append((number, entry[2].replace(r'\[', '&#91;').replace(r'\]', '&#93;')))
     if not entries:
         raise ValueError('Empty paper bibliography.')
 
@@ -495,7 +529,7 @@ def _normalize_paper_bibliography(lines: Sequence[str]) -> Optional[list[str]]:
     for index, line in _unfenced_lines(lines):
         if not start <= index <= end:
             body[index] = _rewrite_line_citations(line, set(), source_numbers=source_numbers)
-    bibliography = ['<a data-writer-bibliography="begin" data-title="参考文献"></a>', '']
+    bibliography = [f'<a data-writer-bibliography="begin" data-title="{escape(title, quote=True)}"></a>', '']
     for number, citation in entries:
         bibliography.extend([f'<a data-writer-bibitem="ref-{number:03d}"></a>', '', citation, ''])
     bibliography.extend(['<a data-writer-bibliography="end"></a>', ''])
@@ -507,7 +541,7 @@ def _normalize_numbered_bibliography(
     *,
     materialized_numbering: bool,
 ) -> list[str]:
-    paper = _normalize_paper_bibliography(lines)
+    paper = _normalize_paper_bibliography(lines, materialized_numbering=materialized_numbering)
     if paper is not None:
         return paper
     bibliography = _find_numbered_bibliography(
@@ -565,7 +599,7 @@ def normalize_writer_markdown_for_latex(
     newline = '\r\n' if '\r\n' in markdown else '\n'
     trailing_newline = markdown.endswith(('\n', '\r'))
     lines = _normalize_numbered_bibliography(
-        markdown.splitlines(), materialized_numbering=materialized_numbering,
+        _normalize_math_delimiters(markdown.splitlines()), materialized_numbering=materialized_numbering,
     )
     used_ids = {
         match.group('id')
@@ -793,7 +827,7 @@ def run_pandoc(
 def markdown_to_latex(
     markdown: str,
     *,
-    language: str = 'zh-CN',
+    language: Optional[str] = None,
     pandoc_path: Optional[str] = None,
     required_version: str = PANDOC_REQUIRED_VERSION,
     timeout_seconds: float = DEFAULT_CONVERSION_TIMEOUT_SECONDS,
@@ -804,6 +838,9 @@ def markdown_to_latex(
     '''Convert a Markdown string to standalone LaTeX with the supported Pandoc version.'''
     executable = resolve_pandoc_path(pandoc_path)
     check_pandoc_version(executable, required_version=required_version)
+    chinese_characters = len(re.findall(r'[\u3400-\u9fff]', markdown))
+    english_words = len(re.findall(r'\b[A-Za-z]+\b', markdown))
+    language = language or ('zh-CN' if chinese_characters > english_words else 'en-US')
     try:
         template_resource = latex_template_resource(language)
         filter_resource = writer_latex_filter_resource()

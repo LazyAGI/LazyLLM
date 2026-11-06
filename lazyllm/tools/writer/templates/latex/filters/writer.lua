@@ -249,12 +249,12 @@ local function target_kind(block)
 end
 
 local function image_asset_path(source)
-  local normalized = source:gsub('\\', '/')
+  local normalized = source:gsub('[?#].*$', ''):gsub('\\', '/')
   local filename = normalized:match('([^/]+)$')
   if filename == nil or filename == '' then
     error('LazyMind Markdown image source has no filename: ' .. source)
   end
-  return 'assets/' .. filename
+  return 'assets/' .. filename:gsub('%.svg$', '.pdf')
 end
 
 local function render_figure(block, label, anchor_caption)
@@ -466,6 +466,24 @@ function Pandoc(doc)
   local bibliography_keys
   doc, bibliography_keys = render_numbered_bibliography(doc)
   local labels = bind_anchors(doc)
+
+  for index, block in ipairs(doc.blocks) do
+    if block.t == 'Header' and block.level == 2 and
+        (pandoc.utils.stringify(block.content) == 'Abstract' or
+         pandoc.utils.stringify(block.content) == '摘要') then
+      local abstract = pandoc.Blocks({})
+      local last = index + 1
+      while last <= #doc.blocks and doc.blocks[last].t ~= 'Header' do
+        abstract:insert(doc.blocks[last])
+        last = last + 1
+      end
+      doc.meta.abstract = pandoc.MetaBlocks(abstract)
+      for remove = last - 1, index, -1 do
+        table.remove(doc.blocks, remove)
+      end
+      break
+    end
+  end
 
   doc = doc:walk({
     Header = function(header)

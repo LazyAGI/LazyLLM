@@ -75,7 +75,7 @@ _err_msg = ('service of ServerModule execuate failed.\n\nThe above exception was
 _err_msg += (f' defined at `{load_obj(args.defined_pos)}`' if args.defined_pos else '') + ':\n'
 
 
-app = fastapi.FastAPI()
+app = fastapi.FastAPI(telemetry={'tracing': False})
 FastapiApp.update()
 
 async def async_wrapper(func, *args, **kwargs):

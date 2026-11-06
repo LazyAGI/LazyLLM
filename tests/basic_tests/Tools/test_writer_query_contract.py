@@ -11,6 +11,34 @@ from lazyllm.tools.writer.tools.revision_tools import WriterRevisionTools
 from lazyllm.tools.writer.utils import load_artifact_json
 
 
+@pytest.mark.parametrize('valid_correction', [True, False])
+def test_structured_retry_uses_validation_feedback_and_keeps_identity_checks(valid_correction):
+    from typing import Literal
+    from unittest.mock import Mock
+    from pydantic import ConfigDict, create_model
+    from lazyllm.tools.writer.tools.base import WriterToolBase
+
+    roles = create_model('TestRoles', __config__=ConfigDict(extra='forbid'),
+                         M1=(Literal['paper', 'background'], ...))
+    schema = create_model('TestSelection', material_roles=(roles, ...))
+    invalid = {'material_roles': {'source-filename': 'paper'}}
+    corrected = {'material_roles': {'M1': 'background'}} if valid_correction else invalid
+    model = Mock(side_effect=[invalid, corrected])
+    tool = WriterToolBase(llm=model)
+    with patch.object(tool, '_build_structured_llm', return_value=model):
+        if valid_correction:
+            result = tool._call_llm_structured('Select the role of M1.', schema)
+            assert result.material_roles.M1 == 'background'
+        else:
+            with pytest.raises(ValueError, match='Failed to validate'):
+                tool._call_llm_structured('Select the role of M1.', schema)
+    assert model.call_count == 2
+    retry_prompt = model.call_args_list[1].args[0]
+    assert retry_prompt.startswith('Select the role of M1.')
+    assert 'material_roles.M1' in retry_prompt
+    assert 'material_roles.source-filename' in retry_prompt
+
+
 @pytest.mark.parametrize('response', [
     '{"summary": "Model overview"}',
     '<think>Internal reasoning</think>\n{"summary": "Model overview"}', 'invalid JSON', '{}',

@@ -218,6 +218,7 @@ Document candidates in source order:
 
 
 GENERATE_MODIFY_PLAN_MARKDOWN_PROMPT = '''You are a Markdown revision planner. Translate the requested end state into a MarkdownModifyPlan over the located document content.
+Plan concrete changes needed to satisfy the request, giving each instruction a specific difference from the current text.
 
 Plan semantics:
 - title_instruction describes the requested title result when target_title is true.
@@ -443,6 +444,7 @@ You are a Markdown revision writer. Convert the ModifyPlan into a StringReplaceS
 
 Output semantics:
 - Each replacement contains an exact old_string copied from the Markdown and its complete new_string.
+- Each replacement performs a concrete edit, with different old_string and new_string values.
 - content_ref uses heading_path and occurrence to identify the affected Markdown section.
 - Plain text without headings uses content_ref.document_root=true.
 - Update replaces the selected content, and create inserts content before or after its content_ref.

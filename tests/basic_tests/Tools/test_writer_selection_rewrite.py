@@ -57,3 +57,9 @@ def test_selected_paragraph_reuses_string_replace_apply(tmp_path):
     assert Path(result['revised_document_md']).read_text(encoding='utf-8') == (
         '# 标题\n\n新段落。\n\n后续段落。\n'
     )
+
+
+def test_paragraph_immediately_after_heading_keeps_source_coordinates():
+    source = '# Paper\n\n## Method\nThe original paragraph has **structured** text.\n\nUnrelated paragraph.\n'
+    assert locate_markdown_paragraph(source, 'original paragraph', heading_path=['Paper', 'Method']) == (
+        'The original paragraph has **structured** text.')
