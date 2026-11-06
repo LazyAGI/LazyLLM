@@ -12,6 +12,7 @@ from .search import (
     WikipediaSearch,
     SciverseSearch,
     TavilySearch,
+    ParallelSearch,
 )
 from .weather import Weather
 from .calculator import Calculator
@@ -32,6 +33,7 @@ __all__ = [
     'WikipediaSearch',
     'SciverseSearch',
     'TavilySearch',
+    'ParallelSearch',
     'Weather',
     'Calculator',
     'JsonExtractor',
