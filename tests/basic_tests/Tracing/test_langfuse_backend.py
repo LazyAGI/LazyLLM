@@ -1,12 +1,16 @@
 import base64
 import json
 from unittest.mock import Mock
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 import lazyllm
 import lazyllm.tracing.backends.langfuse.backend as langfuse_backend_module
 from lazyllm.tracing.backends.langfuse.backend import LangfuseBackend, LangfuseConsumeBackend
 from lazyllm.tracing.consume.api import get_single_trace
+from lazyllm.tracing.collect.runtime import TracingRuntime
+from lazyllm.tracing.collect.span import LazySpan
+from lazyllm.tracing.collect import runtime as trace_runtime
 from lazyllm.tracing.semantics import SemanticType
 
 
@@ -86,6 +90,60 @@ MINIMAL_LANGFUSE_TRACE_BODY = {
     'tags': [],
     'observations': [],
 }
+
+
+def test_generation_preserves_long_model_context_and_respects_capture_opt_out():
+    context = {'messages': [{'role': 'user', 'content': 'context ' * 2000 + 'INPUT_END'}]}
+    output = 'generated ' * 2000 + 'OUTPUT_END'
+    span = LazySpan(semantic_type=SemanticType.LLM, capture_payload=True, input=context, output=output)
+    runtime = TracingRuntime()
+    attrs = LangfuseBackend().map_attributes(runtime._build_otel_attributes(span))
+    assert json.loads(attrs['langfuse.observation.input']) == context
+    assert attrs['langfuse.observation.output'] == output
+    span.capture_payload = False
+    attrs = LangfuseBackend().map_attributes(runtime._build_otel_attributes(span))
+    assert 'langfuse.observation.input' not in attrs
+    assert 'langfuse.observation.output' not in attrs
+
+
+def test_active_span_wins_over_session_parent_changed_by_another_worker(monkeypatch):
+    previous = lazyllm.get_trace_context()
+    try:
+        lazyllm.set_trace_context({'trace_id': 'a' * 32, 'parent_span_id': 'b' * 16, 'session_id': 'conversation'})
+        context = SimpleNamespace(is_valid=True, trace_id=int('c' * 32, 16), span_id=int('d' * 16, 16))
+        api = Mock()
+        api.get_current_span.return_value.get_span_context.return_value = context
+        monkeypatch.setattr(trace_runtime._runtime, '_trace_api', api)
+        active = lazyllm.get_trace_context()
+        assert (active.trace_id, active.parent_span_id, active.session_id) == ('c' * 32, 'd' * 16, 'conversation')
+    finally:
+        lazyllm.set_trace_context(previous)
+
+
+def test_dynamic_generation_records_provider_model_and_tokens(monkeypatch):
+    from lazyllm.module.llms.onlinemodule.chat import OnlineChatModule, dynamic_chat_config
+    from lazyllm.module.llms.onlinemodule.supplier.openai import OpenAIChat
+    from lazyllm.tracing.collect.hook import LazyTracingHook
+    from lazyllm.tracing.collect.output_attrs import record_llm_resolved_prompt
+
+    def provider(supplier, prompt, **kwargs):
+        record_llm_resolved_prompt({'messages': [{'role': 'user', 'content': prompt}], 'model': kwargs['model']})
+        supplier._record_usage({'prompt_tokens': 11, 'completion_tokens': 4})
+        return 'generated text'
+
+    monkeypatch.setattr(OpenAIChat, 'forward', provider)
+    with lazyllm.common.new_session('dynamic-generation-trace'):
+        model = OnlineChatModule(source='dynamic')
+        with dynamic_chat_config(model, source='openai', model='observed-model', skip_auth=True), \
+                lazyllm.globals.stack_enter(model.identities):
+            result = model.forward('context')
+        hook = LazyTracingHook(model)
+        hook._span = LazySpan(semantic_type=SemanticType.LLM, capture_payload=True)
+        hook.post_hook(result)
+        attrs = LangfuseBackend().map_attributes(TracingRuntime()._build_otel_attributes(hook._span))
+        assert attrs['gen_ai.request.model'] == 'observed-model'
+        assert (attrs['gen_ai.usage.input_tokens'], attrs['gen_ai.usage.output_tokens']) == (11, 4)
+        assert attrs['langfuse.observation.output'] == result
 
 
 class _FakeResponse:

@@ -43,7 +43,13 @@ def _normalize_trace_id(trace_id: Any) -> str:
 
 
 def get_trace_context() -> LazyTraceContext:
-    return LazyTraceContext.from_dict(llm_globals.get('trace', {}))
+    ctx = LazyTraceContext.from_dict(llm_globals.get('trace', {}))
+    if _runtime._trace_api is not None:
+        current = _runtime._trace_api.get_current_span().get_span_context()
+        if current.is_valid:
+            ctx.trace_id = f'{current.trace_id:032x}'
+            ctx.parent_span_id = f'{current.span_id:016x}'
+    return ctx
 
 
 def set_trace_context(ctx) -> LazyTraceContext:
@@ -66,9 +72,9 @@ def _capture_payload_enabled(ctx: LazyTraceContext) -> bool:
 _TRUNCATED_SUFFIX = '...<truncated>'
 
 
-def _truncate_payload_fields(value: Any, *, limit: int = 8192) -> Any:
+def _truncate_payload_fields(value: Any, *, limit: Optional[int] = 8192) -> Any:
     if isinstance(value, str):
-        if len(value) > limit:
+        if limit is not None and len(value) > limit:
             return value[:limit] + _TRUNCATED_SUFFIX
         return value
     if isinstance(value, tuple):
@@ -83,7 +89,7 @@ def _truncate_payload_fields(value: Any, *, limit: int = 8192) -> Any:
     return value
 
 
-def _stringify_payload(value: Any, *, limit: int = 8192) -> str:
+def _stringify_payload(value: Any, *, limit: Optional[int] = 8192) -> str:
     try:
         if isinstance(value, str):
             text = _truncate_payload_fields(value, limit=limit)
@@ -398,10 +404,11 @@ class TracingRuntime:
     def _set_io_attrs(attrs: Dict[str, Any], span: LazySpan) -> None:
         if not span.capture_payload:
             return
+        limit = None if span.semantic_type == SemanticType.LLM else 8192
         if span.input is not None:
-            attrs['lazyllm.io.input'] = _stringify_payload(span.input)
+            attrs['lazyllm.io.input'] = _stringify_payload(span.input, limit=limit)
         if span.output is not None:
-            attrs['lazyllm.io.output'] = _stringify_payload(span.output)
+            attrs['lazyllm.io.output'] = _stringify_payload(span.output, limit=limit)
 
     @staticmethod
     def _gen_ai_attrs(span: LazySpan) -> Dict[str, Any]:

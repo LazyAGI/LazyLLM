@@ -93,6 +93,8 @@ class LazyTracingHook(LazyLLMHook):
         resolved_prompt = pop_llm_resolved_prompt()
         if resolved_prompt is not None:
             self._span.input = {'resolved_prompt': resolved_prompt}
+            if isinstance(resolved_prompt, dict) and resolved_prompt.get('model'):
+                self._span.config['model'] = resolved_prompt['model']
         set_span_output(self._span, output)
         module_id = getattr(self._trace_target(), '_module_id', None)
         if module_id:
