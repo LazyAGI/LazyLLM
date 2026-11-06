@@ -21,7 +21,7 @@ PANDOC_PATH_ENV = 'LAZYMIND_PANDOC_PATH'
 RUNTIME_ROOT_ENV = 'LAZYMIND_RUNTIME_ROOT'
 PANDOC_REQUIRED_VERSION = '3.11'
 # LazyMind Markdown is GFM with tables, strikeout, task lists, footnotes,
-# dollar-delimited math, autolinks, emoji, and raw HTML parsing. YAML metadata
+# dollar/backslash-delimited math, autolinks, emoji, and raw HTML parsing. YAML metadata
 # is disabled so document input cannot override controlled template metadata.
 # GFM does not enable raw TeX, so LaTeX commands in Markdown remain plain text.
 PANDOC_READER = 'gfm-yaml_metadata_block'
@@ -424,6 +424,10 @@ def _rewrite_line_citations(line: str, entry_numbers: set[int], *, source_number
             if int(match.group('number')) in entry_numbers else match.group(0), prose,
         )
 
+    return _rewrite_inline_prose(line, rewrite)
+
+
+def _rewrite_inline_prose(line, rewrite):
     parts: list[str] = []
     cursor = 0
     while cursor < len(line):
@@ -444,6 +448,27 @@ def _rewrite_line_citations(line: str, entry_numbers: set[int], *, source_number
         parts.append(line[opening:closing])
         cursor = closing
     return ''.join(parts)
+
+
+def _normalize_math_delimiters(lines):
+    opening = None
+    previous = -1
+    for index, line in _unfenced_lines(lines):
+        if index != previous + 1:
+            opening = None
+        previous = index
+        if line.strip() == r'\[':
+            opening = index
+        elif line.strip() == r'\]' and opening is not None:
+            lines[opening] = lines[opening].replace(r'\[', '$$')
+            lines[index] = line.replace(r'\]', '$$')
+            opening = None
+        elif opening is None:
+            display = re.fullmatch(r'([ \t]{0,3})\\\[(.+)\\\]([ \t]*)', line)
+            lines[index] = (display[1] + '$$' + display[2] + '$$' + display[3] if display else
+                            _rewrite_inline_prose(line, lambda text: re.sub(
+                                r'(?<!\\)\\\((.+?)\\\)', lambda match: '$' + match[1] + '$', text)))
+    return lines
 
 
 def _unfenced_lines(lines: Sequence[str]):
@@ -496,7 +521,7 @@ def _normalize_paper_bibliography(
         if not source_id or source_id in source_numbers or number != len(entries) + 1:
             raise ValueError('Duplicate or unordered paper bibliography entry.')
         source_numbers[source_id] = number
-        entries.append((number, entry[2]))
+        entries.append((number, entry[2].replace(r'\[', '&#91;').replace(r'\]', '&#93;')))
     if not entries:
         raise ValueError('Empty paper bibliography.')
 
@@ -574,7 +599,7 @@ def normalize_writer_markdown_for_latex(
     newline = '\r\n' if '\r\n' in markdown else '\n'
     trailing_newline = markdown.endswith(('\n', '\r'))
     lines = _normalize_numbered_bibliography(
-        markdown.splitlines(), materialized_numbering=materialized_numbering,
+        _normalize_math_delimiters(markdown.splitlines()), materialized_numbering=materialized_numbering,
     )
     used_ids = {
         match.group('id')
@@ -802,7 +827,7 @@ def run_pandoc(
 def markdown_to_latex(
     markdown: str,
     *,
-    language: str = 'zh-CN',
+    language: Optional[str] = None,
     pandoc_path: Optional[str] = None,
     required_version: str = PANDOC_REQUIRED_VERSION,
     timeout_seconds: float = DEFAULT_CONVERSION_TIMEOUT_SECONDS,
@@ -813,6 +838,9 @@ def markdown_to_latex(
     '''Convert a Markdown string to standalone LaTeX with the supported Pandoc version.'''
     executable = resolve_pandoc_path(pandoc_path)
     check_pandoc_version(executable, required_version=required_version)
+    chinese_characters = len(re.findall(r'[\u3400-\u9fff]', markdown))
+    english_words = len(re.findall(r'\b[A-Za-z]+\b', markdown))
+    language = language or ('zh-CN' if chinese_characters > english_words else 'en-US')
     try:
         template_resource = latex_template_resource(language)
         filter_resource = writer_latex_filter_resource()

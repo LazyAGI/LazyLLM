@@ -22,7 +22,9 @@ from lazyllm.tools.writer.data_models import (
     WritingTask,
 )
 from lazyllm.tools.writer.data_models.multimodal import VisualInstruction
-from lazyllm.tools.writer.data_models.revision import GeneratedRevision, RevisionBlockContent
+from lazyllm.tools.writer.data_models.revision import (
+    GeneratedRevision, RevisionBlockContent, MarkdownModifyInstruction, MarkdownModifyPlan,
+)
 from lazyllm.tools.writer.utils import load_artifact_json
 from lazyllm.tools.writer.tools.revision_tools import (
     WriterRevisionTools,
@@ -410,6 +412,38 @@ def test_locate_revision_target_supports_ir_and_markdown():
         assert located_ir.targets[0].content_ref.node_id == 'update'
         assert located_markdown.targets[0].content_ref.heading_path == ['第一章']
         assert located_plain_text.targets[0].content_ref.document_root is True
+
+
+def test_locate_revision_target_accepts_no_change(tmp_path):
+    tool = WriterRevisionTools(llm=MagicMock(), artifact_store=str(tmp_path))
+    with patch.object(tool, '_call_llm_structured', return_value=LocateResult(target_title=False, targets=[])) as call:
+        result = tool.locate_revision_target(
+            WritingTask(query='Fix any spelling errors.', task_type='revise'),
+            '# Paper\n\n## Methods\n\nNo spelling errors.', WritingContext(context_id='no-change'))
+    assert load_artifact_json(result['artifact_path'], LocateResult).targets == []
+    call.assert_called_once()
+
+
+@pytest.mark.parametrize('corrected', [True, False])
+def test_locator_corrects_invalid_candidate_once(tmp_path, corrected):
+    task = WritingTask(query='Revise Methods', task_type='revise')
+    context = WritingContext(context_id='ctx-1')
+    invalid = LocateResult(target_title=False,
+                           targets=[LocatedContent(content_ref=ContentRef(heading_path=['Papper', 'Methods']))])
+    valid = LocateResult(target_title=False,
+                         targets=[LocatedContent(content_ref=ContentRef(heading_path=['Paper', 'Methods']))])
+    tool = WriterRevisionTools(llm=MagicMock(), artifact_store=str(tmp_path))
+    with patch.object(tool, '_call_llm_structured', side_effect=[invalid, valid if corrected else invalid]) as call:
+        if corrected:
+            result = tool.locate_revision_target(task, '# Paper\n\n## Methods\n\nBody.', context)
+            located = load_artifact_json(result['artifact_path'], LocateResult)
+            assert located.targets[0].content_ref.heading_path == ['Paper', 'Methods']
+        else:
+            with pytest.raises(ValueError, match='references not in candidates'):
+                tool.locate_revision_target(task, '# Paper\n\n## Methods\n\nBody.', context)
+    assert call.call_count == 2
+    assert 'Papper' in call.call_args.args[0]
+    assert 'Validation feedback' in call.call_args.args[0]
 
 
 @pytest.mark.parametrize('block_type', ['paragraph', 'image'])
@@ -863,3 +897,22 @@ def test_apply_string_replace_updates_plain_text_document():
             revised = stream.read()
 
     assert revised == '修改后的内容'
+
+
+def test_markdown_plan_reference_mismatch_gets_one_scoped_correction(tmp_path):
+    selected = ContentRef(heading_path=['Paper', 'Method'])
+    other = ContentRef(heading_path=['Paper', 'Results'])
+    plans = [MarkdownModifyPlan(scope='section', instructions=[MarkdownModifyInstruction(
+        content_ref=reference, target_scope='section', modify_type='update', instruction='Improve the method.',
+    )]) for reference in [other, selected]]
+    tool = WriterRevisionTools(llm=MagicMock(), artifact_store=str(tmp_path))
+    with patch.object(tool, '_call_llm_structured', side_effect=plans) as generate:
+        output = tool.generate_modify_plan(
+            WritingTask(query='Improve the method.', task_type='revise'),
+            '# Paper\n\n## Method\n\nOriginal method.\n\n## Results\n\nProtected results.',
+            LocateResult(target_title=False, targets=[LocatedContent(content_ref=selected)]),
+            WritingContext(context_id='scope-correction'),
+        )
+    plan = load_artifact_json(output['artifact_path'], ModifyPlan)
+    assert generate.call_count == 2
+    assert plan.instructions[0].content_ref == selected

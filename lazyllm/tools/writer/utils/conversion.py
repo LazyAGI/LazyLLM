@@ -789,7 +789,7 @@ def convert_writer_content(
     target_format: WriterTargetFormat,
     *,
     document_id: str = 'writer-document',
-    language: str = 'zh-CN',
+    language: Optional[str] = None,
     materialized_numbering: bool = True,
 ) -> str:
     if source_format not in {'markdown', 'lmd', 'writer_document'}:
