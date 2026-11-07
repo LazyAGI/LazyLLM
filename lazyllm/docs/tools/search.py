@@ -1042,3 +1042,70 @@ res = tavily('latest AI research', search_depth='advanced', include_answer=True)
 # 新闻搜索
 res = tavily('AI news', topic='news', days=1, max_results=5)
 ''')
+
+
+add_chinese_doc('KeenableSearch', '''
+Keenable Search API 封装（https://keenable.ai）。无需 API Key 即可使用。
+
+- 未提供 api_key 时请求免费公共端点 POST /v1/search/public。
+- 提供 api_key 时请求 POST /v1/search，并通过请求头 X-API-Key 鉴权（额度更高）。
+- 结果的 snippet 优先使用简短的 description，没有时使用 snippet（超长会被截断）；没有 URL 的结果会被丢弃。
+
+Args:
+    api_key (str, optional): Keenable API key，可选。
+    base_url (str): API 根地址，默认 https://api.keenable.ai。
+    timeout (int): 请求超时秒数，默认 30。
+    source_name (str): 结果来源标识，默认 "keenable"。
+''')
+
+add_english_doc('KeenableSearch', '''
+Keenable Search API wrapper (https://keenable.ai). Works without an API key.
+
+- Without api_key, requests go to the free public endpoint POST /v1/search/public.
+- With api_key, requests go to POST /v1/search with the X-API-Key header (higher limits).
+- Each result's snippet prefers the short description and falls back to the (truncated) snippet; results without a URL are dropped.
+
+Args:
+    api_key (str, optional): Keenable API key, optional.
+    base_url (str): API base URL, default https://api.keenable.ai.
+    timeout (int): Request timeout in seconds, default 30.
+    source_name (str): Source identifier in results, default "keenable".
+''')
+
+add_example('KeenableSearch', '''
+from lazyllm.tools.tools import KeenableSearch
+keenable = KeenableSearch()  # no API key required
+res = keenable('machine learning', max_results=5)
+''')
+
+add_chinese_doc('KeenableSearch.search', f'''
+执行 Keenable 网页搜索。
+
+{_GENERAL_SEARCH_GUIDANCE_ZH}
+
+Args:
+    query (str): 搜索关键词或自然语言问题。
+    max_results (int): 返回条数，默认 10。
+
+Returns:
+    List[Dict[str, Any]]: 统一格式的搜索结果列表，每条包含 title、url、snippet、source。
+''')
+
+add_english_doc('KeenableSearch.search', f'''
+Execute Keenable web search.
+
+{_GENERAL_SEARCH_GUIDANCE_EN}
+
+Args:
+    query (str): Search keywords or natural language question.
+    max_results (int): Number of results, default 10.
+
+Returns:
+    List[Dict[str, Any]]: Unified search results, each with title, url, snippet and source.
+''')
+
+add_example('KeenableSearch.search', '''
+from lazyllm.tools.tools import KeenableSearch
+keenable = KeenableSearch()
+res = keenable.search('LazyLLM', max_results=3)
+''')
