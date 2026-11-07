@@ -12,7 +12,7 @@
 
 下面是基于 LazyLLM 构建的应用示例：
 
-- [聊天机器人](../Cookbook/robot.md)
+- [聊天机器人](../Cookbook/chatbot.md)
     - 模块：[TrainableModule][lazyllm.module.TrainableModule]
     - 工具：[WebModule][lazyllm.tools.WebModule]
     - 数据流：无

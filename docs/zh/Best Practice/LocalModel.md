@@ -52,16 +52,18 @@ LazyLLM的模型依然采用仿函数的模式进行使用，本地模型需要�
 import lazyllm
 
 # 使用自动微调方法
-model = lazyllm.TrainableModule('qwen2-1.5b', target_path='/path/to/model')
+model = (lazyllm.TrainableModule('qwen2-1.5b', target_path='/path/to/model')
     .finetune_method(lazyllm.finetune.auto)
     .trainset('/path/to/training/data')
     .mode('finetune')
+)
 
 # 使用特定的微调方法
-model = lazyllm.TrainableModule('qwen2-1.5b')
+model = (lazyllm.TrainableModule('qwen2-1.5b')
     .finetune_method(lazyllm.finetune.llamafactory, learning_rate=1e-4, num_train_epochs=3)
     .trainset('/path/to/training/data')
     .mode('finetune')
+)
 
 # 执行微调
 model.update()
@@ -144,8 +146,9 @@ model = lazyllm.TrainableModule('qwen2-1.5b', stream=stream_config)
 
 ```python
 # 设置简单的文本 prompt
-model = lazyllm.TrainableModule('qwen2-1.5b')
+model = (lazyllm.TrainableModule('qwen2-1.5b')
     .prompt("你是一个有用的AI助手，请用简洁的语言回答问题。")
+)
 
 # 设置对话历史
 history = [

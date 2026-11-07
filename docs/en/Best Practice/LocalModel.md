@@ -51,16 +51,18 @@ LazyLLM models still use the functor pattern. Local models need to call `start()
 import lazyllm
 
 # Use automatic fine-tuning method
-model = lazyllm.TrainableModule('qwen2-1.5b', target_path='/path/to/model')
+model = (lazyllm.TrainableModule('qwen2-1.5b', target_path='/path/to/model')
     .finetune_method(lazyllm.finetune.auto)
     .trainset('/path/to/training/data')
     .mode('finetune')
+)
 
 # Use specific fine-tuning method
-model = lazyllm.TrainableModule('qwen2-1.5b')
+model = (lazyllm.TrainableModule('qwen2-1.5b')
     .finetune_method(lazyllm.finetune.llamafactory, learning_rate=1e-4, num_train_epochs=3)
     .trainset('/path/to/training/data')
     .mode('finetune')
+)
 
 # Execute fine-tuning
 model.update()
@@ -143,8 +145,9 @@ This way, our streaming output will start with blue "AI:", the streaming output 
 
 ```python
 # Set simple text prompt
-model = lazyllm.TrainableModule('qwen2-1.5b')
+model = (lazyllm.TrainableModule('qwen2-1.5b')
     .prompt("You are a helpful AI assistant, please answer questions in concise language.")
+)
 
 # Set conversation history
 history = [
