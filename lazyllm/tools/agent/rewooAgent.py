@@ -117,7 +117,7 @@ class ReWOOAgent(LazyLLMAgentBase):
 
     def _parse_and_call_tool(self, tool_call: str, evidence: Dict[str, Any]):
         tool_name, tool_arguments = tool_call.split('[', 1)
-        tool_arguments = tool_arguments.split(']')[0]
+        tool_arguments = tool_arguments.rsplit(']', 1)[0]
         parsed_arguments = self._tools_manager._safe_parse_json(tool_arguments)
         tool_arguments = self._resolve_evidence_refs(parsed_arguments, evidence)
         tool_calls = [{'function': {'name': tool_name, 'arguments': tool_arguments}}]
