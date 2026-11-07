@@ -74,7 +74,7 @@ def _tool_result_stop_text(result: Any) -> Optional[str]:
     if not isinstance(control, dict) or control.get('stop') is not True:
         return None
     final_text = control.get('final_text')
-    if not isinstance(final_text, str) or not final_text.strip():
+    if not isinstance(final_text, str):
         return None
     return final_text.strip()
 

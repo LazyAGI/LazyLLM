@@ -57,3 +57,27 @@ def test_final_summary_callback_uses_the_public_constructor_and_preserves_llm(tm
     assert len(llm.calls) == 2
     assert len(prompts) == 1 and 'completed observation' in prompts[0]
     assert agent._llm is llm
+
+
+def startup_question():
+    '''Display a startup question and pause for its answer.'''
+    return {'status': 'needs_input', '_agent_control': {
+        'stop': True, 'reason': 'awaiting_user', 'final_text': '',
+    }}
+
+
+def test_startup_question_stops_without_another_model_call(tmp_path):
+    class StartupModel(ScriptedModel):
+        def __call__(self, *args, **kwargs):
+            assert not self.calls, 'Startup questions must wait for user input'
+            self.calls.append(args)
+            return {'role': 'assistant', 'tool_calls': [{
+                'id': 'startup', 'type': 'function',
+                'function': {'name': 'startup_question', 'arguments': '{}'},
+            }]}
+
+    llm = StartupModel()
+    agent = ReactAgent(llm, [startup_question], workspace=str(tmp_path),
+                       enable_builtin_tools=False, sandbox=None)
+    assert agent('make a presentation') == ''
+    assert len(llm.calls) == 1
