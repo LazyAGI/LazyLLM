@@ -48,10 +48,10 @@ def _parse_unified_diff(diff_text: str) -> List[Tuple[str, int, int, str]]:
             continue
         if line.startswith('@@'):
             flush_hunk()
-            mm = re.search(r'\+(\d+),(\d+)', line)
+            mm = re.match(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@', line)
             if mm:
                 new_start = int(mm.group(1))
-                new_count = int(mm.group(2))
+                new_count = int(mm.group(2)) if mm.group(2) is not None else 1
             continue
         if current_path is None:
             continue
