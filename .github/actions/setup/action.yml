@@ -13,8 +13,6 @@ runs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
-      env:
-        PYTHON_VERSION: "3.10.9"
 
     - name: Install ripgrep for basic tests
       if: inputs.tests_dir == 'tests/basic_tests'

@@ -22,7 +22,7 @@ on:
 
 env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${{ github.run_number }}'
-  PYTHON_VERSION: "3.10.9"
+  PYTHON_VERSION: "3.10"
   LAZYLLM_DEFAULT_RECENT_K: 20
   LAZYLLM_SKIP_EXTERNAL_STORE_TESTS: ${{ vars.ENABLE_SELF_HOSTED_TESTS != 'true' }}
 concurrency:
@@ -79,7 +79,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10.9'
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
         run: |
@@ -105,6 +105,11 @@ jobs:
         with:
           allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Run DocCheck
         run: |
