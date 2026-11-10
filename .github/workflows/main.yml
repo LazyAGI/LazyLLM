@@ -59,7 +59,7 @@ jobs:
           tests/basic_tests/Models/test_online_chat_model_runtime.py
 
   lint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -98,7 +98,7 @@ jobs:
           fi
 
   doc_check:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
