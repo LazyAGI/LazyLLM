@@ -46,6 +46,13 @@ api_key = 'AI******'       # Your Google API Key
 engine_id = 'a3******'     # Your Search Engine ID
 ```
 
+Google has closed the Custom Search JSON API to new customers and discontinues it on January 1, 2027. `GoogleSearch` takes a `base_url` argument, so the code in this tutorial also works with any endpoint that serves the Custom Search request format:
+
+```python
+search = GoogleSearch(custom_search_api_key=api_key, search_engine_id=engine_id,
+                      base_url='https://search.example.com/customsearch/v1')
+```
+
 ### Import Dependencies
 
 ```python
