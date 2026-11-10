@@ -59,7 +59,7 @@ jobs:
           tests/basic_tests/Models/test_online_chat_model_runtime.py
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -98,13 +98,18 @@ jobs:
           fi
 
   doc_check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           allow-unsafe-pr-checkout: true
           ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Run DocCheck
         run: |
