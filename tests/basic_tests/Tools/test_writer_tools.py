@@ -1987,7 +1987,7 @@ def test_apply_patch_to_document_moves_and_restores_writer_identity():
         first, second = fs.get_doc_blocks.return_value
         moved = deepcopy(first)
         moved['block_id'] = 'moved-b1'
-        moved['heading1']['elements'][0]['text_run']['content'] = '1 新标题'
+        moved['heading1']['elements'][0]['text_run']['content'] = '1. 新标题'
         fs.get_doc_blocks.return_value = [second, moved]
         fs.move_block.return_value = {
             'provider_id_remap': {'b1': 'moved-b1'},
