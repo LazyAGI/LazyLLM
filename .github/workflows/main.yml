@@ -22,7 +22,7 @@ on:
 
 env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${{ github.run_number }}'
-  PYTHON_VERSION: "3.10.9"
+  PYTHON_VERSION: "3.10"
   LAZYLLM_DEFAULT_RECENT_K: 20
   LAZYLLM_SKIP_EXTERNAL_STORE_TESTS: ${{ vars.ENABLE_SELF_HOSTED_TESTS != 'true' }}
 concurrency:
@@ -59,7 +59,7 @@ jobs:
           tests/basic_tests/Models/test_online_chat_model_runtime.py
 
   lint:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -79,7 +79,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10.9'
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
         run: |
@@ -98,7 +98,7 @@ jobs:
           fi
 
   doc_check:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
