@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  PYTHON_VERSION: "3.10.9"
+  PYTHON_VERSION: "3.10"
   PYPI_PUBLISH_URL: ${{ vars.PYPI_PUBLISH_URL || 'https://upload.pypi.org/legacy/' }}
   PYPI_DOWNLOAD_URL: ${{ vars.PYPI_DOWNLOAD_URL || 'https://pypi.org/simple/' }}
 
@@ -151,7 +151,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Build default wheel
         run: |
