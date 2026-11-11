@@ -545,6 +545,9 @@ _add_bilingual_docs(
     functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.writer.templates.wechat.base')),
     functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.writer.templates.wechat.base')),
     [
+        ('WeChatTemplate.block_style',
+         '按区块类型返回模板 CSS 属性映射，默认返回空映射。',
+         'Return template CSS properties for the given block kind, defaulting to an empty mapping.'),
         ('WeChatTemplate.heading_style',
          '返回当前微信公众号模板的标题 CSS 属性映射，用于生成内联样式。',
          'Return the template CSS property mapping for heading levels clamped to 1–3 for inline rendering.'),
