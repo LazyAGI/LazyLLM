@@ -377,3 +377,64 @@ def test_chinese_paper_export_selects_chinese_template():
                               pandoc_path=executable)
     assert r'\documentclass[UTF8,zihao=-4]{ctexart}' in latex
     assert r'\begin{abstract}' in latex
+
+
+@pytest.mark.parametrize(('opening', 'closing'), [('$$', '$$'), (r'\[', r'\]')])
+@pytest.mark.parametrize('formula', [
+    'x\n=\ny',
+    r'\begin{aligned}' + '\nx &= y ' + r'\\' + '\nz &= w\n' + r'\end{aligned}',
+    'x % keep the comment boundary\n=\ny',
+    'x\n---\ny',
+])
+def test_display_math_preserves_lines_and_equation_references(opening, closing, formula):
+    source = ('# Title\n\n<a id="block-formula"></a>\n' + opening + '\n'
+              + formula + '\n' + closing + '\n\nSee [formula](#block-formula).\n')
+    normalized = normalize_writer_markdown_for_latex(source)
+    assert '```math\n' + formula + '\n```' in normalized
+    assert 'data-kind="equation"' in normalized
+    assert 'data-kind="code"' not in normalized
+    assert normalize_writer_markdown_for_latex(normalized) == normalized
+    result = _run_filter(normalized)
+    assert result.returncode == 0, result.stderr
+    assert formula in result.stdout
+    assert r'\label{eq:formula}' in result.stdout
+    assert r'\writerinternalref{eq:formula}' in result.stdout
+
+
+@pytest.mark.parametrize('newline', ['\n', '\r\n'])
+def test_math_fences_do_not_consume_code_numbers_or_change_examples(newline):
+    example = '````markdown\n$$\nx\n=\ny\n$$\n\n```math\nx\n=\ny\n```\n````'
+    source = ('# Title\n\n$$\nx\n=\ny\n$$\n\n```python\nprint("ok")\n```\n\n' + example)
+    normalized = normalize_writer_markdown_for_latex(source.replace('\n', newline))
+    assert example.replace('\n', newline) in normalized
+    assert normalized.count('data-kind="code"') == 2
+    assert 'id="block-code-001"' in normalized
+    assert 'id="block-code-002"' in normalized
+    assert 'block-code-003' not in normalized
+    assert normalize_writer_markdown_for_latex(normalized) == normalized
+    result = _run_filter(normalized)
+    assert result.returncode == 0, result.stderr
+    assert '\\[x\n=\ny\\]' in result.stdout
+
+
+@pytest.mark.parametrize('opening', ['$$', r'\['])
+def test_unclosed_display_math_is_not_rewritten(opening):
+    source = '# Title\n\n' + opening + '\nx\n=\ny\n'
+    assert normalize_writer_markdown_for_latex(source) == source
+
+
+def test_display_math_does_not_disable_duplicate_title_validation():
+    source = '# Title\n\n$$\nx\n=\ny\n$$\n\n# Second title\n'
+    result = _run_filter(normalize_writer_markdown_for_latex(source))
+    assert result.returncode != 0
+    assert 'only one H1 document title' in result.stderr
+
+
+@pytest.mark.parametrize('fence', ['```', '~~~~'])
+def test_existing_math_fence_remains_an_unnumbered_formula(fence):
+    source = '# Title\n\n' + fence + 'math\nx\n=\ny\n' + fence + '\n'
+    normalized = normalize_writer_markdown_for_latex(source)
+    assert normalized == source
+    result = _run_filter(normalized)
+    assert result.returncode == 0, result.stderr
+    assert '\\[x\n=\ny\\]' in result.stdout
