@@ -1,3 +1,4 @@
+import base64
 import re
 import json
 import os
@@ -7,8 +8,11 @@ from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin, urlparse
 
 import lazyllm
+from lazyllm.components.formatter import encode_query_with_filepaths
+from lazyllm.components.utils.file_operate import bytes_to_file
 from ..base import (
-    ModelFailureCode, OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase
+    ModelFailureCode, OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase,
+    LazyLLMOnlineText2ImageModuleBase,
 )
 from ..fileHandler import FileHandlerBase
 
@@ -230,6 +234,50 @@ class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
 
     def _query_deployment(self, deployment_id) -> str:
         return 'RUNNING'
+
+
+class OpenAIText2Image(LazyLLMOnlineText2ImageModuleBase):
+    MODEL_NAME = 'gpt-image-2.5-flare'
+
+    def __init__(self, api_key: str = None, model: str = None, base_url: Optional[str] = None,
+                 return_trace: bool = False, skip_auth: bool = False, **kwargs):
+        super().__init__(api_key=api_key or self._default_api_key(),
+                         model=model or lazyllm.globals.config['openai_text2image_model_name'] or self.MODEL_NAME,
+                         url=base_url or 'https://api.openai.com/v1/',
+                         return_trace=return_trace, skip_auth=skip_auth, **kwargs)
+
+    def _forward(self, input: str = None, files: List[str] = None, url: str = None, model: str = None,
+                 n: int = 1, size: str = '1024x1024', image_size: str = None, batch_size: int = None,
+                 quality: str = None, output_format: str = None, background: str = None,
+                 output_compression: int = None, moderation: str = None,
+                 request_timeout: float = 600, **kwargs):
+        if files or self._type == 'image_editing':
+            raise ValueError('OpenAI text-to-image does not accept image editing requests.')
+        count = batch_size if batch_size is not None else n
+        if not isinstance(count, int) or isinstance(count, bool) or not 1 <= count <= 10:
+            raise ValueError('OpenAI image count must be an integer between 1 and 10.')
+        if output_format is not None and output_format not in ('png', 'jpeg', 'webp'):
+            raise ValueError('OpenAI text-to-image output_format must be png, jpeg or webp.')
+        payload = {'model': model or self._model_name, 'prompt': input, 'n': count, 'size': image_size or size}
+        for key, value in (('quality', quality), ('output_format', output_format), ('background', background),
+                           ('output_compression', output_compression), ('moderation', moderation)):
+            if value is not None:
+                payload[key] = value
+        # Framework options such as priority/stream_output are not Images API parameters.
+        with requests.post((url or self._base_url).rstrip('/') + '/images/generations',
+                           headers=self._header, json=payload, timeout=request_timeout) as response:
+            response.raise_for_status()
+            data = response.json().get('data')
+        if not isinstance(data, list) or not data:
+            raise RuntimeError('OpenAI image API returned no images.')
+        images = []
+        for item in data:
+            if not isinstance(item, dict) or not item.get('b64_json'):
+                raise RuntimeError('OpenAI image API returned an image without b64_json.')
+            image = base64.b64decode(item['b64_json'], validate=True)
+            self._validate_image_data(image, 'OpenAI image response')
+            images.append(image)
+        return encode_query_with_filepaths(None, bytes_to_file(images))
 
 
 class OpenAIEmbed(LazyLLMOnlineEmbedModuleBase):
