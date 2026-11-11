@@ -2763,6 +2763,39 @@ Args:
     **kwargs: Additional arguments passed to OnlineChatModuleBase.
 ''')
 
+add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIText2Image', '''\
+OpenAI 文生图模块，继承自 LazyLLMOnlineText2ImageModuleBase。
+
+通过 Images API 根据文本提示生成图像，校验返回的 Base64 图像并保存为本地文件，
+返回包含文件路径的 LazyLLM 编码结果。当前不支持图像编辑或参考图输入。
+
+Args:
+    api_key (str, optional): OpenAI API 密钥；未提供时从配置 openai_api_key 读取。
+    model (str, optional): 模型名称；未提供时使用配置 openai_text2image_model_name，
+        配置为空时使用 "gpt-image-2.5-flare"。
+    base_url (str, optional): API 基础 URL，默认为 "https://api.openai.com/v1/"。
+    return_trace (bool, optional): 是否将结果写入追踪队列，默认为 False。
+    skip_auth (bool, optional): 是否跳过 API 密钥校验并省略认证头，默认为 False。
+    **kwargs: 其他传递给 LazyLLMOnlineText2ImageModuleBase 的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.openai.OpenAIText2Image', '''\
+OpenAI text-to-image module, inheriting from LazyLLMOnlineText2ImageModuleBase.
+
+Generates images from text prompts through the Images API, validates the returned Base64 images,
+and saves them locally. Returns a LazyLLM-encoded result containing the file paths.
+Image editing and reference image inputs are not supported.
+
+Args:
+    api_key (str, optional): OpenAI API key; reads the openai_api_key configuration when omitted.
+    model (str, optional): Model name; uses the openai_text2image_model_name configuration when omitted,
+        or "gpt-image-2.5-flare" when that configuration is empty.
+    base_url (str, optional): API base URL, defaults to "https://api.openai.com/v1/".
+    return_trace (bool, optional): Whether to write the result to the trace queue, defaults to False.
+    skip_auth (bool, optional): Skip API key validation and omit the authorization header, defaults to False.
+    **kwargs: Additional parameters passed to LazyLLMOnlineText2ImageModuleBase.
+''')
+
 add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIRerank', '''
 OpenAIRerank 类用于调用 OpenAI 的 Reranking 接口，对文本列表进行重排序（Re-ranking）。
 
