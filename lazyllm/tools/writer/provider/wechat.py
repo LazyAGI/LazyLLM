@@ -126,6 +126,15 @@ def prepare_wechat_cover(
     return prepared
 
 
+class _WeChatWriteRejectedError(ValueError):
+    def __init__(self, code: str, message: str):
+        self.error_code = code
+        super().__init__(code, message)
+
+    def __str__(self) -> str:
+        return self.args[1]
+
+
 class WeChatClient:
     '''Call the WeChat Official Account draft and media APIs.'''
 
@@ -220,10 +229,15 @@ class WeChatClient:
         }
         if mime not in allowed:
             scope = 'body' if body else 'cover'
-            raise ValueError(f'WeChat {scope} image {path.name!r} has unsupported type {mime or "unknown"}.')
+            raise _WeChatWriteRejectedError(
+                'WECHAT_IMAGE_FORMAT_UNSUPPORTED',
+                f'WeChat {scope} image {path.name!r} has unsupported type {mime or "unknown"}.',
+            )
         data = path.read_bytes()
         if body and len(data) > 1024 * 1024:
-            raise ValueError(f'WeChat body image {path.name!r} exceeds 1 MB.')
+            raise _WeChatWriteRejectedError(
+                'WECHAT_BODY_IMAGE_TOO_LARGE', f'WeChat body image {path.name!r} exceeds 1 MB.',
+            )
         return data, mime
 
     def _request_json(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
@@ -265,6 +279,14 @@ class WeChatClient:
                 f'WeChat API {path} returned error: errcode={errcode}; '
                 f'errmsg={errmsg}; payload={json.dumps(payload, ensure_ascii=False)[:1000]}',
             )
+            if path in {'/draft/add', '/draft/update'} and str(errcode) == '45002':
+                raise _WeChatWriteRejectedError(
+                    'WECHAT_HTML_TOO_LARGE', f'WeChat draft HTML exceeds the content limit: {errmsg}',
+                )
+            if path == '/media/uploadimg' and str(errcode) == '45001':
+                raise _WeChatWriteRejectedError(
+                    'WECHAT_BODY_IMAGE_TOO_LARGE', f'WeChat body image exceeds the size limit: {errmsg}',
+                )
             raise RuntimeError(f'WeChat API {path} failed ({errcode}): {errmsg}')
         return payload
 

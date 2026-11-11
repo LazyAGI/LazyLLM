@@ -199,6 +199,25 @@ def test_wechat_client_uses_draft_api_payloads(monkeypatch):
         'articles': {'title': '目标文章'},
     }
 
+    Response.content = b'{"errcode":45002,"errmsg":"content size out of limit"}'
+    with pytest.raises(ValueError) as raised:
+        client.add_draft({'content': '<p>Article</p>'})
+    assert raised.value.error_code == 'WECHAT_HTML_TOO_LARGE'
+    with pytest.raises(RuntimeError):
+        client.get_draft('media-1')
+
+
+@pytest.mark.parametrize(('filename', 'code'), [
+    ('image.png', 'WECHAT_BODY_IMAGE_TOO_LARGE'),
+    ('image.webp', 'WECHAT_IMAGE_FORMAT_UNSUPPORTED'),
+])
+def test_wechat_image_rejections_identify_the_reason(tmp_path, filename, code):
+    path = tmp_path / filename
+    path.write_bytes(b'x' * (1024 * 1024 + 1))
+    with pytest.raises(ValueError) as raised:
+        WeChatClient._image_file(path, body=True)
+    assert raised.value.error_code == code
+
 
 def test_wechat_draft_create_then_update(monkeypatch, tmp_path: Path):
     calls = {}
