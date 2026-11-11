@@ -35,7 +35,7 @@ _WECHAT_SAFE_CSS_PROPERTIES = frozenset({
     'max-width', 'min-height', 'min-width', 'object-fit', 'opacity', 'padding',
     'padding-bottom', 'padding-left', 'padding-right', 'padding-top', 'text-align',
     'text-decoration', 'text-indent', 'vertical-align', 'white-space', 'width',
-    'height', 'word-break', 'overflow-x', 'overflow-y',
+    'height', 'word-break', 'overflow-x', 'overflow-y', 'box-shadow', 'box-sizing', 'table-layout',
 })
 
 _WECHAT_TABLE_STYLE = {
@@ -838,9 +838,9 @@ class WeChatWriterAdapter(WriterAdapterBase):
         ))
         if preserve_source:
             return body
-        style = _style_text(selected_template.paragraph_style())
+        style = _style_text(selected_template.block_style('container') or selected_template.paragraph_style())
         style_attr = f' style="{escape(style, quote=True)}"' if style else ''
-        if galleries:
+        if galleries or selected_template.block_style('container'):
             style_attr += ' class="writer-document"'
         return f'<section{style_attr}>{body}</section>'
 
@@ -940,7 +940,8 @@ class WeChatWriterAdapter(WriterAdapterBase):
                 block, images, numbering, heading_styles, caption_style, template,
                 preserve_source, galleries,
             )
-        body = self._render_inline(block)
+        block_template = WeChatTemplate() if preserve_source else template
+        body = self._render_inline(block, block_template)
         children = '' if block.type == 'table' else ''.join(self._render_sequence(
             block.children, images, numbering, heading_styles, caption_style, template,
             preserve_source, galleries,
@@ -1016,8 +1017,11 @@ class WeChatWriterAdapter(WriterAdapterBase):
                               'object-fit:contain;border-radius:8px' if gallery_image else
                               'display:block;width:100%;max-width:100%;height:auto'),
                 }
-            if not preserve_source and not gallery_image and isinstance(image_attrs, Mapping):
-                image_attrs = {key: value for key, value in image_attrs.items() if key != 'style'}
+            if not preserve_source and not gallery_image:
+                image_attrs = {
+                    **(image_attrs if isinstance(image_attrs, Mapping) else {}),
+                    'style': 'display:block;max-width:100%;height:auto',
+                }
             image_attrs_html = _serialize_attrs(
                 image_attrs,
                 allowed=_WECHAT_SAFE_IMAGE_ATTRIBUTES,
@@ -1049,7 +1053,7 @@ class WeChatWriterAdapter(WriterAdapterBase):
             caption_text = f'{escape(label)} {body}'.strip() if block.content.strip() else ''
             caption_attr = f' style="{escape(caption_style, quote=True)}"' if caption_style else ''
             caption = f'<p{caption_attr}>{caption_text}</p>' if caption_text else ''
-            return f'{caption}{self._render_table(block)}'
+            return f'{caption}{self._render_table(block, block_template)}'
         if block.type == 'callout':
             style = _style_text(_WECHAT_CALLOUT_STYLE)
             style_attr = f' style="{escape(style, quote=True)}"' if style else ''
@@ -1074,7 +1078,9 @@ class WeChatWriterAdapter(WriterAdapterBase):
             style = _style_text(template.divider_style())
             style_attr = f' style="{escape(style, quote=True)}"' if style else ''
             return f'<hr{style_attr} />{children}'
-        return (f'<p>{body}</p>' if body else '') + children
+        style = _style_text(block_template.paragraph_style())
+        style_attr = f' style="{escape(style, quote=True)}"' if style else ''
+        return (f'<p{style_attr}>{body}</p>' if body else '') + children
 
     def _render_list(
         self,
@@ -1110,6 +1116,7 @@ class WeChatWriterAdapter(WriterAdapterBase):
         list_attr = f' style="{escape(list_style, quote=True)}"' if list_style else ''
         item_attr = f' style="{escape(item_style, quote=True)}"' if item_style else ''
         marker_attr = f' style="{escape(marker_style, quote=True)}"' if marker_style else ''
+        block_template = WeChatTemplate() if preserve_source else template
         rendered: list[str] = []
         for index, item in enumerate(items, start=1):
             if item.type != 'list_item':
@@ -1124,14 +1131,14 @@ class WeChatWriterAdapter(WriterAdapterBase):
             ))
             rendered.append(
                 f'<p{item_attr}><span{marker_attr}>{marker}</span>'
-                f'{self._render_inline(item)}</p>{children}'
+                f'{self._render_inline(item, block_template)}</p>{children}'
             )
         return f'<section{list_attr}>{"".join(rendered)}</section>'
 
-    def _render_table(self, block: WriterBlock) -> str:
-        table_style = _style_text(_WECHAT_TABLE_STYLE)
-        header_style = _style_text(_WECHAT_TABLE_HEADER_STYLE)
-        cell_style = _style_text(_WECHAT_TABLE_CELL_STYLE)
+    def _render_table(self, block: WriterBlock, template: WeChatTemplate) -> str:
+        table_style = _style_text({**_WECHAT_TABLE_STYLE, **template.block_style('table')})
+        header_style = _style_text({**_WECHAT_TABLE_HEADER_STYLE, **template.block_style('table_header')})
+        cell_style = _style_text({**_WECHAT_TABLE_CELL_STYLE, **template.block_style('table_cell')})
         rows = []
         for row in block.children:
             if row.type != 'table_row':
@@ -1149,7 +1156,7 @@ class WeChatWriterAdapter(WriterAdapterBase):
                 )
                 cells.append(
                     f'<{tag}{spans} style="{escape(style, quote=True)}">'
-                    f'{self._render_inline(cell)}</{tag}>'
+                    f'{self._render_inline(cell, template)}</{tag}>'
                 )
             rows.append(f'<tr>{"".join(cells)}</tr>')
         return f'<table style="{escape(table_style, quote=True)}">{"".join(rows)}</table>'
@@ -1159,7 +1166,7 @@ class WeChatWriterAdapter(WriterAdapterBase):
         url = str(value or '').strip()
         return url if urlsplit(url).scheme.lower() in {'http', 'https', 'mailto'} else ''
 
-    def _render_inline(self, block: WriterBlock) -> str:  # noqa: C901
+    def _render_inline(self, block: WriterBlock, template: WeChatTemplate) -> str:  # noqa: C901
         content = block.content or ''
         spans = block.spans if ''.join(span.text for span in block.spans) == content else []
         boundaries = {0, len(content)}
@@ -1189,7 +1196,9 @@ class WeChatWriterAdapter(WriterAdapterBase):
             if style.get('inline_code') or style.get('code'):
                 value = f'<code>{value}</code>'
             if style.get('bold') or style.get('strong'):
-                value = f'<strong>{value}</strong>'
+                strong_style = _style_text(template.block_style('strong'))
+                strong_attr = f' style="{escape(strong_style, quote=True)}"' if strong_style else ''
+                value = f'<strong{strong_attr}>{value}</strong>'
             if style.get('italic'):
                 value = f'<em>{value}</em>'
             if style.get('strikethrough') or style.get('strike'):

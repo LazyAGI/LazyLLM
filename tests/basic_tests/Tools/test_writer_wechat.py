@@ -2,6 +2,7 @@ import json
 from io import BytesIO
 from pathlib import Path
 
+from bs4 import BeautifulSoup
 from PIL import Image, ImageChops
 import pytest
 
@@ -99,18 +100,19 @@ def test_wechat_templates_render_distinct_html_and_validate_ids():
     adapter = WeChatWriterAdapter()
 
     clean_html = adapter.document_to_html(document, template='clean')
-    structured_html = adapter.document_to_html(document, template='structured')
-    editorial_html = adapter.document_to_html(document, template='editorial')
+    contrast_html = adapter.document_to_html(document, template='editorial_contrast')
+    humanist_html = adapter.document_to_html(document, template='warm_humanist')
 
-    assert len({clean_html, structured_html, editorial_html}) == 3
-    assert 'background-color:#edf7f3;border-left:5px solid #2f806d' in clean_html
+    assert len({clean_html, contrast_html, humanist_html}) == 3
+    assert 'border-left:3px solid #52766F' in clean_html
     assert clean_html.startswith(
-        '<section style="color:#33373d;font-size:16px;line-height:1.9;margin:0 0 16px">'
+        '<section style="background-color:#FFFFFF;color:#34403E;padding:12px 16px;'
     )
-    assert '<p>正文</p>' in clean_html
-    assert 'background-color:#2563eb;border-bottom:3px solid #1746aa' in structured_html
-    assert 'background-color:#faf2ec;border-left:3px solid #b9795f' in editorial_html
-    for html in (clean_html, structured_html, editorial_html):
+    assert 'border-top:11px solid #202B33;border-bottom:3px solid #202B33' in contrast_html
+    assert 'border-left:5px solid #D7A83E' in humanist_html
+    for html in (clean_html, contrast_html, humanist_html):
+        paragraph = BeautifulSoup(html, 'html.parser').find('p', string='正文')
+        assert paragraph is not None and 'margin:0 0 18px' in paragraph.get('style', '')
         assert '<ul' not in html and '<ol' not in html and '<li' not in html
         assert '•' not in html and '::marker' not in html
         assert '<span style=' in html and '>&#8203;</span>无序列表</p>' in html
@@ -119,23 +121,40 @@ def test_wechat_templates_render_distinct_html_and_validate_ids():
         assert 'href="#block-' not in html
         assert '参见标题' in html
         assert 'border-collapse:collapse' in html
-        assert 'border:1px solid #222222' in html
-        assert 'padding:6px 8px' in html
+        assert '>中文</td>' in html and '>正常</td>' in html
+        imported = adapter.html_to_ir(html, external_document_id='restyled')
+        assert any(block.type == 'heading' and block.content == '标题' for block in imported.blocks)
+        assert adapter.document_to_html(imported) == html
     assert [item['id'] for item in list_wechat_templates()] == [
-        'clean', 'structured', 'editorial',
+        'clean', 'editorial_contrast', 'warm_humanist',
     ]
-    assert get_wechat_template('wechat.structured').template_id == 'structured'
-    assert (
-        'background-color:#2563eb;border-radius:50%;display:inline-block;height:7px;'
-        'margin-left:-23px;margin-right:16px;vertical-align:middle;width:7px'
-    ) in structured_html
-    assert (
-        'background-color:#2563eb;border-radius:3px;color:#ffffff;display:inline-block;'
-        'font-size:12px;font-weight:700;height:22px;line-height:22px;margin-left:-28px;'
-        'margin-right:6px;min-width:22px;text-align:center;vertical-align:middle'
-    ) in structured_html
+    assert get_wechat_template('wechat.editorial_contrast').template_id == 'editorial_contrast'
     with pytest.raises(ValueError, match='Unknown WeChat template'):
         get_wechat_template('not-found')
+
+
+@pytest.mark.parametrize(('source', 'block_type'), [
+    ('<p><strong>原文</strong>内容</p>', 'paragraph'),
+    ('<ul><li><strong>原文</strong>内容</li></ul>', 'list_item'),
+    ('<table><tr><td><strong>原文</strong>内容</td></tr></table>', 'table_cell'),
+])
+def test_wechat_edit_without_template_does_not_apply_theme_styles(source, block_type):
+    adapter = WeChatWriterAdapter()
+    untouched = '<p style="color:#123456">保留段落</p>'
+    document = adapter.html_to_ir(source + untouched, external_document_id='article')
+    block = next(item for item in document.iter_blocks() if item.type == block_type)
+    block.content = '原文内容修改'
+    block.spans = [WriterSpan(text='原文', style={'bold': True}), WriterSpan(text='内容修改')]
+
+    rendered = adapter.document_to_html(document)
+
+    assert '<strong>原文</strong>内容修改' in rendered
+    assert untouched in rendered
+    if block_type == 'paragraph':
+        assert rendered.startswith('<p><strong>')
+    if block_type == 'table_cell':
+        assert 'border:1px solid #222222' in rendered
+    assert '<strong style=' in adapter.document_to_html(document, template='clean')
 
 
 def test_wechat_client_uses_draft_api_payloads(monkeypatch):
@@ -266,15 +285,10 @@ def test_wechat_draft_create_then_update(monkeypatch, tmp_path: Path):
     assert calls['updated'][1] == 0
     article = calls['updated'][2]
     assert article['thumb_media_id'] == 'cover-media'
-    assert (
-        '<h2 style="background-color:#edf7f3;border-left:5px solid #2f806d;'
-        'border-radius:3px;color:#20584b;font-size:20px;font-weight:700;line-height:1.6;'
-        'margin:26px 0 12px;padding:8px 12px">'
-        '1. 章节</h2>'
-    ) in article['content']
-    assert '<strong>粗体</strong>和<a href="https://example.com">链接</a>' in article['content']
+    assert '>1. 章节</h2>' in article['content']
+    assert '>粗体</strong>和<a href="https://example.com">链接</a>' in article['content']
     assert ' id=' not in article['content']
-    assert 'border:1px solid #222222' in article['content']
+    assert '<table ' in article['content']
     assert '>中文</td>' in article['content']
     assert '&lt;script&gt;' in article['content'] and '<script>' not in article['content']
     assert 'https://mmbiz.qpic.cn/body.png' in article['content']

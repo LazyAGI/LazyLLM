@@ -4,17 +4,17 @@ from __future__ import annotations
 
 from .base import WeChatTemplate
 from .clean import CleanWeChatTemplate
-from .editorial import EditorialWeChatTemplate
-from .structured import StructuredWeChatTemplate
+from .editorial_contrast import EditorialContrastWeChatTemplate
+from .warm_humanist import WarmHumanistWeChatTemplate
 
 WECHAT_CLEAN_TEMPLATE = 'clean'
-WECHAT_STRUCTURED_TEMPLATE = 'structured'
-WECHAT_EDITORIAL_TEMPLATE = 'editorial'
+WECHAT_EDITORIAL_CONTRAST_TEMPLATE = 'editorial_contrast'
+WECHAT_WARM_HUMANIST_TEMPLATE = 'warm_humanist'
 
 _TEMPLATES: dict[str, WeChatTemplate] = {
     WECHAT_CLEAN_TEMPLATE: CleanWeChatTemplate(),
-    WECHAT_STRUCTURED_TEMPLATE: StructuredWeChatTemplate(),
-    WECHAT_EDITORIAL_TEMPLATE: EditorialWeChatTemplate(),
+    WECHAT_EDITORIAL_CONTRAST_TEMPLATE: EditorialContrastWeChatTemplate(),
+    WECHAT_WARM_HUMANIST_TEMPLATE: WarmHumanistWeChatTemplate(),
 }
 
 
@@ -44,8 +44,8 @@ def list_wechat_templates() -> list[dict[str, str]]:
 
 __all__ = [
     'WECHAT_CLEAN_TEMPLATE',
-    'WECHAT_EDITORIAL_TEMPLATE',
-    'WECHAT_STRUCTURED_TEMPLATE',
+    'WECHAT_EDITORIAL_CONTRAST_TEMPLATE',
+    'WECHAT_WARM_HUMANIST_TEMPLATE',
     'WeChatTemplate',
     'get_wechat_template',
     'list_wechat_templates',

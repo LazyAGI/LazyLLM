@@ -80,10 +80,12 @@ def test_image_groups_markdown_patch_and_wechat_round_trip():
     assert len(BeautifulSoup(restored, 'html.parser').find_all('img')) == 4
     patch = WriterRevisionTools(llm=None)._diff_documents(source, selected)
     assert patch.image_groups == groups
-    structured = BeautifulSoup(adapter.document_to_html(selected, urls, template='structured'), 'html.parser')
+    contrast = BeautifulSoup(
+        adapter.document_to_html(selected, urls, template='editorial_contrast'), 'html.parser',
+    )
     assert all('object-fit:contain' in image['style']
-               for image in structured.select('section[style*="overflow-x:auto"] img'))
-    imported = adapter.html_to_ir(str(structured), external_document_id='structured-gallery')
+               for image in contrast.select('section[style*="overflow-x:auto"] img'))
+    imported = adapter.html_to_ir(str(contrast), external_document_id='contrast-gallery')
     assert len(sliding_image_groups(imported)) == 1
     assert [block.content for block in imported.iter_blocks() if block.type == 'image'] == [
         'Path', 'Bench', 'Lawn', 'Single',
