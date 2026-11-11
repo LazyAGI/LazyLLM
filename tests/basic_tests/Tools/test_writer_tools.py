@@ -350,7 +350,33 @@ def test_text_response_strips_provider_think_block():
     assert tool._call_llm_text('prompt') == '正文'
 
 
-def test_stream_markdown_draft_is_isolated_and_returns_tool_result():
+@pytest.mark.parametrize('body', [
+    '{"topic": "证据可追溯性"}',
+    '# 研究选题\n\n## 研究问题\n能否提高证据可追溯性？\n',
+    '<think>inline reasoning</think>\n\n正文',
+    '',
+])
+def test_text_response_extracts_chat_content_without_mutating_response(body):
+    response = {'role': 'assistant', 'content': body, 'reasoning_content': 'provider reasoning'}
+    original = deepcopy(response)
+    tool = WriterToolBase(llm=lambda _: response)
+
+    assert tool._call_llm_text('prompt') == ('正文' if body.startswith('<think>') else body)
+    assert response == original
+
+
+@pytest.mark.parametrize('response', [
+    '正文\n\n## 研究问题\n保留换行。\n', None, 0, ['正文'], {'topic': '主题'},
+    {'content': None}, {'content': 0}, {'content': ['正文']},
+])
+def test_text_response_keeps_existing_fallback_for_other_response_types(response):
+    tool = WriterToolBase(llm=lambda _: response)
+
+    assert tool._call_llm_text('prompt') == (response if isinstance(response, str) else str(response))
+
+
+@pytest.mark.parametrize('structured_response', [False, True])
+def test_stream_markdown_draft_is_isolated_and_returns_tool_result(structured_response):
     chunks = [
         ('think', 'provider reasoning'),
         ('text', '  <thi'),
@@ -361,10 +387,15 @@ def test_stream_markdown_draft_is_isolated_and_returns_tool_result():
     task, instruction, context = _markdown_draft_inputs()
     queue = FileSystemQueue()
     queue.clear()
+    response = {
+        'role': 'assistant',
+        'content': ''.join(delta for tag, delta in chunks if tag == 'text'),
+        'reasoning_content': 'provider reasoning',
+    } if structured_response else None
 
     with tempfile.TemporaryDirectory() as directory:
         tool = WriterDraftingTools(
-            llm=_StreamingTextLLM(chunks),
+            llm=_StreamingTextLLM(chunks, response=response),
             artifact_store=directory,
         )
         with tool.stream_draft_section(
@@ -1956,7 +1987,7 @@ def test_apply_patch_to_document_moves_and_restores_writer_identity():
         first, second = fs.get_doc_blocks.return_value
         moved = deepcopy(first)
         moved['block_id'] = 'moved-b1'
-        moved['heading1']['elements'][0]['text_run']['content'] = '1 新标题'
+        moved['heading1']['elements'][0]['text_run']['content'] = '1. 新标题'
         fs.get_doc_blocks.return_value = [second, moved]
         fs.move_block.return_value = {
             'provider_id_remap': {'b1': 'moved-b1'},

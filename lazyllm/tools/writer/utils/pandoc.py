@@ -298,7 +298,8 @@ def _scan_markdown_objects(
                     end += 1
                     break
                 end += 1
-            objects.append(_MarkdownObject('code', index, end, ''))
+            kind = 'equation' if line[fence.end():].strip() == 'math' else 'code'
+            objects.append(_MarkdownObject(kind, index, end, ''))
             index = end
             continue
 
@@ -452,18 +453,23 @@ def _rewrite_inline_prose(line, rewrite):
 
 def _normalize_math_delimiters(lines):
     opening = None
+    closing = None
     previous = -1
     for index, line in _unfenced_lines(lines):
         if index != previous + 1:
             opening = None
         previous = index
-        if line.strip() == r'\[':
+        if opening is not None:
+            if line.strip() == closing:
+                # GFM otherwise reads standalone = or --- inside math as headings.
+                indent = lines[opening][:len(lines[opening]) - len(lines[opening].lstrip())]
+                lines[opening] = indent + '```math'
+                lines[index] = indent + '```'
+                opening = None
+        elif re.fullmatch(r'[ \t]{0,3}(\$\$|\\\[)[ \t]*', line):
             opening = index
-        elif line.strip() == r'\]' and opening is not None:
-            lines[opening] = lines[opening].replace(r'\[', '$$')
-            lines[index] = line.replace(r'\]', '$$')
-            opening = None
-        elif opening is None:
+            closing = '$$' if line.strip() == '$$' else r'\]'
+        else:
             display = re.fullmatch(r'([ \t]{0,3})\\\[(.+)\\\]([ \t]*)', line)
             lines[index] = (display[1] + '$$' + display[2] + '$$' + display[3] if display else
                             _rewrite_inline_prose(line, lambda text: re.sub(

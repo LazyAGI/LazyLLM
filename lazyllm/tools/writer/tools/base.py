@@ -350,6 +350,8 @@ class WriterToolBase(ModuleBase):
         elif stream_output:
             raise TypeError('llm must support share(stream=...) for text streaming.')
         response = self._call_model(model, prompt, **generation_params)
+        if isinstance(response, dict) and isinstance(response.get('content'), str):
+            response = response['content']
         text = response if isinstance(response, str) else str(response)
         return self._strip_leading_think_blocks(text)
 
