@@ -5,27 +5,9 @@ import re
 from urllib.parse import urlsplit
 
 from ..base.model_request import model_response, response_frames
+from ..base.protocol_ir import RequestIR, ResponseIR, _PROVIDER_ITEMS
 from ..base.provider_response import raise_for_http_error
 from .openai import OpenAIChat
-
-
-def _content(content, role):
-    if not isinstance(content, list):
-        return content
-    result = []
-    for part in content:
-        if not isinstance(part, dict):
-            continue
-        kind = part.get('type')
-        if kind == 'text':
-            result.append({'type': 'output_text' if role == 'assistant' else 'input_text',
-                           'text': part.get('text', '')})
-        elif kind == 'image_url':
-            image = part.get('image_url') or {}
-            result.append({'type': 'input_image', 'image_url': image.get('url') if isinstance(image, dict) else image})
-        else:
-            result.append(part)
-    return result
 
 
 def _normalize_sampling_params(body, chat):
@@ -53,20 +35,8 @@ def chat_to_responses_request(chat):
         'messages', 'tools', 'max_tokens', 'max_completion_tokens', 'reasoning_effort',
         'stream_options', 'response_format', 'n', 'functions', 'function_call', 'logprobs',
     }}
-    items = []
-    for message in chat.get('messages', []):
-        role, content = message.get('role'), message.get('content')
-        if role == 'tool':
-            items.append({'type': 'function_call_output', 'call_id': message['tool_call_id'],
-                          'output': content if isinstance(content, str) else json.dumps(content)})
-            continue
-        if content is not None and content != '':
-            items.append({'role': role, 'content': _content(content, role)})
-        for call in message.get('tool_calls') or []:
-            function = call.get('function') or {}
-            items.append({'type': 'function_call', 'call_id': call['id'],
-                          'name': function['name'], 'arguments': function.get('arguments') or '{}'})
-    body['input'] = items
+    request = RequestIR.from_payload(chat, protocol='completions')
+    body['input'] = [item for message in request.messages for item in message.to_responses()]
     if chat.get('tools'):
         body['tools'] = [dict(tool.get('function') or {}, type='function') if tool.get('type') == 'function'
                          else tool for tool in chat['tools']]
@@ -89,23 +59,7 @@ def chat_to_responses_request(chat):
 
 
 def responses_to_chat_chunk(response):
-    output = response.get('output') or []
-    text = ''.join(part.get('text', '') for item in output if item.get('type') == 'message'
-                   for part in item.get('content') or [] if part.get('type') == 'output_text')
-    calls = [{'id': item['call_id'], 'type': 'function',
-              'function': {'name': item['name'], 'arguments': item.get('arguments') or '{}'}}
-             for item in output if item.get('type') == 'function_call']
-    message = {'role': 'assistant', 'content': text or None}
-    if calls:
-        message['tool_calls'] = calls
-    finish_reason = 'tool_calls' if calls else 'length' if response.get('status') == 'incomplete' else 'stop'
-    result = {'choices': [{'index': 0, 'message': message, 'finish_reason': finish_reason}]}
-    if isinstance(response.get('usage'), dict):
-        usage = response['usage']
-        result['usage'] = {'prompt_tokens': usage.get('input_tokens', 0),
-                           'completion_tokens': usage.get('output_tokens', 0),
-                           'total_tokens': usage.get('total_tokens', 0)}
-    return result
+    return ResponseIR.from_responses(response).to_chat_chunk()
 
 
 def _chat_frame(chunk):
@@ -134,6 +88,8 @@ def _response_stream_as_chat(frames):
                 yield _chat_frame({'choices': [{'index': 0, 'delta': {'content': choice['message']['content']},
                                                 'finish_reason': None}]})
             delta = {'tool_calls': choice['message']['tool_calls']} if choice['message'].get('tool_calls') else {}
+            if choice['message'].get(_PROVIDER_ITEMS):
+                delta[_PROVIDER_ITEMS] = choice['message'][_PROVIDER_ITEMS]
             yield _chat_frame({'choices': [{'index': 0, 'delta': delta,
                                             'finish_reason': choice['finish_reason']}],
                                **({'usage': complete['usage']} if 'usage' in complete else {})})

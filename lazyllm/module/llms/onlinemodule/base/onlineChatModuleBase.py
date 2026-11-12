@@ -22,6 +22,7 @@ from .model_call_runner import (
     is_retryable_transport_error,
 )
 from .model_outcome import ModelCallError, ModelFailure, ModelFinish
+from .protocol_ir import RequestIR, _PROVIDER_ITEMS
 from .model_request import (
     ModelRequest, _ControlledModelCall, model_response, response_frames, _requires_vision,
 )
@@ -333,10 +334,14 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
 
         data.pop('timeout', None)
         self._bound_output_tokens(data, output_limit, kw)
+        semantic = RequestIR.from_payload(data)
         data = self._prepare_request_data(data)
+        if isinstance(data.get('messages'), list):
+            data['messages'] = [{k: v for k, v in message.items() if k != _PROVIDER_ITEMS}
+                                for message in data['messages']]
 
         return (data, runtime_url, stream_output, request_timeout, max(1, int(max_retries)),
-                _requires_vision([__input, llm_chat_history], files))
+                _requires_vision([__input, llm_chat_history], files), semantic)
 
     def _output_token_key(self, data):
         return 'max_completion_tokens' if 'max_completion_tokens' in data else 'max_tokens'
@@ -357,10 +362,11 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
             state.usage = self._extract_usage([message])
 
     def forward(self, __input=None, *, call_control=None, **kwargs):
-        data, url, stream, timeout, max_attempts, vision = self._prepare_request(__input, **kwargs)
+        data, url, stream, timeout, max_attempts, vision, semantic = self._prepare_request(__input, **kwargs)
         if call_control is not None:
             if call_control.request_check is not None:
-                call_control.validate_request(ModelRequest(json.dumps(data, ensure_ascii=False), self.type, vision))
+                call_control.validate_request(ModelRequest(json.dumps(data, ensure_ascii=False),
+                                                           self.type, vision, semantic))
             else:
                 call_control.check()
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
@@ -377,7 +383,10 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
         usage = self._extract_usage(msg_json)
         self._record_usage(usage)
         extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
-        return self._formatter(extractor) if extractor else ''
+        result = self._formatter(extractor) if extractor else ''
+        if isinstance(result, dict) and extractor.get(_PROVIDER_ITEMS):
+            result[_PROVIDER_ITEMS] = copy.deepcopy(extractor[_PROVIDER_ITEMS])
+        return result
 
     @classmethod
     def merge_usage_records(cls, existing, usage):

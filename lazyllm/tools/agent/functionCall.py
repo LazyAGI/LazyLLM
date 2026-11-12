@@ -1,4 +1,5 @@
 from lazyllm.module import ModuleBase
+from lazyllm.module.llms.onlinemodule.base.protocol_ir import MessageIR
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import LOG, globals as lazyllm_globals, pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
@@ -284,12 +285,7 @@ class FunctionCall(ModuleBase):
         remaining_rounds: Optional[int],
     ) -> Dict[str, Any]:
         current_round_messages = self._build_current_tool_messages(workspace, budget_notice)
-        workspace['history'].append({
-            'role': 'assistant',
-            'content': input.get('content', ''),
-            'tool_calls': input.get('tool_calls', []),
-            'reasoning_content': input.get('reasoning_content', ''),
-        })
+        workspace['history'].append(MessageIR.from_chat(input).to_chat())
         prior_history = workspace['history'][:]
         workspace['history'].extend(current_round_messages)
         compacted_prior, compacted_current = self._compact_history(
@@ -366,6 +362,9 @@ class FunctionCall(ModuleBase):
         return input
 
     def _post_action(self, llm_output: Dict[str, Any]):  # noqa: C901
+        message = MessageIR.from_chat(llm_output)
+        llm_output = message.to_chat()
+        llm_output['content'] = message.text
         if not llm_output.get('tool_calls'):
             if (match := re.search(r'Action:\s*Call\s+(\w+)\s+with\s+parameters\s+(\{.*?\})', llm_output['content'])):
                 try:

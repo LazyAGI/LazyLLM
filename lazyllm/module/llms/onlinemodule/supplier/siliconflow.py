@@ -143,9 +143,9 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
     IMAGE_EDITING_MODEL_NAME = 'Qwen/Qwen-Image-Edit-2509'
 
     def __init__(self, api_key: str = None, model: str = None,
-                 url: Optional[str] = None,
+                 url: Optional[str] = None, base_url: Optional[str] = None,
                  return_trace: bool = False, **kwargs):
-        url = url or 'https://api.siliconflow.cn/v1/'
+        url = url or base_url or 'https://api.siliconflow.cn/v1/'
         super().__init__(api_key=api_key or self._default_api_key(),
                          model=model or SiliconFlowText2Image.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
@@ -168,7 +168,9 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
         return data
 
     def _make_request(self, endpoint, payload, base_url=None, timeout=180):
-        url = f'{(base_url or self._base_url)}{endpoint}'
+        url = (base_url or self._base_url).rstrip('/')
+        if not url.endswith('/' + endpoint):
+            url += '/' + endpoint
         try:
             response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
             response.raise_for_status()
@@ -178,7 +180,8 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
             raise
 
     def _forward(self, input: str = None, files: List[str] = None, size: str = '1024x1024', url: str = None,
-                 model: str = None, **kwargs):
+                 model: str = None, image_size: str = None, batch_size: int = 1,
+                 priority=None, stream_output=None, stream=None, request_timeout: float = 180, **kwargs):
         has_ref_image = files is not None and len(files) > 0
         reference_image_data = None
         if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
@@ -195,6 +198,8 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
         payload = {
             'model': model,
             'prompt': input,
+            'image_size': image_size or size,
+            'batch_size': batch_size,
             **kwargs
         }
         if has_ref_image:
@@ -205,8 +210,9 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
                     payload['image'] = reference_image_data
                 elif i > 0:
                     payload[f'image{i + 1}'] = reference_image_data
-        result = self._make_request(self._endpoint, payload)
-        image_urls = [item['url'] for item in result.get('data', [])]
+        result = self._make_request(self._endpoint, payload, base_url=url, timeout=request_timeout)
+        rows = result.get('images', result.get('data', []))
+        image_urls = [item['url'] for item in rows if isinstance(item, dict) and item.get('url')]
         if not image_urls:
             raise Exception('No images returned from API')
         image_results = self._load_images(image_urls)
