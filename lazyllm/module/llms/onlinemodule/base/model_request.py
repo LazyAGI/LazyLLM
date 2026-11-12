@@ -12,7 +12,7 @@ from typing import Callable, Optional
 import requests
 from urllib3.util.ssltransport import SSLTransport
 
-from lazyllm.common import HandledException
+from lazyllm.common import HandledException, Thread
 from ....module import ModuleExecutionError
 
 
@@ -146,8 +146,8 @@ def response_frames(response, stream, control):
 
 
 @contextmanager
-def _socket_deadline(active_socket, control):
-    if control is None or control.deadline is None:
+def _socket_control(active_socket, control):
+    if active_socket is None or control is None or (control.deadline is None and control.cancel_check is None):
         yield
         return
     # HTTPS proxies wrap the proxy socket in a second TLS layer.
@@ -155,61 +155,75 @@ def _socket_deadline(active_socket, control):
         active_socket = active_socket.socket
 
     def interrupt_read():
-        if active_socket is not None:
-            try:
-                active_socket.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass  # The response may have closed at the deadline.
+        try:
+            active_socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass  # The response may have closed before interruption.
 
-    timer = threading.Timer(max(0, control.deadline - time.monotonic()), interrupt_read)
-    timer.daemon = True
-    timer.start()
+    finished = threading.Event()
+
+    def watch():
+        while True:
+            delay = 0.05 if control.cancel_check is not None else max(0, control.deadline - time.monotonic())
+            if finished.wait(delay):
+                return
+            try:
+                control.check()
+            except BaseException:
+                interrupt_read()
+                raise
+
+    # The cancellation queue is session-scoped. Preserve its context, and return
+    # the original exception to the caller even when checking consumes the signal.
+    watcher = Thread(target=watch, daemon=True)
+    watcher.start()
     try:
         yield
     finally:
-        # Finish the callback before the response returns its socket to the pool.
-        timer.cancel()
-        timer.join()
+        # Finish interruption before the response returns its socket to the pool.
+        finished.set()
+        watcher.join()
+        watcher.get_result()
 
 
-def _response_deadline(response, control):
+def _response_control(response, control):
     connection = getattr(response.raw, 'connection', None)
     active_socket = getattr(connection, 'sock', None)
     if active_socket is None:
         fp = getattr(getattr(response.raw, '_fp', None), 'fp', None)
         active_socket = getattr(getattr(fp, 'raw', None), '_sock', None)
-    return _socket_deadline(active_socket, control)
+    return _socket_control(active_socket, control)
 
 
-class _DeadlineHTTPAdapter(requests.adapters.HTTPAdapter):
+class _ControlledHTTPAdapter(requests.adapters.HTTPAdapter):
     def __init__(self, control):
         self._control = control
         self._connection_classes = {}
         super().__init__()
 
-    def _deadline_pool(self, pool):
+    def _controlled_pool(self, pool):
         base = pool.ConnectionCls
         if base not in self._connection_classes.values():
             if base not in self._connection_classes:
                 control = self._control
 
-                class DeadlineConnection(base):
+                class ControlledConnection(base):
                     def getresponse(self, *args, **kwargs):
                         control.check()
-                        # Socket idle timeouts alone do not bound a trickling status line or headers.
-                        with _socket_deadline(self.sock, control):
+                        # Cancellation must also interrupt a silent status line or headers.
+                        with _socket_control(self.sock, control):
                             return super().getresponse(*args, **kwargs)
 
-                self._connection_classes[base] = DeadlineConnection
+                self._connection_classes[base] = ControlledConnection
             # Pools belong to this request's Session, including proxy/SOCKS pools.
             pool.ConnectionCls = self._connection_classes[base]
         return pool
 
     def get_connection(self, *args, **kwargs):
-        return self._deadline_pool(super().get_connection(*args, **kwargs))
+        return self._controlled_pool(super().get_connection(*args, **kwargs))
 
     def get_connection_with_tls_context(self, *args, **kwargs):
-        return self._deadline_pool(super().get_connection_with_tls_context(*args, **kwargs))
+        return self._controlled_pool(super().get_connection_with_tls_context(*args, **kwargs))
 
 
 @contextmanager
@@ -228,15 +242,15 @@ def model_response(url, *, control=None, **kwargs):
         kwargs['timeout'] = timeout
     try:
         with (requests.Session() if control is not None else nullcontext(requests)) as client:
-            if control is not None and control.deadline is not None:
-                adapter = _DeadlineHTTPAdapter(control)
+            if control is not None and (control.deadline is not None or control.cancel_check is not None):
+                adapter = _ControlledHTTPAdapter(control)
                 client.mount('http://', adapter)
                 client.mount('https://', adapter)
             with client.post(url, **kwargs) as response:
                 # urllib3 1.x otherwise accepts a truncated body as a clean EOF.
                 response.raw.enforce_content_length = True
                 if control is not None: control.check()
-                with _response_deadline(response, control):
+                with _response_control(response, control):
                     yield response
                     if control is not None: control.check()
     except BaseException:
