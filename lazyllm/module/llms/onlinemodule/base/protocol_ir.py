@@ -11,6 +11,10 @@ from .model_outcome import ModelFinish
 _PROVIDER_ITEMS = '_lazyllm_provider_items'
 
 
+class ProtocolCapabilityError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class ContentBlock:
     kind: str
@@ -113,6 +117,8 @@ class MessageIR:
             content = json.dumps(content, ensure_ascii=False)
         blocks = (ContentBlock('text', content),) if isinstance(content, str) else tuple(
             ContentBlock.from_chat(part) for part in content or [])
+        if isinstance(message.get('refusal'), str) and not any(block.kind == 'refusal' for block in blocks):
+            blocks += (ContentBlock('refusal', message['refusal']),)
         return cls(message.get('role', 'assistant'), blocks,
                    tuple(ToolCallIR.from_chat(call) for call in message.get('tool_calls') or []),
                    message.get('tool_call_id'),
@@ -135,7 +141,10 @@ class MessageIR:
     def to_responses(self):
         if self.native_item is not None:
             return [deepcopy(self.native_item)]
-        extensions = self.attributes.get(_PROVIDER_ITEMS, {})
+        extensions = self.attributes.get(_PROVIDER_ITEMS, {}) if self.role == 'assistant' else {}
+        if (extensions.get('protocol') == 'responses' and extensions.get('snapshot_digest')
+                == _message_digest(self) and 'output' in extensions):
+            return deepcopy(extensions['output'])
         if extensions:
             if extensions.get('protocol') != 'responses':
                 raise ValueError('Cannot replay opaque items across protocol boundaries')
@@ -146,8 +155,9 @@ class MessageIR:
             output = self.text if self.string_content else [block.to_responses('user') for block in self.content]
             return [{'type': 'function_call_output', 'call_id': self.tool_call_id, 'output': output}]
         items = []
-        if self.content and (not self.string_content or self.text):
-            content = self.text if self.string_content else [block.to_responses(self.role) for block in self.content]
+        structured = not self.string_content or any(block.kind != 'text' for block in self.content)
+        if self.content and (structured or self.text):
+            content = [block.to_responses(self.role) for block in self.content] if structured else self.text
             items.append({'role': self.role, 'content': content})
         items.extend(call.to_responses() for call in self.tool_calls)
         return _ordered_response_items(items, prefix, extensions.get('order'), extensions.get('text_digest'))
@@ -199,6 +209,13 @@ class RequestIR:
     def estimate_tokens(self, text_estimator, message_estimator=None):
         return text_estimator(json.dumps(self.parameters, ensure_ascii=False)) + sum(
             message.estimate_tokens(text_estimator, message_estimator) + 4 for message in self.messages)
+
+
+def _message_digest(message):
+    value = {'role': message.role, 'text': message.text, 'refusal': message.attributes.get('refusal', ''),
+             'media': [block.to_chat() for block in message.content if block.kind not in ('text', 'refusal')],
+             'calls': [call.to_responses() for call in message.tool_calls]}
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
 def _response_item(item):
@@ -272,6 +289,19 @@ class ResponseIR:
     usage: Optional[dict] = field(default=None, repr=False)
 
     @classmethod
+    def from_chat(cls, response):
+        from .provider_response import select_primary_choice
+        choice = select_primary_choice(response.get('choices') or [])
+        if choice is None:
+            raise ValueError('Model response contains no choice')
+        message = MessageIR.from_chat(choice.get('message') or choice.get('delta') or {})
+        try:
+            finish = ModelFinish(choice.get('finish_reason'))
+        except ValueError:
+            finish = ModelFinish.UNKNOWN
+        return cls(message, finish, deepcopy(response.get('usage')))
+
+    @classmethod
     def from_responses(cls, response):
         items = response.get('output') or []
         messages = [_response_item(item) for item in items]
@@ -288,7 +318,13 @@ class ResponseIR:
               or not calls and not any(block.kind == 'text' and block.value for block in blocks)):
             finish = ModelFinish.UNKNOWN
         attributes = _response_extensions(items)
+        refusal = ''.join(block.value for block in blocks if block.kind == 'refusal')
+        if refusal:
+            attributes['refusal'] = refusal
         message = MessageIR('assistant', blocks, calls, attributes=attributes, string_content=True)
+        if items:
+            extensions = attributes.setdefault(_PROVIDER_ITEMS, {'protocol': 'responses', 'items': []})
+            extensions.update(output=deepcopy(items), snapshot_digest=_message_digest(message))
         usage = response.get('usage')
         if isinstance(usage, dict):
             usage = {**deepcopy(usage), 'prompt_tokens': usage.get('input_tokens', 0),

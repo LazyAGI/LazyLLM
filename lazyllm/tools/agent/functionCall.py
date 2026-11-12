@@ -19,6 +19,7 @@ from .base import (
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
+from copy import deepcopy
 import re
 import json
 import inspect
@@ -377,7 +378,7 @@ class FunctionCall(ModuleBase):
             tool_calls = self._tools_manager.normalize_tool_calls(tool_calls)
             llm_output['tool_calls'] = tool_calls
             if self._stream:
-                _write_agent_data('tool_calls', tool_calls=tool_calls)
+                _write_agent_data('tool_calls', tool_calls=tool_calls, assistant_message=deepcopy(llm_output))
             tool_calls_results = self._tools_manager(
                 tool_calls,
                 allowed_tool_names=self._get_visible_tool_names(),
@@ -425,6 +426,8 @@ class FunctionCall(ModuleBase):
                                 pass
                         return '\n'.join(str(_tool_result_observation(r)) for r in tool_calls_results)
         else:
+            if getattr(self, '_stream', False):
+                _write_agent_data('assistant_message', assistant_message=deepcopy(llm_output))
             llm_output = llm_output['content']
         if self._runtime_observer:
             try:

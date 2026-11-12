@@ -1,6 +1,7 @@
 import os
 import time
 import requests
+from io import BytesIO
 from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 from lazyllm.components.utils.downloader.model_downloader import LLMType
@@ -13,6 +14,7 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file, _image_to_base64
 from ..fileHandler import FileHandlerBase
 from lazyllm import LOG, config
+from lazyllm.thirdparty import PIL
 
 
 class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
@@ -155,17 +157,25 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
         Override parent implementation because SiliconFlow S3 temporary URLs
         may return application/octet-stream instead of image/* content type.
         '''
-        self._validate_url_security(url)
-
-        resp = requests.get(
-            url,
-            timeout=timeout,
-            allow_redirects=True
-        )
-        resp.raise_for_status()
-        data = resp.content
-        self._validate_image_data(data, url)
-        return data
+        # Validate every redirect target before requesting it; validating only
+        # the signed public URL would allow a redirect into the private network.
+        for redirect_count in range(6):
+            if not url.startswith(('http://', 'https://')):
+                raise ValueError('Image download URL must use HTTP or HTTPS.')
+            self._validate_url_security(url)
+            resp = requests.get(url, timeout=timeout, allow_redirects=False)
+            try:
+                resp.raise_for_status()
+                if resp.status_code in (301, 302, 303, 307, 308) and resp.headers.get('Location'):
+                    if redirect_count == 5:
+                        raise requests.TooManyRedirects('Too many image download redirects.')
+                    url = urljoin(url, resp.headers['Location'])
+                    continue
+                data = resp.content
+                self._validate_image_data(data, url)
+                return data
+            finally:
+                resp.close()
 
     def _make_request(self, endpoint, payload, base_url=None, timeout=180):
         url = (base_url or self._base_url).rstrip('/')
@@ -204,8 +214,10 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
         }
         if has_ref_image:
             for i, file in enumerate(files):
-                reference_image_base64, _ = self._load_images(file)[0]
-                reference_image_data = f'data:image/png;base64,{reference_image_base64}'
+                reference_image_base64, reference_bytes = self._load_images(file)[0]
+                with PIL.Image.open(BytesIO(reference_bytes)) as reference:
+                    mime = reference.get_format_mimetype()
+                reference_image_data = f'data:{mime};base64,{reference_image_base64}'
                 if i == 0:
                     payload['image'] = reference_image_data
                 elif i > 0:

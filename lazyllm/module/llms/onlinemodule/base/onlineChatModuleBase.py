@@ -13,6 +13,7 @@ from operator import itemgetter as itemget
 
 import lazyllm
 from lazyllm import globals, pipeline, config
+from lazyllm.components import EmptyFormatter
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ....servermodule import LLMBase, StaticParams
@@ -22,7 +23,7 @@ from .model_call_runner import (
     is_retryable_transport_error,
 )
 from .model_outcome import ModelCallError, ModelFailure, ModelFinish
-from .protocol_ir import RequestIR, _PROVIDER_ITEMS
+from .protocol_ir import MessageIR, RequestIR, ResponseIR, _PROVIDER_ITEMS
 from .model_request import (
     ModelRequest, _ControlledModelCall, model_response, response_frames, _requires_vision,
 )
@@ -158,8 +159,7 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
         choice = select_primary_choice(response['choices'])
         if choice is None:
             raise ValueError(f'The response {response} contains no choices.')
-        outputs = choice.get('message') or choice.get('delta', {})
-        return outputs
+        return ResponseIR.from_chat(response).message.to_chat()
 
     def _merge_stream_result(self, src: List[Union[str, int, list, dict]], force_join: bool = False):
         src = [ele for ele in src if ele is not None]
@@ -193,7 +193,9 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
             if 'index' in src[-1]:
                 grouped = [list(g) for _, g in groupby(sorted(src, key=itemget('index')), key=itemget('index'))]
                 if len(grouped) > 1: return [self._merge_stream_result(src) for src in grouped]
-            return {k: self._merge_stream_result([d.get(k) for d in src], k == 'content') for k in set().union(*src)}
+            joined_fields = ('content', 'reasoning_content', 'refusal', 'arguments')
+            return {k: self._merge_stream_result([d.get(k) for d in src], k in joined_fields)
+                    for k in set().union(*src)}
         return src[-1]
 
     def _extract_partial_content(self, msg_json: list) -> str:
@@ -383,7 +385,10 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
         usage = self._extract_usage(msg_json)
         self._record_usage(usage)
         extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
-        result = self._formatter(extractor) if extractor else ''
+        visible = {k: v for k, v in extractor.items() if k != _PROVIDER_ITEMS}
+        if isinstance(self._formatter, EmptyFormatter):
+            visible['content'] = MessageIR.from_chat(visible).text
+        result = self._formatter(visible) if visible else ''
         if isinstance(result, dict) and extractor.get(_PROVIDER_ITEMS):
             result[_PROVIDER_ITEMS] = copy.deepcopy(extractor[_PROVIDER_ITEMS])
         return result
