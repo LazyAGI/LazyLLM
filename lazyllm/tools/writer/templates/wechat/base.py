@@ -20,6 +20,10 @@ class WeChatTemplate:
     _LIST_ITEM_STYLE: Mapping[str, str] = {'margin': '7px 0', 'padding-left': '28px'}
     _UNORDERED_MARKER_STYLE: Mapping[str, str] = {}
     _ORDERED_MARKER_STYLE: Mapping[str, str] = {}
+    _BLOCK_STYLES: Mapping[str, Mapping[str, str]] = {}
+
+    def block_style(self, kind: str) -> Mapping[str, str]:
+        return self._BLOCK_STYLES.get(kind, {})
 
     def heading_style(self, level: int) -> Mapping[str, str]:
         return self._HEADING_STYLES.get(min(3, max(1, level)), {})
