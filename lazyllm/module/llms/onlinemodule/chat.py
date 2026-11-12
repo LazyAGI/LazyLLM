@@ -83,6 +83,20 @@ class OnlineChatModule(_ControlledModelCall, _DynamicSourceRouterMixin, LLMBase,
         supplier.formatter(getattr(self, '_formatter', None))
         return supplier
 
+    def forward(self, *args, **kwargs):
+        # Suppliers attribute usage to this router. Forward this call's record
+        # to its consumer as well, retaining the router record for tracing.
+        # Failed calls bypass ModuleBase's normal usage cleanup.
+        self._clear_usage()
+        try:
+            return super().forward(*args, **kwargs)
+        finally:
+            records = lazyllm.globals['usage']
+            usage = records.get(self._module_id)
+            parent = self._used_by_moduleid
+            if parent and parent != self._module_id and usage:
+                records[parent] = self.merge_usage_records(records.get(parent) or {}, usage)
+
     @classmethod
     def merge_usage_records(cls, existing, usage):
         return OnlineChatModuleBase.merge_usage_records(existing, usage)
