@@ -114,6 +114,56 @@ def test_controlled_large_json_does_not_allocate_per_byte_fragments():
     assert peak < 12 * 1024 * 1024
 
 
+@pytest.mark.parametrize('phase', ['headers', 'body'])
+@pytest.mark.parametrize('outcome', ['finish', 'cancel', 'timeout'])
+def test_polling_preserves_partial_response_and_read_timeout(monkeypatch, phase, outcome):
+    release, cancel = threading.Event(), threading.Event()
+    read = socket.socket.recv_into
+    polls = []
+
+    def observed_read(sock, *args, **kwargs):
+        try:
+            return read(sock, *args, **kwargs)
+        except socket.timeout:
+            polls.append(sock.gettimeout())
+            if len(polls) == 2 and outcome != 'timeout':
+                (release if outcome == 'finish' else cancel).set()
+            raise
+
+    monkeypatch.setattr(socket.socket, 'recv_into', observed_read)
+    monkeypatch.setattr(socket.socket, 'shutdown', lambda *_args: None)
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args): pass
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers['Content-Length']))
+            header = b'HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\n'
+            prefix, suffix = (header[:8], header[8:] + b'abcdef') if phase == 'headers' else (header + b'abc', b'def')
+            self.wfile.write(prefix)
+            self.wfile.flush()
+            if release.wait(2):
+                self.wfile.write(suffix)
+
+    with serving(ThreadingHTTPServer(('127.0.0.1', 0), Handler)) as server:
+        try:
+            def request():
+                with model_response(f'http://127.0.0.1:{server.server_port}/chat', json={}, stream=True,
+                                    timeout=0.3, control=ModelCallControl(cancel_check=cancel.is_set)) as response:
+                    return response.content
+
+            if outcome == 'finish':
+                assert request() == b'abcdef'
+            else:
+                error = asyncio.CancelledError if outcome == 'cancel' else requests.RequestException
+                with pytest.raises(error, match='cancelled' if outcome == 'cancel' else '[Tt]imed out'):
+                    request()
+            assert len(polls) >= 2
+            assert all(0 < timeout <= 0.05 for timeout in polls)
+        finally:
+            release.set()
+
+
 def test_controlled_sse_uses_bounded_reads(monkeypatch):
     body = b'data: {"text":"' + b'x' * (100 * 1024) + b'"}\n\n'
     response = requests.Response()
