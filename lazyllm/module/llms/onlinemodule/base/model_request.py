@@ -3,7 +3,6 @@ import json
 import mimetypes
 import re
 import socket
-import threading
 import time
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
@@ -11,9 +10,8 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 import requests
-from urllib3.util.ssltransport import SSLTransport
 
-from lazyllm.common import HandledException, Thread
+from lazyllm.common import HandledException
 from ....module import ModuleExecutionError
 from .protocol_ir import RequestIR
 
@@ -147,54 +145,36 @@ def response_frames(response, stream, control):
         yield pending
 
 
-@contextmanager
-def _socket_control(active_socket, control):
-    if active_socket is None or control is None or (control.deadline is None and control.cancel_check is None):
-        yield
-        return
-    # HTTPS proxies wrap the proxy socket in a second TLS layer.
-    while isinstance(active_socket, SSLTransport):
-        active_socket = active_socket.socket
+class _ControlledReadSocket:
+    def __init__(self, sock, control):
+        self._sock, self._control = sock, control
 
-    def interrupt_read():
+    def __getattr__(self, name):
+        return getattr(self._sock, name)
+
+    def recv_into(self, *args, **kwargs):
+        timeout = self._sock.gettimeout()
+        expires = None if timeout is None else time.monotonic() + timeout
         try:
-            active_socket.shutdown(socket.SHUT_RDWR)
-        except OSError:
-            pass  # The response may have closed before interruption.
-
-    finished = threading.Event()
-
-    def watch():
-        while True:
-            delay = 0.05 if control.cancel_check is not None else max(0, control.deadline - time.monotonic())
-            if finished.wait(delay):
-                return
-            try:
-                control.check()
-            except BaseException:
-                interrupt_read()
-                raise
-
-    # The cancellation queue is session-scoped. Preserve its context, and return
-    # the original exception to the caller even when checking consumes the signal.
-    watcher = Thread(target=watch, daemon=True)
-    watcher.start()
-    try:
-        yield
-    finally:
-        # Finish interruption before the response returns its socket to the pool.
-        finished.set()
-        watcher.join()
-        watcher.get_result()
-
-
-def _response_control(response, control):
-    connection = getattr(response.raw, 'connection', None)
-    active_socket = getattr(connection, 'sock', None)
-    if active_socket is None:
-        fp = getattr(getattr(response.raw, '_fp', None), 'fp', None)
-        active_socket = getattr(getattr(fp, 'raw', None), '_sock', None)
-    return _socket_control(active_socket, control)
+            while True:
+                self._control.check()
+                remaining = None if expires is None else expires - time.monotonic()
+                if remaining is not None and remaining <= 0:
+                    raise socket.timeout('timed out')
+                interval = 0.05 if remaining is None else min(0.05, remaining)
+                if self._control.deadline is not None:
+                    interval = min(interval, max(0, self._control.deadline - time.monotonic()))
+                self._sock.settimeout(interval)
+                try:
+                    return self._sock.recv_into(*args, **kwargs)
+                except socket.timeout:
+                    # Poll below SocketIO: allowing the poll timeout to escape
+                    # would poison its buffered reader and lose partial headers.
+                    self._control.check()
+                    if expires is not None and time.monotonic() >= expires:
+                        raise
+        finally:
+            self._sock.settimeout(timeout)
 
 
 class _ControlledHTTPAdapter(requests.adapters.HTTPAdapter):
@@ -209,12 +189,17 @@ class _ControlledHTTPAdapter(requests.adapters.HTTPAdapter):
             if base not in self._connection_classes:
                 control = self._control
 
+                class ControlledResponse(base.response_class):
+                    def __init__(self, *args, **kwargs):
+                        super().__init__(*args, **kwargs)
+                        # HTTP and TLS makefile readers both use SocketIO. Check
+                        # cancellation in the reading thread; Windows timed reads
+                        # cannot rely on another thread's shutdown waking select.
+                        raw = self.fp.raw
+                        raw._sock = _ControlledReadSocket(raw._sock, control)
+
                 class ControlledConnection(base):
-                    def getresponse(self, *args, **kwargs):
-                        control.check()
-                        # Cancellation must also interrupt a silent status line or headers.
-                        with _socket_control(self.sock, control):
-                            return super().getresponse(*args, **kwargs)
+                    response_class = ControlledResponse
 
                 self._connection_classes[base] = ControlledConnection
             # Pools belong to this request's Session, including proxy/SOCKS pools.
@@ -252,9 +237,8 @@ def model_response(url, *, control=None, **kwargs):
                 # urllib3 1.x otherwise accepts a truncated body as a clean EOF.
                 response.raw.enforce_content_length = True
                 if control is not None: control.check()
-                with _response_control(response, control):
-                    yield response
-                    if control is not None: control.check()
+                yield response
+                if control is not None: control.check()
     except BaseException:
         if control is not None: control.check()
         raise
