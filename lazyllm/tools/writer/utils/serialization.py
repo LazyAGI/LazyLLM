@@ -80,7 +80,7 @@ def _media_reference_variants(value: Any) -> set[str]:
         return {raw, path} if path.startswith('/data/subagent/') else {raw}
     if lowered.startswith('file://'):
         return {raw, unquote(urlparse(raw).path)}
-    return {raw, unquote(raw)}
+    return {raw, unquote(raw), raw.replace('\\', '/'), unquote(raw).replace('\\', '/')}
 
 
 def strip_heading_numbering(value: str) -> str:
