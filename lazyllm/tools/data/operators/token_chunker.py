@@ -117,17 +117,33 @@ class TokenChunker(Chunker):
         sentences = re.split(r'([。！？\.!\?])', text)
         return [s for s in (''.join(filter(None, t)) for t in zip_longest(sentences[0::2], sentences[1::2])) if s]
 
+    def _split_long_sentence(self, text):
+        while text:
+            if len(self.tokenizer.encode(text)) <= self.max_tokens:
+                yield text
+                return
+            low, high, end = 1, len(text), 0
+            while low <= high:
+                middle = (low + high) // 2
+                if len(self.tokenizer.encode(text[:middle])) <= self.max_tokens:
+                    end = middle
+                    low = middle + 1
+                else:
+                    high = middle - 1
+            if end == 0:
+                raise ValueError('max_tokens is too small to preserve a complete character.')
+            yield text[:end]
+            text = text[end:]
+
     def _process_chunks(self, processed_paragraphs):
         chunks = []
         current_chunk_text_parts = []
-        current_chunk_tokens = 0
 
         for p_text in processed_paragraphs:
             p_tokens = self.tokenizer.encode(p_text)
 
-            if current_chunk_tokens + len(p_tokens) <= self.max_tokens:
+            if len(self.tokenizer.encode(''.join(current_chunk_text_parts) + p_text)) <= self.max_tokens:
                 current_chunk_text_parts.append(p_text)
-                current_chunk_tokens += len(p_tokens)
             else:
                 if current_chunk_text_parts:
                     chunks.append(''.join(current_chunk_text_parts))
@@ -136,23 +152,17 @@ class TokenChunker(Chunker):
                     sentences = self._split_sentences(p_text)
 
                     sub_chunk_parts = []
-                    sub_chunk_tokens = 0
-                    for sent in sentences:
-                        sent_tokens_count = len(self.tokenizer.encode(sent))
-                        if sub_chunk_tokens + sent_tokens_count <= self.max_tokens:
+                    for sent in (part for sentence in sentences for part in self._split_long_sentence(sentence)):
+                        if len(self.tokenizer.encode(''.join(sub_chunk_parts) + sent)) <= self.max_tokens:
                             sub_chunk_parts.append(sent)
-                            sub_chunk_tokens += sent_tokens_count
                         else:
                             if sub_chunk_parts:
                                 chunks.append(''.join(sub_chunk_parts))
                             sub_chunk_parts = [sent]
-                            sub_chunk_tokens = sent_tokens_count
 
                     current_chunk_text_parts = sub_chunk_parts
-                    current_chunk_tokens = sub_chunk_tokens
                 else:
                     current_chunk_text_parts = [p_text]
-                    current_chunk_tokens = len(p_tokens)
 
         if current_chunk_text_parts:
             final_chunk_text = ''.join(current_chunk_text_parts)
