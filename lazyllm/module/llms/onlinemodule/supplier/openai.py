@@ -264,7 +264,10 @@ class OpenAIText2Image(LazyLLMOnlineText2ImageModuleBase):
             if value is not None:
                 payload[key] = value
         # Framework options such as priority/stream_output are not Images API parameters.
-        with requests.post((url or self._base_url).rstrip('/') + '/images/generations',
+        endpoint = (url or self._base_url).rstrip('/')
+        if not endpoint.endswith('/images/generations'):
+            endpoint += '/images/generations'
+        with requests.post(endpoint,
                            headers=self._header, json=payload, timeout=request_timeout) as response:
             response.raise_for_status()
             data = response.json().get('data')

@@ -325,7 +325,7 @@ class _OpenAICompatibleResponseParser:
         choice = select_primary_choice(choices)
         if choice is None: return
         output = choice.get('message') or choice.get('delta') or {}
-        if (output.get('content') or output.get('reasoning_content')
+        if (output.get('content') or output.get('reasoning_content') or output.get('refusal')
                 or output.get('tool_calls') or output.get('function_call')):
             state.semantic_output = True
         raw_finish_reason = choice.get('finish_reason')

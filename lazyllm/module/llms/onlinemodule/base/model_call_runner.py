@@ -1,3 +1,4 @@
+import asyncio
 import random
 import socket
 import time
@@ -8,6 +9,7 @@ from typing import Callable, List, Optional
 import requests
 
 from ....module import ModuleExecutionError
+from .model_request import _ModelCallDeadlineExceeded
 from .model_outcome import (
     ModelCallError,
     ModelCallTerminal,
@@ -75,86 +77,115 @@ class _ModelCallRunner:
         self._emit_event('model_call_started', {'model_call_id': model_call_id})
         max_attempts = max(1, int(max_attempts))
         semantic_output = False
-        for attempt_index in range(1, max_attempts + 1):
-            state = ModelAttemptState()
-            try:
-                self._check_cancel()
-                result = execute_attempt(state)
-                self._check_cancel()
-                state.frames = result
-                semantic_output = semantic_output or state.semantic_output
-                terminal = ModelCallTerminal(
-                    model_call_id=model_call_id,
-                    attempt_count=attempt_index,
-                    kind='finish',
-                    finish=state.finish,
-                    has_semantic_output=semantic_output,
-                    duration_ms=self._duration_ms(started_at),
-                    usage=state.usage,
-                )
-                self._finish(terminal)
-                if state.finish in (ModelFinish.STOP, ModelFinish.TOOL_CALLS):
-                    return result
-                raise ModelCallError(
-                    'Model call ended without a complete answer.', terminal, state.frames,
-                )
-            except (ModelCallError, ModuleExecutionError):
-                raise
-            except _ModelResponseError as exc:
-                self._check_cancel()
-                semantic_output = semantic_output or state.semantic_output
-                exc.failure.response_started = state.response_started
-                self._report(exc.failure)
-                terminal = ModelCallTerminal(
-                    model_call_id=model_call_id,
-                    attempt_count=attempt_index,
-                    kind='failure',
-                    failure=exc.failure,
-                    has_semantic_output=semantic_output,
-                    duration_ms=self._duration_ms(started_at),
-                    usage=state.usage,
-                )
-                self._finish(terminal)
-                raise ModelCallError(str(exc), terminal, state.frames) from exc
-            except Exception as exc:
-                self._check_cancel()
-                semantic_output = semantic_output or state.semantic_output
-                retryable = self._is_retryable_transport_error(exc)
-                if retryable and not state.response_started and not semantic_output and attempt_index < max_attempts:
-                    delay = self._retry_delay(attempt_index)
-                    self._emit_event('model_retry_scheduled', {
-                        'model_call_id': model_call_id,
-                        'retry_index': attempt_index,
-                        'max_attempts': max_attempts,
-                        'delay_ms': int(delay * 1000),
-                    })
-                    if self._control is not None:
-                        self._control.wait(delay)
+        state = ModelAttemptState()
+        attempt_index = 0
+        try:
+            for attempt_index in range(1, max_attempts + 1):
+                state = ModelAttemptState()
+                try:
+                    self._check_cancel()
+                    result = execute_attempt(state)
+                    self._check_cancel()
+                    state.frames = result
+                    semantic_output = semantic_output or state.semantic_output
+                    terminal = ModelCallTerminal(
+                        model_call_id=model_call_id,
+                        attempt_count=attempt_index,
+                        kind='finish',
+                        finish=state.finish,
+                        has_semantic_output=semantic_output,
+                        duration_ms=self._duration_ms(started_at),
+                        usage=state.usage,
+                    )
+                    self._finish(terminal)
+                    if state.finish in (ModelFinish.STOP, ModelFinish.TOOL_CALLS):
+                        return result
+                    raise ModelCallError(
+                        'Model call ended without a complete answer.', terminal, state.frames,
+                    )
+                except (ModelCallError, ModuleExecutionError):
+                    raise
+                except _ModelResponseError as exc:
+                    self._check_cancel()
+                    semantic_output = semantic_output or state.semantic_output
+                    exc.failure.response_started = state.response_started
+                    self._report(exc.failure)
+                    terminal = ModelCallTerminal(
+                        model_call_id=model_call_id,
+                        attempt_count=attempt_index,
+                        kind='failure',
+                        failure=exc.failure,
+                        has_semantic_output=semantic_output,
+                        duration_ms=self._duration_ms(started_at),
+                        usage=state.usage,
+                    )
+                    self._finish(terminal)
+                    raise ModelCallError(str(exc), terminal, state.frames) from exc
+                except Exception as exc:
+                    self._check_cancel()
+                    semantic_output = semantic_output or state.semantic_output
+                    retryable = self._is_retryable_transport_error(exc)
+                    if (retryable and not state.response_started and not semantic_output
+                            and attempt_index < max_attempts):
+                        self._wait_for_retry(model_call_id, attempt_index, max_attempts)
                         continue
-                    else:
-                        self._sleep(delay)
-                        continue
-                failure = ModelFailure(
-                    origin=ModelFailureOrigin.TRANSPORT,
-                    code=(ModelFailureCode.REQUEST_TIMEOUT if any(
-                        isinstance(item, (requests.Timeout, socket.timeout)) for item in exception_chain(exc)
-                    ) else ModelFailureCode.TRANSPORT_ERROR),
-                    diagnostic_id=uuid.uuid4().hex,
-                    response_started=state.response_started,
-                )
-                self._report(failure)
-                terminal = ModelCallTerminal(
-                    model_call_id=model_call_id,
-                    attempt_count=attempt_index,
-                    kind='failure',
-                    failure=failure,
-                    has_semantic_output=semantic_output,
-                    duration_ms=self._duration_ms(started_at),
-                    usage=state.usage,
-                )
-                self._finish(terminal)
-                raise ModelCallError('Model transport failed.', terminal, state.frames) from exc
+                    failure = ModelFailure(
+                        origin=ModelFailureOrigin.TRANSPORT,
+                        code=(ModelFailureCode.REQUEST_TIMEOUT if any(
+                            isinstance(item, (requests.Timeout, socket.timeout)) for item in exception_chain(exc)
+                        ) else ModelFailureCode.TRANSPORT_ERROR),
+                        diagnostic_id=uuid.uuid4().hex,
+                        response_started=state.response_started,
+                    )
+                    self._report(failure)
+                    terminal = ModelCallTerminal(
+                        model_call_id=model_call_id,
+                        attempt_count=attempt_index,
+                        kind='failure',
+                        failure=failure,
+                        has_semantic_output=semantic_output,
+                        duration_ms=self._duration_ms(started_at),
+                        usage=state.usage,
+                    )
+                    self._finish(terminal)
+                    raise ModelCallError('Model transport failed.', terminal, state.frames) from exc
+        except (asyncio.CancelledError, ModuleExecutionError) as exc:
+            # Cancellation can arise inside transport, a post-read check or retry
+            # backoff. Close the same call lifecycle and preserve the exception.
+            kind, failure = self._interruption_outcome(exc, state)
+            self._finish(ModelCallTerminal(
+                model_call_id=model_call_id, attempt_count=attempt_index,
+                kind=kind, failure=failure,
+                has_semantic_output=semantic_output or state.semantic_output,
+                duration_ms=self._duration_ms(started_at), usage=state.usage,
+            ))
+            raise
         raise AssertionError('model call runner exhausted without a terminal')
+
+    def _wait_for_retry(self, model_call_id, attempt_index, max_attempts):
+        delay = self._retry_delay(attempt_index)
+        self._emit_event('model_retry_scheduled', {
+            'model_call_id': model_call_id,
+            'retry_index': attempt_index,
+            'max_attempts': max_attempts,
+            'delay_ms': int(delay * 1000),
+        })
+        if self._control is not None:
+            self._control.wait(delay)
+        else:
+            self._sleep(delay)
+
+    @staticmethod
+    def _interruption_outcome(exc, state):
+        if isinstance(exc, asyncio.CancelledError):
+            return 'cancelled', None
+        return 'failure', ModelFailure(
+            origin=ModelFailureOrigin.TRANSPORT,
+            code=(ModelFailureCode.REQUEST_TIMEOUT if isinstance(exc, _ModelCallDeadlineExceeded)
+                  else ModelFailureCode.TRANSPORT_ERROR),
+            diagnostic_id=uuid.uuid4().hex,
+            response_started=state.response_started,
+        )
 
     def _check_cancel(self):
         if self._control is not None: self._control.check()

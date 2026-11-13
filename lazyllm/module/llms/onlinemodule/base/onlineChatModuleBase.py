@@ -13,6 +13,7 @@ from operator import itemgetter as itemget
 
 import lazyllm
 from lazyllm import globals, pipeline, config
+from lazyllm.components import EmptyFormatter
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ....servermodule import LLMBase, StaticParams
@@ -22,6 +23,7 @@ from .model_call_runner import (
     is_retryable_transport_error,
 )
 from .model_outcome import ModelCallError, ModelFailure, ModelFinish
+from .protocol_ir import MessageIR, RequestIR, ResponseIR, _PROVIDER_ITEMS
 from .model_request import (
     ModelRequest, _ControlledModelCall, model_response, response_frames, _requires_vision,
 )
@@ -157,8 +159,7 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
         choice = select_primary_choice(response['choices'])
         if choice is None:
             raise ValueError(f'The response {response} contains no choices.')
-        outputs = choice.get('message') or choice.get('delta', {})
-        return outputs
+        return ResponseIR.from_chat(response).message.to_chat()
 
     def _merge_stream_result(self, src: List[Union[str, int, list, dict]], force_join: bool = False):
         src = [ele for ele in src if ele is not None]
@@ -192,7 +193,9 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
             if 'index' in src[-1]:
                 grouped = [list(g) for _, g in groupby(sorted(src, key=itemget('index')), key=itemget('index'))]
                 if len(grouped) > 1: return [self._merge_stream_result(src) for src in grouped]
-            return {k: self._merge_stream_result([d.get(k) for d in src], k == 'content') for k in set().union(*src)}
+            joined_fields = ('content', 'reasoning_content', 'refusal', 'arguments')
+            return {k: self._merge_stream_result([d.get(k) for d in src], k in joined_fields)
+                    for k in set().union(*src)}
         return src[-1]
 
     def _extract_partial_content(self, msg_json: list) -> str:
@@ -333,10 +336,14 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
 
         data.pop('timeout', None)
         self._bound_output_tokens(data, output_limit, kw)
+        semantic = RequestIR.from_payload(data)
         data = self._prepare_request_data(data)
+        if isinstance(data.get('messages'), list):
+            data['messages'] = [{k: v for k, v in message.items() if k != _PROVIDER_ITEMS}
+                                for message in data['messages']]
 
         return (data, runtime_url, stream_output, request_timeout, max(1, int(max_retries)),
-                _requires_vision([__input, llm_chat_history], files))
+                _requires_vision([__input, llm_chat_history], files), semantic)
 
     def _output_token_key(self, data):
         return 'max_completion_tokens' if 'max_completion_tokens' in data else 'max_tokens'
@@ -357,10 +364,11 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
             state.usage = self._extract_usage([message])
 
     def forward(self, __input=None, *, call_control=None, **kwargs):
-        data, url, stream, timeout, max_attempts, vision = self._prepare_request(__input, **kwargs)
+        data, url, stream, timeout, max_attempts, vision, semantic = self._prepare_request(__input, **kwargs)
         if call_control is not None:
             if call_control.request_check is not None:
-                call_control.validate_request(ModelRequest(json.dumps(data, ensure_ascii=False), self.type, vision))
+                call_control.validate_request(ModelRequest(json.dumps(data, ensure_ascii=False),
+                                                           self.type, vision, semantic))
             else:
                 call_control.check()
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
@@ -377,7 +385,13 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
         usage = self._extract_usage(msg_json)
         self._record_usage(usage)
         extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
-        return self._formatter(extractor) if extractor else ''
+        visible = {k: v for k, v in extractor.items() if k != _PROVIDER_ITEMS}
+        if isinstance(self._formatter, EmptyFormatter):
+            visible['content'] = MessageIR.from_chat(visible).text
+        result = self._formatter(visible) if visible else ''
+        if isinstance(result, dict) and extractor.get(_PROVIDER_ITEMS):
+            result[_PROVIDER_ITEMS] = copy.deepcopy(extractor[_PROVIDER_ITEMS])
+        return result
 
     @classmethod
     def merge_usage_records(cls, existing, usage):

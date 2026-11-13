@@ -5,6 +5,7 @@ import re
 import socket
 import time
 from contextlib import contextmanager, nullcontext
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
@@ -12,6 +13,7 @@ import requests
 
 from lazyllm.common import HandledException
 from ....module import ModuleExecutionError
+from .protocol_ir import RequestIR
 
 
 class _ModelCallDeadlineExceeded(ModuleExecutionError):
@@ -80,6 +82,7 @@ class ModelRequest:
     _json: str = field(repr=False)
     model_type: str
     requires_vision: bool = False
+    _semantic: Optional[RequestIR] = field(default=None, repr=False)
     is_estimate: bool = field(default=True, init=False)
 
     @property
@@ -87,12 +90,11 @@ class ModelRequest:
         return json.loads(self._json)
 
     def estimate_tokens(self, text_estimator, message_estimator=None):
-        data = self.payload
-        messages = data.pop('messages', [])
-        estimate_message = message_estimator or (
-            lambda message: text_estimator(json.dumps(message, ensure_ascii=False)))
-        return text_estimator(json.dumps({**data, 'messages': []}, ensure_ascii=False)) + sum(
-            estimate_message(message) + 4 for message in messages)
+        return self.ir.estimate_tokens(text_estimator, message_estimator)
+
+    @property
+    def ir(self):
+        return deepcopy(self._semantic) if self._semantic is not None else RequestIR.from_payload(self.payload)
 
 
 def response_chunks(response, control):

@@ -1,4 +1,5 @@
 from lazyllm.module import ModuleBase
+from lazyllm.module.llms.onlinemodule.base.protocol_ir import MessageIR
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import LOG, globals as lazyllm_globals, pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
@@ -18,6 +19,7 @@ from .base import (
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
+from copy import deepcopy
 import re
 import json
 import inspect
@@ -284,12 +286,7 @@ class FunctionCall(ModuleBase):
         remaining_rounds: Optional[int],
     ) -> Dict[str, Any]:
         current_round_messages = self._build_current_tool_messages(workspace, budget_notice)
-        workspace['history'].append({
-            'role': 'assistant',
-            'content': input.get('content', ''),
-            'tool_calls': input.get('tool_calls', []),
-            'reasoning_content': input.get('reasoning_content', ''),
-        })
+        workspace['history'].append(MessageIR.from_chat(input).to_chat())
         prior_history = workspace['history'][:]
         workspace['history'].extend(current_round_messages)
         compacted_prior, compacted_current = self._compact_history(
@@ -366,6 +363,9 @@ class FunctionCall(ModuleBase):
         return input
 
     def _post_action(self, llm_output: Dict[str, Any]):  # noqa: C901
+        message = MessageIR.from_chat(llm_output)
+        llm_output = message.to_chat()
+        llm_output['content'] = message.text
         if not llm_output.get('tool_calls'):
             if (match := re.search(r'Action:\s*Call\s+(\w+)\s+with\s+parameters\s+(\{.*?\})', llm_output['content'])):
                 try:
@@ -378,7 +378,7 @@ class FunctionCall(ModuleBase):
             tool_calls = self._tools_manager.normalize_tool_calls(tool_calls)
             llm_output['tool_calls'] = tool_calls
             if self._stream:
-                _write_agent_data('tool_calls', tool_calls=tool_calls)
+                _write_agent_data('tool_calls', tool_calls=tool_calls, assistant_message=deepcopy(llm_output))
             tool_calls_results = self._tools_manager(
                 tool_calls,
                 allowed_tool_names=self._get_visible_tool_names(),
@@ -426,6 +426,8 @@ class FunctionCall(ModuleBase):
                                 pass
                         return '\n'.join(str(_tool_result_observation(r)) for r in tool_calls_results)
         else:
+            if getattr(self, '_stream', False):
+                _write_agent_data('assistant_message', assistant_message=deepcopy(llm_output))
             llm_output = llm_output['content']
         if self._runtime_observer:
             try:
