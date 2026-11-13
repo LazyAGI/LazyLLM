@@ -252,7 +252,10 @@ class ReactAgent(LazyLLMAgentBase):
                 LOG.warning(f'ReactAgent reached max_retries={self._max_retries}, attempting force summarize.')
                 summary = None
                 try:
-                    summary = self._force_summarize_from_history(history)
+                    # The final tool batch normally enters history at the next round's start.
+                    workspace = agent_ctx.get('workspace', {})
+                    summary_history = [*history, ret, *self._fc._build_current_tool_messages(workspace, None)]
+                    summary = self._force_summarize_from_history(summary_history)
                 except Exception as e:
                     LOG.warning(f'ReactAgent force-summarize call failed: {e}')
                 if summary is not None:
