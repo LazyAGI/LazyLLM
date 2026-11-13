@@ -283,7 +283,7 @@ class DocImpl:
             # existing_sig is empty (legacy data without signature): update in-place
             LOG.warning('Node group %r has no signature (legacy data), updating in-place '
                         'with new signature %r', name, new_sig)
-        for t in (transforms if isinstance(transform, list) else [transforms]):
+        for t in (transforms if isinstance(transforms, list) else [transforms]):
             if isinstance(t.f, str):
                 t.f = _transmap[t.f.lower()]
             if isinstance(t.f, type):

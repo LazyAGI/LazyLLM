@@ -126,9 +126,9 @@ class DocxReader(_RichReader):
             else:
                 with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp_file:
                     temp_path = tmp_file.name
-
-                with fs.open(file, 'rb') as remote_file:
-                    tmp_file.write(remote_file.read())
+                    temp_files_to_cleanup.append(temp_path)
+                    with fs.open(file, 'rb') as remote_file:
+                        tmp_file.write(remote_file.read())
 
                 doc = docx.Document(docx=temp_path)
             return doc
