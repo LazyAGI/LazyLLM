@@ -3,7 +3,7 @@
 LazyLLM支持Apacalora, Collie, LlamaFactory, Flagembedding, Dummy, Auto多种微调方法。
 这部分主要介绍每个微调方法的参数和可额外添加的关键字。
 
-具体的使用参考: [不同模型微调实现示例](./fintune_example.md)
+具体的使用参考: [不同模型微调实现示例](./finetune_example.md)
 
 ## ApacaloraFinetune
 
@@ -235,4 +235,4 @@ print(command)
 ## 注意
 
 这部分主要介绍各微调框架的参数，具体的使用方式参考: 
-[不同模型微调实现示例](./fintune_example.md)
+[不同模型微调实现示例](./finetune_example.md)
