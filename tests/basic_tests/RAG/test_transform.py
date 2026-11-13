@@ -1554,6 +1554,33 @@ class TestGroupNodeParser:
         result = parser.forward(RichDocNode(nodes=nodes))
         assert len(result) >= 1
 
+    def test_split_large_table_does_not_duplicate_caption_or_footnote(self):
+        caption = 'Table 3: Quarterly revenue by region'
+        footnote = 'Source: internal finance report, 2025'
+        rows = '\n'.join([
+            '| Region | Q1 | Q2 | Q3 | Q4 |',
+            '| --- | --- | --- | --- | --- |',
+            '| North America | 120 | 135 | 150 | 165 |',
+            '| Europe | 110 | 118 | 126 | 134 |',
+            '| Asia Pacific | 90 | 105 | 120 | 140 |',
+            '| Latin America | 60 | 66 | 72 | 80 |',
+        ])
+        # Producer shape: TableBlock.text_content() emits caption first and
+        # footnote last, update_metadata() mirrors the same strings into metadata.
+        node = DocNode(
+            text=f'{caption}\n{rows}\n{footnote}',
+            metadata={'type': 'table', 'table_caption': caption, 'table_footnote': footnote},
+        )
+
+        chunks = self.parser._split_large_node(node, max_length=120)
+
+        assert len(chunks) > 1
+        # Exactly once, not at most once: a chunk in the middle of the table does
+        # not carry the caption in its own text, so it must still receive it.
+        for chunk in chunks:
+            assert chunk._content.count(caption) == 1
+            assert chunk._content.count(footnote) == 1
+
 
 class TestLayoutNodeParser:
     def setup_method(self):

@@ -361,9 +361,9 @@ class GroupNodeParser(NodeTransform):
         if is_table:
             table_caption = metadata.get('table_caption', '')
             table_footnote = metadata.get('table_footnote', '')
-            if table_caption and not content.lstrip().startswith('table_caption'):
+            if table_caption and not content.lstrip().startswith(table_caption):
                 content = f'{table_caption}\n{content}'
-            if table_footnote and not content.rstrip().endswith('table_footnote'):
+            if table_footnote and not content.rstrip().endswith(table_footnote):
                 content = f'{content.rstrip()}\n\n{table_footnote}'
 
         new_node = DocNode(text=content, metadata=copy.deepcopy(metadata))
