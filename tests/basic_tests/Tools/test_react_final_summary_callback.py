@@ -57,3 +57,54 @@ def test_final_summary_callback_uses_the_public_constructor_and_preserves_llm(tm
     assert len(llm.calls) == 2
     assert len(prompts) == 1 and 'completed observation' in prompts[0]
     assert agent._llm is llm
+
+
+def indexed_summary_observation(index: int) -> str:
+    '''Return a distinct observation for each tool round.
+
+    Args:
+        index (int): The current tool round.
+    '''
+    return f'observation-marker-{index}'
+
+
+@pytest.mark.parametrize('max_retries', [1, 5])
+@pytest.mark.parametrize('use_callback', [False, True])
+def test_final_summary_includes_the_last_executed_observation(tmp_path, max_retries, use_callback):
+    import json
+    import lazyllm
+
+    class IndexedModel(ScriptedModel):
+        def __call__(self, *args, **kwargs):
+            self.calls.append(args)
+            index = len(self.calls) - 1
+            if index > max_retries:
+                return 'final answer'
+            return {'content': '', 'tool_calls': [{
+                'id': f'observation-{index}', 'type': 'function',
+                'function': {'name': 'indexed_summary_observation',
+                             'arguments': json.dumps({'index': index})},
+            }]}
+
+    llm = IndexedModel()
+    prompts = []
+
+    def summarize(prompt):
+        prompts.append(prompt)
+        return 'final answer'
+
+    agent = ReactAgent(llm, [indexed_summary_observation], max_retries=max_retries, force_summarize=True,
+                       workspace=str(tmp_path), enable_builtin_tools=False, sandbox=None,
+                       final_summary_call=summarize if use_callback else None)
+    assert agent('task', llm_chat_history=[{'role': 'user', 'content': 'old-evidence-marker'}]) == 'final answer'
+    prompt = prompts[0] if use_callback else llm.calls[-1][0]
+    assert f'observation-marker-{max_retries}' in prompt
+    assert prompt.count(f'observation-marker-{max_retries}') == 1
+    assert len(llm.calls) == max_retries + 1 + (not use_callback)
+    if max_retries == 5:
+        assert 'old-evidence-marker' not in prompt
+        assert 'observation-marker-0' not in prompt
+    # Summary rendering must not consume pending results from the retained workspace.
+    workspace = lazyllm.locals['_lazyllm_agent']['workspace']
+    assert workspace['tool_call_trace'][0]['tool_call_result']['value'] == f'observation-marker-{max_retries}'
+    assert all(f'observation-marker-{max_retries}' not in str(m) for m in workspace['history'])
