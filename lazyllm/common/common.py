@@ -161,8 +161,8 @@ class LazyLLMCMD(object):
 
     def get_args(self, key):
         assert not callable(self.cmd), f'Cannot get args from function {self.cmd}'
-        pattern = r'*(-{1,2}' + re.escape(key) + r')(\s|=|)(\S+|)*'
-        return re.match(pattern, self.cmd)[3]
+        pattern = r'(?:^|\s)(-{1,2}' + re.escape(key) + r')(\s+|=)(\S+)'
+        return re.search(pattern, self.cmd)[3]
 
 class TimeoutException(Exception):
     pass
