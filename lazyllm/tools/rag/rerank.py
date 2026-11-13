@@ -1,7 +1,7 @@
 import importlib.util
 
 from functools import lru_cache
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import lazyllm
 from lazyllm.thirdparty import spacy
@@ -60,8 +60,14 @@ class Reranker(ModuleBase, _PostProcess):
 
 
 @lru_cache(maxsize=None)
-def get_nlp_and_matchers(language):
-    nlp = spacy.blank(language)
+def _get_nlp(language: str):
+    return spacy.blank(language)
+
+
+# Matchers are shared through this cache, so each keyword set gets its own and none is modified after creation.
+@lru_cache(maxsize=128)
+def get_nlp_and_matchers(language: str, required_keys: Tuple[str, ...] = (), exclude_keys: Tuple[str, ...] = ()):
+    nlp = _get_nlp(language)
 
     spec = importlib.util.find_spec('spacy.matcher')
     if spec is None:
@@ -74,6 +80,10 @@ def get_nlp_and_matchers(language):
 
     required_matcher = matcher_module.PhraseMatcher(nlp.vocab)
     exclude_matcher = matcher_module.PhraseMatcher(nlp.vocab)
+    if required_keys:
+        required_matcher.add('RequiredKeywords', list(nlp.pipe(required_keys)))
+    if exclude_keys:
+        exclude_matcher.add('ExcludeKeywords', list(nlp.pipe(exclude_keys)))
     return nlp, required_matcher, exclude_matcher
 
 
@@ -81,11 +91,8 @@ def get_nlp_and_matchers(language):
 def KeywordFilter(node: DocNode, required_keys: Optional[List[str]] = None, exclude_keys: Optional[List[str]] = None,
                   language: str = 'en', **kwargs) -> Optional[DocNode]:
     assert required_keys or exclude_keys, 'One of required_keys or exclude_keys should be provided'
-    nlp, required_matcher, exclude_matcher = get_nlp_and_matchers(language)
-    if required_keys:
-        required_matcher.add('RequiredKeywords', list(nlp.pipe(required_keys)))
-    if exclude_keys:
-        exclude_matcher.add('ExcludeKeywords', list(nlp.pipe(exclude_keys)))
+    nlp, required_matcher, exclude_matcher = get_nlp_and_matchers(
+        language, tuple(required_keys or ()), tuple(exclude_keys or ()))
 
     doc = nlp(node.get_text())
     if required_keys and not required_matcher(doc):
