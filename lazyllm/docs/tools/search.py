@@ -1042,3 +1042,55 @@ res = tavily('latest AI research', search_depth='advanced', include_answer=True)
 # 新闻搜索
 res = tavily('AI news', topic='news', days=1, max_results=5)
 ''')
+
+add_chinese_doc('ParallelSearch', '''
+通过 https://mcp.parallel.ai/mcp 匿名调用 Parallel Unified MCP 的网页搜索模块。
+显式选择此模块才会使用 Parallel，不替换现有提供商。无需 API 密钥或推理模型。
+匿名服务有速率限制，服务端默认使用 Fast 模式；不读取动态密钥，也不支持凭据参数。
+Args:
+    timeout (int): 网络超时秒数，默认 30。
+    source_name (str): 结果来源标识，默认 parallel。
+    enabled (bool): 默认 True；设为 False 时，搜索和内容读取不发起网络请求。
+''')
+
+add_english_doc('ParallelSearch', '''
+Optional anonymous web search via Parallel Unified MCP at https://mcp.parallel.ai/mcp.
+Select this module explicitly; existing providers are unchanged. No API key or inference model is needed.
+Anonymous access is rate limited and uses the server's default Fast mode. Credential arguments are unsupported;
+this module does not read dynamic credentials or retry another provider after errors.
+Install the optional MCP dependency with pip install mcp. Content reads fetch source pages directly.
+Args:
+    timeout (int): Network timeout in seconds, default 30.
+    source_name (str): Result source identifier, default parallel.
+    enabled (bool): Default True. False prevents network requests for search and content reads.
+''')
+
+add_english_doc('ParallelSearch.search', '''
+Search for one objective. max_results limits returned results locally, not the server request.
+search_queries optionally supplies related keyword queries; when omitted, query is used as the keyword query.
+Direct search calls raise errors; callable module calls follow SearchBase's raise_on_error convention.
+Args:
+    query (str): One natural-language search objective.
+    max_results (int): Maximum results returned locally, default 10.
+    search_queries (Optional[List[str]]): Related keyword queries, default [query].
+Returns:
+    List[Dict[str, Any]]: Results with title, url, snippet and source.
+''' + _GENERAL_SEARCH_GUIDANCE_EN)
+
+add_chinese_doc('ParallelSearch.search', '''
+搜索单一目标。max_results 仅在本地限制结果数量。search_queries 可提供相关关键词查询，默认使用 query。
+直接调用 search 会抛出错误；模块调用遵循 SearchBase 的 raise_on_error 约定。
+Args:
+    query (str): 单一自然语言搜索目标。
+    max_results (int): 本地返回结果上限，默认 10。
+    search_queries (Optional[List[str]]): 相关关键词查询，默认 [query]。
+Returns:
+    List[Dict[str, Any]]: 包含 title、url、snippet 和 source 的结果列表。
+''' + _GENERAL_SEARCH_GUIDANCE_ZH)
+
+add_example('ParallelSearch', '''
+>>> from lazyllm import ParallelSearch
+>>> search = ParallelSearch()
+>>> results = search('Find LazyLLM agent documentation', search_queries=['LazyLLM agent documentation'])
+>>> page = search.get_content(results[0])
+''')
