@@ -1744,6 +1744,39 @@ add_example('llms.onlinemodule.supplier.openrouter.OpenRouterChat', '''\
 ...     url='http://127.0.0.1:8000/v1/', skip_auth=True)
 ''')
 
+add_chinese_doc('llms.onlinemodule.supplier.atlascloud.AtlasCloudChat', '''\
+Atlas Cloud 在线对话模块，继承自 OnlineChatModuleBase，使用 Atlas Cloud 的 OpenAI 兼容接口。
+默认 API 地址为 ``https://api.atlascloud.ai/v1/``，默认模型为 ``openai/gpt-4.1-mini``。
+
+Args:
+    base_url (str, optional): Atlas Cloud 或兼容服务的 API 根地址。
+    model (str, optional): Atlas Cloud 模型 ID。默认为 ``openai/gpt-4.1-mini``。
+    api_key (str, optional): Atlas Cloud API Key；未显式传入时从 ``lazyllm.config['atlascloud_api_key']`` 读取。
+    stream (bool): 是否启用流式输出，默认为 True。
+    return_trace (bool): 是否返回调用链追踪信息，默认为 False。
+    **kwargs: 其他传递给基类 OnlineChatModuleBase 的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.atlascloud.AtlasCloudChat', '''\
+Online chat module for Atlas Cloud, inheriting from OnlineChatModuleBase and using its OpenAI-compatible API.
+Its default API root is ``https://api.atlascloud.ai/v1/`` and its default model is ``openai/gpt-4.1-mini``.
+
+Args:
+    base_url (str, optional): API root of Atlas Cloud or a compatible service.
+    model (str, optional): Atlas Cloud model ID. Defaults to ``openai/gpt-4.1-mini``.
+    api_key (str, optional): Atlas Cloud API key. When omitted, it is read from ``lazyllm.config['atlascloud_api_key']``.
+    stream (bool): Whether to enable streaming output. Defaults to True.
+    return_trace (bool): Whether to return trace information. Defaults to False.
+    **kwargs: Additional arguments passed to the base class OnlineChatModuleBase.
+''')
+
+add_example('llms.onlinemodule.supplier.atlascloud.AtlasCloudChat', '''\
+>>> import lazyllm
+>>> # Set environment variable: export LAZYLLM_ATLASCLOUD_API_KEY=your_api_key
+>>> chat = lazyllm.OnlineChatModule(source='atlascloud', model='openai/gpt-4.1-mini')
+>>> response = chat('Introduce LazyLLM in one sentence.')
+''')
+
 add_chinese_doc('llms.onlinemodule.supplier.openrouter.OpenRouterEmbed', '''\
 OpenRouter 在线文本向量模块，使用 OpenRouter 的 OpenAI 兼容 Embeddings 接口。默认模型为
 ``liquid/lfm-2.5-embedding-350m:free``。
