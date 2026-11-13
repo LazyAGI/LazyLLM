@@ -1,6 +1,7 @@
 import json
 
 import requests
+import pytest
 
 from lazyllm.module.llms.onlinemodule.base.model_call_runner import ModelAttemptState
 from lazyllm.module.llms.onlinemodule.supplier.openai_responses import (
@@ -179,3 +180,34 @@ def test_responses_stream_yields_text_and_tool_call(monkeypatch):
     assert result[0]['choices'][0]['delta']['content'] == 'Checking.'
     assert result[-1]['choices'][0]['delta']['tool_calls'][0]['id'] == 'call_2'
     assert state.usage['prompt_tokens'] == 12
+
+
+@pytest.mark.parametrize('stream', [True, False])
+@pytest.mark.parametrize('output', [[], [{'type': 'reasoning', 'summary': []}],
+                                    [{'type': 'message', 'content': []}]])
+def test_empty_response_preserves_agent_message_contract(monkeypatch, stream, output):
+    from types import SimpleNamespace
+    from lazyllm.components.formatter import FunctionCallFormatter
+    from lazyllm.tools.agent.functionCall import FunctionCall
+
+    payload = {'status': 'completed', 'output': output}
+
+    class Response:
+        status_code = 200
+        headers = {}
+        raw = SimpleNamespace()
+        text = json.dumps(payload)
+
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+
+        def iter_lines(self):
+            yield ('data: ' + json.dumps({'type': 'response.completed', 'response': payload})).encode()
+
+    monkeypatch.setattr(requests, 'post', lambda *args, **kwargs: Response())
+    model = OpenAIResponsesChat(base_url='https://provider.test/v1/', model='gpt-6.1-sol',
+                                api_key='test-key', stream=stream).formatter(FunctionCallFormatter())
+    message = model('Finish the tool result.', stream_output=stream)
+    assert isinstance(message, dict)
+    assert message['content'] == ''
+    assert FunctionCall._post_action(SimpleNamespace(_runtime_observer=None), message) == ''

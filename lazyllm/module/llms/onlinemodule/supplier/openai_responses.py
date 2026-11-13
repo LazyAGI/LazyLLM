@@ -95,7 +95,7 @@ def responses_to_chat_chunk(response):
     calls = [{'id': item['call_id'], 'type': 'function',
               'function': {'name': item['name'], 'arguments': item.get('arguments') or '{}'}}
              for item in output if item.get('type') == 'function_call']
-    message = {'role': 'assistant', 'content': text or None}
+    message = {'role': 'assistant', 'content': text}
     if calls:
         message['tool_calls'] = calls
     finish_reason = 'tool_calls' if calls else 'length' if response.get('status') == 'incomplete' else 'stop'
@@ -134,6 +134,10 @@ def _response_stream_as_chat(frames):
                 yield _chat_frame({'choices': [{'index': 0, 'delta': {'content': choice['message']['content']},
                                                 'finish_reason': None}]})
             delta = {'tool_calls': choice['message']['tool_calls']} if choice['message'].get('tool_calls') else {}
+            # A terminal-only response still carries an assistant message for
+            # structured formatters; an empty delta bypasses them in Chat Base.
+            if not text_emitted:
+                delta['content'] = ''
             yield _chat_frame({'choices': [{'index': 0, 'delta': delta,
                                             'finish_reason': choice['finish_reason']}],
                                **({'usage': complete['usage']} if 'usage' in complete else {})})
