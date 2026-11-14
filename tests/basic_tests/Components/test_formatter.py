@@ -251,6 +251,20 @@ class TestFormatter(object):
         result3 = jsf(origin3)
         assert result3 == {'escaped': 'quote "with {braces}"'}
 
+    def test_json_unbalanced_braces_in_string(self):
+        jsf = formatter.JsonFormatter()
+        assert jsf('Result: {"code": "while (x) {", "ok": true}') == {'code': 'while (x) {', 'ok': True}
+        assert jsf('{"close": "}"}') == {'close': '}'}
+        assert jsf('note: x} then {"a": 1}') == {'a': 1}
+
+    def test_json_escaped_backslash_before_quote(self):
+        jsf = formatter.JsonFormatter()
+        assert jsf('{"path": "C:\\\\Users\\\\", "n": 1}') == {'path': 'C:\\Users\\', 'n': 1}
+
+    def test_json_quote_in_surrounding_text(self):
+        jsf = formatter.JsonFormatter()
+        assert jsf('The box is 5" tall: {"height": 5}') == {'height': 5}
+
 
 class TestModuleFormatter(object):
     def test_module_formatter(self):
