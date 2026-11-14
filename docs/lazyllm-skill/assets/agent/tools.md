@@ -14,6 +14,7 @@
 
 - custom_search_api_key (str) – 用户申请的 Google API key。
 - search_engine_id (str) – 用户创建的搜索引擎 id。
+- base_url (str, default: https://customsearch.googleapis.com/customsearch/v1) – 请求地址；Google 将于 2027 年 1 月 1 日停止该 API，可替换为任意兼容 Custom Search 的地址。
 - timeout (int, default: 10) – 请求超时时间（秒）。
 - proxies (Dict[str, str], default: None) – 代理配置。
 

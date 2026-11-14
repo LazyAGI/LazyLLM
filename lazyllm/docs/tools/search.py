@@ -198,6 +198,8 @@ texts = [item['content'] for item in contents]
 add_chinese_doc('GoogleSearch', '''
 通过 Google Custom Search 搜索关键词。需配置 API key 与搜索引擎 ID。
 
+Google 已停止向新用户开放 Custom Search JSON API，并将于 2027 年 1 月 1 日停止该服务。之后如需继续使用本工具，可将 base_url 设为任意兼容 Custom Search 的地址（接受相同的 key、cx、q 等请求参数，并返回相同的 items 列表）。
+
 如何申请 API Key 与搜索引擎 ID：
 1. 打开 Google Cloud 控制台 https://console.cloud.google.com/ ，创建或选择项目。
 2. 启用 "Custom Search API"，在 "凭据" 中创建 API 密钥，即得到 custom_search_api_key。
@@ -206,6 +208,7 @@ add_chinese_doc('GoogleSearch', '''
 Args:
     custom_search_api_key (str, optional): 用户申请的 Google API key；为空时从 dynamic_tool_auth["google"] 读取。
     search_engine_id (str): 用户创建的检索用搜索引擎 id。
+    base_url (str): 请求地址，默认 "https://customsearch.googleapis.com/customsearch/v1"；可替换为任意兼容 Custom Search 的地址。
     timeout (int): 请求超时秒数，默认 10。
     proxies (Dict[str, str], optional): 代理配置，格式见 https://www.python-httpx.org/advanced/proxies。
     source_name (str): 结果中的来源标识，默认 "google"。
@@ -213,6 +216,8 @@ Args:
 
 add_english_doc('GoogleSearch', '''
 Search via Google Custom Search. Requires API key and search engine ID.
+
+Google has closed the Custom Search JSON API to new customers and discontinues it on January 1, 2027. To keep using this tool after that, set base_url to any Custom Search compatible endpoint (one that accepts the same key, cx and q request parameters and returns the same items list).
 
 How to get API key and search engine ID:
 1. Go to Google Cloud Console https://console.cloud.google.com/ , create or select a project.
@@ -222,6 +227,7 @@ How to get API key and search engine ID:
 Args:
     custom_search_api_key (str, optional): Google API key; when omitted, reads dynamic_tool_auth["google"].
     search_engine_id (str): Search engine ID for retrieval.
+    base_url (str): Endpoint the request is sent to, default "https://customsearch.googleapis.com/customsearch/v1"; any Custom Search compatible endpoint can be used.
     timeout (int): Request timeout in seconds, default 10.
     proxies (Dict[str, str], optional): Proxy config, see https://www.python-httpx.org/advanced/proxies.
     source_name (str): Source identifier in results, default "google".
