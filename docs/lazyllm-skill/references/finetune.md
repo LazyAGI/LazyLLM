@@ -9,7 +9,7 @@ LazyLLM 的微调功能基于 TrainableModule，支持：
 | 组件名称 | 组件功能 | 参考文档 |
 |---------|---------|---------|
 | 微调框架 | Apacalora, Collie, LlamaFactory, Flagembedding, Dummy, Auto | [微调方法介绍](../assets/finetune/finetune_framework.md) |
-| 微调分类 | 大模型微调和embedding模型微调区分 | [不同模型微调实现示例](../assets/finetune/fintune_example.md) |
+| 微调分类 | 大模型微调和embedding模型微调区分 | [不同模型微调实现示例](../assets/finetune/finetune_example.md) |
 | 推理框架 | Lightllm, VLLM, LMDeploy, Dummy, Auto | [部署示例](../assets/finetune/deploy_framework.md) |
 | 推理执行 | 大模型部署的实际操作 | [部署操作示例](../assets/finetune/deploy_example.md) |
 
@@ -74,7 +74,7 @@ Reranker 模型用于文档重排序，提升检索质量。
 
 ### 详细内容参考
 
-[不同模型微调实现示例](../assets/finetune/fintune_example.md)
+[不同模型微调实现示例](../assets/finetune/finetune_example.md)
 
 
 ## 部署模型
