@@ -13,7 +13,7 @@ from operator import itemgetter as itemget
 
 import lazyllm
 from lazyllm import globals, pipeline, config
-from lazyllm.components import EmptyFormatter
+from lazyllm.components import EmptyFormatter, FunctionCallFormatter
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ....servermodule import LLMBase, StaticParams
@@ -389,7 +389,9 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
         if isinstance(self._formatter, EmptyFormatter):
             visible['content'] = MessageIR.from_chat(visible).text
         result = self._formatter(visible) if visible else ''
-        if isinstance(result, dict) and extractor.get(_PROVIDER_ITEMS):
+        # Only message envelopes carry provider state into subsequent model turns.
+        if (isinstance(self._formatter, FunctionCallFormatter) and isinstance(result, dict)
+                and extractor.get(_PROVIDER_ITEMS)):
             result[_PROVIDER_ITEMS] = copy.deepcopy(extractor[_PROVIDER_ITEMS])
         return result
 
