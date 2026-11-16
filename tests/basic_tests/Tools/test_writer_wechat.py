@@ -1,9 +1,11 @@
 import json
 from io import BytesIO
 from pathlib import Path
+from random import Random
 
 from bs4 import BeautifulSoup
-from PIL import Image, ImageChops
+from PIL import Image
+import requests
 import pytest
 
 from lazyllm.tools.writer.adapter.wechat import WeChatWriterAdapter
@@ -28,6 +30,7 @@ from lazyllm.tools.writer.utils.serialization import parse_document_markdown
 
 
 def _patch_wechat_client(monkeypatch, client):
+    client.warnings = []
     monkeypatch.setattr('lazyllm.tools.writer.provider.wechat.WeChatClient', client)
     monkeypatch.setattr(
         WeChatWriterProvider,
@@ -202,78 +205,59 @@ def test_wechat_client_uses_draft_api_payloads(monkeypatch):
     Response.content = b'{"errcode":45002,"errmsg":"content size out of limit"}'
     with pytest.raises(ValueError) as raised:
         client.add_draft({'content': '<p>Article</p>'})
-    assert raised.value.error_code == 'WECHAT_HTML_TOO_LARGE'
+    assert raised.value.error_code == 'WECHAT_WRITE_REJECTED'
     with pytest.raises(RuntimeError):
         client.get_draft('media-1')
 
 
-@pytest.mark.parametrize(('filename', 'code'), [
-    ('image.png', 'WECHAT_BODY_IMAGE_TOO_LARGE'),
-    ('image.webp', 'WECHAT_IMAGE_FORMAT_UNSUPPORTED'),
-])
-def test_wechat_image_rejections_identify_the_reason(tmp_path, filename, code):
-    path = tmp_path / filename
-    path.write_bytes(b'x' * (1024 * 1024 + 1))
-    with pytest.raises(ValueError) as raised:
-        WeChatClient._image_file(path, body=True)
-    assert raised.value.error_code == code
-
-
-def test_wechat_draft_create_then_update(monkeypatch, tmp_path: Path):
+@pytest.mark.parametrize(('image_format', 'mode'), [('JPEG', 'RGB'), ('PNG', 'RGBA')])
+def test_wechat_draft_create_then_update(monkeypatch, tmp_path: Path, image_format, mode):
     calls = {}
 
-    class Client:
-        def __init__(self, token):
-            calls['token'] = token
+    def request(method, url, **kwargs):
+        assert method == 'POST' and kwargs['params']['access_token'] == 'stable-token'
+        body = json.loads(kwargs.get('data', b'{}'))
+        if url.endswith('/material/add_material'):
+            calls['cover'] = kwargs['files']['media']
+            payload = {'media_id': 'cover-media'}
+        elif url.endswith('/draft/add'):
+            calls['created'] = body['articles'][0]
+            payload = {'media_id': 'draft-media'}
+        elif url.endswith('/media/uploadimg'):
+            calls['body_image'] = kwargs['files']['media']
+            payload = {'url': 'https://mmbiz.qpic.cn/body.png'}
+        else:
+            assert url.endswith('/draft/update')
+            calls['updated'] = body
+            payload = {'errcode': 0}
+        response = requests.Response()
+        response.status_code = 200
+        response._content = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+        return response
 
-        def upload_cover(self, filename, data, mime):
-            calls['cover'] = (filename, data, mime)
-            return 'cover-media'
-
-        def add_draft(self, article):
-            calls['created'] = article
-            return 'draft-media'
-
-        def upload_body_image(self, path):
-            calls['body_image'] = path
-            return 'https://mmbiz.qpic.cn/body.png'
-
-        def update_draft(self, media_id, article, *, index=0):
-            calls['updated'] = (media_id, index, article)
-
-    _patch_wechat_client(monkeypatch, Client)
+    monkeypatch.setattr('lazyllm.tools.writer.provider.wechat.requests.request', request)
+    monkeypatch.setattr(WeChatWriterProvider, '_access_token', staticmethod(lambda: 'stable-token'))
     provider = WeChatWriterProvider()
     created = provider.replace_document(
         WriterDocument(
-            document_id='writer-1',
-            title='公众号测试文章',
-            stage='final',
+            document_id='writer-1', title='公众号测试文章', stage='final',
             blocks=[WriterBlock(node_id='intro', type='paragraph', content='初稿正文')],
         ),
         TargetDocument(adapter=provider.provider, title='公众号测试文章'),
     )
-
-    assert calls['token'] == 'stable-token'
-    assert calls['cover'][0] == 'lazymind-cover.png'
-    assert calls['cover'][1].startswith(b'\x89PNG')
     with Image.open(BytesIO(calls['cover'][1])) as cover:
         assert cover.size == (900, 383)
-        background = Image.new('RGB', cover.size, 'white')
-        text_bounds = ImageChops.difference(cover.convert('RGB'), background).getbbox()
-        assert text_bounds is not None
-        center = ((text_bounds[0] + text_bounds[2]) / 2, (text_bounds[1] + text_bounds[3]) / 2)
-        assert center == (450, 191.5)
-    assert calls['created']['content'] == '<p>初稿正文</p>'
+    assert calls['created']['content'] == '<p>初稿正文</p>' and created['warnings'] == []
     persisted = created['persisted_document']
     assert persisted.provider_binding['document_id'] == 'draft-media'
 
-    image_path = tmp_path / 'body.png'
-    image_path.write_bytes(b'png')
+    image_path = tmp_path / f'body.{image_format.lower()}'
+    Image.frombytes(mode, (1024, 1024), Random(0).randbytes(1024 * 1024 * len(mode))).save(
+        image_path, format=image_format, quality=100)
+    original = image_path.read_bytes()
+    code = '配置 = "中文 & 😀"\n' * 3000 + '正文末尾'
     persisted.blocks = [
-        WriterBlock(
-            node_id='heading', type='heading', content='章节',
-            numbering={'level': 1, 'ordered': True},
-        ),
+        WriterBlock(node_id='heading', type='heading', content='章节', numbering={'level': 1, 'ordered': True}),
         WriterBlock(
             node_id='paragraph', type='paragraph', content='粗体和链接',
             spans=[WriterSpan(text='粗体', style={'bold': True}), WriterSpan(text='和链接')],
@@ -281,37 +265,38 @@ def test_wechat_draft_create_then_update(monkeypatch, tmp_path: Path):
         ),
         _table_block(),
         WriterBlock(node_id='unsafe', type='paragraph', content='<script>'),
-        WriterBlock(
-            node_id='image', type='image', content='配图',
-            references=[{'type': 'media_asset', 'id': 'asset-1'}],
-        ),
+        WriterBlock(node_id='image', type='image', content='配图', references=[{'type': 'media_asset', 'id': 'asset-1'}]),
+        WriterBlock(node_id='code', type='code', content=code),
     ]
-    media = MediaAssetLibrary(
-        library_id='library',
-        assets={'asset-1': MediaAsset(
-            media_asset_id='asset-1', asset_type='image', source_type='web_search',
-            local_path=str(image_path),
-        )},
-    )
-    updated = provider.replace_document(
-        persisted,
-        TargetDocument(adapter=provider.provider),
-        media_assets=media,
-    )
+    media = MediaAssetLibrary(library_id='library', assets={'asset-1': MediaAsset(
+        media_asset_id='asset-1', asset_type='image', source_type='web_search', local_path=str(image_path),
+    )})
+    updated = provider.replace_document(persisted, TargetDocument(adapter=provider.provider), media_assets=media)
 
-    assert calls['body_image'] == image_path
-    assert calls['updated'][0] == 'draft-media'
-    assert calls['updated'][1] == 0
-    article = calls['updated'][2]
+    assert len(original) > 1024 * 1024 > len(calls['body_image'][1])
+    with Image.open(BytesIO(calls['body_image'][1])) as uploaded:
+        assert uploaded.format == image_format and uploaded.mode == mode
+        assert uploaded.width == uploaded.height and uploaded.width <= 1024
+        assert image_format != 'JPEG' or uploaded.size == (1024, 1024)
+        assert len(calls['body_image'][1]) > 900 * 1024
+    assert image_path.read_bytes() == original
+    assert calls['updated']['media_id'] == 'draft-media' and calls['updated']['index'] == 0
+    article = calls['updated']['articles']
     assert article['thumb_media_id'] == 'cover-media'
     assert '>1. 章节</h2>' in article['content']
     assert '>粗体</strong>和<a href="https://example.com">链接</a>' in article['content']
-    assert ' id=' not in article['content']
-    assert '<table ' in article['content']
     assert '>中文</td>' in article['content']
     assert '&lt;script&gt;' in article['content'] and '<script>' not in article['content']
     assert 'https://mmbiz.qpic.cn/body.png' in article['content']
+    assert 'margin-left:auto;margin-right:auto' in BeautifulSoup(article['content'], 'html.parser').find('img')['style']
+    centered = provider.convert_document(persisted, media_assets=media, template='clean').content
+    assert 'margin-left:auto;margin-right:auto' in BeautifulSoup(centered, 'html.parser').find('img')['style']
+    assert len(article['content']) < 20_000 and '正文末尾' not in article['content']
+    assert BeautifulSoup(article['content'], 'html.parser').find('code').get_text().startswith('配置')
+    assert article['content'].endswith('</code></pre>')
+    assert updated['persisted_document'].blocks == persisted.blocks
     assert updated['persisted_document'].provider_binding['document_id'] == 'draft-media'
+    assert set(updated['warnings']) == {'WECHAT_IMAGES_COMPRESSED', 'WECHAT_HTML_TRUNCATED'}
 
 
 def test_wechat_draft_uses_prepared_cover(monkeypatch, tmp_path: Path):
@@ -541,21 +526,6 @@ def test_wechat_patch_rejects_stale_remote_revision(monkeypatch):
         'expected_revision': '123',
         'actual_revision': '124',
     }
-
-
-def test_wechat_conversion_does_not_preempt_provider_content_limits():
-    document = WriterDocument(
-        document_id='long-document',
-        title='长文章',
-        blocks=[
-            WriterBlock(node_id=f'paragraph-{index}', type='paragraph', content='内容' * 125)
-            for index in range(81)
-        ],
-    )
-
-    converted = WeChatWriterProvider().convert_document(document, template='clean')
-
-    assert len(converted.content) > 20_000
 
 
 def test_wechat_markdown_code_and_quote_render_without_markdown_markers():

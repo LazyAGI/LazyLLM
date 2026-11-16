@@ -14,6 +14,9 @@ from lazyllm.tools.rag.store import (MapStore, ChromaStore, MilvusStore, OceanBa
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
 from lazyllm.tools.rag.global_metadata import GlobalMetadataDesc as DocField
+from lazyllm.tools.rag.store.store_base import Segment
+from lazyllm.tools.rag.store.segment.opensearch_store import DEFAULT_MAPPING_BODY as OPENSEARCH_MAPPING
+from lazyllm.tools.rag.store.segment.elasticsearch_store import DEFAULT_MAPPING_BODY as ELASTICSEARCH_MAPPING
 
 data = [
     {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
@@ -68,6 +71,24 @@ def _contains_array_term(query, field):
 
 
 class TestSegmentStoreCriteria(unittest.TestCase):
+    def test_serialized_segments_fit_strict_mappings_and_preserve_copy_source(self):
+        for store_type, mapping in ((OpenSearchStore, OPENSEARCH_MAPPING),
+                                    (ElasticSearchStore, ELASTICSEARCH_MAPPING)):
+            store = store_type(uris=['http://localhost:9200'])
+            for source in ({}, {'uid': 'source-node', RAG_DOC_ID: 'source-doc', RAG_KB_ID: 'source-kb'}):
+                segment = Segment(uid='node', doc_id='doc', group='group', content='text', copy_source=source)
+                store._global_metadata_desc = BUILDIN_GLOBAL_META_DESC
+                serialized = store._serialize_node(segment.model_dump())
+                self.assertLessEqual(serialized.keys(), mapping['mappings']['properties'].keys())
+                for description in (BUILDIN_GLOBAL_META_DESC, {}):
+                    store._global_metadata_desc = description
+                    restored = store._deserialize_node(serialized)
+                    self.assertEqual(restored['copy_source'], source)
+                    self.assertEqual(restored['meta'], segment.meta)
+                    self.assertEqual(restored['global_meta'], segment.global_meta)
+                    self.assertEqual(restored['image_keys'], segment.image_keys)
+                self.assertEqual(store._deserialize_node(segment.model_dump())['meta'], segment.meta)
+
     def test_opensearch_uses_terms_for_parent_and_number_lists(self):
         store = OpenSearchStore(uris=['http://localhost:9200'])
 

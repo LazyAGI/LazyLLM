@@ -402,6 +402,7 @@ class WriterResourceTools(WriterToolBase):
             step_name='apply_patch_to_document',
             primary_key='patch_result',
             summary='Applied patch to provider document.',
+            warnings=result.get('warnings'),
             counts={
                 'applied': len(patch_result.applied_hunks),
                 'failed': len(patch_result.failed_hunks),
