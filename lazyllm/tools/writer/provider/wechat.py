@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import mimetypes
 from collections.abc import Callable, Iterable
+from contextvars import ContextVar
 from html import escape
 from importlib.resources import files
 from io import BytesIO
@@ -33,6 +34,7 @@ _MP_HOME = 'https://mp.weixin.qq.com/'
 _BODY_IMAGE_LIMIT = 1024 * 1024
 _COVER_IMAGE_LIMIT = 2 * 1024 * 1024
 _HTML_LIMIT = 20_000 - 1
+wechat_progress = ContextVar('wechat_progress', default=lambda stage, **values: None)
 _DRAFT_TITLE_NOT_FOUND = (
     '未在当前默认公众号的草稿箱中找到匹配文章，'
     '请输入草稿文章的准确完整标题。'
@@ -111,6 +113,7 @@ def prepare_wechat_cover(
                 raise RuntimeError('image_generator is not configured')
             if generator is None:
                 raise RuntimeError('WeChat cover generation service is not configured')
+            wechat_progress.get()('cover_generate')
             result = generator(
                 '为微信公众号文章生成一张专业、简洁、无文字、无水印的横版封面图。\n'
                 f'文章标题：{title}\n文章内容摘要：{body[:1000]}',
@@ -120,6 +123,7 @@ def prepare_wechat_cover(
             image_path = Path(str(result.get('local_path') or ''))
             if not image_path.is_file():
                 raise ValueError('image_generator returned no usable local image')
+        wechat_progress.get()('cover_crop')
         with Image.open(image_path) as source:
             cover = ImageOps.fit(
                 ImageOps.exif_transpose(source).convert('RGB'),
@@ -131,6 +135,7 @@ def prepare_wechat_cover(
         lazyllm.LOG.warning(
             'WeChat cover generation failed; using placeholder cover: %s', exc,
         )
+        wechat_progress.get()('cover_placeholder')
         cover_path.write_bytes(wechat_placeholder_cover_png())
 
     prepared = target.model_copy(deep=True)
@@ -159,10 +164,12 @@ class WeChatClient:
         self.access_token = token
         self.timeout = timeout
         self.warnings: list[str] = []
+        self.on_progress = wechat_progress.get()
 
     def _compress_image(self, data: bytes, mime: str, limit: int) -> bytes:
         if len(data) < limit:
             return data
+        self.on_progress('image_compress')
         try:
             with PIL.Image.open(BytesIO(data)) as source:
                 frames = []
@@ -262,6 +269,7 @@ class WeChatClient:
         '''Upload an article body image and return its hosted URL.'''
         data, mime = self._image_file(path, body=True)
         data = self._compress_image(data, mime, _BODY_IMAGE_LIMIT)
+        self.on_progress('image_upload')
         payload = self._request_json(
             'POST', '/media/uploadimg',
             files={'media': (path.name, data, mime)},
@@ -274,6 +282,7 @@ class WeChatClient:
     def upload_cover(self, filename: str, data: bytes, mime: str) -> str:
         '''Upload permanent cover bytes and return their media ID.'''
         data = self._compress_image(data, mime, _COVER_IMAGE_LIMIT)
+        self.on_progress('cover_upload')
         payload = self._request_json(
             'POST', '/material/add_material',
             params={'type': 'image'},
@@ -612,9 +621,12 @@ class WeChatWriterProvider(WriterProviderBase):
 
         client = WeChatClient(self._access_token())
         image_assets = list(self._document_image_assets(document, media_assets))
-        image_urls = {
-            asset_id: client.upload_body_image(path) for asset_id, path in image_assets
-        }
+        image_urls = {}
+        progress = wechat_progress.get()
+        for index, (asset_id, path) in enumerate(image_assets, 1):
+            client.on_progress = lambda stage, index=index: progress(stage, current=index, total=len(image_assets))
+            image_urls[asset_id] = client.upload_body_image(path)
+        client.on_progress = progress
         html = str(converted.content)
         for asset_id, uploaded_url in image_urls.items():
             source_url = converted.media_references.get(asset_id, '')
@@ -654,6 +666,7 @@ class WeChatWriterProvider(WriterProviderBase):
             'only_fans_can_comment': int(document.metadata.get(
                 'only_fans_can_comment', article.get('only_fans_can_comment', 0)) or 0),
         })
+        progress('draft_write')
         if media_id:
             client.update_draft(media_id, article, index=article_index)
         else:
