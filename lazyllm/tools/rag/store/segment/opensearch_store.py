@@ -65,6 +65,7 @@ DEFAULT_MAPPING_BODY = {
             'excluded_llm_metadata_keys': {'type': 'keyword', 'store': True},
             'parent': {'type': 'keyword', 'store': True},
             'image_keys': {'type': 'keyword', 'store': True},
+            'copy_source': {'type': 'object', 'enabled': False},
         }
     }
 }
@@ -321,16 +322,10 @@ class OpenSearchStore(LazyLLMStoreBase):
 
     def _deserialize_node(self, segment: dict) -> dict:
         seg = dict(segment)
-        if self._global_metadata_desc and self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
-            meta = seg.get('meta', '{}')
-            global_meta = seg.get('global_meta', '{}')
-            image_keys = seg.get('image_keys', '[]')
-            if isinstance(meta, (str, bytes, bytearray)):
-                seg['meta'] = json.loads(meta)
-            if isinstance(global_meta, (str, bytes, bytearray)):
-                seg['global_meta'] = json.loads(global_meta)
-            if isinstance(image_keys, (str, bytes, bytearray)):
-                seg['image_keys'] = json.loads(image_keys)
+        for field, default in (('meta', '{}'), ('global_meta', '{}'), ('image_keys', '[]')):
+            value = seg.get(field, default)
+            if isinstance(value, (str, bytes, bytearray)):
+                seg[field] = json.loads(value)
         return seg
 
     def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:  # noqa: C901

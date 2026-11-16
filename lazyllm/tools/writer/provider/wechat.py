@@ -3,16 +3,19 @@ from __future__ import annotations
 import json
 import mimetypes
 from collections.abc import Callable, Iterable
+from contextvars import ContextVar
 from html import escape
 from importlib.resources import files
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import requests
 
 import lazyllm
+from lazyllm.thirdparty import PIL
 
-from ..adapter.wechat import WeChatWriterAdapter
+from ..adapter.wechat import WeChatWriterAdapter, _truncate_wechat_html
 from ..data_models.multimodal import MediaAssetLibrary
 from ..data_models.revision import PatchSet
 from ..data_models.task import InputResource, TargetDocument
@@ -28,6 +31,10 @@ from .base import (
 )
 
 _MP_HOME = 'https://mp.weixin.qq.com/'
+_BODY_IMAGE_LIMIT = 1024 * 1024
+_COVER_IMAGE_LIMIT = 2 * 1024 * 1024
+_HTML_LIMIT = 20_000 - 1
+wechat_progress = ContextVar('wechat_progress', default=lambda stage, **values: None)
 _DRAFT_TITLE_NOT_FOUND = (
     '未在当前默认公众号的草稿箱中找到匹配文章，'
     '请输入草稿文章的准确完整标题。'
@@ -67,6 +74,7 @@ def prepare_wechat_cover(
     document: WriterDocument | str,
     root: Path,
     *,
+    media_assets: MediaAssetLibrary | None = None,
     model_available: Callable[[str], bool] | None = None,
     generator: Callable[..., dict[str, Any]] | None = None,
 ) -> TargetDocument:
@@ -79,6 +87,7 @@ def prepare_wechat_cover(
         target.adapter != 'wechat'
         or target.doc_id
         or target.meta.get('thumb_media_id')
+        or target.meta.get('cover_path')
     ):
         return target
     if isinstance(document, WriterDocument):
@@ -95,22 +104,29 @@ def prepare_wechat_cover(
 
     cover_path = root / 'wechat-cover.png'
     try:
-        if model_available is not None and not model_available('image_generator'):
-            raise RuntimeError('image_generator is not configured')
-        if generator is None:
-            raise RuntimeError('WeChat cover generation service is not configured')
-        result = generator(
-            '为微信公众号文章生成一张专业、简洁、无文字、无水印的横版封面图。\n'
-            f'文章标题：{title}\n文章内容摘要：{body[:1000]}',
-            image_size='1024x1024',
-            batch_size=1,
-        )
-        generated_path = Path(str(result.get('local_path') or ''))
-        if not generated_path.is_file():
-            raise ValueError('image_generator returned no usable local image')
-        with Image.open(generated_path) as source:
+        first_image = next(WeChatWriterProvider._document_image_assets(document, media_assets), None) \
+            if isinstance(document, WriterDocument) else None
+        if first_image:
+            image_path = first_image[1]
+        else:
+            if model_available is not None and not model_available('image_generator'):
+                raise RuntimeError('image_generator is not configured')
+            if generator is None:
+                raise RuntimeError('WeChat cover generation service is not configured')
+            wechat_progress.get()('cover_generate')
+            result = generator(
+                '为微信公众号文章生成一张专业、简洁、无文字、无水印的横版封面图。\n'
+                f'文章标题：{title}\n文章内容摘要：{body[:1000]}',
+                image_size='1024x1024',
+                batch_size=1,
+            )
+            image_path = Path(str(result.get('local_path') or ''))
+            if not image_path.is_file():
+                raise ValueError('image_generator returned no usable local image')
+        wechat_progress.get()('cover_crop')
+        with Image.open(image_path) as source:
             cover = ImageOps.fit(
-                source.convert('RGB'),
+                ImageOps.exif_transpose(source).convert('RGB'),
                 _WECHAT_COVER_SIZE,
                 method=Image.Resampling.LANCZOS,
             )
@@ -119,6 +135,7 @@ def prepare_wechat_cover(
         lazyllm.LOG.warning(
             'WeChat cover generation failed; using placeholder cover: %s', exc,
         )
+        wechat_progress.get()('cover_placeholder')
         cover_path.write_bytes(wechat_placeholder_cover_png())
 
     prepared = target.model_copy(deep=True)
@@ -146,6 +163,64 @@ class WeChatClient:
             raise ValueError('WeChat Official Account stable token is required.')
         self.access_token = token
         self.timeout = timeout
+        self.warnings: list[str] = []
+        self.on_progress = wechat_progress.get()
+
+    def _compress_image(self, data: bytes, mime: str, limit: int) -> bytes:
+        if len(data) < limit:
+            return data
+        self.on_progress('image_compress')
+        try:
+            with PIL.Image.open(BytesIO(data)) as source:
+                frames = []
+                for index in range(getattr(source, 'n_frames', 1)):
+                    source.seek(index)
+                    frames.append(source.convert('RGB') if mime == 'image/jpeg' else source.copy())
+                options = {key: source.info[key] for key in ('exif', 'loop') if key in source.info}
+                if len(frames) > 1:
+                    frames = [frame.convert('RGBA') for frame in frames]
+                    for frame in frames:
+                        frame.info.pop('transparency', None)
+                    options.update(save_all=True,
+                                   disposal=2 if mime == 'image/gif' else 0,
+                                   duration=[frame.info.get('duration', 0) for frame in frames])
+        except (OSError, ValueError) as exc:
+            raise _WeChatWriteRejectedError(
+                'WECHAT_IMAGE_FORMAT_UNSUPPORTED', f'WeChat image cannot be decoded for compression: {exc}',
+            ) from exc
+        image_format = mime.split('/')[-1].upper()
+        max_side = max(frames[0].size)
+
+        def encode(side: int, quality: int) -> bytes:
+            resized = frames if side == max_side else [
+                frame.resize((max(1, round(frame.width * side / max_side)),
+                              max(1, round(frame.height * side / max_side))), PIL.Image.Resampling.LANCZOS)
+                for frame in frames
+            ]
+            output = BytesIO()
+            resized[0].save(output, format=image_format, optimize=True, quality=quality,
+                            **options, **({'append_images': resized[1:]} if len(resized) > 1 else {}))
+            return output.getvalue()
+
+        # Keep original dimensions first; otherwise maximize size at a higher encoding quality.
+        for encode_candidate, low, high in (
+            (lambda quality: encode(max_side, quality), 55 if image_format == 'JPEG' else 95, 95),
+            (lambda side: encode(side, 85), 1, max_side - 1),
+        ):
+            best = None
+            while low <= high:
+                value = (low + high) // 2
+                compressed = encode_candidate(value)
+                if len(compressed) < limit:
+                    best, low = compressed, value + 1
+                else:
+                    high = value - 1
+            if best is not None:
+                self.warnings.append('WECHAT_IMAGES_COMPRESSED')
+                return best
+        raise _WeChatWriteRejectedError(
+            'WECHAT_IMAGE_FORMAT_UNSUPPORTED', 'WeChat image cannot fit the upload limit after compression.',
+        )
 
     def add_draft(self, article: dict[str, Any]) -> str:
         '''Create a draft containing one article and return its media ID.'''
@@ -193,6 +268,8 @@ class WeChatClient:
     def upload_body_image(self, path: Path) -> str:
         '''Upload an article body image and return its hosted URL.'''
         data, mime = self._image_file(path, body=True)
+        data = self._compress_image(data, mime, _BODY_IMAGE_LIMIT)
+        self.on_progress('image_upload')
         payload = self._request_json(
             'POST', '/media/uploadimg',
             files={'media': (path.name, data, mime)},
@@ -204,6 +281,8 @@ class WeChatClient:
 
     def upload_cover(self, filename: str, data: bytes, mime: str) -> str:
         '''Upload permanent cover bytes and return their media ID.'''
+        data = self._compress_image(data, mime, _COVER_IMAGE_LIMIT)
+        self.on_progress('cover_upload')
         payload = self._request_json(
             'POST', '/material/add_material',
             params={'type': 'image'},
@@ -233,12 +312,7 @@ class WeChatClient:
                 'WECHAT_IMAGE_FORMAT_UNSUPPORTED',
                 f'WeChat {scope} image {path.name!r} has unsupported type {mime or "unknown"}.',
             )
-        data = path.read_bytes()
-        if body and len(data) > 1024 * 1024:
-            raise _WeChatWriteRejectedError(
-                'WECHAT_BODY_IMAGE_TOO_LARGE', f'WeChat body image {path.name!r} exceeds 1 MB.',
-            )
-        return data, mime
+        return path.read_bytes(), mime
 
     def _request_json(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         params = {**kwargs.pop('params', {}), 'access_token': self.access_token}
@@ -279,15 +353,10 @@ class WeChatClient:
                 f'WeChat API {path} returned error: errcode={errcode}; '
                 f'errmsg={errmsg}; payload={json.dumps(payload, ensure_ascii=False)[:1000]}',
             )
-            if path in {'/draft/add', '/draft/update'} and str(errcode) == '45002':
-                raise _WeChatWriteRejectedError(
-                    'WECHAT_HTML_TOO_LARGE', f'WeChat draft HTML exceeds the content limit: {errmsg}',
-                )
-            if path == '/media/uploadimg' and str(errcode) == '45001':
-                raise _WeChatWriteRejectedError(
-                    'WECHAT_BODY_IMAGE_TOO_LARGE', f'WeChat body image exceeds the size limit: {errmsg}',
-                )
-            raise RuntimeError(f'WeChat API {path} failed ({errcode}): {errmsg}')
+            message = f'WeChat API {path} failed ({errcode}): {errmsg}'
+            if path in {'/draft/add', '/draft/update', '/media/uploadimg', '/material/add_material'}:
+                raise _WeChatWriteRejectedError('WECHAT_WRITE_REJECTED', message)
+            raise RuntimeError(message)
         return payload
 
 
@@ -552,14 +621,20 @@ class WeChatWriterProvider(WriterProviderBase):
 
         client = WeChatClient(self._access_token())
         image_assets = list(self._document_image_assets(document, media_assets))
-        image_urls = {
-            asset_id: client.upload_body_image(path) for asset_id, path in image_assets
-        }
+        image_urls = {}
+        progress = wechat_progress.get()
+        for index, (asset_id, path) in enumerate(image_assets, 1):
+            client.on_progress = lambda stage, index=index: progress(stage, current=index, total=len(image_assets))
+            image_urls[asset_id] = client.upload_body_image(path)
+        client.on_progress = progress
         html = str(converted.content)
         for asset_id, uploaded_url in image_urls.items():
             source_url = converted.media_references.get(asset_id, '')
             if source_url:
                 html = html.replace(escape(source_url, quote=True), uploaded_url)
+        limited_html = _truncate_wechat_html(html, _HTML_LIMIT)
+        if limited_html != html:
+            client.warnings.append('WECHAT_HTML_TRUNCATED')
         existing_binding = document.provider_binding if (
             document.provider_binding.get('provider') == self.provider
         ) else {}
@@ -582,7 +657,7 @@ class WeChatWriterProvider(WriterProviderBase):
             'title': title,
             'author': str(document.metadata.get('author', article.get('author', '')) or '')[:16],
             'digest': str(document.metadata.get('digest', article.get('digest', '')) or '')[:120],
-            'content': html,
+            'content': limited_html,
             'content_source_url': str(document.metadata.get(
                 'content_source_url', article.get('content_source_url', '')) or ''),
             'thumb_media_id': thumb_media_id,
@@ -591,6 +666,7 @@ class WeChatWriterProvider(WriterProviderBase):
             'only_fans_can_comment': int(document.metadata.get(
                 'only_fans_can_comment', article.get('only_fans_can_comment', 0)) or 0),
         })
+        progress('draft_write')
         if media_id:
             client.update_draft(media_id, article, index=article_index)
         else:
@@ -619,6 +695,7 @@ class WeChatWriterProvider(WriterProviderBase):
             'block_count': sum(1 for _ in document.iter_blocks()),
             'persisted_document': document,
             'representation': 'ir',
+            'warnings': list(dict.fromkeys(client.warnings)),
         }
 
     def apply_patch_to_document(
@@ -656,6 +733,7 @@ class WeChatWriterProvider(WriterProviderBase):
             'persisted_document': persisted,
             'provider': self.provider,
             'document_id': persisted.provider_binding['document_id'],
+            'warnings': write_result['warnings'],
         }
 
     @staticmethod

@@ -108,7 +108,7 @@ class _WeChatHTMLParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         start = self._offset()
-        start_end = self._tag_end(start)
+        start_end = start + len(self.get_starttag_text())
         node = _HtmlNode(
             tag.lower(), start, start_end,
             attrs={str(key).lower(): '' if value is None else str(value) for key, value in attrs},
@@ -119,7 +119,7 @@ class _WeChatHTMLParser(HTMLParser):
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         start = self._offset()
-        start_end = self._tag_end(start)
+        start_end = start + len(self.get_starttag_text())
         self._append(_HtmlNode(
             tag.lower(), start, start_end,
             attrs={str(key).lower(): '' if value is None else str(value) for key, value in attrs},
@@ -166,6 +166,39 @@ class _WeChatHTMLParser(HTMLParser):
 
 def _html_raw(source: str, node: _HtmlNode) -> str:
     return source[node.start:node.end]
+
+
+def _truncate_wechat_html(source: str, max_length: int) -> str:
+    if len(source) <= max_length:
+        return source
+    parser = _WeChatHTMLParser(source)
+    parser.feed(source)
+    parser.close()
+
+    def prefix(nodes: list[_HtmlNode], budget: int) -> str:
+        parts: list[str] = []
+        for node in nodes:
+            if node.tag == '#raw':
+                continue
+            raw = _html_raw(source, node)
+            if len(raw) <= budget:
+                parts.append(raw)
+                budget -= len(raw)
+                continue
+            if node.tag == '#text':
+                # Character references are atomic; ordinary text can end at any Unicode character.
+                if not (raw.startswith('&') and raw.endswith(';')):
+                    parts.append(raw[:budget])
+            elif not node.tag.startswith('#') and node.tag not in _VOID_TAGS:
+                opening = source[node.start:node.start_end]
+                closing = f'</{node.tag}>'
+                available = budget - len(opening) - len(closing)
+                if available >= 0:
+                    parts.append(opening + prefix(node.children, available) + closing)
+            break
+        return ''.join(parts)
+
+    return prefix(parser.root.children, max_length)
 
 
 def _sanitize_css(value: Any) -> str:
@@ -1017,10 +1050,10 @@ class WeChatWriterAdapter(WriterAdapterBase):
                               'object-fit:contain;border-radius:8px' if gallery_image else
                               'display:block;width:100%;max-width:100%;height:auto'),
                 }
-            if not preserve_source and not gallery_image:
+            if not gallery_image and (not preserve_source or not image_attrs):
                 image_attrs = {
                     **(image_attrs if isinstance(image_attrs, Mapping) else {}),
-                    'style': 'display:block;max-width:100%;height:auto',
+                    'style': 'display:block;max-width:100%;height:auto;margin-left:auto;margin-right:auto',
                 }
             image_attrs_html = _serialize_attrs(
                 image_attrs,
