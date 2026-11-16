@@ -2370,10 +2370,23 @@ True
 # FormatterBase
 add_chinese_doc('formatter.LazyLLMFormatterBase', '''\
 此类是格式化器的基类，格式化器是模型输出结果的格式化器，用户可以自定义格式化器，也可以使用LazyLLM提供的格式化器。
+
+``output_kind`` 默认为 ``'value'``：在线模型将格式化结果作为业务值原样返回，不追加协议元数据，
+即使结果是包含 role/content 的字典。普通 callable 和 PipelineFormatter 也默认遵循这一契约。
+仅当格式化器明确返回用于多轮历史的消息字典时，才声明 ``output_kind = 'message'``；在线模型会为其
+附加原生协议续接信息，返回非字典时抛出 TypeError。自定义 callable 同样可声明该属性。
+组合格式化器不自动继承任一阶段的消息契约；需要消息语义时，应显式实现完整的消息格式化逻辑。
 ''')
 
 add_english_doc('formatter.LazyLLMFormatterBase', '''\
-This class is the base class of the formatter. The formatter is the formatter of the model output result. Users can customize the formatter or use the formatter provided by LazyLLM.
+This class is the base class of the formatter. Users can customize it or use a built-in formatter.
+
+``output_kind`` defaults to ``'value'``: online models return the formatted business value without adding
+protocol metadata, even for dictionaries containing role/content keys. Plain callables and PipelineFormatter
+also default to value projections. Declare ``output_kind = 'message'`` only when returning a message dictionary
+for multi-turn history; online models attach native continuation state and raise TypeError for non-dictionary
+results. Custom callables can declare the same attribute. Composition does not inherit message semantics from
+individual stages: a custom message wrapper must explicitly implement the complete message projection.
 ''')
 
 add_example('formatter.LazyLLMFormatterBase', '''\
@@ -2663,6 +2676,8 @@ add_chinese_doc('formatter.formatterbase.FunctionCallFormatter', '''\
 
 与基础格式化器不同：基础格式化器会把 assistant 消息折叠为纯文本，从而丢弃 ``tool_calls`` 与 ``reasoning_content``。任何会产生 ``tool_calls`` 的模型都必须配置本格式化器，以便可以按 provider 兼容的方式回放多轮历史（例如 DeepSeek 在工具调用请求中，要求上一轮 assistant 消息保留 ``reasoning_content``，否则会拒绝请求）。当模型携带 ``tool_calls`` 却仍命中基础格式化器时，框架会输出 warning 日志，提示切换到本格式化器。
 
+该格式化器声明 ``output_kind = 'message'``，因此在线模型返回时还会附加原生协议续接信息。
+
 主要用于 FunctionCall 等工具调用相关的功能模块。
 
 Args:
@@ -2679,6 +2694,8 @@ Function call formatter for processing message dictionaries containing function 
 This formatter is specifically designed for handling model outputs in function calling scenarios. It preserves the 'role', 'content', 'tool_calls', and 'reasoning_content' fields from the input dictionary, filtering out other unnecessary fields.
 
 Unlike the base formatter, which collapses an assistant message to plain text and therefore drops ``tool_calls`` and ``reasoning_content``, this keeps those structured fields. Any model that produces ``tool_calls`` must be configured with this formatter so that a provider-compatible multi-turn history can be replayed (e.g. DeepSeek rejects a tool-calling request whose previous assistant turn omits ``reasoning_content``). When a message carrying ``tool_calls`` still hits the base formatter, the framework emits a warning log suggesting that this formatter be used instead.
+
+This formatter declares ``output_kind = 'message'``, so online model results also carry native protocol continuation state.
 
 Primarily used in function calling-related modules such as FunctionCall.
 

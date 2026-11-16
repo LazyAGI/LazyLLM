@@ -23,6 +23,11 @@ def _is_chat_message(msg):
     return isinstance(msg, dict) and 'role' in msg and 'content' in msg
 
 class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
+    # Value projections own their result, even when it is a dictionary containing
+    # role/content keys. Only explicit message projections accept protocol state
+    # for replay in a later model request. Custom callables may declare this too.
+    output_kind = 'value'
+
     def _load(self, msg: str):
         return msg
 
@@ -69,6 +74,8 @@ class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
 
 
 class PipelineFormatter(LazyLLMFormatterBase):
+    # Composition projects content before running the pipeline. Do not inherit
+    # message semantics from an individual stage or infer it from the result.
     def __init__(self, formatter: Pipeline):
         self._formatter = formatter
 
@@ -166,6 +173,8 @@ class EmptyFormatter(LazyLLMFormatterBase):
         return msg
 
 class FunctionCallFormatter(LazyLLMFormatterBase):
+    output_kind = 'message'
+
     def format(self, msg):
         assert isinstance(msg, dict), 'FunctionCallFormatter only supports dict input.'
         ret = {k: msg[k] for k in ('role', 'content', 'tool_calls', 'reasoning_content') if k in msg}
