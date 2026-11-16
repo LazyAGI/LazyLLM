@@ -389,8 +389,13 @@ class LazyLLMOnlineChatModuleBase(_ControlledModelCall, LazyLLMOnlineBase, LLMBa
         if isinstance(self._formatter, EmptyFormatter):
             visible['content'] = MessageIR.from_chat(visible).text
         result = self._formatter(visible) if visible else ''
-        if isinstance(result, dict) and extractor.get(_PROVIDER_ITEMS):
-            result[_PROVIDER_ITEMS] = copy.deepcopy(extractor[_PROVIDER_ITEMS])
+        if getattr(self._formatter, 'output_kind', 'value') == 'message':
+            if not isinstance(result, dict):
+                raise TypeError('A message formatter must return a dictionary.')
+            if extractor.get(_PROVIDER_ITEMS):
+                # The formatter may reuse its result; attaching protocol state
+                # must not mutate an object owned by the formatter/caller.
+                result = {**result, _PROVIDER_ITEMS: copy.deepcopy(extractor[_PROVIDER_ITEMS])}
         return result
 
     @classmethod
