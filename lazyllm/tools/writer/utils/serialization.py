@@ -55,7 +55,7 @@ class MarkdownSelectionError(ValueError):
 
 
 _NUMBERED_HEADING_RE = re.compile(
-    r'^(?:[0-9]+(?:\.[0-9]+)*\.\s+'
+    r'^(?:[0-9]+(?:\.[0-9]+)*\.?\s+'
     r'|[零一二三四五六七八九十百千]+、\s*'
     r'|（[零一二三四五六七八九十百千0-9]+）\s*'
     r'|\((?:[0-9]+|[a-z]+|[A-Z]+)\)\s*'
