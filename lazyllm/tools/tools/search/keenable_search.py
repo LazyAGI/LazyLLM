@@ -21,6 +21,8 @@ class KeenableSearch(SearchBase):
 
     @fc_register(host_file='NONE')
     def search(self, query: str, max_results: int = 10) -> List[Dict[str, Any]]:
+        # Keenable accepts 1-50 results per request; larger values return HTTP 400.
+        max_results = min(50, max_results)
         path = '/v1/search' if self._get_token() else '/v1/search/public'
         resp = self._request(
             'POST', f'{self._base_url}{path}',
@@ -34,11 +36,11 @@ class KeenableSearch(SearchBase):
             url = it.get('url') or ''
             if not url:
                 continue
-            # Prefer the short description; _make_result truncates long snippets.
+            # `description` is deprecated and always empty; _make_result truncates long snippets.
             out.append(_make_result(
                 title=it.get('title') or '',
                 url=url,
-                snippet=it.get('description') or it.get('snippet') or '',
+                snippet=it.get('snippet') or '',
                 source=self.source_name,
             ))
         return out[:max_results]

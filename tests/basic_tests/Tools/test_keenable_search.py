@@ -17,7 +17,7 @@ def _capture(monkeypatch, provider, payload):
 def test_keenable_uses_public_endpoint_without_key(monkeypatch):
     provider = KeenableSearch()
     calls = _capture(monkeypatch, provider, {'results': [
-        {'title': 'A', 'url': 'https://a.example', 'description': 'short', 'snippet': 'long'},
+        {'title': 'A', 'url': 'https://a.example', 'description': '', 'snippet': 'short'},
         {'title': 'No URL', 'description': 'dropped'},
         {'title': 'B', 'url': 'https://b.example', 'snippet': 'x' * 2000},
     ]})
@@ -49,3 +49,14 @@ def test_keenable_uses_keyed_endpoint_with_key(monkeypatch):
 
 def test_keenable_uses_shared_content_reader():
     assert KeenableSearch.get_content is SearchBase.get_content
+
+
+def test_keenable_caps_max_results_at_50(monkeypatch):
+    provider = KeenableSearch()
+    payload = {'results': [{'title': str(i), 'url': f'https://{i}.example', 'snippet': 's'} for i in range(60)]}
+    calls = _capture(monkeypatch, provider, payload)
+
+    results = provider.search('lazyllm', max_results=51)
+
+    assert calls[0][2]['json']['max_results'] == 50
+    assert len(results) == 50

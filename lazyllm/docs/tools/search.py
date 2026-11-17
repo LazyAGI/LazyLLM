@@ -1025,7 +1025,7 @@ Keenable Search API 封装（https://keenable.ai）。无需 API Key 即可使�
 
 - 未提供 api_key 时请求免费公共端点 POST /v1/search/public。
 - 提供 api_key 时请求 POST /v1/search，并通过请求头 X-API-Key 鉴权（额度更高）。
-- 结果的 snippet 优先使用简短的 description，没有时使用 snippet（超长会被截断）；没有 URL 的结果会被丢弃。
+- 结果的 snippet 直接取 Keenable 的 snippet 字段（超长会被截断）；没有 URL 的结果会被丢弃。
 
 Args:
     api_key (str, optional): Keenable API key，可选。
@@ -1039,7 +1039,7 @@ Keenable Search API wrapper (https://keenable.ai). Works without an API key.
 
 - Without api_key, requests go to the free public endpoint POST /v1/search/public.
 - With api_key, requests go to POST /v1/search with the X-API-Key header (higher limits).
-- Each result's snippet prefers the short description and falls back to the (truncated) snippet; results without a URL are dropped.
+- Each result's snippet comes from Keenable's snippet field (long snippets are truncated); results without a URL are dropped.
 
 Args:
     api_key (str, optional): Keenable API key, optional.
@@ -1061,7 +1061,7 @@ add_chinese_doc('KeenableSearch.search', f'''
 
 Args:
     query (str): 搜索关键词或自然语言问题。
-    max_results (int): 返回条数，默认 10。
+    max_results (int): 返回条数，取值范围 1–50，默认 10；超过 50 时按 50 处理。
 
 Returns:
     List[Dict[str, Any]]: 统一格式的搜索结果列表，每条包含 title、url、snippet、source。
@@ -1074,7 +1074,7 @@ Execute Keenable web search.
 
 Args:
     query (str): Search keywords or natural language question.
-    max_results (int): Number of results, default 10.
+    max_results (int): Number of results, 1-50, default 10. Values above 50 are capped at 50.
 
 Returns:
     List[Dict[str, Any]]: Unified search results, each with title, url, snippet and source.
