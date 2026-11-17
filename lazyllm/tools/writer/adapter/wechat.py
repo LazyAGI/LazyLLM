@@ -607,8 +607,10 @@ class WeChatWriterAdapter(WriterAdapterBase):
                 source_content = content.strip()
                 content = strip_heading_numbering(content)
                 if source_content != content:
-                    prefix_end = len(source_content) - len(content) if content else len(source_content)
-                    source_number_label = source_content[:prefix_end].strip()
+                    # Only prefix removals can be replaced in the original HTML.
+                    if source_content.endswith(content):
+                        prefix_end = len(source_content) - len(content) if content else len(source_content)
+                        source_number_label = source_content[:prefix_end].strip()
                 else:
                     source_number_label = ''
                 if spans:

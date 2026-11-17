@@ -551,12 +551,14 @@ def test_wechat_writeback_renumbers_unchanged_heading_after_delete():
         '<h3>4.1. 常用设置</h3>'
         '<h3>4.2. 性能优化与磁盘管理</h3>'
         '<h3 style="color:red">4.3. 常见故障诊断与解决方案</h3>'
+        '<h3>《4.4附录》</h3>'
     )
     adapter = WeChatWriterAdapter()
     document = adapter.html_to_ir(
         source_html,
         external_document_id='media-numbering:article-0',
     )
+    assert adapter.document_to_html(document) == source_html
     document.blocks = [
         block for block in document.blocks
         if block.content != '性能优化与磁盘管理'
@@ -568,6 +570,7 @@ def test_wechat_writeback_renumbers_unchanged_heading_after_delete():
     assert '4.3. 常见故障诊断与解决方案' not in html
     assert '<h3>4.1. 常用设置</h3>' in html
     assert '<h3 style="color:red">4.2. 常见故障诊断与解决方案</h3>' in html
+    assert '4.3. 《附录》' in html
 
 
 def test_wechat_opaque_block_cannot_be_modified():
