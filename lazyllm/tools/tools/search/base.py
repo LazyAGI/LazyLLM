@@ -138,7 +138,8 @@ class SearchBase(ModuleBase, CredentialMixin):
             return ''
         timeout = getattr(self, '_timeout', 15)
         try:
-            resp = httpx.get(url, timeout=timeout, follow_redirects=True)
+            resp = httpx.get(url, timeout=timeout, follow_redirects=True,
+                             headers=getattr(self, '_content_headers', None))
             resp.raise_for_status()
             return _html_to_text(resp.text)
         except Exception:
@@ -150,6 +151,16 @@ class SearchBase(ModuleBase, CredentialMixin):
 
     @fc_register(host_file='NONE')
     def get_content(self, item: Dict[str, Any], offset: int = 0, limit: int = CONTENT_CHARS) -> Dict[str, Any]:
+        '''Read a bounded window of a search result's content.
+
+        Args:
+            item (Dict[str, Any]): Search result containing a URL.
+            offset (int): Character offset in the source content.
+            limit (int): Maximum characters to return.
+
+        Returns:
+            Dict[str, Any]: Result identity, content, and pagination metadata.
+        '''
         offset, limit = _content_window(offset, limit)
         result = self._fetch_content_result(item)
         content = result['content']
@@ -171,6 +182,16 @@ class SearchBase(ModuleBase, CredentialMixin):
     @fc_register(host_file='NONE')
     def get_contents(self, items: List[Dict[str, Any]], offset: int = 0,
                      limit: int = CONTENT_CHARS) -> List[Dict[str, Any]]:
+        '''Read search results within a shared character budget.
+
+        Args:
+            items (List[Dict[str, Any]]): Search results to read.
+            offset (int): Character offset for each source.
+            limit (int): Total character budget across results.
+
+        Returns:
+            List[Dict[str, Any]]: Content windows with pagination metadata.
+        '''
         offset, limit = _content_window(offset, limit)
         if not items:
             return []
