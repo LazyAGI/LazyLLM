@@ -55,8 +55,7 @@ class MarkdownSelectionError(ValueError):
 
 
 _NUMBERED_HEADING_RE = re.compile(
-    r'^(?:[0-9]+(?:\.[0-9]+)*\.\s+'
-    r'|[0-9]+(?:\.[0-9]+)+\s+'
+    r'^(?:(?:[0-9]+(?:\.[0-9]+)+\.?|[0-9]+\.)(?![0-9.])\s*'
     r'|[零一二三四五六七八九十百千]+、\s*'
     r'|（[零一二三四五六七八九十百千0-9]+）\s*'
     r'|\((?:[0-9]+|[a-z]+|[A-Z]+)\)\s*'
@@ -83,7 +82,13 @@ def _media_reference_variants(value: Any) -> set[str]:
 
 
 def strip_heading_numbering(value: str) -> str:
-    return _NUMBERED_HEADING_RE.sub('', (value or '').strip(), count=1)
+    text = (value or '').strip()
+    wrapped = text.startswith('《') and text.endswith('》')
+    heading = text[1:-1].strip() if wrapped else text
+    clean = _NUMBERED_HEADING_RE.sub('', heading, count=1)
+    if clean == heading:
+        return text
+    return f'《{clean}》' if wrapped and clean else clean
 
 
 def strip_caption_numbering(value: str) -> str:

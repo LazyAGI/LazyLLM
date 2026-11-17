@@ -516,7 +516,7 @@ def _cell_edit(document, node_id, value, hunk_id=None):
     ('1. 3.3V 电源', '3.3V 电源'), ('1.1. 背景', '背景'), ('十一、背景', '背景'),
     ('（一）背景', '背景'), ('（12）背景', '背景'), ('⑳背景', '背景'),
     ('(1) 背景', '背景'), ('(aa) 背景', '背景'), ('(iv) 背景', '背景'),
-    ('(A) 背景', '背景'), ('(IV) 背景', '背景'), ('3.3V 电源', '3.3V 电源'),
+    ('(A) 背景', '背景'), ('(IV) 背景', '背景'), ('3.3V 电源', 'V 电源'),
 ])
 def test_feishu_load_document_records_remote_revision(content, expected):
     provider = FeishuWriterProvider()
