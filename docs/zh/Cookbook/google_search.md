@@ -45,6 +45,13 @@ api_key = 'AI******'       # 您的 Google API Key
 engine_id = 'a3******'     # 您的 Search Engine ID
 ```
 
+Google 已停止向新用户开放 Custom Search JSON API，并将于 2027 年 1 月 1 日停止该服务。`GoogleSearch` 支持 `base_url` 参数，因此本教程的代码也可以调用任意兼容 Custom Search 请求格式的地址：
+
+```python
+search = GoogleSearch(custom_search_api_key=api_key, search_engine_id=engine_id,
+                      base_url='https://search.example.com/customsearch/v1')
+```
+
 ### 导入依赖
 
 ```python
