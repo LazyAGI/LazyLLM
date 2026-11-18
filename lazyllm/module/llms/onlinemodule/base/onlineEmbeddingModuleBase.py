@@ -8,6 +8,14 @@ from .utils import LazyLLMOnlineBase, resolve_online_params
 from lazyllm.components.utils.downloader import ModelManager
 
 
+def _format_embed_request_error(model: str, url: str, status_code: int, body: str) -> str:
+    body = (body or '').strip()
+    if len(body) > 2000:
+        body = body[:2000] + '...(truncated)'
+    return (f'Online embedding request failed: model={model!r} url={url!r} '
+            f'http_status={status_code}. Response body: {body or "<empty>"}')
+
+
 class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
     NO_PROXY = True
     __lazyllm_registry_disable__ = True
@@ -78,8 +86,9 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
                     return self._parse_response(r.json(), input=input)
                 else:
                     err_body = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
-                    LOG.error(f'[OnlineEmbeddingModuleBase] HTTP {r.status_code} url={runtime_url!r} body={err_body!r}')
-                    raise requests.RequestException(err_body)
+                    msg = _format_embed_request_error(runtime_model, runtime_url, r.status_code, err_body)
+                    LOG.error(f'[OnlineEmbeddingModuleBase] {msg}')
+                    raise requests.RequestException(msg)
 
     def _encapsulated_data(self, input: Union[List, str], **kwargs):
         if isinstance(input, str):
@@ -101,11 +110,20 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
     def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
         data = response.get('data', [])
         if not data:
-            raise Exception('no data received')
+            raise ValueError(
+                f'Online embedding response for model {self._embed_model_name!r} contained no '
+                f"'data' (got keys {sorted(response.keys())}). This usually means the request was "
+                'rejected upstream or the response schema is unexpected.')
+        for idx, res in enumerate(data):
+            if not isinstance(res, dict) or res.get('embedding') is None:
+                raise ValueError(
+                    f'Online embedding response for model {self._embed_model_name!r} is missing the '
+                    f"'embedding' field at data[{idx}] (got {res!r}); refusing to return empty "
+                    'embeddings silently.')
         if isinstance(input, str):
-            return data[0].get('embedding', [])
+            return data[0]['embedding']
         else:
-            return [res.get('embedding', []) for res in data]
+            return [res['embedding'] for res in data]
 
     def run_embed_batch(self, input: List, data: List, proxies, url: str = None, **kwargs):
         ret = [[] for _ in range(len(input))]
@@ -126,7 +144,8 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
                         else:
                             error_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
                             if self._batch_size == 1 or r.status_code in [401, 429]:
-                                raise requests.RequestException(error_msg)
+                                raise requests.RequestException(_format_embed_request_error(
+                                    kwargs.get('model', self._embed_model_name), url, r.status_code, error_msg))
                             else:
                                 msg = f'Online embedding:{self._embed_model_name} post failed, adjust batch_size: '
                                 msg = msg + f' from {self._batch_size} to {max(self._batch_size // 2, 1)}'
@@ -153,7 +172,8 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
                             wait(futures)
                             error_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
                             if self._batch_size == 1 or r.status_code in [401, 429]:
-                                raise requests.RequestException(error_msg)
+                                raise requests.RequestException(_format_embed_request_error(
+                                    kwargs.get('model', self._embed_model_name), url, r.status_code, error_msg))
                             else:
                                 msg = f'Online embedding:{self._embed_model_name} post failed, adjust batch_size: '
                                 msg = msg + f' from {self._batch_size} to {max(self._batch_size // 2, 1)}'
