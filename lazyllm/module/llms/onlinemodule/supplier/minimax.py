@@ -2,7 +2,7 @@ import base64
 import requests
 import lazyllm
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
@@ -100,10 +100,11 @@ class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
 class MinimaxText2Image(LazyLLMOnlineText2ImageModuleBase):
     MODEL_NAME = 'image-01'
+    H3_MODELS = ('MiniMax-H3-Image', 'MiniMax-H3-Image-Highspeed')
 
     def __init__(self, api_key: str = None, model: str = None,
                  url: Optional[str] = None, return_trace: bool = False, **kwargs):
-        url = url or 'https://api.minimaxi.com/v1/'
+        url = url or kwargs.pop('base_url', None)
         super().__init__(api_key=api_key or self._default_api_key(),
                          model_name=model or MinimaxText2Image.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
         if self._type == LLMType.IMAGE_EDITING:
@@ -112,7 +113,7 @@ class MinimaxText2Image(LazyLLMOnlineText2ImageModuleBase):
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any], base_url: Optional[str] = None,
                       timeout: int = 180) -> Dict[str, Any]:
-        url = urljoin(base_url or self._base_url, endpoint)
+        url = urljoin(base_url or self._base_url or 'https://api.minimaxi.com/v1/', endpoint)
         response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
         response.raise_for_status()
         result = response.json()
@@ -121,11 +122,75 @@ class MinimaxText2Image(LazyLLMOnlineText2ImageModuleBase):
             raise Exception(f"Minimax API error {base_resp.get('status_code')}: {base_resp.get('status_msg')}")
         return result
 
-    def _forward(self, input: str = None, style: Dict[str, Any] = None,
-                 aspect_ratio: str = None, width: int = None, height: int = None,
-                 response_format: str = 'url', seed: int = None, n: int = 1,
-                 prompt_optimizer: bool = False, aigc_watermark: bool = False,
-                 url: str = None, model: str = None, **kwargs):
+    def _forward(self, input: str = None, url: str = None, model: str = None, **kwargs):
+        if model in self.H3_MODELS:
+            return self._generate_h3(input, model, url, **kwargs)
+        return self._generate_legacy(input, model=model, url=url, **kwargs)
+
+    def _generate_h3(self, prompt, model, url, n=1, response_format='url', size=None, aspect_ratio=None,
+                     area=None, output_format=None, output_compression=None, disable_prompt_enhanced=None,
+                     aigc_watermark=None, stream=False, files=None, **kwargs):
+        unsupported = kwargs.keys() - {'priority', 'stream_output'}
+        if unsupported:
+            raise ValueError(f'Unsupported MiniMax H3 image options: {sorted(unsupported)}')
+        if stream or files:
+            raise ValueError('MiniMax H3 text-to-image accepts non-streaming text prompts only.')
+        if response_format == 'base64':
+            response_format = 'b64_json'
+        if response_format not in ('url', 'b64_json'):
+            raise ValueError('MiniMax H3 response_format must be url or b64_json.')
+        endpoint = urlsplit(url or 'https://api.minimax.cn/v1/')
+        path = endpoint.path.rstrip('/')
+        if not path.endswith('/images/generations'):
+            path += '/images/generations'
+        if aigc_watermark is not None and endpoint.hostname != 'api.minimax.cn':
+            raise ValueError('aigc_watermark is available only on the MiniMax China endpoint.')
+        options = {'size': size, 'aspect_ratio': aspect_ratio, 'area': area, 'output_format': output_format,
+                   'output_compression': output_compression, 'disable_prompt_enhanced': disable_prompt_enhanced,
+                   'aigc_watermark': aigc_watermark}
+        payload = {'prompt': prompt, 'model': model, 'n': n, 'response_format': response_format}
+        payload.update({key: value for key, value in options.items() if value is not None})
+        # A redirect could replay a billable generation.
+        response = requests.post(endpoint._replace(path=path).geturl(), json=payload, headers=self._header,
+                                 timeout=600, allow_redirects=False)
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            try:
+                message = response.json()['error']['message']
+            except (ValueError, KeyError, TypeError):
+                raise exc
+            raise requests.HTTPError(f'{exc}: {message}', response=response) from exc
+        if response.is_redirect:
+            raise RuntimeError('MiniMax H3 image generation returned a redirect.')
+        images = self._read_h3_images(response.json().get('data'), response_format)
+        return encode_query_with_filepaths(None, bytes_to_file(images))
+
+    def _read_h3_images(self, data, response_format):
+        if not isinstance(data, list) or not data:
+            raise RuntimeError('MiniMax H3 returned no images.')
+        images = []
+        for item in data:
+            if error := item.get('error'):
+                lazyllm.LOG.warning(f'MiniMax H3 image generation failed: {error.get("message")}')
+                continue
+            if not item.get(response_format):
+                raise RuntimeError(f'MiniMax H3 returned an image without {response_format}.')
+            if response_format == 'url':
+                image = self._get_image_data_from_url(item['url'], timeout=180)
+            else:
+                image = base64.b64decode(item['b64_json'], validate=True)
+                self._validate_image_data(image, 'MiniMax H3 image response')
+            images.append(image)
+        if not images:
+            raise RuntimeError('MiniMax H3 returned no successful images.')
+        return images
+
+    def _generate_legacy(self, input: str = None, style: Dict[str, Any] = None,
+                         aspect_ratio: str = None, width: int = None, height: int = None,
+                         response_format: str = 'url', seed: int = None, n: int = 1,
+                         prompt_optimizer: bool = False, aigc_watermark: bool = False,
+                         url: str = None, model: str = None, **kwargs):
         payload: Dict[str, Any] = {
             'model': model,
             'prompt': input,
