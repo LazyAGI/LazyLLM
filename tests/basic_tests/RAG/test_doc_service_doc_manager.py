@@ -264,6 +264,22 @@ def test_manager_upsert_same_path_is_serialized(manager_harness):
         assert session.query(Doc).filter(Doc.path == file_path).count() == 1
 
 
+@pytest.mark.parametrize('level', ['parsed', 'chunked', 'indexed'])
+def test_manager_add_files_preserves_requested_processing_level(manager_harness, level):
+    manager_harness.manager.create_kb('kb_add_level', algo_id='__default__')
+    file_path = manager_harness.make_file('add_level.txt', 'document content')
+
+    items = manager_harness.manager.add_files(AddRequest(
+        kb_id='kb_add_level',
+        items=[AddFileItem(file_path=file_path, doc_id='add-level-doc')],
+        processing_level=level,
+    ))
+
+    assert items[0]['accepted'] is True
+    assert manager_harness.add_doc_calls[0]['processing_level'] == level
+    assert manager_harness.manager.get_task(items[0]['task_id']).data['status'] == DocStatus.WAITING.value
+
+
 def test_manager_upload_callback_and_doc_detail(manager_harness):
     manager_harness.manager.create_kb('kb_upload', algo_id='__default__')
     file_path = manager_harness.make_file('upload.txt', 'upload content')
