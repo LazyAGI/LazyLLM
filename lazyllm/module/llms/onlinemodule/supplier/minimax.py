@@ -29,7 +29,7 @@ class _MinimaxResponseParser(_OpenAICompatibleResponseParser):
 
 class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
-    MODEL_NAME = 'MiniMax-M3'
+    MODEL_NAME = 'MiniMax-M3.1-Flash'
     PROVIDER_NAME = 'minimax'
     RESPONSE_PROFILE = OnlineChatModuleBase.RESPONSE_PROFILE.extend(code_map={
         '1001': ModelFailureCode.REQUEST_TIMEOUT,
