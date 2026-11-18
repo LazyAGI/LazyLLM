@@ -498,6 +498,10 @@ MODEL_MAPPING = {
     'doubao-embedding-vision-250615': 'cross_modal_embed',
     'doubao-embedding-vision-250328': 'cross_modal_embed',
 
+    # ===== MiniMax =====
+    'minimax-h3-image': 'sd',
+    'minimax-h3-image-highspeed': 'sd',
+
     # ===== DeepSeek =====
     'deepseek-chat': 'llm',
     'deepseek-reasoner': 'llm',

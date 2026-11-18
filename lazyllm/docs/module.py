@@ -3659,6 +3659,12 @@ Args:
     **kwargs: Additional optional parameters passed to the parent classes
 """)
 
+add_example('llms.onlinemodule.supplier.minimax.MinimaxText2Image', '''\
+>>> import lazyllm
+>>> image = lazyllm.OnlineModule('MiniMax-H3-Image', source='minimax', url='https://api.minimax.io/v1/')
+>>> result = image('A red apple on a wooden table', size='1024x1024', response_format='b64_json')
+''')
+
 add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxTTS', """\
 Minimax 文本转语音模块，继承自 OnlineMultiModalBase。
 
