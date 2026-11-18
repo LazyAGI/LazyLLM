@@ -1,14 +1,16 @@
 import base64
+import time
 import requests
 import lazyllm
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin
 
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
     ModelFailureCode,
     OnlineChatModuleBase,
     LazyLLMOnlineText2ImageModuleBase,
+    LazyLLMOnlineText2VideoModuleBase,
     LazyLLMOnlineTTSModuleBase,
 )
 from ..base.provider_response import _OpenAICompatibleResponseParser
@@ -170,6 +172,96 @@ class MinimaxText2Image(LazyLLMOnlineText2ImageModuleBase):
         file_paths = bytes_to_file(image_bytes)
         response = encode_query_with_filepaths(None, file_paths)
         return response
+
+
+class MinimaxText2Video(LazyLLMOnlineText2VideoModuleBase):
+    MODEL_NAME = 'MiniMax-H3'
+    BASE_URLS = {'global': 'https://api.minimax.io/v2', 'cn': 'https://api.minimaxi.com/v2'}
+
+    def __init__(self, api_key: str = None, model: Optional[str] = None, url: Optional[str] = None,
+                 region: str = 'global', return_trace: bool = False, **kwargs):
+        if region not in self.BASE_URLS:
+            raise ValueError(f'Unsupported MiniMax region: {region!r}')
+        url = url or kwargs.pop('base_url', None) or self.BASE_URLS[region]
+        model = model or lazyllm.config['minimax_text2video_model_name'] or self.MODEL_NAME
+        super().__init__(model=model, url=url, api_key=api_key or self._default_api_key(),
+                         return_trace=return_trace, **kwargs)
+        self._region = region
+
+    @staticmethod
+    def _request_video(method, url, headers, timeout, payload=None):
+        with requests.request(method, url, headers=headers, json=payload, timeout=timeout) as response:
+            response.raise_for_status()
+            result = response.json()
+        if not isinstance(result, dict):
+            raise ValueError('MiniMax returned an invalid JSON response')
+        if result.get('error'):
+            raise RuntimeError(f'MiniMax video request failed: {result["error"]}')
+        return result
+
+    def _video_payload(self, input, model, resolution, duration, ratio, callback_url, aigc_watermark):
+        if model != self.MODEL_NAME:
+            raise ValueError(f'MiniMax v2 text2video supports {self.MODEL_NAME}')
+        if not isinstance(input, str) or not input.strip() or len(input) > 7000:
+            raise ValueError('MiniMax video input must be non-empty text of at most 7000 characters')
+        if resolution != '2K':
+            raise ValueError('MiniMax video resolution must be 2K')
+        if type(duration) is not int or not 4 <= duration <= 15:
+            raise ValueError('MiniMax video duration must be an integer from 4 to 15')
+        if ratio not in ('21:9', '16:9', '4:3', '1:1', '3:4', '9:16'):
+            raise ValueError('MiniMax text2video requires a concrete supported aspect ratio')
+        payload = dict(model=model, content=[{'type': 'text', 'text': input}],
+                       resolution=resolution, duration=duration, ratio=ratio)
+        if callback_url is not None:
+            payload['callback_url'] = callback_url
+        if aigc_watermark is not None:
+            if self._region != 'cn':
+                raise ValueError('aigc_watermark is supported only in the cn region')
+            payload['aigc_watermark'] = aigc_watermark
+        return payload
+
+    def _poll_video(self, base_url, task_id, headers, deadline, poll_interval):
+        query_url = base_url + '/query/video_generation/' + quote(task_id, safe='')
+        while (remaining := deadline - time.monotonic()) > 0:
+            result = self._request_video('GET', query_url, headers, min(60, remaining))
+            task = result.get('task') or {}
+            status = task.get('status')
+            if status == 'succeeded':
+                video_url = (task.get('content') or {}).get('url')
+                if not isinstance(video_url, str) or not video_url:
+                    raise RuntimeError('MiniMax video task succeeded without a video URL')
+                return video_url
+            if status not in {'queued', 'running'}:
+                raise RuntimeError(f'MiniMax video task {task_id} {status}: {task.get("error")}')
+            time.sleep(min(poll_interval, max(0, deadline - time.monotonic())))
+        raise TimeoutError(f'MiniMax video generation timed out (task {task_id})')
+
+    def _forward(self, input: str = None, files: List[str] = None, resolution: str = '2K',
+                 duration: int = 4, ratio: str = '16:9', callback_url: str = None,
+                 aigc_watermark: Optional[bool] = None, poll_interval: float = 3.0,
+                 timeout: float = 900, model: str = None, url: str = None, **kwargs):
+        if files:
+            raise ValueError('MiniMax text2video accepts text input only')
+        if timeout <= 0 or poll_interval < 0:
+            raise ValueError('timeout must be positive and poll_interval must be non-negative')
+        payload = self._video_payload(input, model or self._model_name, resolution, duration,
+                                      ratio, callback_url, aigc_watermark)
+        base_url = (url or self._base_url).rstrip('/')
+        headers = self._header
+        deadline = time.monotonic() + timeout
+        result = self._request_video('POST', base_url + '/video_generation', headers,
+                                     min(60, timeout), payload)
+        task_id = result.get('task_id')
+        if not isinstance(task_id, str) or not task_id:
+            raise RuntimeError('MiniMax video task creation returned no task id')
+        video_url = self._poll_video(base_url, task_id, headers, deadline, poll_interval)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f'MiniMax video download timed out (task {task_id})')
+        # Output storage requests must not receive the model API key.
+        with requests.get(video_url, timeout=min(180, remaining)) as response:
+            response.raise_for_status()
+            return encode_query_with_filepaths(None, bytes_to_file([response.content]))
 
 
 class MinimaxTTS(LazyLLMOnlineTTSModuleBase):
