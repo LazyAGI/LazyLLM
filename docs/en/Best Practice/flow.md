@@ -122,7 +122,7 @@ assert p(1) == 'get [1], [f3-5], [5]'
 
 !!! Note
 
-    Please be careful with lambda functions! If you use a lambda function, make sure to enclose it in parentheses, for example: ``(lambda x, y: pass) | bind(1, _0)``
+    Please be careful with lambda functions! If you use a lambda function, make sure to enclose it in parentheses, for example: ``(lambda x, y: x + y) | bind(1, _0)``
 
 In addition to the C++ style bind method, as a Python library, we also provide parameter binding using ``kwargs``. You can mix ``kwargs`` with the C++ style binding method. Here's an example:
 

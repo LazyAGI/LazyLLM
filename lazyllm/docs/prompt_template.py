@@ -346,7 +346,10 @@ Args:
     lang (str): 语言代码 ('zh' 或 'en')。若未提供，则使用实例初始化时的语言。
 
 **Returns:**\n
-- str: 提示语内容。如果未找到则返回空字符串。
+- str: 提示语内容。
+
+Raises:
+    ValueError: 角色名称不存在或语言不受支持。
 ''')
 
 add_english_doc('ActorPrompt.get_prompt', '''\
@@ -357,7 +360,10 @@ Args:
     lang (str): Language code ('zh' or 'en'). If not provided, uses the language set during initialization.
 
 **Returns:**\n
-- str: The prompt content. Returns an empty string if not found.
+- str: The prompt content.
+
+Raises:
+    ValueError: If the act is missing or the language is unsupported.
 ''')
 
 add_chinese_doc('ActorPrompt.get_all_acts', '''\

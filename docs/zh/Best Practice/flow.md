@@ -122,7 +122,7 @@ assert p(1) == 'get [1], [f3-5], [5]'
 
 !!! Note "注意"
 
-    请小心 lambda 函数！如果使用了 lambda 函数，请注意给 lambda 函数加括号，例如 ``(lambda x, y: pass) | bind(1, _0)``
+    请小心 lambda 函数！如果使用了 lambda 函数，请注意给 lambda 函数加括号，例如 ``(lambda x, y: x + y) | bind(1, _0)``
 
 除了 C++ 的 bind 方式之外，作为 Python，我们额外提供了 ``kwargs`` 的参数绑定， ``kwargs`` 和 C++ 的绑定方式可以混合使用，示例如下:
 

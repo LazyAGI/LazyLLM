@@ -70,12 +70,12 @@ The only difference between this and the normal [FunctionCall][lazyllm.tools.age
 query = "What's the weather like today in celsius in Tokyo and Paris."
 with lazyllm.ThreadPoolExecutor(1) as executor:
     future = executor.submit(agent, query)
-	while True:
-	    if value := lazyllm.FileSystemQueue().dequeue():
-			print(f"output: {''.join(value)}")
-		elif future.done():
-			break
-	print(f"ret: {future.result()}")
+    while True:
+        if value := lazyllm.FileSystemQueue().dequeue():
+            print(f"output: {''.join(value)}")
+        elif future.done():
+            break
+    print(f"ret: {future.result()}")
 # output: Thought: The current language of the user is: English. I need to use
 # output:  a tool to help answer the question.
 
@@ -118,14 +118,14 @@ agent = ReactAgent(llm, tools, return_trace=True)
 query = "What's the weather like today in celsius in Tokyo and Paris."
 with lazyllm.ThreadPoolExecutor(1) as executor:
     future = executor.submit(agent, query)
-	while True:
-	    if value := lazyllm.FileSystemQueue().dequeue():
-			print(f"output: {''.join(value)}")
-		elif value := lazyllm.FileSystemQueue().get_instance('lazy_trace').dequeue():
-			print(f"trace: {''.join(value)}")
-		elif future.done():
-			break
-	print(f"ret: {future.result()}")
+    while True:
+        if value := lazyllm.FileSystemQueue().dequeue():
+            print(f"output: {''.join(value)}")
+        elif value := lazyllm.FileSystemQueue().get_instance('lazy_trace').dequeue():
+            print(f"trace: {''.join(value)}")
+        elif future.done():
+            break
+    print(f"ret: {future.result()}")
 # output: Thought: The current language of the user is: English. I need to use a tool to help answer the question.
 
 # trace: {'role': 'assistant', 'content': 'Thought: The current language of the user is: English. I need to use a tool to help answer the question.\n', 'tool_calls': [{'index': 0, 'type': 'function', 'id': 'call_d2415b4b478c412ab7363f', 'function': {'arguments': '{"location": "Tokyo", "unit": "celsius"}', 'name': 'get_current_weather'}}, {'index': 1, 'type': 'function', 'id': 'call_15035422418847629999d9', 'function': {'arguments': '{"location": "Paris", "unit": "celsius"}', 'name': 'get_current_weather'}}]}{"location": "Paris", "temperature": "22", "unit": "celsius"}
