@@ -5,6 +5,8 @@ import traceback
 
 
 def _build_review_parser() -> argparse.ArgumentParser:
+    from lazyllm.tools.git.review.checkpoint import ReviewStage
+
     p = argparse.ArgumentParser(
         prog='lazyllm review',
         description='Multi-round AI code review for cloud-hosted PRs (GitHub, GitLab, Gitee, GitCode).',
@@ -33,9 +35,9 @@ def _build_review_parser() -> argparse.ArgumentParser:
     p.add_argument('--refresh-diff', action='store_true',
                    help='Fetch latest PR head SHA and diff; rotate checkpoint if changed')
     p.add_argument('--resume-from', default=None,
-                   choices=['clone', 'arch', 'spec', 'pr_summary', 'r1', 'r2', 'r3', 'r4a', 'r4', 'final', 'upload'],
+                   choices=[stage.value for stage in ReviewStage],
                    metavar='STAGE',
-                   help='Resume from a specific stage: clone|arch|spec|pr_summary|r1|r2|r3|final|upload')
+                   help='Resume from a current ReviewStage value')
     p.add_argument('--max-history-prs', type=int, default=None, metavar='N',
                    help='Max historical PRs to analyze for review spec (default: 20)')
     p.add_argument('--arch-cache', default=None, metavar='PATH',
