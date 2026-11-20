@@ -29,6 +29,9 @@ class LazyLLMHook(ABC):
         return None
 
     def finalize(self):
+        report = getattr(self, 'report', None)
+        if report is not None:
+            return report()
         raise NotImplementedError
 
 

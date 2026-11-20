@@ -109,7 +109,7 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
 
     def run_embed_batch(self, input: List, data: List, proxies, url: str = None, **kwargs):
         ret = [[] for _ in range(len(input))]
-        flag = False
+        flag = not data
         url = url or self._embed_url
         if self._num_worker == 1:
             with requests.Session() as session:

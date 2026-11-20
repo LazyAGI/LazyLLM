@@ -31,5 +31,12 @@ class TrialModule(object):
             p.start()
             time.sleep(1)
         [p.join() for p in ps]
-        result = [q.get() for p in ps]
-        LOG.info(f'{result}')
+        try:
+            failed = [p.exitcode for p in ps if p.exitcode != 0]
+            if failed:
+                raise RuntimeError(f'Trial workers failed with exit codes {failed}')
+            result = [q.get() for p in ps]
+            LOG.info(f'{result}')
+        finally:
+            q.close()
+            q.join_thread()
