@@ -119,6 +119,6 @@ class LazyLLMSandboxBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
                 if result.success:
                     match = re.search(rf'^{SANDBOX_TOOL_RESULT_PREFIX}(.*)', result.stdout, re.MULTILINE)
                     return match.group(1) if match else result.stdout
-                return result.stderr
+                return result.stderr or result.error_message
         finally:
             self._cleanup_context(context)

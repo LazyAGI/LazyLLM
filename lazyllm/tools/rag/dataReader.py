@@ -91,7 +91,7 @@ class SimpleDirectoryReader(ModuleBase):
                  encoding: str = 'utf-8', filename_as_id: bool = False, required_exts: Optional[List[str]] = None,
                  file_extractor: Optional[Dict[str, Callable]] = None, fs: Optional['fsspec.AbstractFileSystem'] = None,
                  metadata_genf: Optional[Callable[[str], Dict]] = None, num_files_limit: Optional[int] = None,
-                 return_trace: bool = False, metadatas: Optional[Dict] = None) -> None:
+                 return_trace: bool = False, metadatas: Optional[Union[Dict, List[Dict]]] = None) -> None:
         super().__init__(return_trace=return_trace)
 
         self._fs = fs or get_default_fs()
@@ -248,9 +248,11 @@ class SimpleDirectoryReader(ModuleBase):
         return docs
 
     def _load_data(self, show_progress: bool = False, num_workers: Optional[int] = None,
-                   fs: Optional['fsspec.AbstractFileSystem'] = None, metadatas: Optional[Dict] = None,
+                   fs: Optional['fsspec.AbstractFileSystem'] = None, metadatas: Optional[Union[Dict, List[Dict]]] = None,
                    input_dir: Optional[str] = None, input_files: Optional[List] = None) -> List[DocNode]:
         documents, fs, metadatas = [], fs or self._fs, metadatas or self._metadatas
+        if isinstance(metadatas, dict):
+            metadatas = repeat(metadatas)
         self._last_load_error = None
         load_errors: List[BaseException] = []
         process_file = self._get_input_files(input_dir, input_files) if input_dir or input_files else self._input_files
