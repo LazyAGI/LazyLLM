@@ -163,18 +163,18 @@ class DatasetFormatNormalizer(domain_finetune):
                 mapped[dst] = mapped.pop(src)
         return mapped
 
-    def _extract_from_turns(self, turns: list) -> dict:
+    def _extract_from_turns(self, turns: list, instruction: str) -> dict:
         if not turns:
             return {}
         if (len(turns) == 2
                 and turns[0].get('role') == 'user'
                 and turns[1].get('role') == 'assistant'):
             return {
-                'instruction': self.instruction,
+                'instruction': instruction,
                 'input': turns[0]['content'],
                 'output': turns[1]['content'],
             }
-        return {'messages': [{'role': 'system', 'content': self.instruction}] + turns}
+        return {'messages': [{'role': 'system', 'content': instruction}] + turns}
 
     def _from_conversations(self, conversations: list) -> dict:
         system = self.instruction
@@ -191,8 +191,7 @@ class DatasetFormatNormalizer(domain_finetune):
                 turns.append({'role': 'user', 'content': value})
             elif role in self._ASSISTANT_ROLES:
                 turns.append({'role': 'assistant', 'content': value})
-        self.instruction = system
-        return self._extract_from_turns(turns)
+        return self._extract_from_turns(turns, system)
 
     def _from_messages(self, messages: list) -> dict:
         system = self.instruction
@@ -207,8 +206,7 @@ class DatasetFormatNormalizer(domain_finetune):
                     system = content
             elif role in ('user', 'assistant'):
                 turns.append({'role': role, 'content': content})
-        self.instruction = system
-        return self._extract_from_turns(turns)
+        return self._extract_from_turns(turns, system)
 
     def _to_filter_text(self, result: dict) -> str:
         if 'messages' in result:
