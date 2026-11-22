@@ -38,7 +38,7 @@ class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, skip_auth: bool = False, **kw):
         base_url = base_url or 'https://api.openai.com/v1/'
-        model = model or 'gpt-3.5-turbo'
+        model = model or 'gpt-5.6-terra'
         super().__init__(api_key=api_key or self._default_api_key(),
                          base_url=base_url, model_name=model, stream=stream, return_trace=return_trace,
                          skip_auth=skip_auth, **kw)
