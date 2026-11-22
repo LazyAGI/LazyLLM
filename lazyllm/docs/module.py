@@ -1636,14 +1636,14 @@ add_example('llms.onlinemodule.supplier.ppio.PPIOChat', '''\
 add_chinese_doc('llms.onlinemodule.supplier.claude.ClaudeChat', '''\
 Claude 在线聊天模块，继承自 OnlineChatModuleBase。
 封装了对 Anthropic Claude Messages API（/v1/messages）的调用，用于进行多轮问答交互。
-默认使用模型 `claude-opus-4-5`，支持流式输出、工具调用和调用链追踪。
+默认使用模型 `claude-sonnet-5-5`，支持流式输出、工具调用和调用链追踪。
 
 与 OpenAI 兼容格式不同，该模块使用 Anthropic 原生 API 格式：请求头使用 `x-api-key` 和
 `anthropic-version`，`system` 消息作为顶层字段传递，工具定义使用 `input_schema` 字段。
 传入的 OpenAI 格式工具定义会自动转换为 Anthropic 格式。
 
 Args:
-    model (str): 使用的模型名称，默认为 `claude-opus-4-5`。
+    model (str): 使用的模型名称，默认为 `claude-sonnet-5-5`。
     base_url (str): API 基础 URL，默认为 `https://api.anthropic.com/v1/`。
     api_key (Optional[str]): Anthropic API Key，若未提供，则从 `lazyllm.config['claude_api_key']` 读取。
     stream (bool): 是否启用流式输出，默认为 True。
@@ -1654,7 +1654,7 @@ Args:
 add_english_doc('llms.onlinemodule.supplier.claude.ClaudeChat', '''\
 Claude online chat module, inheriting from OnlineChatModuleBase.
 Wraps the Anthropic Claude Messages API (/v1/messages) for multi-turn Q&A interactions.
-Defaults to model `claude-opus-4-5`, supporting streaming, tool calls, and optional trace return.
+Defaults to model `claude-sonnet-5-5`, supporting streaming, tool calls, and optional trace return.
 
 Unlike OpenAI-compatible format, this module uses the native Anthropic API format: the request
 header uses `x-api-key` and `anthropic-version`, the `system` message is passed as a top-level
@@ -1662,7 +1662,7 @@ field, and tools use the `input_schema` field. OpenAI-format tool definitions ar
 converted to Anthropic format.
 
 Args:
-    model (str): The model name to use. Defaults to `claude-opus-4-5`.
+    model (str): The model name to use. Defaults to `claude-sonnet-5-5`.
     base_url (str): Base URL of the API. Defaults to `https://api.anthropic.com/v1/`.
     api_key (Optional[str]): Anthropic API key. If not provided, it is read from `lazyllm.config['claude_api_key']`.
     stream (bool): Whether to enable streaming output. Defaults to True.
@@ -1673,7 +1673,7 @@ Args:
 add_example('llms.onlinemodule.supplier.claude.ClaudeChat', '''\
 >>> import lazyllm
 >>> # Set environment variable: export LAZYLLM_CLAUDE_API_KEY=your_api_key
->>> chat = lazyllm.OnlineChatModule(source='claude', model='claude-opus-4-5')
+>>> chat = lazyllm.OnlineChatModule(source='claude', model='claude-sonnet-5-5')
 >>> response = chat('Hello, who are you?')
 >>> print(response)
 
@@ -1684,7 +1684,7 @@ add_example('llms.onlinemodule.supplier.claude.ClaudeChat', '''\
 ...     'description': 'Get the current weather for a city',
 ...     'parameters': {'type': 'object', 'properties': {'city': {'type': 'string'}}, 'required': ['city']}
 ... }}]
->>> chat = lazyllm.OnlineChatModule(source='claude', model='claude-opus-4-5', stream=False)
+>>> chat = lazyllm.OnlineChatModule(source='claude', model='claude-sonnet-5-5', stream=False)
 >>> chat._formatter = FunctionCallFormatter()
 >>> result = chat('Please call get_weather for Beijing', tools=tools)
 >>> print(result)
