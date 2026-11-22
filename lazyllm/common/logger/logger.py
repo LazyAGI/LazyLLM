@@ -99,12 +99,12 @@ class _Log:
         for name in names:
             if name.endswith('.json.log'):
                 with open(join(self._log_dir_path, name)) as file:
-                    lines = file.readlines()
+                    lines.extend(file.readlines())
             elif name.endswith('.json.log.zip'):
-                with ZipFile(name) as zip_file:
+                with ZipFile(join(self._log_dir_path, name)) as zip_file:
                     for n in zip_file.namelist():
                         with zip_file.open(n, 'r') as file:
-                            lines = file.readlines()
+                            lines.extend(file.readlines())
         records = []
         if isinstance(level, str):
             level = getattr(logging, level.upper())
