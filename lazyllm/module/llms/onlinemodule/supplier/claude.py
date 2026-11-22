@@ -27,7 +27,7 @@ class ClaudeChat(OnlineChatModuleBase):
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         base_url = base_url or 'https://api.anthropic.com/v1/'
-        model = model or 'claude-opus-4-5'
+        model = model or 'claude-sonnet-5-5'
         super().__init__(api_key=api_key or self._default_api_key(),
                          base_url=base_url, model_name=model, stream=stream,
                          return_trace=return_trace, **kwargs)

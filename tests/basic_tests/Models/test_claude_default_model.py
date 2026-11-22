@@ -5,7 +5,7 @@ from lazyllm.module.llms.onlinemodule.supplier.claude import ClaudeChat
 RETIRED = {'claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307'}
 
 
-def test_claude_chat_default_model_is_the_documented_served_one():
+def test_claude_chat_default_model_is_the_documented_current_one():
     chat = ClaudeChat(api_key='test-key')
     assert chat._model_name not in RETIRED
-    assert chat._model_name == 'claude-opus-4-5'
+    assert chat._model_name == 'claude-sonnet-5-5'
