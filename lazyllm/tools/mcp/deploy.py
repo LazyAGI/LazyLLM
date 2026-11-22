@@ -1,6 +1,7 @@
 from lazyllm.thirdparty import uvicorn
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Literal, Any, Optional, List
 
 from lazyllm.thirdparty import mcp
@@ -81,53 +82,69 @@ async def _create_proxy_server(remote_app): # noqa C901
     response = await remote_app.initialize()
     capabilities = response.capabilities
 
-    server_instance: mcp.server.Server[Any] = mcp.server.Server(name=response.serverInfo.name)  # noqa NID003
+    # mcp 2.x removed Server.request_handlers/notification_handlers (handlers are passed to the constructor as
+    # on_* callbacks taking (ctx, params)), no longer wraps results in ServerResult, and uses snake_case fields.
+    is_v2 = hasattr(mcp.server.Server, 'add_request_handler')
+    wrap_result = (lambda result: result) if is_v2 else mcp.types.ServerResult
+    v2_handlers = {}
+    if not is_v2:
+        server_instance: mcp.server.Server[Any] = mcp.server.Server(name=response.serverInfo.name)  # noqa NID003
+
+    def register(request_type, v2_name, handler):
+        if is_v2:
+            async def v2_handler(ctx, params):
+                return await handler(SimpleNamespace(params=params))
+            v2_handlers[v2_name] = v2_handler
+        elif request_type is mcp.types.ProgressNotification:
+            server_instance.notification_handlers[request_type] = handler
+        else:
+            server_instance.request_handlers[request_type] = handler
 
     if capabilities.prompts:
         async def _list_prompts(_: Any) -> mcp.types.ServerResult:
             result = await remote_app.list_prompts()
-            return mcp.types.ServerResult(result)
+            return wrap_result(result)
 
         async def _get_prompt(req: mcp.types.GetPromptRequest) -> mcp.types.ServerResult:
             result = await remote_app.get_prompt(req.params.name, req.params.arguments)
-            return mcp.types.ServerResult(result)
+            return wrap_result(result)
 
-        server_instance.request_handlers[mcp.types.ListPromptsRequest] = _list_prompts
-        server_instance.request_handlers[mcp.types.GetPromptRequest] = _get_prompt
+        register(mcp.types.ListPromptsRequest, 'on_list_prompts', _list_prompts)
+        register(mcp.types.GetPromptRequest, 'on_get_prompt', _get_prompt)
 
     if capabilities.resources:
         async def _subscribe_resource(req: mcp.types.SubscribeRequest) -> mcp.types.ServerResult:
             await remote_app.subscribe_resource(req.params.uri)
-            return mcp.types.ServerResult(mcp.types.EmptyResult())
+            return wrap_result(mcp.types.EmptyResult())
 
         async def _unsubscribe_resource(req: mcp.types.UnsubscribeRequest) -> mcp.types.ServerResult:
             await remote_app.unsubscribe_resource(req.params.uri)
-            return mcp.types.ServerResult(mcp.types.EmptyResult())
+            return wrap_result(mcp.types.EmptyResult())
 
         async def _list_resources(_: Any) -> mcp.types.ServerResult:
             result = await remote_app.list_resources()
-            return mcp.types.ServerResult(result)
+            return wrap_result(result)
 
         async def _read_resource(req: mcp.types.ReadResourceRequest) -> mcp.types.ServerResult:
             result = await remote_app.read_resource(req.params.uri)
-            return mcp.types.ServerResult(result)
+            return wrap_result(result)
 
-        server_instance.request_handlers[mcp.types.SubscribeRequest] = _subscribe_resource
-        server_instance.request_handlers[mcp.types.UnsubscribeRequest] = _unsubscribe_resource
-        server_instance.request_handlers[mcp.types.ListResourcesRequest] = _list_resources
-        server_instance.request_handlers[mcp.types.ReadResourceRequest] = _read_resource
+        register(mcp.types.SubscribeRequest, 'on_subscribe_resource', _subscribe_resource)
+        register(mcp.types.UnsubscribeRequest, 'on_unsubscribe_resource', _unsubscribe_resource)
+        register(mcp.types.ListResourcesRequest, 'on_list_resources', _list_resources)
+        register(mcp.types.ReadResourceRequest, 'on_read_resource', _read_resource)
 
     if capabilities.logging:
         async def _set_logging_level(req: mcp.types.SetLevelRequest) -> mcp.types.ServerResult:
             await remote_app.set_logging_level(req.params.level)
-            return mcp.types.ServerResult(mcp.types.EmptyResult())
+            return wrap_result(mcp.types.EmptyResult())
 
-        server_instance.request_handlers[mcp.types.SetLevelRequest] = _set_logging_level
+        register(mcp.types.SetLevelRequest, 'on_set_logging_level', _set_logging_level)
 
     if capabilities.tools:
         async def _list_tools(_: Any) -> mcp.types.ServerResult:
             tools = await remote_app.list_tools()
-            return mcp.types.ServerResult(tools)
+            return wrap_result(tools)
 
         async def _call_tool(req: mcp.types.CallToolRequest) -> mcp.types.ServerResult:
             try:
@@ -135,36 +152,38 @@ async def _create_proxy_server(remote_app): # noqa C901
                     req.params.name,
                     req.params.arguments or {},
                 )
-                return mcp.types.ServerResult(result)
+                return wrap_result(result)
             except Exception as e:
-                return mcp.types.ServerResult(
+                return wrap_result(
                     mcp.types.CallToolResult(
                         content=[mcp.types.TextContent(type='text', text=str(e))],
                         isError=True,
                     )
                 )
 
-        server_instance.request_handlers[mcp.types.ListToolsRequest] = _list_tools
-        server_instance.request_handlers[mcp.types.CallToolRequest] = _call_tool
+        register(mcp.types.ListToolsRequest, 'on_list_tools', _list_tools)
+        register(mcp.types.CallToolRequest, 'on_call_tool', _call_tool)
 
     async def _send_progress_notification(req: mcp.types.ProgressNotification) -> None:
         await remote_app.send_progress_notification(
-            req.params.progressToken,
+            req.params.progress_token if is_v2 else req.params.progressToken,
             req.params.progress,
             req.params.total,
         )
 
-    server_instance.notification_handlers[mcp.types.ProgressNotification] = _send_progress_notification
+    register(mcp.types.ProgressNotification, 'on_progress', _send_progress_notification)
 
     async def _complete(req: mcp.types.CompleteRequest) -> mcp.types.ServerResult:
         result = await remote_app.complete(
             req.params.ref,
             req.params.argument.model_dump(),
         )
-        return mcp.types.ServerResult(result)
+        return wrap_result(result)
 
-    server_instance.request_handlers[mcp.types.CompleteRequest] = _complete
+    register(mcp.types.CompleteRequest, 'on_completion', _complete)
 
+    if is_v2:
+        return mcp.server.Server(response.server_info.name, **v2_handlers)
     return server_instance
 
 
