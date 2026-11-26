@@ -11,6 +11,7 @@ from .wikipedia_search import WikipediaSearch
 from .sciverse_search import SciverseSearch
 from .tavily_search import TavilySearch
 from .keenable_search import KeenableSearch
+from .serply_search import SerplySearch
 
 __all__ = [
     'SearchBase',
@@ -26,4 +27,5 @@ __all__ = [
     'SciverseSearch',
     'TavilySearch',
     'KeenableSearch',
+    'SerplySearch',
 ]
