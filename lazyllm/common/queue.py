@@ -248,9 +248,9 @@ class RedisQueue(FileSystemQueue):
         with self._lock:
             conn = redis.Redis.from_url(self.redis_url)
             if limit:
-                limit = limit + 1
                 vals = conn.lrange(id, 1, limit)
-                conn.ltrim(id, limit, -1)
+                # Keep one head entry even when limit exceeds the queue size.
+                conn.ltrim(id, len(vals), -1)
             else:
                 vals = conn.lrange(id, 1, -1)
                 conn.ltrim(id, 0, 0)
@@ -275,7 +275,7 @@ class RedisQueue(FileSystemQueue):
     def _clear(self, id):
         with self._lock:
             conn = redis.Redis.from_url(self.redis_url)
-            conn.delete(id)
+            conn.ltrim(id, 0, 0)
 
 fsquemap = {
     'sqlite': SQLiteQueue,
